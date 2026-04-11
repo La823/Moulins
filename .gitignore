@@ -1,0 +1,18 @@
+# Backend
+backend/.env
+backend/tmp/
+backend/*.exe
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env*.local
+
+# Root
+node_modules/
+passwords.txt
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

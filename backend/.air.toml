@@ -1,0 +1,21 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Build binary into local tmp/ dir (not system temp) to avoid Application Control blocks
+  bin = "tmp/server.exe"
+  cmd = "go build -o tmp/server.exe ./cmd/api"
+  delay = 1000
+  exclude_dir = ["tmp", "node_modules", "vendor"]
+  exclude_regex = ["_test\\.go$"]
+  include_ext = ["go", "toml", "env"]
+  kill_delay = 500
+
+[build.env]
+  GOTMPDIR = "tmp"
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

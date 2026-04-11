@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.999.0",
+    "pg": "^8.19.0"
+  }
+}

@@ -1,0 +1,5 @@
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS delivery_person VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS expected_delivery DATE,
+  ADD COLUMN IF NOT EXISTS delivery_notes TEXT;
