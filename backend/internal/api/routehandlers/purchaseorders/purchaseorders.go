@@ -1,6 +1,7 @@
 package purchaseorders
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -26,7 +27,6 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not fetch purchase orders", http.StatusInternalServerError)
 			return
 		}
-		// Attach document URLs
 		for i := range list {
 			if list[i].DocumentKey != nil && *list[i].DocumentKey != "" {
 				list[i].DocumentURL = utils.GetPublicURL(*list[i].DocumentKey)
@@ -57,6 +57,60 @@ func GetHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+func generateAndUploadPDF(db *pgxpool.Pool, poID uuid.UUID, poNumber string, req models.CreatePORequest) {
+	ctx := context.Background()
+
+	mfr, err := models.GetManufacturerByID(ctx, db, req.ManufacturerID)
+	if err != nil {
+		log.Printf("PDF gen: manufacturer fetch error: %v", err)
+		return
+	}
+
+	derefStr := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	derefF := func(f *float64) float64 {
+		if f == nil {
+			return 0
+		}
+		return *f
+	}
+
+	pdfData, err := utils.GeneratePOPDF(utils.POPDFData{
+		PONumber:         poNumber,
+		Date:             req.PODate,
+		ManufacturerName: mfr.Name,
+		CompanyName:      "MOULINS PHARMACEUTICALS PVT LTD",
+		ProductName:      req.ProductName,
+		Specifications:   derefStr(req.Specifications),
+		Type:             derefStr(req.Type),
+		Quantity:         req.Quantity,
+		MRP:              derefF(req.MRP),
+		Rate:             derefF(req.Rate),
+		Category:         derefStr(req.Category),
+		Remarks:          derefStr(req.Remarks),
+	})
+	if err != nil {
+		log.Printf("PDF gen error: %v", err)
+		return
+	}
+
+	s3Key := fmt.Sprintf("purchase-orders/%s.pdf", poNumber)
+	if err := utils.UploadToS3(s3Key, pdfData, "application/pdf"); err != nil {
+		log.Printf("S3 upload error: %v", err)
+		return
+	}
+
+	if err := models.SetPODocumentKey(ctx, db, poID, s3Key); err != nil {
+		log.Printf("set document key error: %v", err)
+	}
+
+	log.Printf("PO %s PDF generated and uploaded", poNumber)
+}
+
 func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req models.CreatePORequest
@@ -64,12 +118,16 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if req.ManufacturerID == uuid.Nil || len(req.Items) == 0 {
-			http.Error(w, "manufacturer_id and at least one item are required", http.StatusBadRequest)
+		if req.ManufacturerID == uuid.Nil {
+			http.Error(w, "manufacturer_id is required", http.StatusBadRequest)
 			return
 		}
-		if req.Date == "" {
-			http.Error(w, "date is required", http.StatusBadRequest)
+		if req.ProductName == "" {
+			http.Error(w, "product_name is required", http.StatusBadRequest)
+			return
+		}
+		if req.PODate == "" {
+			http.Error(w, "po_date is required", http.StatusBadRequest)
 			return
 		}
 
@@ -87,54 +145,7 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Generate PDF and upload to S3
-		go func() {
-			mfr, err := models.GetManufacturerByID(r.Context(), db, req.ManufacturerID)
-			if err != nil {
-				log.Printf("PDF gen: manufacturer fetch error: %v", err)
-				return
-			}
-
-			pdfItems := make([]utils.POPDFItem, len(req.Items))
-			for i, item := range req.Items {
-				packing := ""
-				if item.Packing != nil {
-					packing = *item.Packing
-				}
-				pdfItems[i] = utils.POPDFItem{
-					SrNo:        i + 1,
-					ProductName: item.ProductName,
-					Packing:     packing,
-					Quantity:    item.Quantity,
-					MRP:         item.MRP,
-					Rate:        item.Rate,
-				}
-			}
-
-			pdfData, err := utils.GeneratePOPDF(utils.POPDFData{
-				PONumber:         poNumber,
-				Date:             req.Date,
-				ManufacturerName: mfr.Name,
-				CompanyName:      "MOULINS PHARMACEUTICALS PVT LTD",
-				Items:            pdfItems,
-			})
-			if err != nil {
-				log.Printf("PDF gen error: %v", err)
-				return
-			}
-
-			s3Key := fmt.Sprintf("purchase-orders/%s.pdf", poNumber)
-			if err := utils.UploadToS3(s3Key, pdfData, "application/pdf"); err != nil {
-				log.Printf("S3 upload error: %v", err)
-				return
-			}
-
-			if err := models.SetPODocumentKey(r.Context(), db, poID, s3Key); err != nil {
-				log.Printf("set document key error: %v", err)
-			}
-
-			log.Printf("PO %s PDF generated and uploaded to S3", poNumber)
-		}()
+		go generateAndUploadPDF(db, poID, poNumber, req)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -142,6 +153,28 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			"id":        poID.String(),
 			"po_number": poNumber,
 		})
+	}
+}
+
+func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var req models.UpdatePORequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if err := models.UpdatePurchaseOrder(r.Context(), db, id, req); err != nil {
+			log.Printf("update PO error: %v", err)
+			http.Error(w, "could not update", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
 	}
 }
 
@@ -159,7 +192,8 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
 			return
 		}
-		if err := models.UpdatePOStatus(r.Context(), db, id, body.Status); err != nil {
+		req := models.UpdatePORequest{Status: &body.Status}
+		if err := models.UpdatePurchaseOrder(r.Context(), db, id, req); err != nil {
 			log.Printf("update PO status error: %v", err)
 			http.Error(w, "could not update", http.StatusInternalServerError)
 			return

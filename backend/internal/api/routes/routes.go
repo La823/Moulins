@@ -88,6 +88,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool) {
 	admin.HandleFunc("/purchase-orders", purchaseorders.ListHandler(db)).Methods("GET")
 	admin.HandleFunc("/purchase-orders", purchaseorders.CreateHandler(db)).Methods("POST")
 	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.GetHandler(db)).Methods("GET")
+	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.UpdateHandler(db)).Methods("PUT")
 	admin.HandleFunc("/purchase-orders/{id}/status", purchaseorders.UpdateStatusHandler(db)).Methods("PUT")
 	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.DeleteHandler(db)).Methods("DELETE")
 

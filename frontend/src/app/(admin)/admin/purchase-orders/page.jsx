@@ -1,20 +1,37 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
 const STATUS_STYLES = {
-  draft: "bg-gray-100 text-gray-700",
-  sent: "bg-blue-50 text-blue-700",
-  confirmed: "bg-green-50 text-green-700",
-  received: "bg-emerald-50 text-emerald-700",
+  mail_done: "bg-gray-100 text-gray-700",
+  rate_ok: "bg-amber-50 text-amber-700",
+  mock_up_received: "bg-cyan-50 text-cyan-700",
+  design_ok: "bg-blue-50 text-blue-700",
+  received: "bg-green-50 text-green-700",
+  hold: "bg-orange-50 text-orange-700",
   cancelled: "bg-red-50 text-red-700",
+  repeat: "bg-purple-50 text-purple-700",
+};
+
+const STATUS_LABELS = {
+  mail_done: "Mail Done",
+  rate_ok: "Rate OK",
+  mock_up_received: "Mock Up Received",
+  design_ok: "Design OK",
+  received: "Received",
+  hold: "Hold",
+  cancelled: "Cancelled",
+  repeat: "Repeat",
 };
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
 
   useEffect(() => {
     apiFetch("/admin/purchase-orders")
@@ -23,7 +40,9 @@ export default function PurchaseOrdersPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (!confirm("Delete this purchase order?")) return;
     try {
       await apiFetch(`/admin/purchase-orders/${id}`, { method: "DELETE" });
@@ -32,6 +51,24 @@ export default function PurchaseOrdersPage() {
       alert(err.message);
     }
   };
+
+  const categories = useMemo(
+    () => [...new Set(orders.map((o) => o.category).filter(Boolean))].sort(),
+    [orders]
+  );
+
+  const filtered = useMemo(() => {
+    return orders.filter((o) => {
+      if (statusFilter && o.status !== statusFilter) return false;
+      if (categoryFilter && o.category !== categoryFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const fields = [o.po_number, o.product_name, o.manufacturer_name].filter(Boolean);
+        if (!fields.some((f) => f.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+  }, [orders, search, statusFilter, categoryFilter]);
 
   return (
     <>
@@ -45,59 +82,110 @@ export default function PurchaseOrdersPage() {
         </Link>
       </div>
 
+      {/* Filters */}
+      <div className="flex items-center gap-3 mb-4">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search PO#, product, manufacturer..."
+          className="flex-1 max-w-md px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none focus:border-gray-400"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none focus:border-gray-400"
+        >
+          <option value="">All statuses</option>
+          {Object.entries(STATUS_LABELS).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none focus:border-gray-400"
+        >
+          <option value="">All categories</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
+
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
-      ) : orders.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-          <p className="text-sm text-gray-400">No purchase orders yet</p>
-          <Link href="/admin/purchase-orders/new" className="text-sm text-blue-600 mt-2 inline-block">
-            Create your first PO
-          </Link>
+          <p className="text-sm text-gray-400">No purchase orders found</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {orders.map((po) => (
-            <div key={po.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:bg-gray-50 transition-colors">
-              <div className="flex items-start justify-between">
-                <Link href={`/admin/purchase-orders/${po.id}`} className="flex-1">
-                  <div className="flex items-center gap-3 mb-1">
-                    <p className="font-medium text-gray-900 font-mono text-sm">{po.po_number}</p>
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-medium capitalize ${STATUS_STYLES[po.status] || "bg-gray-100 text-gray-600"}`}>
-                      {po.status}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">{po.manufacturer_name}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {new Date(po.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                  </p>
-                </Link>
-                <div className="flex items-center gap-2">
-                  {po.document_url && (
-                    <a
-                      href={po.document_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                    >
-                      PDF
-                    </a>
-                  )}
-                  <Link
-                    href={`/admin/purchase-orders/${po.id}`}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
-                  >
-                    View
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(po.id)}
-                    className="px-3 py-1.5 text-xs text-red-500 hover:text-red-700"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">PO #</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Manufacturer</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wider">Rate</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wider">Estimate</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((po) => (
+                  <tr key={po.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <Link href={`/admin/purchase-orders/${po.id}`} className="font-mono text-xs text-gray-900 font-medium hover:text-blue-600">
+                        {po.po_number}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {new Date(po.po_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                    </td>
+                    <td className="px-4 py-3 text-gray-900 max-w-xs truncate">{po.product_name}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600 max-w-[180px] truncate">{po.manufacturer_name}</td>
+                    <td className="px-4 py-3 text-right text-gray-900">{po.quantity}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">
+                      {po.rate != null ? `\u20B9${Number(po.rate).toFixed(2)}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-900 font-medium">
+                      {po.estimate != null ? `\u20B9${Number(po.estimate).toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{po.category || "-"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_STYLES[po.status] || "bg-gray-100 text-gray-600"}`}>
+                        {STATUS_LABELS[po.status] || po.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {po.document_url && (
+                          <a href={po.document_url} target="_blank" rel="noopener noreferrer"
+                             onClick={(e) => e.stopPropagation()}
+                             className="text-[11px] font-medium text-blue-600 hover:underline">
+                            PDF
+                          </a>
+                        )}
+                        <button onClick={(e) => handleDelete(po.id, e)}
+                          className="text-[11px] text-red-500 hover:text-red-700">
+                          Del
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+            {filtered.length} purchase order{filtered.length !== 1 ? "s" : ""}
+          </div>
         </div>
       )}
     </>

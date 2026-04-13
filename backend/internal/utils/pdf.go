@@ -12,16 +12,14 @@ type POPDFData struct {
 	Date             string
 	ManufacturerName string
 	CompanyName      string
-	Items            []POPDFItem
-}
-
-type POPDFItem struct {
-	SrNo        int
-	ProductName string
-	Packing     string
-	Quantity    int
-	MRP         float64
-	Rate        float64
+	ProductName      string
+	Specifications   string
+	Type             string
+	Quantity         int
+	MRP              float64
+	Rate             float64
+	Category         string
+	Remarks          string
 }
 
 func GeneratePOPDF(data POPDFData) ([]byte, error) {
@@ -34,59 +32,64 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 	pdf.CellFormat(180, 10, "PURCHASE ORDER", "", 1, "C", false, 0, "")
 	pdf.Ln(5)
 
-	// Company name
-	pdf.SetFont("Arial", "B", 12)
-	pdf.CellFormat(180, 8, data.CompanyName, "", 1, "C", false, 0, "")
-	pdf.Ln(8)
-
-	// PO details
+	// PO meta
 	pdf.SetFont("Arial", "", 10)
 	pdf.CellFormat(90, 7, fmt.Sprintf("PO Number: %s", data.PONumber), "", 0, "L", false, 0, "")
 	pdf.CellFormat(90, 7, fmt.Sprintf("Date: %s", data.Date), "", 1, "R", false, 0, "")
-	pdf.Ln(2)
-
-	// Manufacturer
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(40, 7, "Manufacturer:", "", 0, "L", false, 0, "")
-	pdf.SetFont("Arial", "", 10)
-	pdf.CellFormat(140, 7, data.ManufacturerName, "", 1, "L", false, 0, "")
 	pdf.Ln(8)
 
-	// Table header
-	colWidths := []float64{12, 58, 25, 20, 25, 25, 25}
-	headers := []string{"Sr.", "Product Name", "Packing", "Qty", "MRP", "Rate", "Amount"}
-
-	pdf.SetFont("Arial", "B", 9)
-	pdf.SetFillColor(240, 240, 240)
-	for i, h := range headers {
-		pdf.CellFormat(colWidths[i], 8, h, "1", 0, "C", true, 0, "")
-	}
-	pdf.Ln(-1)
-
-	// Table rows
-	pdf.SetFont("Arial", "", 9)
-	var totalAmount float64
-	for _, item := range data.Items {
-		amount := float64(item.Quantity) * item.Rate
-		totalAmount += amount
-
-		pdf.CellFormat(colWidths[0], 7, fmt.Sprintf("%d", item.SrNo), "1", 0, "C", false, 0, "")
-		// Handle long product names
-		pdf.CellFormat(colWidths[1], 7, truncate(item.ProductName, 35), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(colWidths[2], 7, item.Packing, "1", 0, "C", false, 0, "")
-		pdf.CellFormat(colWidths[3], 7, fmt.Sprintf("%d", item.Quantity), "1", 0, "C", false, 0, "")
-		pdf.CellFormat(colWidths[4], 7, fmt.Sprintf("%.2f", item.MRP), "1", 0, "R", false, 0, "")
-		pdf.CellFormat(colWidths[5], 7, fmt.Sprintf("%.2f", item.Rate), "1", 0, "R", false, 0, "")
-		pdf.CellFormat(colWidths[6], 7, fmt.Sprintf("%.2f", amount), "1", 0, "R", false, 0, "")
-		pdf.Ln(-1)
+	// Two-column table layout matching the reference doc
+	rows := []struct {
+		label string
+		value string
+	}{
+		{"COMPANY NAME", data.CompanyName},
+		{"BRAND NAME", data.ProductName},
+		{"TRADE MARK", "TM"},
+		{"COMPOSITION", data.Specifications},
+		{"PACKING", data.Specifications},
+		{"QUANTITY", fmt.Sprintf("%d", data.Quantity)},
+		{"M.R.P", fmt.Sprintf("Rs. %.2f per strip", data.MRP)},
+		{"RATE", fmt.Sprintf("Rs. %.2f", data.Rate)},
+		{"MANUFACTURER", data.ManufacturerName},
+		{"CATEGORY", data.Category},
+		{"TYPE", data.Type},
 	}
 
-	// Total row
-	totalColSpan := colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + colWidths[5]
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(totalColSpan, 8, "TOTAL", "1", 0, "R", false, 0, "")
-	pdf.CellFormat(colWidths[6], 8, fmt.Sprintf("%.2f", totalAmount), "1", 0, "R", false, 0, "")
-	pdf.Ln(-1)
+	const labelW = 60.0
+	const valueW = 120.0
+	pdf.SetFont("Arial", "", 11)
+
+	for _, row := range rows {
+		// Calculate row height based on value
+		lines := pdf.SplitLines([]byte(row.value), valueW-4)
+		rowH := float64(len(lines)) * 7
+		if rowH < 9 {
+			rowH = 9
+		}
+
+		x, y := pdf.GetX(), pdf.GetY()
+		pdf.Rect(x, y, labelW, rowH, "D")
+		pdf.Rect(x+labelW, y, valueW, rowH, "D")
+
+		pdf.SetFont("Arial", "B", 11)
+		pdf.SetXY(x+2, y+2)
+		pdf.CellFormat(labelW-4, rowH-4, row.label, "", 0, "L", false, 0, "")
+
+		pdf.SetFont("Arial", "", 11)
+		pdf.SetXY(x+labelW+2, y+2)
+		pdf.MultiCell(valueW-4, 6, row.value, "", "L", false)
+
+		pdf.SetXY(x, y+rowH)
+	}
+
+	if data.Remarks != "" {
+		pdf.Ln(5)
+		pdf.SetFont("Arial", "B", 10)
+		pdf.CellFormat(40, 7, "Remarks:", "", 0, "L", false, 0, "")
+		pdf.SetFont("Arial", "", 10)
+		pdf.MultiCell(140, 6, data.Remarks, "", "L", false)
+	}
 
 	// Footer
 	pdf.Ln(15)
@@ -95,16 +98,8 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 	pdf.CellFormat(90, 7, "Received By", "T", 0, "C", false, 0, "")
 
 	var buf bytes.Buffer
-	err := pdf.Output(&buf)
-	if err != nil {
+	if err := pdf.Output(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-2] + ".."
 }

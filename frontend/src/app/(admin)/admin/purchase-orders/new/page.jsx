@@ -4,31 +4,43 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
-const emptyItem = () => ({
-  key: Date.now(),
-  product_id: null,
-  product_name: "",
-  quantity: 1,
-  rate: 0,
-  mrp: 0,
-  packing: "",
-  search: "",
-});
+const CATEGORIES = ["Ortho", "Neuro", "Gastro", "Respiratory", "Dema", "Gynae", "General", "Misc", "Cardio", "Diabetic"];
+const TYPES = ["TABLET", "CAPSULE", "SOFTGEL CAPSULE", "SACHET", "DRY SYRUP", "SYRUP", "OINTMENT", "SPRAY", "ROLL ON", "INJECTION", "DROPS"];
+const STATUSES = [
+  { v: "mail_done", l: "Mail Done" },
+  { v: "rate_ok", l: "Rate OK" },
+  { v: "mock_up_received", l: "Mock Up Received" },
+  { v: "design_ok", l: "Design OK" },
+  { v: "received", l: "Received" },
+  { v: "hold", l: "Hold" },
+  { v: "cancelled", l: "Cancelled" },
+  { v: "repeat", l: "Repeat" },
+];
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const [manufacturers, setManufacturers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [manufacturerId, setManufacturerId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState([emptyItem()]);
+  const [productSearch, setProductSearch] = useState("");
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  const [form, setForm] = useState({
+    po_date: new Date().toISOString().split("T")[0],
+    product_id: null,
+    product_name: "",
+    quantity: 0,
+    mrp: "",
+    rate: "",
+    specifications: "",
+    type: "",
+    manufacturer_id: "",
+    category: "",
+    status: "mail_done",
+    remarks: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  // Product search state
-  const [activeSearch, setActiveSearch] = useState(null);
-  const dropdownRef = useRef(null);
 
   useEffect(() => {
     Promise.all([
@@ -36,74 +48,65 @@ export default function NewPurchaseOrderPage() {
       apiFetch("/products"),
     ]).then(([mfrs, prods]) => {
       setManufacturers(Array.isArray(mfrs) ? mfrs : []);
-      const prodList = prods?.products || prods || [];
-      setProducts(Array.isArray(prodList) ? prodList : []);
+      const list = prods?.products || prods || [];
+      setProducts(Array.isArray(list) ? list : []);
     });
   }, []);
 
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setActiveSearch(null);
+        setShowProductDropdown(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const updateItem = (index, patch) => {
-    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  };
+  const filteredProducts = productSearch.trim()
+    ? products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 15)
+    : [];
 
-  const removeItem = (index) => {
-    if (items.length === 1) return;
-    setItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const addItem = () => setItems((prev) => [...prev, emptyItem()]);
-
-  const selectProduct = (index, product) => {
-    updateItem(index, {
-      product_id: product.id,
-      product_name: product.name,
-      mrp: product.mrp || product.price || 0,
-      rate: product.price || 0,
-      packing: product.pack_size || "",
-      search: "",
+  const selectProduct = (p) => {
+    setForm({
+      ...form,
+      product_id: p.id,
+      product_name: p.name,
+      mrp: p.mrp != null ? String(p.mrp) : (p.price != null ? String(p.price) : ""),
+      rate: p.price != null ? String(p.price) : "",
+      specifications: p.pack_size || "",
+      type: p.product_form ? String(p.product_form).toUpperCase() : form.type,
     });
-    setActiveSearch(null);
+    setProductSearch(p.name);
+    setShowProductDropdown(false);
   };
 
-  const filteredProducts = (search) => {
-    if (!search.trim()) return [];
-    const q = search.toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 15);
-  };
-
-  const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.rate, 0);
+  const estimate = (parseFloat(form.quantity) || 0) * (parseFloat(form.rate) || 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!manufacturerId) { setError("Select a manufacturer"); return; }
-    if (items.some((item) => !item.product_name.trim())) { setError("All items need a product name"); return; }
-
+    if (!form.manufacturer_id || !form.product_name.trim()) {
+      setError("Manufacturer and product name are required");
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
       const res = await apiFetch("/admin/purchase-orders", {
         method: "POST",
         body: JSON.stringify({
-          manufacturer_id: manufacturerId,
-          date,
-          notes: notes.trim() || null,
-          items: items.map((item) => ({
-            product_id: item.product_id || undefined,
-            product_name: item.product_name,
-            quantity: parseInt(item.quantity) || 1,
-            rate: parseFloat(item.rate) || 0,
-            mrp: parseFloat(item.mrp) || 0,
-            packing: item.packing.trim() || null,
-          })),
+          po_date: form.po_date,
+          product_id: form.product_id || undefined,
+          product_name: form.product_name.trim(),
+          quantity: parseInt(form.quantity) || 0,
+          mrp: form.mrp ? parseFloat(form.mrp) : null,
+          rate: form.rate ? parseFloat(form.rate) : null,
+          specifications: form.specifications.trim() || null,
+          type: form.type || null,
+          manufacturer_id: form.manufacturer_id,
+          category: form.category || null,
+          status: form.status,
+          remarks: form.remarks.trim() || null,
         }),
       });
       router.push(`/admin/purchase-orders/${res.id}`);
@@ -116,20 +119,29 @@ export default function NewPurchaseOrderPage() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800">New Purchase Order</h2>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
-        {/* Header fields */}
+      <form onSubmit={handleSubmit} className="space-y-4 max-w-3xl">
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          {/* Date + manufacturer */}
           <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <input
+                type="date" required
+                value={form.po_date}
+                onChange={(e) => setForm({ ...form, po_date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer *</label>
               <select
-                value={manufacturerId}
-                onChange={(e) => setManufacturerId(e.target.value)}
                 required
+                value={form.manufacturer_id}
+                onChange={(e) => setForm({ ...form, manufacturer_id: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               >
                 <option value="">Select manufacturer</option>
@@ -138,132 +150,140 @@ export default function NewPurchaseOrderPage() {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Product search */}
+          <div className="relative" ref={dropdownRef}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Product *</label>
+            <input
+              type="text" required
+              value={form.product_id ? form.product_name : productSearch}
+              onChange={(e) => {
+                setProductSearch(e.target.value);
+                setForm({ ...form, product_name: e.target.value, product_id: null });
+                setShowProductDropdown(true);
+              }}
+              onFocus={() => setShowProductDropdown(true)}
+              placeholder="Search or type product name..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+            {showProductDropdown && filteredProducts.length > 0 && (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                {filteredProducts.map((p) => (
+                  <button
+                    key={p.id} type="button"
+                    onClick={() => selectProduct(p)}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 truncate"
+                  >
+                    <span className="text-gray-900">{p.name}</span>
+                    {p.price != null && (
+                      <span className="text-gray-400 ml-2">&#8377;{Number(p.price).toFixed(2)}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-gray-400 mt-1">
+              {form.product_id ? "Linked to product catalog" : "Custom product (not in catalog)"}
+            </p>
+          </div>
+
+          {/* Specs + type */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Specifications / Packing</label>
               <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
+                type="text"
+                value={form.specifications}
+                onChange={(e) => setForm({ ...form, specifications: e.target.value })}
+                placeholder="e.g. 10*10 ALU ALU, 60 ML"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              >
+                <option value="">Select type</option>
+                {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
           </div>
+
+          {/* Qty / MRP / Rate / Estimate */}
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+              <input
+                type="number" min="0" required
+                value={form.quantity}
+                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">MRP</label>
+              <input
+                type="number" step="0.01"
+                value={form.mrp}
+                onChange={(e) => setForm({ ...form, mrp: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rate</label>
+              <input
+                type="number" step="0.01"
+                value={form.rate}
+                onChange={(e) => setForm({ ...form, rate: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Estimate</label>
+              <div className="px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-sm text-gray-700">
+                &#8377;{estimate.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+
+          {/* Category + status */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              >
+                <option value="">Select category</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              >
+                {STATUSES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Remarks */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
             <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={form.remarks}
+              onChange={(e) => setForm({ ...form, remarks: e.target.value })}
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
             />
-          </div>
-        </div>
-
-        {/* Items */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-700">Items</h3>
-            <button
-              type="button"
-              onClick={addItem}
-              className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"
-            >
-              + Add Item
-            </button>
-          </div>
-
-          {/* Table header */}
-          <div className="grid grid-cols-12 gap-2 mb-2 text-[11px] font-medium text-gray-500 uppercase tracking-wider px-1">
-            <div className="col-span-4">Product</div>
-            <div className="col-span-2">Packing</div>
-            <div>Qty</div>
-            <div>MRP</div>
-            <div>Rate</div>
-            <div>Amount</div>
-            <div className="col-span-1"></div>
-          </div>
-
-          <div className="space-y-2" ref={dropdownRef}>
-            {items.map((item, index) => (
-              <div key={item.key} className="grid grid-cols-12 gap-2 items-start">
-                {/* Product search */}
-                <div className="col-span-4 relative">
-                  {item.product_name && activeSearch !== index ? (
-                    <div
-                      onClick={() => { updateItem(index, { search: item.product_name }); setActiveSearch(index); }}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 cursor-pointer hover:border-gray-400 truncate"
-                    >
-                      {item.product_name}
-                    </div>
-                  ) : (
-                    <>
-                      <input
-                        type="text"
-                        value={activeSearch === index ? item.search : item.product_name}
-                        onChange={(e) => { updateItem(index, { search: e.target.value, product_name: e.target.value, product_id: null }); setActiveSearch(index); }}
-                        onFocus={() => setActiveSearch(index)}
-                        placeholder="Search product..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-                        autoFocus={activeSearch === index}
-                      />
-                      {activeSearch === index && filteredProducts(item.search).length > 0 && (
-                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {filteredProducts(item.search).map((p) => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => selectProduct(index, p)}
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 truncate"
-                            >
-                              <span className="text-gray-900">{p.name}</span>
-                              {p.price != null && (
-                                <span className="text-gray-400 ml-2">&#8377;{Number(p.price).toFixed(2)}</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className="col-span-2">
-                  <input type="text" value={item.packing} onChange={(e) => updateItem(index, { packing: e.target.value })}
-                    placeholder="e.g. 10*1*10" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                </div>
-                <div>
-                  <input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, { quantity: e.target.value })}
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 text-center" />
-                </div>
-                <div>
-                  <input type="number" step="0.01" value={item.mrp} onChange={(e) => updateItem(index, { mrp: e.target.value })}
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 text-right" />
-                </div>
-                <div>
-                  <input type="number" step="0.01" value={item.rate} onChange={(e) => updateItem(index, { rate: e.target.value })}
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 text-right" />
-                </div>
-                <div className="flex items-center justify-end">
-                  <span className="text-sm text-gray-700 font-medium">
-                    &#8377;{(parseFloat(item.quantity || 0) * parseFloat(item.rate || 0)).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-center">
-                  {items.length > 1 && (
-                    <button type="button" onClick={() => removeItem(index)}
-                      className="text-red-400 hover:text-red-600 text-lg">&times;</button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Total */}
-          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
-            <div className="text-right">
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Total</p>
-              <p className="text-lg font-semibold text-gray-900">&#8377;{totalAmount.toFixed(2)}</p>
-            </div>
           </div>
         </div>
 
@@ -271,8 +291,7 @@ export default function NewPurchaseOrderPage() {
 
         <div className="flex items-center gap-3">
           <button
-            type="submit"
-            disabled={submitting}
+            type="submit" disabled={submitting}
             className="px-6 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
           >
             {submitting ? "Creating..." : "Create Purchase Order"}

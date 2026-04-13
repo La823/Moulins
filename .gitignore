@@ -12,6 +12,8 @@ frontend/.env*.local
 node_modules/
 passwords.txt
 .claude/
+*.pem
+~$*
 
 # OS
 .DS_Store
