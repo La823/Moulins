@@ -19,6 +19,34 @@ func getUserID(r *http.Request) uuid.UUID {
 	return id
 }
 
+// LastByProductHandler returns the most recent PO for a given product so the
+// new-PO form can prefill rate, MRP, manufacturer, specifications, etc.
+func LastByProductHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		productIDStr := r.URL.Query().Get("product_id")
+		productName := r.URL.Query().Get("product_name")
+
+		var productID *uuid.UUID
+		if productIDStr != "" {
+			id, err := uuid.Parse(productIDStr)
+			if err == nil {
+				productID = &id
+			}
+		}
+
+		po, err := models.GetLastPOByProduct(r.Context(), db, productID, productName)
+		if err != nil {
+			// Not found is fine — return null
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("null"))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(po)
+	}
+}
+
 func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		list, err := models.GetAllPurchaseOrders(r.Context(), db)

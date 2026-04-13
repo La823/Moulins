@@ -226,6 +226,50 @@ func GetPurchaseOrderByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (
 	return &po, nil
 }
 
+// GetLastPOByProduct returns the most recent PO for a product, looked up by
+// product_id (preferred) or by exact product_name match. Returns nil if none found.
+func GetLastPOByProduct(ctx context.Context, db *pgxpool.Pool, productID *uuid.UUID, productName string) (*PurchaseOrder, error) {
+	var po PurchaseOrder
+	var query string
+	var args []interface{}
+	if productID != nil {
+		query = `SELECT po.id, po.po_number, po.sr_no, po.po_date::text, po.product_id, po.product_name,
+		        po.quantity, po.mrp, po.rate, po.estimate, po.specifications, po.type,
+		        po.manufacturer_id, COALESCE(m.name, ''), po.qty_received, po.remarks, po.category,
+		        po.status, po.bill_number, po.document_key, po.created_by, po.created_at, po.updated_at
+		 FROM purchase_orders po
+		 LEFT JOIN manufacturers m ON m.id = po.manufacturer_id
+		 WHERE po.product_id = $1
+		 ORDER BY po.po_date DESC, po.created_at DESC
+		 LIMIT 1`
+		args = []interface{}{*productID}
+	} else if productName != "" {
+		query = `SELECT po.id, po.po_number, po.sr_no, po.po_date::text, po.product_id, po.product_name,
+		        po.quantity, po.mrp, po.rate, po.estimate, po.specifications, po.type,
+		        po.manufacturer_id, COALESCE(m.name, ''), po.qty_received, po.remarks, po.category,
+		        po.status, po.bill_number, po.document_key, po.created_by, po.created_at, po.updated_at
+		 FROM purchase_orders po
+		 LEFT JOIN manufacturers m ON m.id = po.manufacturer_id
+		 WHERE LOWER(TRIM(po.product_name)) = LOWER(TRIM($1))
+		 ORDER BY po.po_date DESC, po.created_at DESC
+		 LIMIT 1`
+		args = []interface{}{productName}
+	} else {
+		return nil, nil
+	}
+
+	err := db.QueryRow(ctx, query, args...).Scan(
+		&po.ID, &po.PONumber, &po.SrNo, &po.PODate, &po.ProductID, &po.ProductName,
+		&po.Quantity, &po.MRP, &po.Rate, &po.Estimate, &po.Specifications, &po.Type,
+		&po.ManufacturerID, &po.ManufacturerName, &po.QtyReceived, &po.Remarks, &po.Category,
+		&po.Status, &po.BillNumber, &po.DocumentKey, &po.CreatedBy, &po.CreatedAt, &po.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &po, nil
+}
+
 func DeletePurchaseOrder(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) error {
 	_, err := db.Exec(ctx, `DELETE FROM purchase_orders WHERE id = $1`, id)
 	return err

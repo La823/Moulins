@@ -41,6 +41,7 @@ export default function NewPurchaseOrderPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [prefillNotice, setPrefillNotice] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -67,8 +68,23 @@ export default function NewPurchaseOrderPage() {
     ? products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 15)
     : [];
 
-  const selectProduct = (p) => {
-    setForm({
+  const prefillFromLastPO = async (productID, productName) => {
+    setPrefillNotice("");
+    try {
+      const params = new URLSearchParams();
+      if (productID) params.set("product_id", productID);
+      if (productName) params.set("product_name", productName);
+      const last = await apiFetch(`/admin/purchase-orders/last-by-product?${params.toString()}`);
+      if (!last) return null;
+      return last;
+    } catch {
+      return null;
+    }
+  };
+
+  const selectProduct = async (p) => {
+    // Initial fill from product catalog
+    const next = {
       ...form,
       product_id: p.id,
       product_name: p.name,
@@ -76,9 +92,45 @@ export default function NewPurchaseOrderPage() {
       rate: p.price != null ? String(p.price) : "",
       specifications: p.pack_size || "",
       type: p.product_form ? String(p.product_form).toUpperCase() : form.type,
-    });
+    };
+    setForm(next);
     setProductSearch(p.name);
     setShowProductDropdown(false);
+
+    // Override with last PO data if it exists
+    const last = await prefillFromLastPO(p.id, p.name);
+    if (last) {
+      setForm({
+        ...next,
+        quantity: last.quantity != null ? String(last.quantity) : next.quantity,
+        mrp: last.mrp != null ? String(last.mrp) : next.mrp,
+        rate: last.rate != null ? String(last.rate) : next.rate,
+        specifications: last.specifications || next.specifications,
+        type: last.type || next.type,
+        manufacturer_id: last.manufacturer_id || next.manufacturer_id,
+        category: last.category || next.category,
+      });
+      setPrefillNotice(`Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+    }
+  };
+
+  // Also try prefill on free-typed product names when the user blurs the field
+  const tryPrefillByName = async () => {
+    if (form.product_id || !form.product_name.trim()) return;
+    const last = await prefillFromLastPO(null, form.product_name.trim());
+    if (last) {
+      setForm((prev) => ({
+        ...prev,
+        quantity: last.quantity != null ? String(last.quantity) : prev.quantity,
+        mrp: last.mrp != null ? String(last.mrp) : prev.mrp,
+        rate: last.rate != null ? String(last.rate) : prev.rate,
+        specifications: last.specifications || prev.specifications,
+        type: last.type || prev.type,
+        manufacturer_id: last.manufacturer_id || prev.manufacturer_id,
+        category: last.category || prev.category,
+      }));
+      setPrefillNotice(`Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+    }
   };
 
   const estimate = (parseFloat(form.quantity) || 0) * (parseFloat(form.rate) || 0);
@@ -162,8 +214,10 @@ export default function NewPurchaseOrderPage() {
                 setProductSearch(e.target.value);
                 setForm({ ...form, product_name: e.target.value, product_id: null });
                 setShowProductDropdown(true);
+                setPrefillNotice("");
               }}
               onFocus={() => setShowProductDropdown(true)}
+              onBlur={() => setTimeout(tryPrefillByName, 200)}
               placeholder="Search or type product name..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
@@ -186,6 +240,9 @@ export default function NewPurchaseOrderPage() {
             <p className="text-[11px] text-gray-400 mt-1">
               {form.product_id ? "Linked to product catalog" : "Custom product (not in catalog)"}
             </p>
+            {prefillNotice && (
+              <p className="text-[11px] text-green-600 mt-1">&#10003; {prefillNotice}</p>
+            )}
           </div>
 
           {/* Specs + type */}
