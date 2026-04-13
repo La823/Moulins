@@ -26,12 +26,15 @@ const STATUS_LABELS = {
   repeat: "Repeat",
 };
 
+const PAGE_SIZE = 50;
+
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     apiFetch("/admin/purchase-orders")
@@ -69,6 +72,13 @@ export default function PurchaseOrdersPage() {
       return true;
     });
   }, [orders, search, statusFilter, categoryFilter]);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageStart = (page - 1) * PAGE_SIZE;
+  const paginated = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
   return (
     <>
@@ -138,7 +148,7 @@ export default function PurchaseOrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((po) => (
+                {paginated.map((po) => (
                   <tr key={po.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <Link href={`/admin/purchase-orders/${po.id}`} className="font-mono text-xs text-gray-900 font-medium hover:text-blue-600">
@@ -183,8 +193,43 @@ export default function PurchaseOrdersPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
-            {filtered.length} purchase order{filtered.length !== 1 ? "s" : ""}
+          <div className="px-4 py-2.5 flex items-center justify-between border-t border-gray-100">
+            <div className="text-xs text-gray-400">
+              Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(1)}
+                disabled={page === 1}
+                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                « First
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                ‹ Prev
+              </button>
+              <span className="px-2 py-1 text-xs text-gray-700 font-medium">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                Next ›
+              </button>
+              <button
+                onClick={() => setPage(totalPages)}
+                disabled={page === totalPages}
+                className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                Last »
+              </button>
+            </div>
           </div>
         </div>
       )}
