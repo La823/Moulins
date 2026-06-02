@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
@@ -40,7 +42,7 @@ func GetPermissionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func SetPermissionsHandler(db *pgxpool.Pool) http.HandlerFunc {
+func SetPermissionsHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -56,7 +58,6 @@ func SetPermissionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Validate permissions against centralized registry
 		for _, p := range body.Permissions {
 			if !models.IsValidPermission(p) {
 				http.Error(w, "invalid permission: "+p, http.StatusBadRequest)
@@ -69,6 +70,8 @@ func SetPermissionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not update permissions", http.StatusInternalServerError)
 			return
 		}
+
+		middleware.InvalidatePermissions(r.Context(), rdb, userID)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string][]string{"permissions": body.Permissions})

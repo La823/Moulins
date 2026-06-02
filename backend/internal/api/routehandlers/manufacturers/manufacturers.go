@@ -4,21 +4,36 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
-func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
+const cacheKey = "manufacturers"
+const cacheTTL = 10 * time.Minute
+
+func ListHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var list []models.Manufacturer
+		if rdb.GetJSON(r.Context(), cacheKey, &list) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(list)
+			return
+		}
+
 		list, err := models.GetAllManufacturers(r.Context(), db)
 		if err != nil {
 			log.Printf("list manufacturers error: %v", err)
 			http.Error(w, "could not fetch manufacturers", http.StatusInternalServerError)
 			return
 		}
+
+		rdb.SetJSON(r.Context(), cacheKey, list, cacheTTL)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(list)
 	}
@@ -41,7 +56,7 @@ func GetHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
+func CreateHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req models.CreateManufacturerRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -62,13 +77,16 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not create manufacturer", http.StatusInternalServerError)
 			return
 		}
+
+		rdb.Del(r.Context(), cacheKey)
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]string{"id": id.String()})
 	}
 }
 
-func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
+func UpdateHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -93,12 +111,15 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not update", http.StatusInternalServerError)
 			return
 		}
+
+		rdb.Del(r.Context(), cacheKey)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
 	}
 }
 
-func DeleteHandler(db *pgxpool.Pool) http.HandlerFunc {
+func DeleteHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -110,6 +131,9 @@ func DeleteHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not delete", http.StatusInternalServerError)
 			return
 		}
+
+		rdb.Del(r.Context(), cacheKey)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "deleted"})
 	}

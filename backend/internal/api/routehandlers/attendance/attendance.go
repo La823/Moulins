@@ -2,19 +2,37 @@ package attendance
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
 func getUserID(r *http.Request) uuid.UUID {
 	id, _ := uuid.Parse(r.Context().Value("user_id").(string))
 	return id
+}
+
+func settingCacheKey(key string) string { return fmt.Sprintf("setting:%s", key) }
+
+func getCachedSetting(r *http.Request, rdb *cache.Client, db *pgxpool.Pool, key string) (string, error) {
+	var val string
+	if rdb.GetJSON(r.Context(), settingCacheKey(key), &val) {
+		return val, nil
+	}
+	val, err := models.GetSetting(r.Context(), db, key)
+	if err != nil {
+		return "", err
+	}
+	rdb.SetJSON(r.Context(), settingCacheKey(key), val, 5*time.Minute)
+	return val, nil
 }
 
 // Admin: mark attendance for an employee
@@ -121,10 +139,9 @@ func DeleteAttendanceHandler(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 // Employee: get own attendance for a month
-func GetMyAttendanceHandler(db *pgxpool.Pool) http.HandlerFunc {
+func GetMyAttendanceHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Check if setting allows employees to see attendance
-		visible, err := models.GetSetting(r.Context(), db, "employee_attendance_visible")
+		visible, err := getCachedSetting(r, rdb, db, "employee_attendance_visible")
 		if err != nil || visible != "true" {
 			http.Error(w, "attendance viewing is not enabled", http.StatusForbidden)
 			return
@@ -161,9 +178,9 @@ func GetMyAttendanceHandler(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 // Employee: check if attendance is visible
-func GetAttendanceVisibilityHandler(db *pgxpool.Pool) http.HandlerFunc {
+func GetAttendanceVisibilityHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		visible, err := models.GetSetting(r.Context(), db, "employee_attendance_visible")
+		visible, err := getCachedSetting(r, rdb, db, "employee_attendance_visible")
 		if err != nil {
 			visible = "false"
 		}
@@ -172,10 +189,10 @@ func GetAttendanceVisibilityHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// Admin: get/set settings
-func GetSettingsHandler(db *pgxpool.Pool) http.HandlerFunc {
+// Admin: get settings
+func GetSettingsHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		visible, _ := models.GetSetting(r.Context(), db, "employee_attendance_visible")
+		visible, _ := getCachedSetting(r, rdb, db, "employee_attendance_visible")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"employee_attendance_visible": visible,
@@ -183,7 +200,8 @@ func GetSettingsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func UpdateSettingsHandler(db *pgxpool.Pool) http.HandlerFunc {
+// Admin: update settings
+func UpdateSettingsHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -197,6 +215,7 @@ func UpdateSettingsHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "could not update setting", http.StatusInternalServerError)
 				return
 			}
+			rdb.Del(r.Context(), settingCacheKey(key))
 		}
 
 		w.Header().Set("Content-Type", "application/json")

@@ -177,16 +177,26 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		return nil, 0, err
 	}
 
-	query := fmt.Sprintf(`
+	baseQuery := `
 		SELECT id, name, description, price, categories, stock, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			key_benefits, direction_for_use, safety_information,
 			created_at, updated_at
 		FROM products
-	`+where+" ORDER BY name ASC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	` + where + " ORDER BY name ASC"
 
-	rows, err := db.Query(ctx, query, append(args, limit, offset)...)
+	var query string
+	var queryArgs []any
+	if limit == 0 {
+		query = baseQuery
+		queryArgs = args
+	} else {
+		query = fmt.Sprintf(baseQuery+" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+		queryArgs = append(args, limit, offset)
+	}
+
+	rows, err := db.Query(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -365,6 +375,18 @@ func GetProductDocuments(ctx context.Context, db *pgxpool.Pool, productID uuid.U
 func DeleteProductDocument(ctx context.Context, db *pgxpool.Pool, docID uuid.UUID) error {
 	_, err := db.Exec(ctx, "DELETE FROM product_documents WHERE id = $1", docID)
 	return err
+}
+
+func GetProductIDByImageID(ctx context.Context, db *pgxpool.Pool, imageID uuid.UUID) (uuid.UUID, error) {
+	var productID uuid.UUID
+	err := db.QueryRow(ctx, "SELECT product_id FROM product_images WHERE id = $1", imageID).Scan(&productID)
+	return productID, err
+}
+
+func GetProductIDByDocumentID(ctx context.Context, db *pgxpool.Pool, docID uuid.UUID) (uuid.UUID, error) {
+	var productID uuid.UUID
+	err := db.QueryRow(ctx, "SELECT product_id FROM product_documents WHERE id = $1", docID).Scan(&productID)
+	return productID, err
 }
 
 // --- Batch loaders (avoid N+1) ---

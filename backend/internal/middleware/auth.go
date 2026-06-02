@@ -2,16 +2,18 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-// Auth validates JWT token and adds user_id and role to request context
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -38,7 +40,6 @@ func Auth(next http.Handler) http.Handler {
 	})
 }
 
-// AdminOnly ensures the authenticated user has admin role
 func AdminOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		role, ok := r.Context().Value("role").(string)
@@ -50,7 +51,6 @@ func AdminOnly(next http.Handler) http.Handler {
 	})
 }
 
-// StaffOnly allows both admin and employee roles
 func StaffOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		role, ok := r.Context().Value("role").(string)
@@ -63,13 +63,12 @@ func StaffOnly(next http.Handler) http.Handler {
 }
 
 // RequirePermission checks that the employee has a specific permission.
-// Admins always pass. Employees must have the permission in employee_permissions table.
-func RequirePermission(db *pgxpool.Pool, permission string) func(http.Handler) http.Handler {
+// Results are cached in Redis for 5 minutes per user+permission pair.
+func RequirePermission(db *pgxpool.Pool, permission string, rdb *cache.Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			role, _ := r.Context().Value("role").(string)
 
-			// Admins bypass permission checks
 			if role == "admin" {
 				next.ServeHTTP(w, r)
 				return
@@ -82,11 +81,24 @@ func RequirePermission(db *pgxpool.Pool, permission string) func(http.Handler) h
 				return
 			}
 
-			has, err := models.HasPermission(r.Context(), db, userID, permission)
+			cacheKey := fmt.Sprintf("perm:%s:%s", userID, permission)
+			var has bool
+			if rdb.GetJSON(r.Context(), cacheKey, &has) {
+				if !has {
+					http.Error(w, "you don't have permission to access this", http.StatusForbidden)
+					return
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			has, err = models.HasPermission(r.Context(), db, userID, permission)
 			if err != nil {
 				http.Error(w, "could not verify permissions", http.StatusInternalServerError)
 				return
 			}
+			rdb.SetJSON(r.Context(), cacheKey, has, 5*time.Minute)
+
 			if !has {
 				http.Error(w, "you don't have permission to access this", http.StatusForbidden)
 				return
@@ -95,4 +107,13 @@ func RequirePermission(db *pgxpool.Pool, permission string) func(http.Handler) h
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// InvalidatePermissions removes cached permission checks for a user.
+func InvalidatePermissions(ctx context.Context, rdb *cache.Client, userID uuid.UUID) {
+	keys := make([]string, len(models.ValidPermissions))
+	for i, p := range models.ValidPermissions {
+		keys[i] = fmt.Sprintf("perm:%s:%s", userID, p.Key)
+	}
+	rdb.Del(ctx, keys...)
 }

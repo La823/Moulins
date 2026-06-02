@@ -2,12 +2,14 @@ package userauth
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
@@ -72,7 +74,7 @@ func GetEmployeeDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func UpdateEmployeePasswordHandler(db *pgxpool.Pool) http.HandlerFunc {
+func UpdateEmployeePasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -98,12 +100,14 @@ func UpdateEmployeePasswordHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "password updated"})
 	}
 }
 
-func DeleteEmployeeHandler(db *pgxpool.Pool) http.HandlerFunc {
+func DeleteEmployeeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -127,6 +131,8 @@ func DeleteEmployeeHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not delete employee", http.StatusInternalServerError)
 			return
 		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "employee deleted"})

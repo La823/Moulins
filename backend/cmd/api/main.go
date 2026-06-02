@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/lavanyaarora/server/internal/api/routes"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/database"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/server"
@@ -14,7 +15,6 @@ import (
 )
 
 func main() {
-	// Load .env — not fatal if missing (env vars may be set externally in prod)
 	_ = godotenv.Load()
 
 	port := os.Getenv("PORT")
@@ -35,17 +35,17 @@ func main() {
 
 	log.Println("DB pool initialized")
 
-	// Initialize S3 client
 	if err := utils.InitS3(); err != nil {
 		log.Printf("WARNING: S3 not configured: %v", err)
 	} else {
 		log.Println("S3 client initialized")
 	}
 
-	router := mux.NewRouter()
-	routes.RegisterRoutes(router, db)
+	rdb := cache.New()
 
-	// Wrap router with CORS middleware
+	router := mux.NewRouter()
+	routes.RegisterRoutes(router, db, rdb)
+
 	handler := middleware.CORS(router)
 
 	srv := server.New(":"+port, handler)

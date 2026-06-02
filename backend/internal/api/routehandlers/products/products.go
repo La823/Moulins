@@ -2,19 +2,21 @@ package products
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-// loadProductRelations fetches images + documents and attaches S3 URLs (single product)
 func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) {
 	images, _ := models.GetProductImages(r.Context(), db, p.ID)
 	if images == nil {
@@ -35,7 +37,6 @@ func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) 
 	p.Documents = docs
 }
 
-// loadProductRelationsBatch fetches images + documents for many products in 2 queries
 func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []models.Product) {
 	if len(products) == 0 {
 		return
@@ -70,8 +71,13 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 	}
 }
 
+func invalidateProduct(rdb *cache.Client, r *http.Request, id uuid.UUID) {
+	rdb.Del(r.Context(), fmt.Sprintf("product:%s", id), "categories")
+	rdb.DelPattern(r.Context(), "products:*")
+}
+
 // POST /admin/products
-func CreateProductHandler(db *pgxpool.Pool) http.HandlerFunc {
+func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
@@ -97,41 +103,73 @@ func CreateProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		rdb.Del(r.Context(), "categories")
+		rdb.DelPattern(r.Context(), "products:*")
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": id})
 	}
 }
 
-// GET /products/categories — returns distinct category names
-func ListCategoriesHandler(db *pgxpool.Pool) http.HandlerFunc {
+// GET /products/categories
+func ListCategoriesHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var cats []string
+		if rdb.GetJSON(r.Context(), "categories", &cats) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cats)
+			return
+		}
+
 		cats, err := models.GetDistinctCategories(r.Context(), db)
 		if err != nil {
 			log.Printf("list categories error: %v", err)
 			http.Error(w, "could not fetch categories", http.StatusInternalServerError)
 			return
 		}
+
+		rdb.SetJSON(r.Context(), "categories", cats, 10*time.Minute)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cats)
 	}
 }
 
+type productListResult struct {
+	Products   []models.Product `json:"products"`
+	Total      int              `json:"total"`
+	Page       int              `json:"page"`
+	Limit      int              `json:"limit"`
+	TotalPages int              `json:"total_pages"`
+}
+
 // GET /products and GET /admin/products
-// Query params: ?page=1&limit=20&search=&category=
-func ListProductsHandler(db *pgxpool.Pool, activeOnly bool) http.HandlerFunc {
+func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client) http.HandlerFunc {
+	var c *cache.Client
+	if len(rdb) > 0 {
+		c = rdb[0]
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		if page < 1 {
 			page = 1
 		}
-		if limit < 1 || limit > 100 {
+		if limit < 0 || (limit > 100 && limit != 0) {
 			limit = 20
 		}
 		search := r.URL.Query().Get("search")
 		category := r.URL.Query().Get("category")
 		offset := (page - 1) * limit
+
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s", activeOnly, page, limit, search, category)
+		var cached productListResult
+		if c.GetJSON(r.Context(), cacheKey, &cached) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cached)
+			return
+		}
 
 		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, limit, offset)
 		if err != nil {
@@ -144,19 +182,23 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool) http.HandlerFunc {
 
 		totalPages := int(math.Ceil(float64(total) / float64(limit)))
 
+		result := productListResult{
+			Products:   products,
+			Total:      total,
+			Page:       page,
+			Limit:      limit,
+			TotalPages: totalPages,
+		}
+
+		c.SetJSON(r.Context(), cacheKey, result, 5*time.Minute)
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"products":    products,
-			"total":       total,
-			"page":        page,
-			"limit":       limit,
-			"total_pages": totalPages,
-		})
+		json.NewEncoder(w).Encode(result)
 	}
 }
 
 // GET /products/{id}
-func GetProductHandler(db *pgxpool.Pool) http.HandlerFunc {
+func GetProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -164,21 +206,31 @@ func GetProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		product, err := models.GetProductByID(r.Context(), db, id)
+		cacheKey := fmt.Sprintf("product:%s", id)
+		var product models.Product
+		if rdb.GetJSON(r.Context(), cacheKey, &product) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(&product)
+			return
+		}
+
+		p, err := models.GetProductByID(r.Context(), db, id)
 		if err != nil {
 			http.Error(w, "product not found", http.StatusNotFound)
 			return
 		}
 
-		loadProductRelations(r, db, product)
+		loadProductRelations(r, db, p)
+
+		rdb.SetJSON(r.Context(), cacheKey, p, 10*time.Minute)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(product)
+		json.NewEncoder(w).Encode(p)
 	}
 }
 
 // PUT /admin/products/{id}
-func UpdateProductHandler(db *pgxpool.Pool) http.HandlerFunc {
+func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -199,13 +251,15 @@ func UpdateProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		invalidateProduct(rdb, r, id)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 	}
 }
 
 // DELETE /admin/products/{id}
-func DeleteProductHandler(db *pgxpool.Pool) http.HandlerFunc {
+func DeleteProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -219,12 +273,14 @@ func DeleteProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		invalidateProduct(rdb, r, id)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 	}
 }
 
-// POST /admin/products/upload-url (for images)
+// POST /admin/products/upload-url
 func UploadURLHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -252,8 +308,8 @@ func UploadURLHandler() http.HandlerFunc {
 	}
 }
 
-// POST /admin/products/{id}/images — add image to product
-func AddImageHandler(db *pgxpool.Pool) http.HandlerFunc {
+// POST /admin/products/{id}/images
+func AddImageHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		productID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -278,14 +334,16 @@ func AddImageHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": imgID})
 	}
 }
 
-// DELETE /admin/products/images/{imgId} — remove image
-func DeleteImageHandler(db *pgxpool.Pool) http.HandlerFunc {
+// DELETE /admin/products/images/{imgId}
+func DeleteImageHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		imgID, err := uuid.Parse(mux.Vars(r)["imgId"])
 		if err != nil {
@@ -293,10 +351,17 @@ func DeleteImageHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Get product ID before deletion for cache invalidation
+		productID, _ := models.GetProductIDByImageID(r.Context(), db, imgID)
+
 		if err := models.DeleteProductImage(r.Context(), db, imgID); err != nil {
 			log.Printf("delete image error: %v", err)
 			http.Error(w, "could not delete image", http.StatusInternalServerError)
 			return
+		}
+
+		if productID != uuid.Nil {
+			rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -304,8 +369,8 @@ func DeleteImageHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// POST /admin/products/{id}/documents — add a document to a product
-func AddDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
+// POST /admin/products/{id}/documents
+func AddDocumentHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		productID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -335,14 +400,16 @@ func AddDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": docID})
 	}
 }
 
-// DELETE /admin/products/documents/{docId} — remove a document
-func DeleteDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
+// DELETE /admin/products/documents/{docId}
+func DeleteDocumentHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		docID, err := uuid.Parse(mux.Vars(r)["docId"])
 		if err != nil {
@@ -350,10 +417,16 @@ func DeleteDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		productID, _ := models.GetProductIDByDocumentID(r.Context(), db, docID)
+
 		if err := models.DeleteProductDocument(r.Context(), db, docID); err != nil {
 			log.Printf("delete document error: %v", err)
 			http.Error(w, "could not delete document", http.StatusInternalServerError)
 			return
+		}
+
+		if productID != uuid.Nil {
+			rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -361,7 +434,7 @@ func DeleteDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// POST /admin/products/document-upload-url — presigned URL for PDF upload
+// POST /admin/products/document-upload-url
 func DocumentUploadURLHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)

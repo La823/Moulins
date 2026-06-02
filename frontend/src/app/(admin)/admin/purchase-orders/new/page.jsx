@@ -20,7 +20,7 @@ const STATUSES = [
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const [manufacturers, setManufacturers] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [poProductNames, setPoProductNames] = useState([]); // unique names from previous POs
   const [productSearch, setProductSearch] = useState("");
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -42,15 +42,26 @@ export default function NewPurchaseOrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [prefillNotice, setPrefillNotice] = useState("");
+  const skipPrefillByName = useRef(false);
 
   useEffect(() => {
     Promise.all([
       apiFetch("/admin/manufacturers"),
-      apiFetch("/products"),
-    ]).then(([mfrs, prods]) => {
+      apiFetch("/admin/purchase-orders"),
+    ]).then(([mfrs, pos]) => {
       setManufacturers(Array.isArray(mfrs) ? mfrs : []);
-      const list = prods?.products || prods || [];
-      setProducts(Array.isArray(list) ? list : []);
+      const list = Array.isArray(pos) ? pos : [];
+      // Unique product names from all previous POs, preserving most-recent-first order
+      const seen = new Set();
+      const names = [];
+      for (const po of list) {
+        const name = po.product_name?.trim();
+        if (name && !seen.has(name.toLowerCase())) {
+          seen.add(name.toLowerCase());
+          names.push(name);
+        }
+      }
+      setPoProductNames(names);
     });
   }, []);
 
@@ -65,7 +76,7 @@ export default function NewPurchaseOrderPage() {
   }, []);
 
   const filteredProducts = productSearch.trim()
-    ? products.filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 15)
+    ? poProductNames.filter((name) => name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 15)
     : [];
 
   const prefillFromLastPO = async (productID, productName) => {
@@ -82,40 +93,35 @@ export default function NewPurchaseOrderPage() {
     }
   };
 
-  const selectProduct = async (p) => {
-    // Initial fill from product catalog
-    const next = {
-      ...form,
-      product_id: p.id,
-      product_name: p.name,
-      mrp: p.mrp != null ? String(p.mrp) : (p.price != null ? String(p.price) : ""),
-      rate: p.price != null ? String(p.price) : "",
-      specifications: p.pack_size || "",
-      type: p.product_form ? String(p.product_form).toUpperCase() : form.type,
-    };
-    setForm(next);
-    setProductSearch(p.name);
+  const selectProduct = async (name) => {
+    skipPrefillByName.current = true;
+    setForm({ ...form, product_id: null, product_name: name });
+    setProductSearch(name);
     setShowProductDropdown(false);
+    setPrefillNotice("");
 
-    // Override with last PO data if it exists
-    const last = await prefillFromLastPO(p.id, p.name);
+    const last = await prefillFromLastPO(null, name);
     if (last) {
-      setForm({
-        ...next,
-        quantity: last.quantity != null ? String(last.quantity) : next.quantity,
-        mrp: last.mrp != null ? String(last.mrp) : next.mrp,
-        rate: last.rate != null ? String(last.rate) : next.rate,
-        specifications: last.specifications || next.specifications,
-        type: last.type || next.type,
-        manufacturer_id: last.manufacturer_id || next.manufacturer_id,
-        category: last.category || next.category,
-      });
-      setPrefillNotice(`Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+      setForm((prev) => ({
+        ...prev,
+        product_name: name,
+        quantity: last.quantity != null ? String(last.quantity) : prev.quantity,
+        mrp: last.mrp != null ? String(last.mrp) : prev.mrp,
+        rate: last.rate != null ? String(last.rate) : prev.rate,
+        specifications: last.specifications || prev.specifications,
+        type: last.type || prev.type,
+        manufacturer_id: last.manufacturer_id ? last.manufacturer_id.toString() : prev.manufacturer_id,
+        category: last.category || prev.category,
+      }));
+      setPrefillNotice(`po:Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+    } else {
+      setPrefillNotice("none:No previous PO found for this product");
     }
   };
 
   // Also try prefill on free-typed product names when the user blurs the field
   const tryPrefillByName = async () => {
+    if (skipPrefillByName.current) { skipPrefillByName.current = false; return; }
     if (form.product_id || !form.product_name.trim()) return;
     const last = await prefillFromLastPO(null, form.product_name.trim());
     if (last) {
@@ -129,7 +135,9 @@ export default function NewPurchaseOrderPage() {
         manufacturer_id: last.manufacturer_id || prev.manufacturer_id,
         category: last.category || prev.category,
       }));
-      setPrefillNotice(`Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+      setPrefillNotice(`po:Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+    } else {
+      setPrefillNotice("none:No previous PO found for this product");
     }
   };
 
@@ -223,26 +231,25 @@ export default function NewPurchaseOrderPage() {
             />
             {showProductDropdown && filteredProducts.length > 0 && (
               <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                {filteredProducts.map((p) => (
+                {filteredProducts.map((name) => (
                   <button
-                    key={p.id} type="button"
-                    onClick={() => selectProduct(p)}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 truncate"
+                    key={name} type="button"
+                    onClick={() => selectProduct(name)}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 truncate text-gray-900"
                   >
-                    <span className="text-gray-900">{p.name}</span>
-                    {p.price != null && (
-                      <span className="text-gray-400 ml-2">&#8377;{Number(p.price).toFixed(2)}</span>
-                    )}
+                    {name}
                   </button>
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-gray-400 mt-1">
-              {form.product_id ? "Linked to product catalog" : "Custom product (not in catalog)"}
-            </p>
-            {prefillNotice && (
-              <p className="text-[11px] text-green-600 mt-1">&#10003; {prefillNotice}</p>
-            )}
+            <p className="text-[11px] text-gray-400 mt-1">Search from previous POs or type a custom name</p>
+            {prefillNotice && (() => {
+              const [type, ...rest] = prefillNotice.split(":");
+              const msg = rest.join(":");
+              if (type === "po") return <p className="text-[11px] mt-1 text-green-600">{"\u2713 "}{msg}</p>;
+              if (type === "catalog") return <p className="text-[11px] mt-1 text-gray-400">{msg}</p>;
+              return <p className="text-[11px] mt-1 text-gray-400">{msg}</p>;
+            })()}
           </div>
 
           {/* Specs + type */}
