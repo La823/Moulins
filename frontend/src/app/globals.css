@@ -1,17 +1,2 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: 'Trimble';
-  src: url('/fonts/trimble.woff') format('woff');
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Ciguatera';
-  src: url('/fonts/shery.otf') format('opentype');
-  font-display: swap;
-}
-
-html {
-  scroll-behavior: smooth;
-}
