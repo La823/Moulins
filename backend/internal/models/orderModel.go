@@ -222,9 +222,14 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		return nil, err
 	}
 
-	// Fetch items
+	// Fetch items — fall back to products table name if product_name was not stored
 	itemRows, err := db.Query(ctx,
-		`SELECT id, order_id, product_id, product_name, quantity, created_at FROM order_items WHERE order_id = $1`,
+		`SELECT oi.id, oi.order_id, oi.product_id,
+		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
+		        oi.quantity, oi.created_at
+		 FROM order_items oi
+		 LEFT JOIN products p ON p.id = oi.product_id
+		 WHERE oi.order_id = $1`,
 		orderID,
 	)
 	if err != nil {
