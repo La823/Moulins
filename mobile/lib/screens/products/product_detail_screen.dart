@@ -165,14 +165,12 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         child: SizedBox(
           height: 52,
           child: ElevatedButton(
-            onPressed: p.stock > 0
-                ? () {
+            onPressed: () {
                     ref.read(cartProvider.notifier).add(p);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('${p.name} added to cart'), backgroundColor: const Color(0xFF00A6A4), behavior: SnackBarBehavior.floating),
                     );
-                  }
-                : null,
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: inCart ? const Color(0xFF00A6A4).withValues(alpha: 0.8) : const Color(0xFF00A6A4),
               foregroundColor: Colors.white,

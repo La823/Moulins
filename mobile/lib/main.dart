@@ -42,23 +42,33 @@ class MoulinsApp extends ConsumerWidget {
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/cart', builder: (_, __) => const CartScreen()),
-        GoRoute(
-          path: '/products/:id',
-          builder: (_, state) =>
-              ProductDetailScreen(productId: state.pathParameters['id']!),
-        ),
-        GoRoute(
-          path: '/orders/:id',
-          builder: (_, state) =>
-              OrderDetailScreen(orderId: state.pathParameters['id']!),
-        ),
         GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
         ShellRoute(
           builder: (_, state, child) =>
               _AppShell(child: child, location: state.uri.path),
           routes: [
-            GoRoute(path: '/products', builder: (_, __) => const ProductsScreen()),
-            GoRoute(path: '/orders', builder: (_, __) => const OrdersScreen()),
+            GoRoute(
+              path: '/products',
+              builder: (_, __) => const ProductsScreen(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (_, state) =>
+                      ProductDetailScreen(productId: state.pathParameters['id']!),
+                ),
+              ],
+            ),
+            GoRoute(
+              path: '/orders',
+              builder: (_, __) => const OrdersScreen(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (_, state) =>
+                      OrderDetailScreen(orderId: state.pathParameters['id']!),
+                ),
+              ],
+            ),
             GoRoute(path: '/doctors', builder: (_, __) => const DoctorsScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
           ],

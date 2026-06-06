@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 
@@ -19,6 +20,7 @@ export default function ProductsPage() {
 
   const searchRef = useRef(null);
   const { addToCart } = useCart();
+  const router = useRouter();
 
   // Fetch categories once
   useEffect(() => {
@@ -163,6 +165,7 @@ export default function ProductsPage() {
           {products.map((p) => (
             <div
               key={p.id}
+              onClick={() => router.push(`/products/${p.id}`)}
               className="group cursor-pointer transition-all duration-300 hover:-translate-y-1"
             >
               {/* Image */}
