@@ -1,0 +1,351 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOULINS PHARMA</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="assets/final favicon.png" type="image/x-icon">
+</head>
+
+<body>
+   <nav>
+     <div class="logo"> <a href="index.html">   <img src="assets/logo.jpg" alt=""> </a> <header id="moulins">  <a href="index.html">  <img src="assets/photos/moulins.JPG" alt=""></a></header></div>
+
+        <div class="links">
+        <a href="index.html">Home</a>
+        <div class="dropdown">
+            <a href="about.html">About</a>
+            <div class="dropdown-content">
+                <a href="about.html#ourteam">Our Team</a>
+                <a href="#">Our Mission</a>
+                <a href="#">Our History</a>
+            </div>
+        </div>
+        <a href="contact.html#map">Location</a>
+        <a href="contact.html">Contact Us</a>
+        <a href="https://wa.me/9815535304?text=Hi%2C%20I%E2%80%99m%20interested%20in%20partnering%20with%20Moulins%20Pharmaceuticals." target="_blank">      
+        <img src="assets/icons8-whatsapp.svg" alt="WhatsApp" class="whatsapp-icon" style="width: 40px; height:auto;">
+          </a> 
+
+
+          <a href="#" onclick="openGmail(); return false;"target="_blank">
+
+            <img src="assets/icons8-gmail.svg" alt="Email Us" style="width: 40px; height: auto;">
+          </a>
+
+          
+           
+        
+
+        </div>
+ 
+    </nav>
+
+
+    
+
+
+
+
+
+<div></div>
+      
+<section id="video-landing">
+  <!-- Video background with iOS optimized settings -->
+  <video 
+    id="background-video"
+    class="video-background" 
+    autoplay 
+    muted 
+    loop 
+    playsinline 
+    webkit-playsinline 
+    x5-playsinline
+    disablePictureInPicture
+    preload="auto">
+    <source src="assets/moulinslander.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
+  
+  <!-- Semi-transparent overlay -->
+  <div class="overlay"></div>
+  
+  <!-- Content -->
+  <div class="content">
+    <h1>Moulins Pharmaceuticals </h1><br><h2> HealthCare, Beyond Medicine</h2>
+    <p>At Moulins Pharma, healthcare goes beyond medicine—it's about trust, compassion, and lasting care. Like a moulin channelling life-giving water, we create pathways to well-being, ensuring care reaches every individual in need</p>
+    <!-- <a href="#" class="cta-button">Get Started</a> -->
+  </div>
+
+  <!-- iOS Video Fix Script -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const video = document.getElementById('background-video');
+      
+      // Try to play video immediately
+      const playPromise = video.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.then(_ => {
+          // Autoplay started successfully
+          console.log('Video autoplay started successfully');
+        })
+        .catch(error => {
+          // Auto-play was prevented
+          console.log('Video autoplay was prevented:', error);
+          
+          // Add user interaction listeners to play video
+          document.body.addEventListener('touchstart', function() {
+            video.play();
+          }, { once: true });
+          
+          document.body.addEventListener('click', function() {
+            video.play();
+          }, { once: true });
+        });
+      }
+      
+      // iOS specific fix for page visibility changes
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+          video.play();
+        }
+      });
+      
+      // iOS Safari page show event (back navigation)
+      window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+          video.play();
+        }
+      });
+      
+      // Additional iOS Safari hack - try playing after a slight delay
+      setTimeout(function() {
+        video.play();
+      }, 100);
+      
+      // Force reload video if iOS has stopped it
+      setInterval(function() {
+        if (video.paused) {
+          video.play();
+        }
+      }, 1000);
+    });
+  </script>
+
+  <!-- Add these styles to ensure iOS compatibility -->
+  <style>
+    #video-landing {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+    }
+    
+    .video-background {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -2;
+    }
+    
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.4);
+      z-index: -1;
+    }
+    
+    .content {
+      position: relative;
+      z-index: 1;
+      /* Keep your existing content styling */
+    }
+    
+    /* iOS Safari specific styles */
+    @supports (-webkit-touch-callout: none) {
+      .video-background {
+        position: fixed;
+        min-height: 100%;
+        transform: translateZ(0);
+      }
+    }
+  </style>
+</section>
+
+
+
+
+<section class="mainstorysec">   
+
+
+    <section id="storyvideo">
+        <div class="ourstoryvideo">
+            <iframe width="560" height="315" src="https://www.youtube.com/embed/JyLUGtcdcP0?si=Pg7JowWKQFQFmBYK" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+        </div>
+    </section>
+
+
+
+    <section id="storytxt">
+        <div class="ourstorytxt">
+            <h3>Our Story</h3>
+            <p>The name Moulins is inspired by a natural wonder—a moulin, a transformative opening in a glacier that channels water to nourish life beyond it. Like a moulin, we start small but create ripples that shape the future of healthcare. We don’t just provide medicines; we empower lives, offering not just prescriptions but the promise of a better tomorrow.</p>
+        </div>
+    </section>
+
+</section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="core-container">
+    <h1 class="core-title">Our Core Values</h1>
+    <p class="subtitle">At Moulins Pharmaceuticals, our values define who we are and guide our mission to deliver healthcare that goes beyond medicine.</p>
+    <div class="colorful-line"></div>
+    
+    <div class="scm-flow">
+        <div class="flow-row">
+            <div class="process-column care image-top">
+                <div class="image-container">
+                    <img src="assets/photos/care.jpg" alt="Care - Healing with Heart">
+                </div>
+                <div class="vertical-line"></div>
+                <div class="content-container">
+                    <div class="process-title"> <h1 >Care </h1><h3> Healing with Heart</h3></div>
+                    <p class="process-desc">Compassion is at our core. We go beyond medicine to ensure every person feels seen, heard, and supported—because true care starts with humanity.</p>
+                </div>
+            </div>
+
+
+            <div class="process-column integrity image-bottom">
+                <div class="content-container">
+                    <div class="process-title"> <h1 >Integrity </h1><h3>Doing What's Right
+                    </h3></div>
+                    <p class="process-desc">We uphold the highest ethical standards, building trust through honesty, transparency, and accountability.</p>
+                </div>
+                <div class="vertical-line"></div>
+                <div class="image-container">
+                    <img src="assets/photos/Integrity.jpg" alt="Integrity - Doing What's Right">
+                </div>
+            </div>
+
+            <div class="process-column accessibility image-top">
+                <div class="image-container">
+                    <img src="assets/photos/Accessbility (1) (1).jpg" alt="Accessibility - Health for Everyone">
+                </div>
+                <div class="vertical-line"></div>
+                <div class="content-container">
+                    <div class="process-title"> <h1 >Accessibility </h1><h3> Health for Everyone</h3></div>
+                    <p class="process-desc">Healthcare is a right, not a privilege. We break barriers to ensure our medicines and services reach those who need them most.</p>
+                </div>
+            </div>
+
+            <div class="process-column excellence image-bottom">
+                <div class="content-container">
+                    <div class="process-title"> <h1 >Excellence</h1><h3>Striving for the Best</h3></div>
+                    <p class="process-desc">Quality is our commitment. From our medicines to our partnerships, we constantly innovate and improve to set new standards in healthcare.</p>
+                </div>
+                <div class="vertical-line"></div>
+                <div class="image-container">
+                    <img src="assets/photos/Excellence.jpg" alt="Excellence - Striving for the Best">
+                </div>
+            </div>
+
+            <div class="process-column empathy image-top">
+                <div class="image-container">
+                    <img src="assets/photos/Empathy.jpg" alt="Empathy - Walking in Their Shoes">
+                </div>
+                <div class="vertical-line"></div>
+                <div class="content-container">
+                    <div class="process-title"> <h1 >Empathy    </h1><h3> Walking in Their Shoes</h3></div>
+                    <p class="process-desc">We listen, understand, and act with kindness, making healthcare personal, meaningful, and transformative.</p>
+                </div>
+            </div>
+            
+            <!-- Horizontal bars aligned with each other -->
+            <div class="process-bars">
+                <div class="process-bar care-bar"></div>
+                <div class="process-bar integrity-bar"></div>
+                <div class="process-bar accessibility-bar"></div>
+                <div class="process-bar excellence-bar"></div>
+                <div class="process-bar empathy-bar"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <footer class="footer">
+        <div class="container">
+          
+            <div class="column" id="quicklinks">
+                <h3>Quick Links</h3>
+                <ul>
+                    <li><a href="#">Home</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="contact.html#location">Location</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                </ul>
+            </div>
+
+            <div class="column">
+                <h3>Follow Us</h3>
+                <div class="socials">
+                    <a href="https://www.facebook.com/profile.php?id=61573916712376&sk=about">Facebook</a>
+                    <a href="https://x.com/MoulinsPharma">Twitter</a>
+                    <a href="https://www.instagram.com/moulinspharma?igsh=NHpiajUyOGczY2Rp">Instagram</a>
+                </div>
+            </div>
+        </div>
+        <p class="copyright">&copy; 2025 Your Company. All rights reserved.</p>
+    </footer>
+
+    
+   
+
+  <script src="script.js"></script>  
+</body>
+</html>

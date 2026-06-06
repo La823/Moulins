@@ -206,21 +206,12 @@ export default function CustomersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Phone
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Password
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Joined
-                </th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Last Login
-                </th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Journey</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -233,36 +224,19 @@ export default function CustomersPage() {
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                        {(c.username || c.phone_number || "?")
-                          .charAt(0)
-                          .toUpperCase()}
+                        {(c.username || c.phone_number || "?").charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-medium text-gray-900">
-                        {c.username || "No name"}
-                      </span>
+                      <span className="font-medium text-gray-900">{c.username || "No name"}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3 text-gray-600 font-mono text-xs">
-                    {c.phone_number}
-                  </td>
-                  <td className="px-5 py-3 text-gray-600 font-mono text-xs">
-                    {c.plain_password || "—"}
+                  <td className="px-5 py-3 text-gray-600 font-mono text-xs">{c.phone_number}</td>
+                  <td className="px-5 py-3 text-gray-600 font-mono text-xs">{c.plain_password || "—"}</td>
+                  <td className="px-5 py-3"><JourneyBadge step={c.onboarding_step || 1} /></td>
+                  <td className="px-5 py-3 text-gray-500 text-xs">
+                    {new Date(c.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </td>
                   <td className="px-5 py-3 text-gray-500 text-xs">
-                    {new Date(c.created_at).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-5 py-3 text-gray-500 text-xs">
-                    {c.last_login_at
-                      ? new Date(c.last_login_at).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "Never"}
+                    {c.last_login_at ? new Date(c.last_login_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Never"}
                   </td>
                 </tr>
               ))}
@@ -278,5 +252,20 @@ export default function CustomersPage() {
         </div>
       )}
     </>
+  );
+}
+
+function JourneyBadge({ step }) {
+  const steps = {
+    1: { label: "Step 1 · Account", color: "bg-gray-100 text-gray-600" },
+    2: { label: "Step 2 · License ✓", color: "bg-blue-100 text-blue-700" },
+    3: { label: "Step 3 · GST ✓", color: "bg-purple-100 text-purple-700" },
+    4: { label: "✓ Verified", color: "bg-green-100 text-green-700" },
+  };
+  const s = steps[step] || steps[1];
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${s.color}`}>
+      {s.label}
+    </span>
   );
 }

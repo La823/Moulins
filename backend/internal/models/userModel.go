@@ -10,18 +10,19 @@ import (
 )
 
 type User struct {
-	ID              uuid.UUID  `json:"id"`
-	PhoneNumber     string     `json:"phone_number"`
-	Username        *string    `json:"username,omitempty"`
-	Email           *string    `json:"email,omitempty"`
-	PasswordHash    string     `json:"-"`
-	PlainPassword   *string    `json:"plain_password,omitempty"`
-	Role            string     `json:"role"`
-	IsPhoneVerified bool       `json:"is_phone_verified"`
-	LastLoginAt     *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	Permissions     []string   `json:"permissions,omitempty"`
+	ID               uuid.UUID  `json:"id"`
+	PhoneNumber      string     `json:"phone_number"`
+	Username         *string    `json:"username,omitempty"`
+	Email            *string    `json:"email,omitempty"`
+	PasswordHash     string     `json:"-"`
+	PlainPassword    *string    `json:"plain_password,omitempty"`
+	Role             string     `json:"role"`
+	IsPhoneVerified  bool       `json:"is_phone_verified"`
+	OnboardingStep   int        `json:"onboarding_step"`
+	LastLoginAt      *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	Permissions      []string   `json:"permissions,omitempty"`
 }
 
 type CreateUserRequest struct {
@@ -92,7 +93,7 @@ func GetUserByPhone(
 	query := `
 		SELECT
 			id, phone_number, password_hash, username, email,
-			role, is_phone_verified, last_login_at, created_at, updated_at
+			role, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE phone_number = $1;
 	`
@@ -100,7 +101,7 @@ func GetUserByPhone(
 	var u User
 	err := db.QueryRow(ctx, query, phoneNumber).Scan(
 		&u.ID, &u.PhoneNumber, &u.PasswordHash, &u.Username, &u.Email,
-		&u.Role, &u.IsPhoneVerified, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -116,7 +117,7 @@ func GetUserByID(
 	query := `
 		SELECT
 			id, phone_number, username, email,
-			role, is_phone_verified, last_login_at, created_at, updated_at
+			role, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1;
 	`
@@ -124,7 +125,7 @@ func GetUserByID(
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email,
-		&u.Role, &u.IsPhoneVerified, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -198,14 +199,14 @@ func GetLastUsers(
 func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password,
-			role, is_phone_verified, last_login_at, created_at, updated_at
+			role, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
-		&u.Role, &u.IsPhoneVerified, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -233,7 +234,7 @@ func DeleteUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) error {
 func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password, role,
-			is_phone_verified, last_login_at, created_at, updated_at
+			is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE role = $1
 		ORDER BY created_at DESC
@@ -248,7 +249,7 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role,
-			&u.IsPhoneVerified, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			&u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)

@@ -27,6 +27,9 @@ export default function CustomerDetailPage() {
   const [pwSuccess, setPwSuccess] = useState("");
   const [pwError, setPwError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
+  const [rejectingDoc, setRejectingDoc] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   useEffect(() => {
     apiFetch(`/admin/customers/${id}`)
@@ -101,6 +104,25 @@ export default function CustomerDetailPage() {
   };
 
   const orders = customer.orders || [];
+  const documents = customer.documents || [];
+
+  const handleVerifyDoc = async (docType, isVerified, reason) => {
+    setVerifying(docType);
+    try {
+      await apiFetch("/admin/customers/verify-document", {
+        method: "POST",
+        body: JSON.stringify({ user_id: customer.id, doc_type: docType, is_verified: isVerified, rejection_reason: reason || null }),
+      });
+      const updated = await apiFetch(`/admin/customers/${id}`);
+      setCustomer(updated);
+      setRejectingDoc(null);
+      setRejectReason("");
+    } catch (err) {
+      alert("Failed: " + err.message);
+    } finally {
+      setVerifying(null);
+    }
+  };
 
   return (
     <>
@@ -285,6 +307,38 @@ export default function CustomerDetailPage() {
             </div>
           </div>
 
+          {/* Journey Status */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Verification Journey</h3>
+            <div className="space-y-2">
+              {[
+                { step: 1, label: "Account Created", always: true },
+                { step: 2, label: "Drug License", docType: "LICENSE" },
+                { step: 3, label: "GST Certificate", docType: "GST" },
+              ].map(({ step, label, docType, always }) => {
+                const doc = documents.find((d) => d.doc_type === docType);
+                const done = always || (customer.onboarding_step || 1) >= step;
+                return (
+                  <div key={step} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${done ? "bg-gray-50" : "opacity-40"}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      doc?.is_verified ? "bg-green-500 text-white" :
+                      doc && !doc.is_verified ? "bg-yellow-400 text-white" :
+                      always ? "bg-green-500 text-white" : "bg-gray-200 text-gray-500"
+                    }`}>
+                      {doc?.is_verified || always ? "✓" : doc ? "!" : step}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-800">{label}</p>
+                      {doc && <p className={`text-[10px] ${doc.is_verified ? "text-green-600" : doc.rejection_reason ? "text-red-500" : "text-yellow-600"}`}>
+                        {doc.is_verified ? "Verified" : doc.rejection_reason ? "Rejected" : "Pending review"}
+                      </p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* ID */}
           <div className="px-1">
             <p className="text-[10px] text-gray-400 font-mono">
@@ -310,8 +364,88 @@ export default function CustomerDetailPage() {
           </div>
         </div>
 
-        {/* Right column — orders */}
-        <div className="lg:col-span-2">
+        {/* Right column — documents + orders */}
+        <div className="lg:col-span-2 space-y-6">
+
+          {/* Documents */}
+          {documents.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Documents</h3>
+              <div className="space-y-4">
+                {documents.map((doc) => (
+                  <div key={doc.id} className="bg-white rounded-xl border border-gray-200 p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-semibold text-gray-900">{doc.doc_type === "LICENSE" ? "Drug License" : "GST Certificate"}</p>
+                        {doc.doc_number && <p className="text-xs text-gray-500 mt-0.5">No: {doc.doc_number}</p>}
+                        {doc.expiry_date && <p className="text-xs text-gray-500">Expires: {new Date(doc.expiry_date).toLocaleDateString("en-IN")}</p>}
+                      </div>
+                      <span className={`text-[11px] px-2 py-1 rounded-full font-semibold ${
+                        doc.is_verified ? "bg-green-100 text-green-700" :
+                        doc.rejection_reason ? "bg-red-100 text-red-700" :
+                        "bg-yellow-100 text-yellow-700"
+                      }`}>
+                        {doc.is_verified ? "✓ Verified" : doc.rejection_reason ? "✗ Rejected" : "⏳ Pending"}
+                      </span>
+                    </div>
+
+                    {doc.photo_url && (
+                      <a href={doc.photo_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-block text-xs text-blue-600 hover:underline mb-3">
+                        View Document Photo →
+                      </a>
+                    )}
+
+                    {doc.rejection_reason && (
+                      <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">Rejection reason: {doc.rejection_reason}</p>
+                    )}
+
+                    {/* Action buttons */}
+                    {!doc.is_verified && rejectingDoc !== doc.doc_type && (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleVerifyDoc(doc.doc_type, true, null)}
+                          disabled={verifying === doc.doc_type}
+                          className="px-3 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                          {verifying === doc.doc_type ? "..." : "✓ Approve"}
+                        </button>
+                        <button onClick={() => setRejectingDoc(doc.doc_type)}
+                          className="px-3 py-1.5 text-xs font-semibold bg-red-100 text-red-700 rounded-lg hover:bg-red-200">
+                          ✗ Reject
+                        </button>
+                      </div>
+                    )}
+
+                    {rejectingDoc === doc.doc_type && (
+                      <div className="space-y-2 mt-2">
+                        <input type="text" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Reason for rejection..." autoFocus
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                        <div className="flex gap-2">
+                          <button onClick={() => handleVerifyDoc(doc.doc_type, false, rejectReason)}
+                            disabled={!rejectReason || verifying === doc.doc_type}
+                            className="px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                            {verifying === doc.doc_type ? "..." : "Confirm Reject"}
+                          </button>
+                          <button onClick={() => { setRejectingDoc(null); setRejectReason(""); }}
+                            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {doc.is_verified && (
+                      <button onClick={() => handleVerifyDoc(doc.doc_type, false, "Needs re-verification")}
+                        disabled={verifying === doc.doc_type}
+                        className="text-xs text-gray-400 hover:text-gray-600 mt-2">
+                        Revoke verification
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
               Orders
@@ -390,6 +524,7 @@ export default function CustomerDetailPage() {
               ))}
             </div>
           )}
+          </div>
         </div>
       </div>
     </>

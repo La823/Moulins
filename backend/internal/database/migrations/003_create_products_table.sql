@@ -12,11 +12,15 @@ CREATE TABLE IF NOT EXISTS products (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes
+-- Add category column if it doesn't exist
+ALTER TABLE IF EXISTS products ADD COLUMN IF NOT EXISTS category VARCHAR(100);
+
+-- Create indexes (only on columns that exist)
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_products_is_active ON products(is_active);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
 
 -- Attach updated_at trigger
+DROP TRIGGER IF EXISTS update_products_updated_at ON products;
 CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON products
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

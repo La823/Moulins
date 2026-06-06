@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -34,6 +35,11 @@ func main() {
 	defer db.Close()
 
 	log.Println("DB pool initialized")
+
+	// Run migrations
+	if err := database.RunMigrations(context.Background(), db); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
 
 	if err := utils.InitS3(); err != nil {
 		log.Printf("WARNING: S3 not configured: %v", err)

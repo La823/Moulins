@@ -1,0 +1,56 @@
+
+
+    .container {
+        background-image: url('assets/moulins.jpg'); /* Replace with your image file */
+        background-size: contain; /* Ensures the image fits within the container */
+        background-position: top center;
+        background-repeat: no-repeat;
+        margin-top: 10px; /* Adjust the margin to your preference */
+        height: 200vh; /* Adjust the height as needed */
+      }
+      .aboutcontainer {
+        position: relative;
+        height: 200vh; /* Adjust the height as needed */
+        margin-top: 10px; /* Adjust the margin to your preference */
+      }
+      
+      .aboutcontainer::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: url('assets/moulins.jpg'); /* Replace with your image file */
+        background-size: contain; /* Ensure the image covers the container */
+        background-position: top center;
+        background-repeat: no-repeat;
+        opacity: 0.5; /* Adjust the opacity as needed */
+         z-index: -1; /* Ensures the image stays behind the content */
+        display: flex;
+        justify-content: center; /* Centers content horizontally */
+        align-items: center; /* Centers content vertically */
+        text-align: center; /* Ensures the text is centered inside the container */  
+    }
+      
+      .about {
+        position: relative; /* Ensures content stays on top of the image */
+        z-index: 1; /* Keeps the content on top */
+        color: #000000; /* Adjust text color if necessary */
+        padding: 20px; /* Optional: Add padding for better layout */
+        font-size: medium;
+        font-weight:700 ;
+       
+    
+      }
+      
+    .content {
+        padding: 50px;
+    }
+
+    .comingsoon{
+        font-weight: 800;
+        font-size: 2em;
+        opacity: 0.3;
+    }
+

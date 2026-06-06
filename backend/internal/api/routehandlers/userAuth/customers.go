@@ -28,16 +28,18 @@ func GetCustomersHandler(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 type CustomerDetailResponse struct {
-	ID              uuid.UUID      `json:"id"`
-	PhoneNumber     string         `json:"phone_number"`
-	Username        *string        `json:"username,omitempty"`
-	Email           *string        `json:"email,omitempty"`
-	PlainPassword   *string        `json:"plain_password,omitempty"`
-	Role            string         `json:"role"`
-	IsPhoneVerified bool           `json:"is_phone_verified"`
-	LastLoginAt     *string        `json:"last_login_at,omitempty"`
-	CreatedAt       string         `json:"created_at"`
-	Orders          []models.Order `json:"orders"`
+	ID              uuid.UUID               `json:"id"`
+	PhoneNumber     string                  `json:"phone_number"`
+	Username        *string                 `json:"username,omitempty"`
+	Email           *string                 `json:"email,omitempty"`
+	PlainPassword   *string                 `json:"plain_password,omitempty"`
+	Role            string                  `json:"role"`
+	IsPhoneVerified bool                    `json:"is_phone_verified"`
+	OnboardingStep  int                     `json:"onboarding_step"`
+	LastLoginAt     *string                 `json:"last_login_at,omitempty"`
+	CreatedAt       string                  `json:"created_at"`
+	Orders          []models.Order          `json:"orders"`
+	Documents       []models.CustomerDocument `json:"documents"`
 }
 
 func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -61,6 +63,12 @@ func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			orders = []models.Order{}
 		}
 
+		documents, err := models.GetUserDocuments(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("get customer documents error: %v", err)
+			documents = []models.CustomerDocument{}
+		}
+
 		resp := CustomerDetailResponse{
 			ID:              user.ID,
 			PhoneNumber:     user.PhoneNumber,
@@ -69,8 +77,10 @@ func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			PlainPassword:   user.PlainPassword,
 			Role:            user.Role,
 			IsPhoneVerified: user.IsPhoneVerified,
+			OnboardingStep:  user.OnboardingStep,
 			CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			Orders:          orders,
+			Documents:       documents,
 		}
 
 		if user.LastLoginAt != nil {
@@ -80,6 +90,37 @@ func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func VerifyCustomerDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		adminIDStr, _ := r.Context().Value("user_id").(string)
+		adminID, err := uuid.Parse(adminIDStr)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var body struct {
+			UserID          uuid.UUID `json:"user_id"`
+			DocType         string    `json:"doc_type"`
+			IsVerified      bool      `json:"is_verified"`
+			RejectionReason *string   `json:"rejection_reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.VerifyDocument(r.Context(), db, body.UserID, body.DocType, body.IsVerified, body.RejectionReason, adminID); err != nil {
+			log.Printf("verify document error: %v", err)
+			http.Error(w, "could not verify document", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "document updated"})
 	}
 }
 

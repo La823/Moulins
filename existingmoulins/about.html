@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="assets/final favicon.png" type="image/x-icon">
+    <style>
+        /* Base styles */
+        :root {
+            --primary: #1a73e8;
+            --primary-light: #e8f0fe;
+            --primary-dark: #174ea6;
+            --secondary: #4285f4;
+            --accent: #4285f4;
+            --text: #202124;
+            --text-light: #5f6368;
+            --background: #ffffff;
+            --background-dark: #1a1a1a;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--background);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        /* Team section styles */
+        .team-section {
+            padding: 4rem 5%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .team-header {
+            text-align: center;
+            margin-bottom: 5rem;
+        }
+        
+        .team-header h1 {
+            font-size: 2.5rem;
+            color: var(--primary-dark);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        
+        .team-header p {
+            max-width: 600px;
+            margin: 0 auto;
+            color: var(--text-light);
+            font-size: 1.1rem;
+        }
+        
+        .team-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6rem;
+        }
+        
+        .team-member {
+            display: flex;
+            gap: 4rem;
+            align-items: center;
+            position: relative;
+        }
+        
+        .team-member:nth-child(even) {
+            flex-direction: row-reverse;
+        }
+        
+        .team-photo-container {
+            flex: 0 0 40%;
+            position: relative;
+        }
+        
+        /* .team-photo {
+            width: 100%;
+            aspect-ratio: 1/1;
+            object-fit: cover;
+            background-color: #f0f0f0;
+        } */
+
+        .team-photo {
+    width: 100%;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    object-position: top; /* ✅ Add this line */
+    background-color: #f0f0f0;
+}
+
+        
+        .team-details {
+            flex: 0 0 50%;
+            padding: 1rem 0;
+        }
+        
+        .team-member-name {
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        .team-member-title {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+        }
+        
+        .team-member-bio {
+            color: var(--text);
+            line-height: 1.7;
+            margin-bottom: 2rem;
+        }
+        
+        .view-bio-btn {
+            display: inline-block;
+            padding: 0.6rem 1.5rem;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .view-bio-btn:hover {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 992px) {
+            .team-member, .team-member:nth-child(even) {
+                flex-direction: column;
+                gap: 2rem;
+                text-align: center;
+            }
+            
+            .team-photo-container {
+                flex: 0 0 100%;
+                max-width: 400px;
+                margin: 0 auto;
+            }
+            
+            .team-details {
+                flex: 0 0 100%;
+            }
+            
+            .team-member-name {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo"> <a href="index.html">   <img src="assets/logo.jpg" alt=""> </a> <header id="moulins">  <a href="index.html">  <img src="assets/photos/moulins.JPG" alt=""></a></header></div>
+        <div class="links">
+        <a href="index.html">Home</a>
+        <div class="dropdown">
+            <a href="about.html">About</a>
+            <div class="dropdown-content">
+                <a href="about.html#ourteam">Our Team</a>
+                <a href="#">Our Mission</a>
+                <a href="#">Our History</a>
+            </div>
+        </div>
+        <a href="contact.html#map">Location</a>
+        <a href="contact.html">Contact Us</a>
+        <a href="https://wa.me/9815535304?text=Hi%2C%20I%E2%80%99m%20interested%20in%20partnering%20with%20Moulins%20Pharmaceuticals." target="_blank">      
+        <img src="assets/icons8-whatsapp.svg" alt="WhatsApp" class="whatsapp-icon" style="width: 40px; height:auto;">
+          </a> 
+          <a href="#" onclick="openGmail(); return false;"target="_blank">
+            <img src="assets/icons8-gmail.svg" alt="Email Us" style="width: 40px; height: auto;">
+          </a>
+        </div>
+    </nav>
+
+    <section class="team-section">
+        <div class="team-header">
+            <h1>Our Team</h1>
+            <p>Meet the dedicated professionals behind our mission to deliver exceptional solutions and innovation.</p>
+        </div>
+
+        <div class="team-grid" id="ourteam">
+            <!-- Team Member 1 -->
+            <div class="team-member">
+                <div class="team-photo-container">
+                    <img src="assets/teamphotos/pardeeparora.jpg" alt="Pardeep Arora" class="team-photo">
+                </div>
+                <div class="team-details">
+                    <h3 class="team-member-name">Pardeep Arora</h3>
+                    <p class="team-member-title">Director, Sales and Marketing, Moulins Pharmaceuticals
+</p>
+                    <p class="team-member-bio">With over 33 years of experience in pharmaceutical sales and marketing, Pardeep Arora chose to step away from a successful corporate career to make a greater impact in healthcare. As the founder of Metamorf Lifesciences, he led the company to touch the lives of 1 crore patients per annum, driven by the vision of "Transforming Lives to Transform the Lives of Healthcare Partners."
+
+Now, as Director of Sales and Marketing at Moulins Pharmaceuticals, Pardeep brings his extensive expertise and strategic leadership to drive growth and expand access to quality healthcare. His commitment to "Healthcare, Beyond Medicine" ensures that Moulins continues to prioritize care, compassion, and meaningful change in the healthcare industry.</p>
+                   
+                </div>
+            </div>
+
+            <!-- Team Member 2 -->
+            <div class="team-member">
+                <div class="team-photo-container">
+                    <img src="assets/teamphotos/TA Final.png" alt="Tanmay Arora" class="team-photo">
+                </div>
+                <div class="team-details">
+                    <h3 class="team-member-name">Tanmay Arora</h3>
+                    <p class="team-member-title">CEO, Moulins Pharmaceuticals</p>
+                    <p class="team-member-bio">An accomplished chemical engineer from IIT Kharagpur, Tanmay Arora brings a wealth of experience to Moulins Pharmaceuticals. He was part of the prestigious Young Leaders Program at Dr. Reddy’s Laboratories, gaining extensive expertise across both research and manufacturing domains. As Excellence Head, he led transformative initiatives that enhanced operational efficiency and innovation.
+
+Now, as the CEO of Moulins Pharmaceuticals, Tanmay is committed to driving the company's mission of "Healthcare, Beyond Medicine." His leadership focuses on delivering impactful healthcare solutions, fostering innovation, and ensuring compassionate care reaches those who need it most.</p>
+            
+                </div>
+            </div>
+
+            <!-- Team Member 3 -->
+            <div class="team-member">
+                <div class="team-photo-container">
+                    <img src="assets/teamphotos/d.jpg" alt="Durgesh Saini" class="team-photo">
+                </div>
+                <div class="team-details">
+                    <h3 class="team-member-name">Durgesh Saini</h3>
+                    <p class="team-member-title">Director, Sales, Moulins Pharmaceuticals
+</p>
+                    <p class="team-member-bio">With over 15 years of experience in pharmaceutical sales, Durgesh Saini has built a reputation for driving growth and building strong market presence. As the General Manager at Metamorf Lifesciences, he played a pivotal role in expanding the company’s reach and touching the lives of countless patients.
+
+Now, as Director of Sales at Moulins Pharmaceuticals, Durgesh brings his strategic expertise and deep market understanding to lead the sales team. His commitment to "Healthcare, Beyond Medicine" ensures that Moulins continues to provide accessible, quality healthcare solutions to communities everywhere.</p>
+                   
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="column" id="quicklinks">
+                <h3>Quick Links</h3>
+                <ul>
+                    <li><a href="#">Home</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="contact.html#location">Location</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                </ul>
+            </div>
+
+            <div class="column">
+                <h3>Follow Us</h3>
+                <div class="socials">
+                    <a href="https://www.facebook.com/profile.php?id=61573916712376&sk=about">Facebook</a>
+                    <a href="https://x.com/MoulinsPharma">Twitter</a>
+                    <a href="https://www.instagram.com/moulinspharma?igsh=NHpiajUyOGczY2Rp">Instagram</a>
+                </div>
+            </div>
+        </div>
+        <p class="copyright">&copy; 2025 Your Company. All rights reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

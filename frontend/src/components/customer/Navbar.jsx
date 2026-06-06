@@ -281,6 +281,26 @@ export default function CustomerNavbar() {
               </svg>
             </button>
 
+            {/* WhatsApp */}
+            <a
+              href="https://wa.me/9815535304?text=Hi%2C%20I%E2%80%99m%20interested%20in%20partnering%20with%20Moulins%20Pharmaceuticals."
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="WhatsApp"
+              className="transition-transform hover:scale-110 duration-200"
+            >
+              <img src="/icons8-whatsapp.svg" alt="WhatsApp" className="w-7 h-7" />
+            </a>
+
+            {/* Gmail */}
+            <a
+              href="mailto:info@moulinspharma.com"
+              aria-label="Email us"
+              className="transition-transform hover:scale-110 duration-200"
+            >
+              <img src="/icons8-gmail.svg" alt="Email" className="w-7 h-7" />
+            </a>
+
             {/* Cart icon */}
             <button
               onClick={() => { close(); openCart(); }}
@@ -308,6 +328,15 @@ export default function CustomerNavbar() {
             </button>
 
             {/* User area */}
+            {!user && (
+              <Link
+                href="/login"
+                className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
+                style={{ backgroundColor: "#00A6A4" }}
+              >
+                Login
+              </Link>
+            )}
             {user && (
               <div className="relative pl-6 border-l border-gray-200">
                 <button
@@ -337,6 +366,16 @@ export default function CustomerNavbar() {
                         <p className="text-xs text-gray-400 mt-0.5">{user.phone_number}</p>
                       </div>
                       <div className="py-1">
+                        <Link
+                          href="/profile"
+                          onClick={close}
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                          </svg>
+                          My Profile
+                        </Link>
                         <Link
                           href="/orders"
                           onClick={close}

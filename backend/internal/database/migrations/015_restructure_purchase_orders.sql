@@ -26,7 +26,7 @@ CREATE TABLE purchase_orders (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_po_manufacturer_id ON purchase_orders(manufacturer_id);
-CREATE INDEX idx_po_status ON purchase_orders(status);
-CREATE INDEX idx_po_category ON purchase_orders(category);
-CREATE INDEX idx_po_number ON purchase_orders(po_number);
+CREATE INDEX IF NOT EXISTS idx_po_manufacturer_id ON purchase_orders(manufacturer_id);
+CREATE INDEX IF NOT EXISTS idx_po_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_po_category ON purchase_orders(category);
+CREATE INDEX IF NOT EXISTS idx_po_number ON purchase_orders(po_number);

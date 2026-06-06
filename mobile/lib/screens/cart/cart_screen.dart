@@ -1,0 +1,166 @@
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../providers/cart_provider.dart';
+import '../../services/order_service.dart';
+
+class CartScreen extends ConsumerStatefulWidget {
+  const CartScreen({super.key});
+
+  @override
+  ConsumerState<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends ConsumerState<CartScreen> {
+  bool _placing = false;
+
+  Future<void> _placeOrder() async {
+    final items = ref.read(cartProvider);
+    if (items.isEmpty) return;
+
+    setState(() => _placing = true);
+    try {
+      final orderId = await OrderService().placeOrder(items);
+      ref.read(cartProvider.notifier).clear();
+      if (mounted) {
+        context.go('/orders/$orderId');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Order placed successfully!'), backgroundColor: Color(0xFF00A6A4), behavior: SnackBarBehavior.floating),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to place order: $e'), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _placing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = ref.watch(cartProvider);
+    final cart = ref.read(cartProvider.notifier);
+    final total = items.fold(0.0, (sum, e) => sum + e.total);
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text('Cart (${items.length})', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        foregroundColor: Colors.black,
+      ),
+      body: items.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shopping_bag_outlined, size: 64, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  const Text('Your cart is empty', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  TextButton(onPressed: () => context.pop(), child: const Text('Browse Products', style: TextStyle(color: Color(0xFF00A6A4)))),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final item = items[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          children: [
+                            // Image placeholder
+                            Container(
+                              width: 60, height: 60,
+                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(Icons.medication_outlined, color: Colors.grey),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 4),
+                                  Text('â‚¹${item.product.price.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF00A6A4), fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                            // Qty controls
+                            Row(
+                              children: [
+                                _qtyBtn(Icons.remove, () => cart.updateQty(item.product.id, item.quantity - 1)),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                                ),
+                                _qtyBtn(Icons.add, () => cart.updateQty(item.product.id, item.quantity + 1)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Summary + order button
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 16, offset: const Offset(0, -4))],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                          Text('â‚¹${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A6A4))),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: _placing ? null : _placeOrder,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00A6A4),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: _placing
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('Place Order', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _qtyBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 28, height: 28,
+          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 16, color: Colors.grey.shade700),
+        ),
+      );
+}

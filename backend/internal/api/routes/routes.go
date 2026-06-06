@@ -3,6 +3,7 @@ package routes
 import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/api/handlers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
@@ -54,6 +55,12 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	protected.HandleFunc("/doctors/{id}/products", doctors.AddDoctorProductHandler(db)).Methods("POST")
 	protected.HandleFunc("/doctors/{id}/products/{productId}", doctors.RemoveDoctorProductHandler(db)).Methods("DELETE")
 
+	// onboarding routes (any authenticated user)
+	onboardingHandler := handlers.NewOnboardingHandler(db)
+	protected.HandleFunc("/onboarding/documents", onboardingHandler.UploadDocument).Methods("POST")
+	protected.HandleFunc("/onboarding/upload-url", onboardingHandler.GetUploadURL).Methods("POST")
+	protected.HandleFunc("/onboarding/status", onboardingHandler.GetStatus).Methods("GET")
+
 	// admin-only routes
 	admin := protected.PathPrefix("/admin").Subrouter()
 	admin.Use(middleware.AdminOnly)
@@ -94,12 +101,18 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	admin.HandleFunc("/purchase-orders/{id}/status", purchaseorders.UpdateStatusHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.DeleteHandler(db, rdb)).Methods("DELETE")
 
+	// onboarding routes (admin only)
+	admin.HandleFunc("/onboarding", onboardingHandler.GetPendingCustomers).Methods("GET")
+	admin.HandleFunc("/onboarding/customer/{userID}", onboardingHandler.GetCustomerOnboarding).Methods("GET")
+	admin.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
+
 	// staff routes — customer management
 	customerStaff := protected.PathPrefix("/admin").Subrouter()
 	customerStaff.Use(middleware.StaffOnly)
 	customerStaff.Use(middleware.RequirePermission(db, "customers", rdb))
 
 	customerStaff.HandleFunc("/customers", userauth.GetCustomersHandler(db)).Methods("GET")
+	customerStaff.HandleFunc("/customers/verify-document", userauth.VerifyCustomerDocumentHandler(db)).Methods("POST")
 	customerStaff.HandleFunc("/customers/{id}", userauth.GetCustomerDetailHandler(db)).Methods("GET")
 	customerStaff.HandleFunc("/customers/{id}/password", userauth.UpdateCustomerPasswordHandler(db, rdb)).Methods("PUT")
 	customerStaff.HandleFunc("/customers/{id}", userauth.DeleteCustomerHandler(db, rdb)).Methods("DELETE")
