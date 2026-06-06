@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -71,9 +72,19 @@ func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if req.DocType == "LICENSE" && req.ExpiryDate == nil {
-		http.Error(w, "Expiry date is required for license documents", http.StatusBadRequest)
-		return
+	// Parse expiry date string into time.Time
+	var expiryDate *time.Time
+	if req.DocType == "LICENSE" {
+		if req.ExpiryDate == nil || *req.ExpiryDate == "" {
+			http.Error(w, "Expiry date is required for license documents", http.StatusBadRequest)
+			return
+		}
+		parsed, err := time.Parse("2006-01-02", *req.ExpiryDate)
+		if err != nil {
+			http.Error(w, "Invalid expiry date format, use YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+		expiryDate = &parsed
 	}
 
 	doc, err := models.CreateOrUpdateDocument(
@@ -82,7 +93,7 @@ func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Reques
 		userID,
 		req.DocType,
 		req.DocNumber,
-		req.ExpiryDate,
+		expiryDate,
 		req.PhotoURL,
 	)
 	if err != nil {

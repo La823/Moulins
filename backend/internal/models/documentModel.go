@@ -39,10 +39,10 @@ type OnboardingStatus struct {
 }
 
 type UploadDocumentRequest struct {
-	DocType    string `json:"doc_type"` // LICENSE or GST
-	DocNumber  string `json:"doc_number"`
-	ExpiryDate *time.Time `json:"expiry_date"` // Required for LICENSE, optional for GST
-	PhotoURL   string `json:"photo_url"`
+	DocType    string  `json:"doc_type"`
+	DocNumber  string  `json:"doc_number"`
+	ExpiryDate *string `json:"expiry_date"` // date string e.g. "2026-01-01"
+	PhotoURL   string  `json:"photo_url"`
 }
 
 type VerifyDocumentRequest struct {
