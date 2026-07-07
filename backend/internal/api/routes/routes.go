@@ -6,6 +6,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/handlers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
@@ -27,7 +28,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 
 	// public product routes
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
-	router.HandleFunc("/products/categories", products.ListCategoriesHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/products/categories", categories.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/{id}", products.GetProductHandler(db, rdb)).Methods("GET")
 
 	// protected routes (require valid JWT)
@@ -143,4 +144,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	productStaff.HandleFunc("/products/images/{imgId}", products.DeleteImageHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
+
+	// category routes (admin only, same product permission)
+	productStaff.HandleFunc("/categories", categories.CreateHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/categories/{id}", categories.UpdateHandler(db, rdb)).Methods("PUT")
+	productStaff.HandleFunc("/categories/{id}", categories.DeleteHandler(db, rdb)).Methods("DELETE")
 }

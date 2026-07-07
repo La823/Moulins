@@ -4,16 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
-const CATEGORY_OPTIONS = [
-  "Skin",
-  "Hair",
-  "Wellness",
-  "Immunity",
-  "Digestion",
-  "Pain Relief",
-  "Personal Care",
-];
-
 export default function AdminProducts() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +28,14 @@ export default function AdminProducts() {
   const [searchInput, setSearchInput] = useState("");
   const catRef = useRef(null);
   const searchTimer = useRef(null);
+
+  const [categoryOptions, setCategoryOptions] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/products/categories")
+      .then((data) => setCategoryOptions(Array.isArray(data) ? data.map((c) => c.name) : []))
+      .catch(console.error);
+  }, []);
 
   const fetchProducts = async (p = page, q = search) => {
     try {
@@ -339,7 +337,7 @@ export default function AdminProducts() {
               {/* Dropdown */}
               {catDropdownOpen && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-48 overflow-y-auto">
-                  {CATEGORY_OPTIONS.map((cat) => {
+                  {categoryOptions.map((cat) => {
                     const selected = selectedCategories.includes(cat);
                     return (
                       <button

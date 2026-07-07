@@ -5,16 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
-const CATEGORY_OPTIONS = [
-  "Skin",
-  "Hair",
-  "Wellness",
-  "Immunity",
-  "Digestion",
-  "Pain Relief",
-  "Personal Care",
-];
-
 export default function EditProduct() {
   const { id } = useParams();
   const router = useRouter();
@@ -25,6 +15,13 @@ export default function EditProduct() {
   const [success, setSuccess] = useState("");
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const catRef = useRef(null);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/products/categories")
+      .then((data) => setCategoryOptions(Array.isArray(data) ? data.map((c) => c.name) : []))
+      .catch(console.error);
+  }, []);
 
   // Form state
   const [form, setForm] = useState({
@@ -384,7 +381,7 @@ export default function EditProduct() {
               </div>
               {catDropdownOpen && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-48 overflow-y-auto">
-                  {CATEGORY_OPTIONS.map((cat) => {
+                  {categoryOptions.map((cat) => {
                     const selected = selectedCategories.includes(cat);
                     return (
                       <button

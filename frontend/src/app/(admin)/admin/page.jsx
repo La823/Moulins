@@ -18,6 +18,77 @@ export default function AdminDashboard() {
   const [recentUsers, setRecentUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [categories, setCategories] = useState([]); // [{id, name}]
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [catManagerError, setCatManagerError] = useState("");
+
+  const fetchCategories = async () => {
+    try {
+      const data = await apiFetch("/products/categories");
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch("/products/categories")
+      .then((data) => setCategories(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, [isAdmin]);
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault();
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setCatManagerError("");
+    try {
+      await apiFetch("/admin/categories", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      setNewCategoryName("");
+      fetchCategories();
+    } catch (err) {
+      setCatManagerError(err.message);
+    }
+  };
+
+  const startEditCategory = (name) => {
+    setEditingCategory(name);
+    setEditingCategoryName(name);
+    setCatManagerError("");
+  };
+
+  const handleRenameCategory = async (id) => {
+    const name = editingCategoryName.trim();
+    if (!name) return;
+    setCatManagerError("");
+    try {
+      await apiFetch(`/admin/categories/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      setEditingCategory(null);
+      fetchCategories();
+    } catch (err) {
+      setCatManagerError(err.message);
+    }
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (!confirm("Delete this category? Products keep their existing tags, but it will no longer appear as an option.")) return;
+    try {
+      await apiFetch(`/admin/categories/${id}`, { method: "DELETE" });
+      fetchCategories();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   useEffect(() => {
     const fetches = [
       apiFetch("/admin/products?page=1&limit=5").catch(() => ({
@@ -82,6 +153,91 @@ export default function AdminDashboard() {
           sub="Coming soon"
         />
       </div>
+
+      {/* Category Manager - admin only */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8 max-w-md">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Categories</h3>
+
+          <form onSubmit={handleAddCategory} className="flex gap-2 mb-3">
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="New category name"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+            <button
+              type="submit"
+              className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+            >
+              Add
+            </button>
+          </form>
+
+          {catManagerError && (
+            <p className="text-sm text-red-600 mb-2">{catManagerError}</p>
+          )}
+
+          {categories.length === 0 ? (
+            <p className="text-sm text-gray-400">No categories yet</p>
+          ) : (
+            <div className="space-y-1.5">
+              {categories.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 rounded-lg"
+                >
+                  {editingCategory === c.name ? (
+                    <input
+                      type="text"
+                      value={editingCategoryName}
+                      onChange={(e) => setEditingCategoryName(e.target.value)}
+                      autoFocus
+                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+                    />
+                  ) : (
+                    <span className="text-sm text-gray-800">{c.name}</span>
+                  )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {editingCategory === c.name ? (
+                      <>
+                        <button
+                          onClick={() => handleRenameCategory(c.id)}
+                          className="text-xs font-medium text-gray-900 hover:underline"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingCategory(null)}
+                          className="text-xs text-gray-500 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startEditCategory(c.name)}
+                          className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(c.id)}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Recent Activity */}
       <div

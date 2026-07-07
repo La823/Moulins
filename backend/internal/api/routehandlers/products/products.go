@@ -112,30 +112,6 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 	}
 }
 
-// GET /products/categories
-func ListCategoriesHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var cats []string
-		if rdb.GetJSON(r.Context(), "categories", &cats) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(cats)
-			return
-		}
-
-		cats, err := models.GetDistinctCategories(r.Context(), db)
-		if err != nil {
-			log.Printf("list categories error: %v", err)
-			http.Error(w, "could not fetch categories", http.StatusInternalServerError)
-			return
-		}
-
-		rdb.SetJSON(r.Context(), "categories", cats, 10*time.Minute)
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(cats)
-	}
-}
-
 type productListResult struct {
 	Products   []models.Product `json:"products"`
 	Total      int              `json:"total"`

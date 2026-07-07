@@ -122,27 +122,6 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 	return id, err
 }
 
-func GetDistinctCategories(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
-	query := `SELECT DISTINCT unnest(categories) AS cat FROM products WHERE is_active = TRUE ORDER BY cat`
-	rows, err := db.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	cats := []string{}
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			return nil, err
-		}
-		if c != "" {
-			cats = append(cats, c)
-		}
-	}
-	return cats, rows.Err()
-}
-
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category string, limit, offset int) ([]Product, int, error) {
 	conditions := []string{}
 	args := []any{}
