@@ -25,7 +25,9 @@ export default function ProductsPage() {
   // Fetch categories once
   useEffect(() => {
     apiFetch("/products/categories")
-      .then((data) => setCategories(Array.isArray(data) ? data : []))
+      .then((data) =>
+        setCategories(Array.isArray(data) ? data.map((c) => c.name) : [])
+      )
       .catch(() => setCategories([]));
   }, []);
 

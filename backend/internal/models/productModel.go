@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -104,22 +105,139 @@ type UpdateProductRequest struct {
 
 func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductRequest) (uuid.UUID, error) {
 	query := `
-		INSERT INTO products (name, description, price, categories, stock,
+		INSERT INTO products (name, description, price, stock,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			key_benefits, direction_for_use, safety_information)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		RETURNING id;
 	`
 	var id uuid.UUID
 	err := db.QueryRow(ctx, query,
-		req.Name, req.Description, req.Price, req.Categories, req.Stock,
+		req.Name, req.Description, req.Price, req.Stock,
 		req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
 		req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 		req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
 		req.SafetyInfo,
 	).Scan(&id)
-	return id, err
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	if err := setProductCategories(ctx, db, id, req.Categories); err != nil {
+		return uuid.Nil, err
+	}
+
+	return id, nil
+}
+
+// setProductCategories resolves category names against the categories table
+// and replaces a product's category links. Unknown names are rejected so a
+// product can never reference a category that doesn't (or no longer) exists.
+func setProductCategories(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID, names []string) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM product_categories WHERE product_id = $1`, productID); err != nil {
+		return err
+	}
+
+	if len(names) > 0 {
+		rows, err := tx.Query(ctx, `SELECT id, name FROM categories WHERE name = ANY($1)`, names)
+		if err != nil {
+			return err
+		}
+		resolved := make(map[string]uuid.UUID, len(names))
+		for rows.Next() {
+			var id uuid.UUID
+			var name string
+			if err := rows.Scan(&id, &name); err != nil {
+				rows.Close()
+				return err
+			}
+			resolved[name] = id
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		var unknown []string
+		for _, n := range names {
+			if _, ok := resolved[n]; !ok {
+				unknown = append(unknown, n)
+			}
+		}
+		if len(unknown) > 0 {
+			return fmt.Errorf("unknown categories: %s", strings.Join(unknown, ", "))
+		}
+
+		for _, id := range resolved {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)`,
+				productID, id,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func GetProductCategories(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID) ([]string, error) {
+	rows, err := db.Query(ctx, `
+		SELECT c.name FROM product_categories pc
+		JOIN categories c ON c.id = pc.category_id
+		WHERE pc.product_id = $1
+		ORDER BY c.name
+	`, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
+func GetProductCategoriesBatch(ctx context.Context, db *pgxpool.Pool, productIDs []uuid.UUID) (map[uuid.UUID][]string, error) {
+	if len(productIDs) == 0 {
+		return make(map[uuid.UUID][]string), nil
+	}
+	ph, args := buildPlaceholders(productIDs)
+	query := `
+		SELECT pc.product_id, c.name FROM product_categories pc
+		JOIN categories c ON c.id = pc.category_id
+		WHERE pc.product_id IN (` + ph + `)
+		ORDER BY c.name
+	`
+	rows, err := db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID][]string)
+	for rows.Next() {
+		var productID uuid.UUID
+		var name string
+		if err := rows.Scan(&productID, &name); err != nil {
+			return nil, err
+		}
+		result[productID] = append(result[productID], name)
+	}
+	return result, rows.Err()
 }
 
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category string, limit, offset int) ([]Product, int, error) {
@@ -136,7 +254,9 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		argIdx++
 	}
 	if category != "" {
-		conditions = append(conditions, fmt.Sprintf("$%d = ANY(categories)", argIdx))
+		conditions = append(conditions, fmt.Sprintf(
+			`EXISTS (SELECT 1 FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = products.id AND c.name = $%d)`,
+			argIdx))
 		args = append(args, category)
 		argIdx++
 	}
@@ -157,7 +277,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 	}
 
 	baseQuery := `
-		SELECT id, name, description, price, categories, stock, is_active,
+		SELECT id, name, description, price, stock, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			key_benefits, direction_for_use, safety_information,
@@ -186,7 +306,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		var p Product
 		err := rows.Scan(
 			&p.ID, &p.Name, &p.Description, &p.Price,
-			&p.Categories, &p.Stock, &p.IsActive,
+			&p.Stock, &p.IsActive,
 			&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 			&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 			&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
@@ -195,9 +315,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		if err != nil {
 			return nil, 0, err
 		}
-		if p.Categories == nil {
-			p.Categories = []string{}
-		}
+		p.Categories = []string{}
 		products = append(products, p)
 	}
 	return products, total, rows.Err()
@@ -205,7 +323,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 
 func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Product, error) {
 	query := `
-		SELECT id, name, description, price, categories, stock, is_active,
+		SELECT id, name, description, price, stock, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			key_benefits, direction_for_use, safety_information,
@@ -215,7 +333,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 	var p Product
 	err := db.QueryRow(ctx, query, id).Scan(
 		&p.ID, &p.Name, &p.Description, &p.Price,
-		&p.Categories, &p.Stock, &p.IsActive,
+		&p.Stock, &p.IsActive,
 		&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 		&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 		&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
@@ -224,9 +342,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 	if err != nil {
 		return nil, err
 	}
-	if p.Categories == nil {
-		p.Categories = []string{}
-	}
+	p.Categories = []string{}
 	return &p, nil
 }
 
@@ -236,33 +352,42 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 			name               = COALESCE($2, name),
 			description        = COALESCE($3, description),
 			price              = COALESCE($4, price),
-			categories         = COALESCE($5, categories),
-			stock              = COALESCE($6, stock),
-			is_active          = COALESCE($7, is_active),
-			brand_name         = COALESCE($8, brand_name),
-			hsn_code           = COALESCE($9, hsn_code),
-			gst_rate           = COALESCE($10, gst_rate),
-			mrp                = COALESCE($11, mrp),
-			product_form       = COALESCE($12, product_form),
-			consume_type       = COALESCE($13, consume_type),
-			pack_size          = COALESCE($14, pack_size),
-			pack_form          = COALESCE($15, pack_form),
-			key_ingredients    = COALESCE($16, key_ingredients),
-			strength           = COALESCE($17, strength),
-			product_weight     = COALESCE($18, product_weight),
-			key_benefits       = COALESCE($19, key_benefits),
-			direction_for_use  = COALESCE($20, direction_for_use),
-			safety_information = COALESCE($21, safety_information)
+			stock              = COALESCE($5, stock),
+			is_active          = COALESCE($6, is_active),
+			brand_name         = COALESCE($7, brand_name),
+			hsn_code           = COALESCE($8, hsn_code),
+			gst_rate           = COALESCE($9, gst_rate),
+			mrp                = COALESCE($10, mrp),
+			product_form       = COALESCE($11, product_form),
+			consume_type       = COALESCE($12, consume_type),
+			pack_size          = COALESCE($13, pack_size),
+			pack_form          = COALESCE($14, pack_form),
+			key_ingredients    = COALESCE($15, key_ingredients),
+			strength           = COALESCE($16, strength),
+			product_weight     = COALESCE($17, product_weight),
+			key_benefits       = COALESCE($18, key_benefits),
+			direction_for_use  = COALESCE($19, direction_for_use),
+			safety_information = COALESCE($20, safety_information)
 		WHERE id = $1
 	`
 	_, err := db.Exec(ctx, query, id,
-		req.Name, req.Description, req.Price, req.Categories, req.Stock, req.IsActive,
+		req.Name, req.Description, req.Price, req.Stock, req.IsActive,
 		req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
 		req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 		req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
 		req.SafetyInfo,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if req.Categories != nil {
+		if err := setProductCategories(ctx, db, id, *req.Categories); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func DeleteProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) error {

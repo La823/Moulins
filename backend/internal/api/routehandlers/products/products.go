@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,6 +36,12 @@ func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) 
 		docs[i].FileURL = utils.GetPublicURL(docs[i].FileKey)
 	}
 	p.Documents = docs
+
+	cats, _ := models.GetProductCategories(r.Context(), db, p.ID)
+	if cats == nil {
+		cats = []string{}
+	}
+	p.Categories = cats
 }
 
 func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []models.Product) {
@@ -49,6 +56,7 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 
 	imagesMap, _ := models.GetProductImagesBatch(r.Context(), db, ids)
 	docsMap, _ := models.GetProductDocumentsBatch(r.Context(), db, ids)
+	catsMap, _ := models.GetProductCategoriesBatch(r.Context(), db, ids)
 
 	for i := range products {
 		images := imagesMap[products[i].ID]
@@ -68,6 +76,12 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 			docs[j].FileURL = utils.GetPublicURL(docs[j].FileKey)
 		}
 		products[i].Documents = docs
+
+		cats := catsMap[products[i].ID]
+		if cats == nil {
+			cats = []string{}
+		}
+		products[i].Categories = cats
 	}
 }
 
@@ -98,6 +112,10 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 
 		id, err := models.CreateProduct(r.Context(), db, req)
 		if err != nil {
+			if strings.HasPrefix(err.Error(), "unknown categories:") {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			log.Printf("create product error: %v", err)
 			http.Error(w, "could not create product", http.StatusInternalServerError)
 			return
@@ -222,6 +240,10 @@ func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		}
 
 		if err := models.UpdateProduct(r.Context(), db, id, req); err != nil {
+			if strings.HasPrefix(err.Error(), "unknown categories:") {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			log.Printf("update product error: %v", err)
 			http.Error(w, "could not update product", http.StatusInternalServerError)
 			return

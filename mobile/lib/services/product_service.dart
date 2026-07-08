@@ -26,6 +26,7 @@ class ProductService {
 
   Future<List<String>> getCategories() async {
     final res = await _dio.get('/products/categories');
-    return List<String>.from(res.data ?? []);
+    final list = res.data as List<dynamic>? ?? [];
+    return list.map((c) => c['name'] as String).toList();
   }
 }
