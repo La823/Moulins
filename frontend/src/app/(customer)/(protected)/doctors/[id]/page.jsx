@@ -15,6 +15,7 @@ export default function DoctorDetailPage() {
   const [search, setSearch] = useState("");
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [adding, setAdding] = useState(null);
+  const [removing, setRemoving] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -53,11 +54,15 @@ export default function DoctorDetailPage() {
   };
 
   const removeProduct = async (productId) => {
+    if (removing) return;
+    setRemoving(productId);
     try {
       await apiFetch(`/doctors/${id}/products/${productId}`, { method: "DELETE" });
       setAssignedProducts((prev) => prev.filter((p) => p.product_id !== productId));
     } catch (err) {
       alert(err.message);
+    } finally {
+      setRemoving(null);
     }
   };
 
@@ -139,12 +144,18 @@ export default function DoctorDetailPage() {
                 key={dp.id}
                 className="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3"
               >
-                <span className="text-sm text-gray-900">{dp.product_name}</span>
+                <Link
+                  href={`/products/${dp.product_id}`}
+                  className="text-sm text-red-600 hover:text-red-700 hover:underline transition-colors"
+                >
+                  {dp.product_name}
+                </Link>
                 <button
                   onClick={() => removeProduct(dp.product_id)}
-                  className="text-xs text-red-500 hover:text-red-700 transition-colors"
+                  disabled={removing === dp.product_id}
+                  className="text-xs text-red-500 hover:text-red-700 transition-colors disabled:opacity-40"
                 >
-                  Remove
+                  {removing === dp.product_id ? "Removing..." : "Remove"}
                 </button>
               </div>
             ))}

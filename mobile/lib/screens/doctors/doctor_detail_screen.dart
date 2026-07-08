@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import '../../models/doctor.dart';
 import '../../models/product.dart';
 import '../../services/doctor_service.dart';
@@ -16,6 +17,7 @@ class DoctorDetailScreen extends StatefulWidget {
 class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   List<DoctorProduct> _assigned = [];
   bool _loading = true;
+  String? _removingId;
   final _service = DoctorService();
 
   @override
@@ -34,10 +36,16 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   }
 
   Future<void> _removeProduct(String productId) async {
+    if (_removingId != null) return;
+    setState(() => _removingId = productId);
     try {
       await _service.removeDoctorProduct(widget.doctor.id, productId);
-      setState(() => _assigned.removeWhere((p) => p.productId == productId));
+      setState(() {
+        _assigned.removeWhere((p) => p.productId == productId);
+        _removingId = null;
+      });
     } catch (e) {
+      setState(() => _removingId = null);
       _showError('Could not remove product');
     }
   }
@@ -56,15 +64,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
       builder: (_) => _AddProductSheet(
         doctorId: widget.doctor.id,
         alreadyAssigned: _assigned.map((p) => p.productId).toSet(),
-        onAdded: (product) {
-          setState(() {
-            _assigned.add(DoctorProduct(
-              productId: product.id,
-              productName: product.name,
-              imageUrl: product.primaryImageUrl,
-            ));
-          });
-        },
+        // Re-fetch from the server after each assign instead of mutating
+        // _assigned locally — avoids the list drifting out of sync with the
+        // backend (which is the source of duplicate-looking rows) if a tap
+        // fires while a previous assign is still in flight.
+        onAdded: (_) => _loadProducts(),
       ),
     );
   }
@@ -186,26 +190,45 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text(p.productName,
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
-                          onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text('Remove product?'),
-                                content: Text('Remove "${p.productName}" from Dr. ${d.name}?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                  TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
-                                ],
+                          child: InkWell(
+                            onTap: () => context.push('/products/${p.productId}'),
+                            child: Text(
+                              p.productName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                color: Color(0xFF00A6A4),
+                                decoration: TextDecoration.underline,
+                                decorationColor: Color(0xFF00A6A4),
                               ),
-                            );
-                            if (confirm == true) _removeProduct(p.productId);
-                          },
+                            ),
+                          ),
                         ),
+                        _removingId == p.productId
+                            ? const Padding(
+                                padding: EdgeInsets.all(10),
+                                child: SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                                ),
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      title: const Text('Remove product?'),
+                                      content: Text('Remove "${p.productName}" from Dr. ${d.name}?'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm == true) _removeProduct(p.productId);
+                                },
+                              ),
                       ],
                     ),
                   );
@@ -247,6 +270,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
   List<Product> _products = [];
   bool _loading = true;
   String _search = '';
+  String? _assigningId;
 
   @override
   void initState() {
@@ -264,6 +288,8 @@ class _AddProductSheetState extends State<_AddProductSheet> {
   }
 
   Future<void> _assign(Product product) async {
+    if (_assigningId != null) return;
+    setState(() => _assigningId = product.id);
     try {
       await _doctorService.addDoctorProduct(widget.doctorId, product.id);
       widget.onAdded(product);
@@ -272,6 +298,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
         SnackBar(content: Text('${product.name} assigned'), backgroundColor: const Color(0xFF00A6A4), behavior: SnackBarBehavior.floating),
       );
     } catch (_) {
+      if (mounted) setState(() => _assigningId = null);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not assign product'), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
       );
@@ -347,7 +374,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                             title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                             subtitle: p.categories.isNotEmpty ? Text(p.categories.first, style: const TextStyle(fontSize: 12, color: Color(0xFF00A6A4))) : null,
                             trailing: ElevatedButton(
-                              onPressed: () => _assign(p),
+                              onPressed: _assigningId == null ? () => _assign(p) : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF00A6A4),
                                 foregroundColor: Colors.white,
@@ -357,7 +384,12 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              child: const Text('Assign', style: TextStyle(fontSize: 13)),
+                              child: _assigningId == p.id
+                                  ? const SizedBox(
+                                      width: 14, height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Text('Assign', style: TextStyle(fontSize: 13)),
                             ),
                           );
                         },
