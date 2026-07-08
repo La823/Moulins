@@ -213,12 +213,23 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Future<void> _openDocument(String url) async {
     if (url.isEmpty) return;
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open document')),
-      );
+    // canLaunchUrl() can false-negative on Android 11+ if package-visibility
+    // queries aren't declared just right on a given device/OEM build, so we
+    // attempt the launch directly and only fall back to the error message on
+    // an actual failure rather than trusting the pre-check.
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open document')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open document')),
+        );
+      }
     }
   }
 
