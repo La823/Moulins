@@ -10,6 +10,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
@@ -45,6 +46,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	// employee: view own attendance
 	protected.HandleFunc("/my-attendance", attendance.GetMyAttendanceHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/attendance-visibility", attendance.GetAttendanceVisibilityHandler(db, rdb)).Methods("GET")
+
+	// notification inbox routes (any authenticated user)
+	protected.HandleFunc("/notifications", notifications.ListMyNotificationsHandler(db)).Methods("GET")
+	protected.HandleFunc("/notifications/{id}/read", notifications.MarkReadHandler(db)).Methods("PUT")
+	protected.HandleFunc("/device-tokens", notifications.RegisterDeviceTokenHandler(db)).Methods("POST")
 
 	// doctor routes (any authenticated user)
 	protected.HandleFunc("/doctors", doctors.ListDoctorsHandler(db)).Methods("GET")
@@ -106,6 +112,12 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	admin.HandleFunc("/onboarding", onboardingHandler.GetPendingCustomers).Methods("GET")
 	admin.HandleFunc("/onboarding/customer/{userID}", onboardingHandler.GetCustomerOnboarding).Methods("GET")
 	admin.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
+
+	// notification routes (admin only)
+	admin.HandleFunc("/notifications", notifications.ListHandler(db)).Methods("GET")
+	admin.HandleFunc("/notifications", notifications.CreateHandler(db)).Methods("POST")
+	admin.HandleFunc("/notifications/upload-url", notifications.UploadURLHandler()).Methods("POST")
+	admin.HandleFunc("/users/search", notifications.SearchUsersHandler(db)).Methods("GET")
 
 	// staff routes — customer management
 	customerStaff := protected.PathPrefix("/admin").Subrouter()

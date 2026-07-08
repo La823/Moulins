@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
 
@@ -33,6 +34,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   void initState() {
     super.initState();
     _load();
+    Future.microtask(() => ref.read(notificationsProvider.notifier).load());
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
         _loadMore();
@@ -91,6 +93,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Widget build(BuildContext context) {
     final categories = ref.watch(categoriesProvider);
     final cart = ref.watch(cartProvider);
+    final unreadCount = ref.watch(notificationsProvider).unreadCount;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -99,6 +102,25 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         elevation: 0,
         title: const Text('Products', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: [
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none, color: Color(0xFF1A1A1A)),
+                onPressed: () => context.push('/notifications'),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 8, top: 8,
+                  child: Container(
+                    width: 16, height: 16,
+                    decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
+                    child: Center(
+                      child: Text('${unreadCount > 9 ? '9+' : unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           Stack(
             children: [
               IconButton(

@@ -12,6 +12,7 @@ import 'screens/doctors/doctors_screen.dart';
 import 'screens/cart/cart_screen.dart';
 import 'screens/home/profile_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/notifications/notifications_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +72,7 @@ class MoulinsApp extends ConsumerWidget {
             ),
             GoRoute(path: '/doctors', builder: (_, __) => const DoctorsScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+            GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
           ],
         ),
       ],

@@ -47,6 +47,8 @@ func main() {
 		log.Println("S3 client initialized")
 	}
 
+	utils.InitFCM()
+
 	rdb := cache.New()
 
 	router := mux.NewRouter()
