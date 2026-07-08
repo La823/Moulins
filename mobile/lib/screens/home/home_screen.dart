@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../widgets/notification_bell_button.dart';
 import '../../widgets/profile_button.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -16,7 +17,7 @@ class HomeScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Moulins', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
-        actions: const [ProfileButton(), SizedBox(width: 4)],
+        actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: ListView(
         padding: EdgeInsets.zero,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'providers/auth_provider.dart';
+import 'providers/notification_provider.dart';
 import 'services/local_notifications_service.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/products/products_screen.dart';
@@ -135,6 +136,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
     super.initState();
     Future.microtask(() =>
         ref.read(authProvider.notifier).loadUser().catchError((_) {}));
+    Future.microtask(() => ref.read(notificationsProvider.notifier).load());
   }
 
   int get _selectedIndex {

@@ -61,59 +61,84 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (ctx, i) {
                       final n = state.items[i];
+                      final hasImage = n.imageUrl != null && n.imageUrl!.isNotEmpty;
+
                       return InkWell(
                         onTap: () => _onTap(n),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
-                          padding: const EdgeInsets.all(14),
+                          width: double.infinity,
+                          clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(
                             color: n.isRead ? Colors.white : const Color(0xFF00A6A4).withValues(alpha: 0.06),
                             border: Border.all(color: Colors.grey.shade200),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Row(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (n.imageUrl != null && n.imageUrl!.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(n.imageUrl!, width: 48, height: 48, fit: BoxFit.cover),
-                                )
-                              else
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF00A6A4).withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
+                              if (hasImage)
+                                // Full width, whole photo visible (no cropping) — the
+                                // container sizes to whatever the image's aspect ratio is.
+                                ColoredBox(
+                                  color: Colors.grey.shade100,
+                                  child: Image.network(
+                                    n.imageUrl!,
+                                    width: double.infinity,
+                                    fit: BoxFit.fitWidth,
+                                    loadingBuilder: (ctx, child, progress) {
+                                      if (progress == null) return child;
+                                      return const SizedBox(
+                                        height: 160,
+                                        child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+                                      );
+                                    },
+                                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                                   ),
-                                  child: const Icon(Icons.campaign_outlined, color: Color(0xFF00A6A4)),
                                 ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(n.title,
-                                        style: TextStyle(
-                                            fontWeight: n.isRead ? FontWeight.w500 : FontWeight.w700,
-                                            fontSize: 14,
-                                            color: const Color(0xFF1A1A1A))),
-                                    const SizedBox(height: 4),
-                                    Text(n.body, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-                                    const SizedBox(height: 6),
-                                    Text(DateFormat('MMM d, h:mm a').format(n.createdAt),
-                                        style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                    if (!hasImage)
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        margin: const EdgeInsets.only(right: 12),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF00A6A4).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(Icons.campaign_outlined, color: Color(0xFF00A6A4)),
+                                      ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(n.title,
+                                              style: TextStyle(
+                                                  fontWeight: n.isRead ? FontWeight.w500 : FontWeight.w700,
+                                                  fontSize: 15,
+                                                  color: const Color(0xFF1A1A1A))),
+                                          const SizedBox(height: 4),
+                                          Text(n.body, style: TextStyle(fontSize: 13.5, color: Colors.grey.shade600, height: 1.4)),
+                                          const SizedBox(height: 6),
+                                          Text(DateFormat('MMM d, h:mm a').format(n.createdAt),
+                                              style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                        ],
+                                      ),
+                                    ),
+                                    if (!n.isRead)
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        margin: const EdgeInsets.only(top: 4, left: 8),
+                                        decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
+                                      ),
                                   ],
                                 ),
                               ),
-                              if (!n.isRead)
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  margin: const EdgeInsets.only(top: 4),
-                                  decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
-                                ),
                             ],
                           ),
                         ),

@@ -2,6 +2,7 @@
 import 'package:go_router/go_router.dart';
 import '../../models/order.dart';
 import '../../services/order_service.dart';
+import '../../widgets/notification_bell_button.dart';
 import '../../widgets/profile_button.dart';
 import 'package:intl/intl.dart';
 
@@ -39,7 +40,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Orders', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
-        actions: const [ProfileButton(), SizedBox(width: 4)],
+        actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
