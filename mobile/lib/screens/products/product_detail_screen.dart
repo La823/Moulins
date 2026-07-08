@@ -117,14 +117,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   Text(p.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
                   const SizedBox(height: 8),
 
-                  Row(
-                    children: [
-                      Text('â‚¹${p.price.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF00A6A4))),
-                      if (p.mrp != null && p.mrp! > p.price) ...[
-                        const SizedBox(width: 10),
-                        Text('â‚¹${p.mrp!.toStringAsFixed(2)}', style: TextStyle(fontSize: 16, color: Colors.grey.shade400, decoration: TextDecoration.lineThrough)),
-                      ],
-                    ],
+                  Text(
+                    'MRP Rs. ${(p.mrp ?? p.price).toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF00A6A4)),
                   ),
                   const SizedBox(height: 16),
 

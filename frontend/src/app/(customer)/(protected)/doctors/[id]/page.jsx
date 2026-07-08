@@ -177,9 +177,9 @@ export default function DoctorDetailPage() {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-900 truncate">{product.name}</p>
-                    {product.price != null && (
+                    {(product.mrp ?? product.price) != null && (
                       <p className="text-xs text-gray-400">
-                        &#8377;{Number(product.price).toFixed(2)}
+                        MRP Rs. {Number(product.mrp ?? product.price).toFixed(2)}
                       </p>
                     )}
                   </div>

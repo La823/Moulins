@@ -92,7 +92,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                 children: [
                                   Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 4),
-                                  Text('â‚¹${item.product.price.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF00A6A4), fontWeight: FontWeight.w600)),
+                                  Text(
+                                    'MRP Rs. ${(item.product.mrp ?? item.product.price).toStringAsFixed(2)}',
+                                    style: const TextStyle(color: Color(0xFF00A6A4), fontWeight: FontWeight.w600),
+                                  ),
                                 ],
                               ),
                             ),
@@ -127,7 +130,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                          Text('â‚¹${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A6A4))),
+                          Text('Rs. ${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A6A4))),
                         ],
                       ),
                       const SizedBox(height: 16),

@@ -87,7 +87,9 @@ export default function ProductDetailPage() {
           <h1 className="text-3xl font-semibold text-gray-900 mb-4 leading-tight">{product.name}</h1>
           <div className="h-px bg-gray-200 mb-6" />
 
-          <p className="text-2xl font-light text-gray-900 mb-6">₹{parseFloat(product.price).toFixed(2)}</p>
+          <p className="text-2xl font-light text-gray-900 mb-6">
+            MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
+          </p>
 
           {product.description && (
             <p className="text-gray-500 text-sm leading-relaxed mb-8">{product.description}</p>
