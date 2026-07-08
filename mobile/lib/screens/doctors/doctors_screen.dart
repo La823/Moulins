@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/doctor.dart';
 import '../../services/doctor_service.dart';
+import '../../widgets/profile_button.dart';
 import 'doctor_detail_screen.dart';
 
 class DoctorsScreen extends StatefulWidget {
@@ -109,6 +110,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
             icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
             onPressed: _showAddDialog,
           ),
+          const ProfileButton(),
+          const SizedBox(width: 4),
         ],
       ),
       body: _loading

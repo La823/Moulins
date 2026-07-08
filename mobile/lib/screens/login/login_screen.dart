@@ -32,7 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final ok = await ref
         .read(authProvider.notifier)
         .login(_phoneCtrl.text.trim(), _passCtrl.text.trim());
-    if (ok && mounted) context.go('/products');
+    if (ok && mounted) context.go('/home');
   }
 
   @override
@@ -47,7 +47,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     if (auth.user != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/products'));
+      WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/home'));
       return const Scaffold(
         backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),

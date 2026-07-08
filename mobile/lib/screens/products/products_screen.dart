@@ -6,6 +6,7 @@ import '../../providers/cart_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/profile_button.dart';
 
 final _productService = ProductService();
 
@@ -140,6 +141,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 ),
             ],
           ),
+          const ProfileButton(),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(
