@@ -12,6 +12,20 @@ class ProductImage {
       );
 }
 
+class ProductDocument {
+  final String id;
+  final String name;
+  final String fileUrl;
+
+  ProductDocument({required this.id, required this.name, required this.fileUrl});
+
+  factory ProductDocument.fromJson(Map<String, dynamic> json) => ProductDocument(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        fileUrl: json['file_url'] ?? '',
+      );
+}
+
 class Product {
   final String id;
   final String name;
@@ -24,6 +38,7 @@ class Product {
   final String? packSize;
   final String? productForm;
   final List<ProductImage> images;
+  final List<ProductDocument> documents;
 
   Product({
     required this.id,
@@ -37,6 +52,7 @@ class Product {
     this.packSize,
     this.productForm,
     this.images = const [],
+    this.documents = const [],
   });
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -52,6 +68,9 @@ class Product {
         productForm: json['product_form'],
         images: (json['images'] as List<dynamic>? ?? [])
             .map((e) => ProductImage.fromJson(e))
+            .toList(),
+        documents: (json['documents'] as List<dynamic>? ?? [])
+            .map((e) => ProductDocument.fromJson(e))
             .toList(),
       );
 
