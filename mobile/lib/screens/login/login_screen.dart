@@ -16,6 +16,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscure = true;
 
   @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => ref.read(authProvider.notifier).loadUser());
+  }
+
+  @override
   void dispose() {
     _phoneCtrl.dispose();
     _passCtrl.dispose();
@@ -32,6 +38,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+
+    if (!auth.checked) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+      );
+    }
+
+    if (auth.user != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/products'));
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,

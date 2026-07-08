@@ -61,6 +61,14 @@ func SendMulticast(ctx context.Context, tokens []string, title, body, imageURL s
 				Body:     body,
 				ImageURL: imageURL,
 			},
+			Android: &messaging.AndroidConfig{
+				Priority: "high",
+				Notification: &messaging.AndroidNotification{
+					ChannelID: "broadcast_channel",
+					Priority:  messaging.PriorityHigh,
+					ImageURL:  imageURL,
+				},
+			},
 			Data: data,
 		}
 

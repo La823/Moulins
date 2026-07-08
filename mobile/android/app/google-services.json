@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "970076765844",
+    "project_id": "moulins-53149",
+    "storage_bucket": "moulins-53149.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:970076765844:android:445b50a04d68c37255fe81",
+        "android_client_info": {
+          "package_name": "com.moulinspharma.moulins"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9j56rs23ZXTuoFDpNv8jxds4a67P72jw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

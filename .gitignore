@@ -14,6 +14,7 @@ passwords.txt
 .claude/
 *.pem
 ~$*
+firebase/
 
 # OS
 .DS_Store

@@ -1,22 +1,44 @@
+import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../config/api.dart';
 
 final authServiceProvider = Provider((ref) => AuthService());
+
+Future<void> _registerDeviceToken() async {
+  try {
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission();
+    final token = await messaging.getToken();
+    if (token != null) {
+      await NotificationService().registerDeviceToken(token, platform: 'android');
+    }
+  } catch (e) {
+    debugPrint('FCM token registration failed: $e');
+  }
+}
 
 class AuthState {
   final User? user;
   final bool loading;
   final String? error;
+  // False until the stored token has been checked once at app startup.
+  // Distinguishes "haven't looked yet" from "looked, no session" so the UI
+  // can show a splash instead of flashing the login screen.
+  final bool checked;
 
-  const AuthState({this.user, this.loading = false, this.error});
+  const AuthState({this.user, this.loading = false, this.error, this.checked = false});
 
-  AuthState copyWith({User? user, bool? loading, String? error, bool clearUser = false}) =>
+  AuthState copyWith({User? user, bool? loading, String? error, bool? checked, bool clearUser = false}) =>
       AuthState(
         user: clearUser ? null : user ?? this.user,
         loading: loading ?? this.loading,
         error: error,
+        checked: checked ?? this.checked,
       );
 }
 
@@ -32,7 +54,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final token = data['token'] as String;
       await saveToken(token);
       final user = User.fromJson(data['user']);
-      state = state.copyWith(user: user, loading: false);
+      state = state.copyWith(user: user, loading: false, checked: true);
+      unawaited(_registerDeviceToken());
       return true;
     } catch (e) {
       state = state.copyWith(loading: false, error: _parseError(e));
@@ -42,18 +65,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> loadUser() async {
     final token = await getToken();
-    if (token == null) return;
+    if (token == null) {
+      state = state.copyWith(checked: true);
+      return;
+    }
     try {
       final user = await _service.getMe();
-      state = state.copyWith(user: user);
+      state = state.copyWith(user: user, checked: true);
+      unawaited(_registerDeviceToken());
     } catch (_) {
       await clearToken();
+      state = state.copyWith(checked: true);
     }
   }
 
   Future<void> logout() async {
     await clearToken();
-    state = const AuthState();
+    state = const AuthState(checked: true);
   }
 
   String _parseError(Object e) {
