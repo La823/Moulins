@@ -143,6 +143,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       children: [
                         if (p.packSize != null) _detailRow('Pack Size', p.packSize!),
                         if (p.productForm != null) _detailRow('Form', p.productForm!),
+                        _detailRow('Stock', 'In Stock', valueColor: Colors.green.shade600),
                       ],
                     ),
                   ),
@@ -183,13 +184,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     );
   }
 
-  Widget _detailRow(String label, String value) => Padding(
+  Widget _detailRow(String label, String value, {Color? valueColor}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-            Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: valueColor)),
           ],
         ),
       );
