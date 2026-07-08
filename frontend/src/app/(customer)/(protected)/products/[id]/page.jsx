@@ -107,12 +107,6 @@ export default function ProductDetailPage() {
                 <span className="text-gray-900 font-medium">{product.consume_type}</span>
               </div>
             )}
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Stock</span>
-              <span className={`font-medium ${product.stock > 0 ? "text-green-600" : "text-red-500"}`}>
-                {product.stock > 0 ? `${product.stock} available` : "Out of stock"}
-              </span>
-            </div>
           </div>
 
           <button

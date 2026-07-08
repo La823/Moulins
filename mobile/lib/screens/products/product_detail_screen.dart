@@ -143,7 +143,6 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       children: [
                         if (p.packSize != null) _detailRow('Pack Size', p.packSize!),
                         if (p.productForm != null) _detailRow('Form', p.productForm!),
-                        _detailRow('Stock', p.stock > 0 ? '${p.stock} units' : 'Out of stock'),
                       ],
                     ),
                   ),
