@@ -217,12 +217,12 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 onPressed: () async {
                                   final confirm = await showDialog<bool>(
                                     context: context,
-                                    builder: (_) => AlertDialog(
+                                    builder: (dialogContext) => AlertDialog(
                                       title: const Text('Remove product?'),
                                       content: Text('Remove "${p.productName}" from Dr. ${d.name}?'),
                                       actions: [
-                                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+                                        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+                                        TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
                                       ],
                                     ),
                                   );
