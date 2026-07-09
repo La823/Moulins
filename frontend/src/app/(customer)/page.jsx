@@ -1,8 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { apiFetch } from "@/lib/api";
+import HomeCarousel from "@/components/customer/HomeCarousel";
+import AreasOfFocus from "@/components/customer/AreasOfFocus";
 
 const rise = (delay = 0) => ({
   initial: { opacity: 0, y: 30 },
@@ -11,6 +15,12 @@ const rise = (delay = 0) => ({
 });
 
 export default function HomePage() {
+  const [highlights, setHighlights] = useState(null);
+
+  useEffect(() => {
+    apiFetch("/home-highlights").then(setHighlights).catch(() => {});
+  }, []);
+
   return (
     <>
       {/* Hero */}
@@ -38,16 +48,18 @@ export default function HomePage() {
 
           <motion.h1
             {...rise(0.25)}
-            className="text-5xl md:text-6xl lg:text-7xl font-light text-white leading-[1.1] mb-4"
+            style={{ fontWeight: 600 }}
+            className="text-5xl md:text-6xl lg:text-7xl text-white leading-[1.1] mb-4"
           >
-            Quality medicines,
+            Healthcare
           </motion.h1>
 
           <motion.h1
             {...rise(0.4)}
-            className="text-5xl md:text-6xl lg:text-7xl font-medium text-white leading-[1.1] mb-8"
+            style={{ fontWeight: 350 }}
+            className="text-5xl md:text-6xl lg:text-7xl text-white leading-[1.1] mb-8"
           >
-            delivered with care
+            beyond medicine
           </motion.h1>
 
           <motion.p
@@ -139,23 +151,49 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="bg-gray-50 py-20">
-        <div className="max-w-7xl mx-auto px-8">
-          <h2 className="text-3xl font-light text-gray-900 mb-4">
-            Ready to place an order?
-          </h2>
-          <p className="text-sm text-gray-500 max-w-md mb-8">
-            Browse our full catalogue and order directly. Fast processing, reliable delivery across India.
-          </p>
-          <Link
-            href="/products"
-            className="inline-block px-8 py-3.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
-          >
-            View All Products
-          </Link>
-        </div>
-      </section>
+      {/* Curated collection highlights — admin-editable via /admin */}
+      {highlights && (
+        <section className="py-14" style={{ backgroundColor: "#1F3B2C" }}>
+          <div className="max-w-7xl mx-auto px-8">
+            <h2 className="text-4xl text-center text-[#F3EEE3] mb-10">
+              {highlights.heading}
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {[1, 2].map((n) => {
+                const imageUrl = highlights[`card${n}_image_url`];
+                const buttonText = highlights[`card${n}_button_text`];
+                const linkUrl = highlights[`card${n}_link_url`] || "/products";
+                return (
+                  <Link key={n} href={linkUrl} className="group block">
+                    <div className="relative aspect-[4/3] overflow-hidden">
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={buttonText}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-black/10" />
+                      )}
+                    </div>
+                    <div
+                      className="flex items-center justify-center py-5"
+                      style={{ backgroundColor: "#F3EEE3" }}
+                    >
+                      <span className="text-sm font-medium" style={{ color: "#1F3B2C" }}>
+                        {buttonText}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <HomeCarousel />
+      <AreasOfFocus />
     </>
   );
 }

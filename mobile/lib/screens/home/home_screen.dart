@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/profile_button.dart';
+import '../../widgets/home_highlights_section.dart';
+import '../../widgets/home_carousel_section.dart';
+import '../../widgets/areas_of_focus_section.dart';
 
-const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
 
 class HomeScreen extends StatelessWidget {
@@ -16,7 +18,6 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Moulins', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
         actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: ListView(
@@ -25,7 +26,9 @@ class HomeScreen extends StatelessWidget {
           _Hero(),
           _TrustBar(),
           _CategorySection(),
-          _CtaSection(),
+          const HomeHighlightsSection(),
+          const HomeCarouselSection(),
+          const AreasOfFocusSection(),
           const SizedBox(height: 24),
         ],
       ),
@@ -36,10 +39,12 @@ class HomeScreen extends StatelessWidget {
 class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final height = MediaQuery.of(context).size.height - kToolbarHeight - MediaQuery.of(context).padding.top;
     return Stack(
       children: [
-        AspectRatio(
-          aspectRatio: 4 / 5,
+        SizedBox(
+          height: height,
+          width: double.infinity,
           child: Image.asset('assets/images/hero.jpg', fit: BoxFit.cover),
         ),
         Positioned.fill(
@@ -208,39 +213,3 @@ class _CategorySection extends StatelessWidget {
   }
 }
 
-class _CtaSection extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Ready to place an order?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w400, color: _ink)),
-          const SizedBox(height: 8),
-          Text(
-            'Browse our full catalogue and order directly. Fast processing, reliable delivery.',
-            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500, height: 1.4),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => context.push('/products'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _teal,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('View All Products', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          ),
-        ],
-      ),
-    );
-  }
-}

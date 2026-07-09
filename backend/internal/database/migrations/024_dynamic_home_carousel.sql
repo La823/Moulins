@@ -1,0 +1,1 @@
+ALTER TABLE home_carousel_slides DROP CONSTRAINT IF EXISTS home_carousel_slides_position_check;

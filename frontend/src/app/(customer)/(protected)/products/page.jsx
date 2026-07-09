@@ -195,6 +195,31 @@ export default function ProductsPage() {
                     </svg>
                   </div>
                 )}
+
+                {/* Add to cart bar — slides up from the bottom edge of the image on hover */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addToCart(p);
+                  }}
+                  style={{ backgroundColor: "#4E1111" }}
+                  className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3 text-xs font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 4.5v15m7.5-7.5h-15"
+                    />
+                  </svg>
+                  Add to Cart
+                </button>
               </div>
 
               {/* Separator */}
@@ -215,28 +240,6 @@ export default function ProductsPage() {
                     {p.description}
                   </p>
                 )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    addToCart(p);
-                  }}
-                  className="mt-3 text-xs text-gray-400 hover:text-red-600 transition-all duration-200 opacity-0 group-hover:opacity-100 flex items-center gap-1.5"
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 4.5v15m7.5-7.5h-15"
-                    />
-                  </svg>
-                  Add to cart
-                </button>
               </div>
             </div>
           ))}

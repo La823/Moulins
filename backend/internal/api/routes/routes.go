@@ -9,6 +9,9 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
@@ -31,6 +34,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
 	router.HandleFunc("/products/categories", categories.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/{id}", products.GetProductHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/home-carousel", homecarousel.ListHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/home-focus", homefocus.GetHandler(db, rdb)).Methods("GET")
 
 	// protected routes (require valid JWT)
 	protected := router.PathPrefix("").Subrouter()
@@ -118,6 +124,21 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	admin.HandleFunc("/notifications", notifications.CreateHandler(db)).Methods("POST")
 	admin.HandleFunc("/notifications/upload-url", notifications.UploadURLHandler()).Methods("POST")
 	admin.HandleFunc("/users/search", notifications.SearchUsersHandler(db)).Methods("GET")
+
+	// home highlights (admin only)
+	admin.HandleFunc("/home-highlights", homehighlights.UpdateHandler(db, rdb)).Methods("PUT")
+	admin.HandleFunc("/home-highlights/upload-url", homehighlights.UploadURLHandler()).Methods("POST")
+
+	// home carousel (admin only)
+	admin.HandleFunc("/home-carousel", homecarousel.CreateHandler(db, rdb)).Methods("POST")
+	admin.HandleFunc("/home-carousel/{position}", homecarousel.UpdateHandler(db, rdb)).Methods("PUT")
+	admin.HandleFunc("/home-carousel/{position}", homecarousel.DeleteHandler(db, rdb)).Methods("DELETE")
+	admin.HandleFunc("/home-carousel/upload-url", homecarousel.UploadURLHandler()).Methods("POST")
+
+	// areas of focus (admin only)
+	admin.HandleFunc("/home-focus", homefocus.UpdateSectionHandler(db, rdb)).Methods("PUT")
+	admin.HandleFunc("/home-focus/cards/{position}", homefocus.UpdateCardHandler(db, rdb)).Methods("PUT")
+	admin.HandleFunc("/home-focus/upload-url", homefocus.UploadURLHandler()).Methods("POST")
 
 	// staff routes — customer management
 	customerStaff := protected.PathPrefix("/admin").Subrouter()
