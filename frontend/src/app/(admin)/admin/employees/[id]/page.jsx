@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
+import AssignmentPanel from "@/components/admin/AssignmentPanel";
 
 export default function EmployeeDetailPage() {
   const { id } = useParams();
@@ -423,6 +424,7 @@ export default function EmployeeDetailPage() {
           </div>
 
           <UserMeetingsRequests userId={employee.id} />
+          <AssignmentPanel mode="employee" userId={employee.id} />
         </div>
       </div>
     </>

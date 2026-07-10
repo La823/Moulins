@@ -4,6 +4,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/api/handlers"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/assignments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
@@ -102,6 +103,13 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	admin.HandleFunc("/employees/{id}/permissions", userauth.GetPermissionsHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}/permissions", userauth.SetPermissionsHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/employees/{id}", userauth.DeleteEmployeeHandler(db, rdb)).Methods("DELETE")
+
+	// client-employee assignment routes (admin only)
+	admin.HandleFunc("/assignments", assignments.ListAllHandler(db)).Methods("GET")
+	admin.HandleFunc("/clients/{id}/employees", assignments.ListForClientHandler(db)).Methods("GET")
+	admin.HandleFunc("/clients/{id}/employees", assignments.AssignHandler(db)).Methods("POST")
+	admin.HandleFunc("/clients/{id}/employees/{employeeId}", assignments.RemoveHandler(db)).Methods("DELETE")
+	admin.HandleFunc("/employees/{id}/clients", assignments.ListForEmployeeHandler(db)).Methods("GET")
 
 	// attendance routes (admin only)
 	admin.HandleFunc("/attendance", attendance.MarkAttendanceHandler(db)).Methods("POST")
