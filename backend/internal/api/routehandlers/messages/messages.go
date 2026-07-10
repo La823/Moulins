@@ -166,8 +166,8 @@ func WebSocketHandler(db *pgxpool.Pool, hub *services.ChatHub) http.HandlerFunc 
 				if len(preview) > 100 {
 					preview = preview[:100]
 				}
-				if err := services.SendDirectNotification(r.Context(), db, in.To, "New message from "+senderName, preview, &deepLink); err != nil {
-					log.Printf("chat notification error: %v", err)
+				if err := services.SendPushOnly(r.Context(), db, in.To, "New message from "+senderName, preview, &deepLink); err != nil {
+					log.Printf("chat push error: %v", err)
 				}
 			}
 		}

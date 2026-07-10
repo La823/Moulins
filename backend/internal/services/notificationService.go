@@ -106,3 +106,35 @@ func SendDirectNotification(ctx context.Context, db *pgxpool.Pool, userID uuid.U
 
 	return models.UpdateNotificationStatus(ctx, db, notificationID, "sent", 1, successCount, len(tokens)-successCount)
 }
+
+// SendPushOnly delivers a best-effort FCM push without touching the
+// notifications/notification_recipients tables — used for chat messages,
+// which shouldn't clutter the in-app notification inbox (that's reserved
+// for broadcasts and order-specific alerts). The chat UI itself is the
+// "inbox" for messages.
+func SendPushOnly(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, title, body string, deepLink *string) error {
+	tokens, err := models.GetDeviceTokensForUsers(ctx, db, []uuid.UUID{userID})
+	if err != nil {
+		log.Printf("push-only send: failed to fetch device tokens: %v", err)
+		return nil
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+
+	data := map[string]string{}
+	if deepLink != nil {
+		data["deep_link"] = *deepLink
+	}
+
+	_, _, invalidTokens, sendErr := utils.SendMulticast(ctx, tokens, title, body, "", data)
+	if sendErr != nil {
+		log.Printf("push-only send: push send error: %v", sendErr)
+	}
+	if len(invalidTokens) > 0 {
+		if err := models.DeactivateDeviceTokens(ctx, db, invalidTokens); err != nil {
+			log.Printf("push-only send: failed to deactivate invalid tokens: %v", err)
+		}
+	}
+	return nil
+}
