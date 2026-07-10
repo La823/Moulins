@@ -17,7 +17,7 @@ class MeetingService {
   }) async {
     await _dio.post('/meetings', data: {
       'doctor_id': doctorId,
-      'scheduled_at': scheduledAt.toIso8601String(),
+      'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       if (notes != null) 'notes': notes,
       if (mom != null) 'mom': mom,
     });

@@ -383,7 +383,7 @@ class _DaySheet extends StatefulWidget {
 class _DaySheetState extends State<_DaySheet> {
   List<Doctor> _doctors = [];
   String? _selectedDoctorId;
-  TimeOfDay? _time;
+  TimeOfDay? _time = const TimeOfDay(hour: 11, minute: 0);
   final _notesCtrl = TextEditingController();
   final _momCtrl = TextEditingController();
   final _requestCtrl = TextEditingController();
@@ -513,7 +513,7 @@ class _DaySheetState extends State<_DaySheet> {
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: () async {
-                final picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                final picked = await showTimePicker(context: context, initialTime: _time ?? const TimeOfDay(hour: 11, minute: 0));
                 if (picked != null) setState(() => _time = picked);
               },
               child: Text(_time == null ? 'Pick time' : _time!.format(context)),

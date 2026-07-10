@@ -60,7 +60,7 @@ function MeetingsPageInner() {
     const doctorId = searchParams.get("doctor_id");
     if (doctorId) {
       setSelectedDateKey(toLocalDateKey(new Date()));
-      setDayForm((f) => ({ ...f, doctor_id: doctorId }));
+      setDayForm((f) => ({ ...f, doctor_id: doctorId, time: f.time || "11:00" }));
     }
   }, [searchParams]);
 
@@ -80,7 +80,7 @@ function MeetingsPageInner() {
 
   const openDay = (dateKey) => {
     setSelectedDateKey(dateKey);
-    setDayForm({ doctor_id: "", time: "", notes: "", mom: "", request: "" });
+    setDayForm({ doctor_id: "", time: "11:00", notes: "", mom: "", request: "" });
     setError("");
   };
 
