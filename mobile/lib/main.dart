@@ -20,6 +20,7 @@ import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/meetings/meetings_screen.dart';
 import 'screens/requests/requests_screen.dart';
+import 'screens/chat/chat_list_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -103,6 +104,7 @@ class MoulinsApp extends ConsumerWidget {
               ),
             ),
             GoRoute(path: '/requests', builder: (_, __) => const RequestsScreen()),
+            GoRoute(path: '/chat', builder: (_, __) => const ChatListScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
           ],
@@ -151,7 +153,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
   int get _selectedIndex {
     if (widget.location.startsWith('/products')) return 1;
     if (widget.location.startsWith('/doctors')) return 2;
-    if (widget.location.startsWith('/orders')) return 3;
+    if (widget.location.startsWith('/meetings')) return 3;
+    if (widget.location.startsWith('/orders')) return 4;
     return 0;
   }
 
@@ -176,7 +179,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
             case 0: context.go('/home');
             case 1: context.go('/products');
             case 2: context.go('/doctors');
-            case 3: context.go('/orders');
+            case 3: context.go('/meetings');
+            case 4: context.go('/orders');
           }
         },
         backgroundColor: Colors.white,
@@ -196,6 +200,11 @@ class _AppShellState extends ConsumerState<_AppShell> {
             icon: Icon(Icons.people_outlined),
             selectedIcon: Icon(Icons.people, color: Color(0xFF00A6A4)),
             label: 'Doctors',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_today_outlined),
+            selectedIcon: Icon(Icons.calendar_today, color: Color(0xFF00A6A4)),
+            label: 'Meetings',
           ),
           NavigationDestination(
             icon: Icon(Icons.receipt_long_outlined),

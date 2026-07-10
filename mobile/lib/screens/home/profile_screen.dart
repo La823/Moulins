@@ -103,6 +103,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _menuItem(Icons.calendar_today_outlined, 'My Meetings', () => context.go('/meetings')),
                 _divider(),
                 _menuItem(Icons.assignment_outlined, 'My Requests', () => context.go('/requests')),
+                _divider(),
+                _menuItem(Icons.chat_bubble_outline, 'Messages', () => context.go('/chat')),
               ],
             ),
           ),
