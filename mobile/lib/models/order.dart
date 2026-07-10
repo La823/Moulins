@@ -19,12 +19,25 @@ class OrderItem {
       );
 }
 
+class OrderPhoto {
+  final String id;
+  final String imageUrl;
+
+  OrderPhoto({required this.id, required this.imageUrl});
+
+  factory OrderPhoto.fromJson(Map<String, dynamic> json) => OrderPhoto(
+        id: json['id'] ?? '',
+        imageUrl: json['image_url'] ?? '',
+      );
+}
+
 class Order {
   final String id;
   final String status;
   final String createdAt;
   final int itemCount;
   final List<OrderItem> items;
+  final List<OrderPhoto> photos;
   final String? trackingNumber;
   final String? expectedDelivery;
   final String? notes;
@@ -35,6 +48,7 @@ class Order {
     required this.createdAt,
     required this.itemCount,
     this.items = const [],
+    this.photos = const [],
     this.trackingNumber,
     this.expectedDelivery,
     this.notes,
@@ -51,6 +65,9 @@ class Order {
             0,
         items: (json['items'] as List<dynamic>? ?? [])
             .map((e) => OrderItem.fromJson(e))
+            .toList(),
+        photos: (json['photos'] as List<dynamic>? ?? [])
+            .map((e) => OrderPhoto.fromJson(e))
             .toList(),
         trackingNumber: json['tracking_number'],
         expectedDelivery: json['expected_delivery'],

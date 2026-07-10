@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 // POST /orders — customer places an order from their cart
@@ -139,9 +140,104 @@ func GetOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "order not found", http.StatusNotFound)
 			return
 		}
+		for i := range order.Photos {
+			order.Photos[i].ImageURL = utils.GetPublicURL(order.Photos[i].ImageKey)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(order)
+	}
+}
+
+// POST /admin/orders/upload-url — get a presigned S3 URL for a bill photo
+func UploadURLHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+		var req struct {
+			Filename string `json:"filename"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Filename == "" {
+			http.Error(w, "filename is required", http.StatusBadRequest)
+			return
+		}
+
+		uploadURL, key, err := utils.GeneratePresignedUploadURL(req.Filename)
+		if err != nil {
+			log.Printf("presign error: %v", err)
+			http.Error(w, "could not generate upload url", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"upload_url": uploadURL,
+			"key":        key,
+		})
+	}
+}
+
+func getUserID(r *http.Request) uuid.UUID {
+	id, _ := uuid.Parse(r.Context().Value("user_id").(string))
+	return id
+}
+
+// POST /admin/orders/{id}/photos — attach a bill photo (staff)
+func AddPhotoHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		orderID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			ImageKey string `json:"image_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ImageKey == "" {
+			http.Error(w, "image_key is required", http.StatusBadRequest)
+			return
+		}
+
+		photoID, err := models.AddOrderPhoto(r.Context(), db, orderID, req.ImageKey, getUserID(r))
+		if err != nil {
+			log.Printf("add order photo error: %v", err)
+			http.Error(w, "could not add photo", http.StatusInternalServerError)
+			return
+		}
+
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.added", "A bill photo was attached to the order")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": photoID})
+	}
+}
+
+// DELETE /admin/orders/photos/{photoId} — remove a bill photo (staff)
+func DeletePhotoHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		photoID, err := uuid.Parse(mux.Vars(r)["photoId"])
+		if err != nil {
+			http.Error(w, "invalid photo id", http.StatusBadRequest)
+			return
+		}
+
+		orderID, _ := models.GetOrderIDByPhotoID(r.Context(), db, photoID)
+
+		if err := models.DeleteOrderPhoto(r.Context(), db, photoID); err != nil {
+			log.Printf("delete order photo error: %v", err)
+			http.Error(w, "could not delete photo", http.StatusInternalServerError)
+			return
+		}
+
+		if orderID != uuid.Nil {
+			_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.removed", "A bill photo was removed from the order")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "deleted"})
 	}
 }
 

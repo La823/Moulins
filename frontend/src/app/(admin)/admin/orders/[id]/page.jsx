@@ -45,6 +45,7 @@ export default function AdminOrderDetail() {
     delivery_notes: "",
   });
   const [savingDelivery, setSavingDelivery] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const loadOrder = () =>
     apiFetch(`/orders/${id}`).then((data) => {
@@ -140,6 +141,48 @@ export default function AdminOrderDetail() {
       setItems((prev) => prev.filter((i) => i.id !== itemId));
       loadOrder().catch(() => {});
       setSuccess("Item removed from order");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // --- Bill photo upload ---
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    setError("");
+    try {
+      const { upload_url, key } = await apiFetch("/admin/orders/upload-url", {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name }),
+      });
+      await fetch(upload_url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      await apiFetch(`/admin/orders/${id}/photos`, {
+        method: "POST",
+        body: JSON.stringify({ image_key: key }),
+      });
+      loadOrder().catch(() => {});
+      setSuccess("Bill photo attached");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleDeletePhoto = async (photoId) => {
+    if (!confirm("Remove this bill photo?")) return;
+    try {
+      await apiFetch(`/admin/orders/photos/${photoId}`, { method: "DELETE" });
+      loadOrder().catch(() => {});
+      setSuccess("Bill photo removed");
     } catch (err) {
       setError(err.message);
     }
@@ -360,6 +403,52 @@ export default function AdminOrderDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+
+        {/* Bill Photos */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Bill Photos ({order.photos?.length || 0})
+            </h3>
+            <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
+              {uploadingPhoto ? "Uploading..." : "+ Add Photo"}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoUpload}
+                disabled={uploadingPhoto}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {!order.photos || order.photos.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">
+              No bill photos attached yet
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {order.photos.map((photo) => (
+                <div key={photo.id} className="relative group">
+                  <a href={photo.image_url} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={photo.image_url}
+                      alt="Bill"
+                      className="w-full h-28 object-cover rounded-lg border border-gray-200"
+                    />
+                  </a>
+                  <button
+                    onClick={() => handleDeletePhoto(photo.id)}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Remove photo"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

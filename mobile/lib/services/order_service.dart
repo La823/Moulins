@@ -32,4 +32,17 @@ class OrderService {
     // backend returns { "order_id": "uuid" }
     return res.data['order_id'] ?? res.data['id'] ?? '';
   }
+
+  Future<Map<String, String>> getPhotoUploadUrl(String filename) async {
+    final res = await _dio.post('/admin/orders/upload-url', data: {'filename': filename});
+    return {'upload_url': res.data['upload_url'], 'key': res.data['key']};
+  }
+
+  Future<void> addOrderPhoto(String orderId, String imageKey) async {
+    await _dio.post('/admin/orders/$orderId/photos', data: {'image_key': imageKey});
+  }
+
+  Future<void> deleteOrderPhoto(String photoId) async {
+    await _dio.delete('/admin/orders/photos/$photoId');
+  }
 }

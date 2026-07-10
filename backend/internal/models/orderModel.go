@@ -16,6 +16,7 @@ type Order struct {
 	Notes     *string     `json:"notes,omitempty"`
 	Items     []OrderItem  `json:"items,omitempty"`
 	Events    []OrderEvent `json:"events,omitempty"`
+	Photos    []OrderPhoto `json:"photos,omitempty"`
 	CreatedAt time.Time    `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
 	// Delivery details
@@ -256,7 +257,64 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		return nil, err
 	}
 
+	o.Photos, err = GetOrderPhotos(ctx, db, orderID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &o, nil
+}
+
+// --- Order Photos (bill photos from the client's site) ---
+
+type OrderPhoto struct {
+	ID         uuid.UUID  `json:"id"`
+	OrderID    uuid.UUID  `json:"order_id"`
+	ImageKey   string     `json:"image_key"`
+	ImageURL   string     `json:"image_url,omitempty"`
+	UploadedBy *uuid.UUID `json:"uploaded_by,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+func AddOrderPhoto(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, imageKey string, uploadedBy uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := db.QueryRow(ctx,
+		`INSERT INTO order_photos (order_id, image_key, uploaded_by) VALUES ($1, $2, $3) RETURNING id`,
+		orderID, imageKey, uploadedBy,
+	).Scan(&id)
+	return id, err
+}
+
+func GetOrderPhotos(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]OrderPhoto, error) {
+	rows, err := db.Query(ctx,
+		`SELECT id, order_id, image_key, uploaded_by, created_at FROM order_photos WHERE order_id = $1 ORDER BY created_at DESC`,
+		orderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	photos := []OrderPhoto{}
+	for rows.Next() {
+		var p OrderPhoto
+		if err := rows.Scan(&p.ID, &p.OrderID, &p.ImageKey, &p.UploadedBy, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		photos = append(photos, p)
+	}
+	return photos, rows.Err()
+}
+
+func GetOrderIDByPhotoID(ctx context.Context, db *pgxpool.Pool, photoID uuid.UUID) (uuid.UUID, error) {
+	var orderID uuid.UUID
+	err := db.QueryRow(ctx, `SELECT order_id FROM order_photos WHERE id = $1`, photoID).Scan(&orderID)
+	return orderID, err
+}
+
+func DeleteOrderPhoto(ctx context.Context, db *pgxpool.Pool, photoID uuid.UUID) error {
+	_, err := db.Exec(ctx, `DELETE FROM order_photos WHERE id = $1`, photoID)
+	return err
 }
 
 func InsertOrderEvent(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, eventType, description string) error {
