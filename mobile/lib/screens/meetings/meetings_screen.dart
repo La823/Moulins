@@ -5,6 +5,7 @@ import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/request_service.dart';
 import '../../widgets/notification_bell_button.dart';
+import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -211,6 +212,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
             icon: const Icon(Icons.add, color: _teal),
             onPressed: () => _showDaySheet(DateTime.now()),
           ),
+          const ChatButton(),
           const NotificationBellButton(),
           const ProfileButton(),
           const SizedBox(width: 4),

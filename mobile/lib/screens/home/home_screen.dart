@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/notification_bell_button.dart';
+import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../widgets/home_highlights_section.dart';
 import '../../widgets/home_carousel_section.dart';
@@ -18,7 +19,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
+        actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: ListView(
         padding: EdgeInsets.zero,

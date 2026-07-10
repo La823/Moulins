@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/request.dart';
 import '../../services/request_service.dart';
 import '../../widgets/notification_bell_button.dart';
+import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -70,7 +71,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Requests', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
-        actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
+        actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _teal))

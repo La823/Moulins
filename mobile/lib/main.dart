@@ -35,6 +35,7 @@ void main() async {
           title: notification.title ?? 'Moulins',
           body: notification.body ?? '',
           imageUrl: notification.android?.imageUrl ?? notification.apple?.imageUrl,
+          notificationId: message.data['notification_id'],
         );
       }
     });

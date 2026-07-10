@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/doctor.dart';
 import '../../services/doctor_service.dart';
 import '../../widgets/notification_bell_button.dart';
+import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import 'doctor_detail_screen.dart';
 
@@ -117,6 +118,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
             icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
             onPressed: _showAddDialog,
           ),
+          const ChatButton(),
           const NotificationBellButton(),
           const ProfileButton(),
           const SizedBox(width: 4),

@@ -5,6 +5,7 @@ import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/product_service.dart';
 import '../../widgets/notification_bell_button.dart';
+import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/profile_button.dart';
 
@@ -120,6 +121,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 ),
             ],
           ),
+          const ChatButton(),
           const NotificationBellButton(),
           const ProfileButton(),
           const SizedBox(width: 4),

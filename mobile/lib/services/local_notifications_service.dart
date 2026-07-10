@@ -29,7 +29,7 @@ class LocalNotificationsService {
         ?.createNotificationChannel(_channel);
   }
 
-  static Future<void> show({required String title, required String body, String? imageUrl}) async {
+  static Future<void> show({required String title, required String body, String? imageUrl, String? notificationId}) async {
     StyleInformation styleInformation = BigTextStyleInformation(
       body,
       contentTitle: title,
@@ -50,8 +50,16 @@ class LocalNotificationsService {
       }
     }
 
+    // Deriving the local notification id from the server's notification_id
+    // (instead of the current timestamp) means a redelivered FCM message for
+    // the same notification replaces the existing banner rather than
+    // stacking a duplicate one.
+    final id = notificationId != null
+        ? notificationId.hashCode & 0x7fffffff
+        : DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
     await _plugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id,
       title,
       body,
       NotificationDetails(
