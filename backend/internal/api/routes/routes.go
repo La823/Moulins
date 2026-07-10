@@ -15,6 +15,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
@@ -23,12 +24,17 @@ import (
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
+	"github.com/lavanyaarora/server/internal/services"
 )
 
-func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
+func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, chatHub *services.ChatHub) {
 
 	// health check
 	router.HandleFunc("/health", health.Health).Methods("GET")
+
+	// chat websocket (authenticates itself via ?token= query param, since
+	// browsers can't set an Authorization header on a WebSocket handshake)
+	router.HandleFunc("/ws", messages.WebSocketHandler(db, chatHub)).Methods("GET")
 
 	// public auth routes
 	router.HandleFunc("/auth/login", auth.LoginHandler(db)).Methods("POST")
@@ -83,6 +89,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	// request routes (any authenticated user)
 	protected.HandleFunc("/requests", requests.CreateHandler(db)).Methods("POST")
 	protected.HandleFunc("/requests", requests.ListHandler(db)).Methods("GET")
+
+	// self-service assignment lookup (any authenticated user — clients see
+	// their employees, employees see their clients; used for chat contacts)
+	protected.HandleFunc("/my-assignments", assignments.MyAssignmentsHandler(db)).Methods("GET")
+	protected.HandleFunc("/chat-contacts", assignments.ChatContactsHandler(db)).Methods("GET")
+
+	// chat routes (any authenticated user)
+	protected.HandleFunc("/messages/conversations", messages.ListConversationsHandler(db)).Methods("GET")
+	protected.HandleFunc("/messages/{userId}", messages.HistoryHandler(db)).Methods("GET")
+	protected.HandleFunc("/messages/{userId}/read", messages.MarkReadHandler(db)).Methods("PUT")
 
 	// onboarding routes (any authenticated user)
 	onboardingHandler := handlers.NewOnboardingHandler(db)

@@ -53,9 +53,10 @@ func main() {
 	go services.StartScheduler(db)
 
 	rdb := cache.New()
+	chatHub := services.NewChatHub()
 
 	router := mux.NewRouter()
-	routes.RegisterRoutes(router, db, rdb)
+	routes.RegisterRoutes(router, db, rdb, chatHub)
 
 	handler := middleware.CORS(router)
 
