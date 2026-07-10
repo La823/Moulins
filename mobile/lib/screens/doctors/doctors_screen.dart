@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../models/doctor.dart';
 import '../../services/doctor_service.dart';
 import '../../widgets/notification_bell_button.dart';
@@ -107,6 +108,11 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
         elevation: 0,
         title: const Text('My Doctors', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF00A6A4), size: 20),
+            tooltip: 'My Meetings',
+            onPressed: () => context.push('/meetings'),
+          ),
           IconButton(
             icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
             onPressed: _showAddDialog,

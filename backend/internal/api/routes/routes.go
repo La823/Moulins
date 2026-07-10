@@ -13,10 +13,12 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
@@ -67,6 +69,19 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	protected.HandleFunc("/doctors/{id}/products", doctors.ListDoctorProductsHandler(db)).Methods("GET")
 	protected.HandleFunc("/doctors/{id}/products", doctors.AddDoctorProductHandler(db)).Methods("POST")
 	protected.HandleFunc("/doctors/{id}/products/{productId}", doctors.RemoveDoctorProductHandler(db)).Methods("DELETE")
+
+	// meeting routes (any authenticated user — customers and employees both own doctors/meetings)
+	protected.HandleFunc("/meetings", meetings.CreateHandler(db)).Methods("POST")
+	protected.HandleFunc("/meetings", meetings.ListHandler(db)).Methods("GET")
+	protected.HandleFunc("/meetings/{id}", meetings.GetHandler(db)).Methods("GET")
+	protected.HandleFunc("/meetings/{id}", meetings.UpdateHandler(db)).Methods("PUT")
+	protected.HandleFunc("/meetings/{id}/status", meetings.UpdateStatusHandler(db)).Methods("PUT")
+	protected.HandleFunc("/meetings/{id}/mom", meetings.UpdateMomHandler(db)).Methods("PUT")
+	protected.HandleFunc("/meetings/{id}", meetings.DeleteHandler(db)).Methods("DELETE")
+
+	// request routes (any authenticated user)
+	protected.HandleFunc("/requests", requests.CreateHandler(db)).Methods("POST")
+	protected.HandleFunc("/requests", requests.ListHandler(db)).Methods("GET")
 
 	// onboarding routes (any authenticated user)
 	onboardingHandler := handlers.NewOnboardingHandler(db)
@@ -182,4 +197,19 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client) {
 	productStaff.HandleFunc("/categories", categories.CreateHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/categories/{id}", categories.UpdateHandler(db, rdb)).Methods("PUT")
 	productStaff.HandleFunc("/categories/{id}", categories.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — meeting oversight
+	meetingsStaff := protected.PathPrefix("/admin").Subrouter()
+	meetingsStaff.Use(middleware.StaffOnly)
+	meetingsStaff.Use(middleware.RequirePermission(db, "meetings", rdb))
+
+	meetingsStaff.HandleFunc("/meetings", meetings.AdminListHandler(db)).Methods("GET")
+
+	// staff routes — request inbox
+	requestsStaff := protected.PathPrefix("/admin").Subrouter()
+	requestsStaff.Use(middleware.StaffOnly)
+	requestsStaff.Use(middleware.RequirePermission(db, "requests", rdb))
+
+	requestsStaff.HandleFunc("/requests", requests.AdminListHandler(db)).Methods("GET")
+	requestsStaff.HandleFunc("/requests/{id}/status", requests.AdminUpdateStatusHandler(db)).Methods("PUT")
 }

@@ -86,6 +86,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
         title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         actions: [
           IconButton(
+            icon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF00A6A4), size: 20),
+            tooltip: 'Schedule meeting',
+            onPressed: () => context.push('/meetings?doctor_id=${d.id}'),
+          ),
+          IconButton(
             icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
             tooltip: 'Assign product',
             onPressed: _showAddProductSheet,

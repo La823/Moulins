@@ -53,7 +53,7 @@ export default function HomeCarousel() {
                 {/* Image */}
                 <div className="relative overflow-hidden bg-gray-100">
                   {slide.image_url ? (
-                    <img src={slide.image_url} alt={slide.heading} className="w-full h-full object-cover" />
+                    <img src={slide.image_url} alt={slide.heading} className="w-full h-full object-cover object-top" />
                   ) : (
                     <div className="w-full h-full bg-gray-100" />
                   )}

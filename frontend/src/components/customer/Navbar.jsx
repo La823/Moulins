@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiFetch } from "@/lib/api";
 
 const panelEase = [0.33, 1, 0.68, 1];
 
@@ -171,7 +173,51 @@ export default function CustomerNavbar() {
   const { user, logout } = useAuth();
   const { itemCount, openCart } = useCart();
   const [activeMenu, setActiveMenu] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const navRef = useRef(null);
+  const router = useRouter();
+
+  // Lightweight top-5 suggestions as you type — the full product grid only
+  // loads once the search is actually submitted (Enter / clicking a result).
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      apiFetch(`/products?search=${encodeURIComponent(q)}&limit=5`)
+        .then((data) => {
+          setSearchSuggestions(data.products || []);
+          setShowSuggestions(true);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const goToSearch = (q) => {
+    if (!q) return;
+    router.push(`/products?search=${encodeURIComponent(q)}`);
+    setActiveMenu(null);
+    setShowSuggestions(false);
+    setSearchQuery("");
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    goToSearch(searchQuery.trim());
+  };
+
+  const handleSuggestionClick = (product) => {
+    router.push(`/products/${product.id}`);
+    setActiveMenu(null);
+    setShowSuggestions(false);
+    setSearchQuery("");
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -396,24 +442,14 @@ export default function CustomerNavbar() {
                           My Profile
                         </Link>
                         <Link
-                          href="/orders"
+                          href="/dashboard"
                           onClick={close}
                           className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
                           </svg>
-                          My Orders
-                        </Link>
-                        <Link
-                          href="/doctors"
-                          onClick={close}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
-                          </svg>
-                          My Doctors
+                          Dashboard
                         </Link>
                       </div>
                       <div className="border-t border-gray-100 py-1">
@@ -479,12 +515,49 @@ export default function CustomerNavbar() {
               transition={{ duration: 0.2, delay: 0.1 }}
             >
               <div className="max-w-7xl mx-auto px-8 py-10">
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  autoFocus
-                  className="w-full text-2xl font-light text-gray-900 placeholder:text-gray-300 outline-none border-b border-gray-200 pb-4"
-                />
+                <form onSubmit={handleSearchSubmit}>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search products, composition..."
+                    autoFocus
+                    className="w-full text-2xl font-light text-gray-900 placeholder:text-gray-300 outline-none border-b border-gray-200 pb-4"
+                  />
+                </form>
+
+                {/* Top-5 suggestions — lightweight, doesn't load the full grid */}
+                {showSuggestions && searchSuggestions.length > 0 && (
+                  <div className="mt-4 divide-y divide-gray-100">
+                    {searchSuggestions.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleSuggestionClick(p)}
+                        className="flex items-center gap-4 w-full py-3 text-left hover:bg-gray-50 transition-colors"
+                      >
+                        {p.images && p.images.length > 0 ? (
+                          <img
+                            src={p.images[0].image_url}
+                            alt={p.name}
+                            className="w-10 h-10 object-contain flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-gray-50 flex-shrink-0" />
+                        )}
+                        <span className="text-sm text-gray-700 truncate">{p.name}</span>
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => goToSearch(searchQuery.trim())}
+                      className="w-full py-3 text-left text-xs font-medium text-red-600 hover:text-red-700"
+                    >
+                      See all results for &ldquo;{searchQuery.trim()}&rdquo; &rarr;
+                    </button>
+                  </div>
+                )}
+                {showSuggestions && searchSuggestions.length === 0 && (
+                  <p className="mt-4 text-sm text-gray-400">No matches found</p>
+                )}
               </div>
             </motion.div>
           </motion.div>

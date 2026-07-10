@@ -48,7 +48,7 @@ class _HomeCarouselSectionState extends State<HomeCarouselSection> {
       child: Column(
         children: [
           SizedBox(
-            height: 460,
+            height: 500,
             child: PageView.builder(
               controller: _controller,
               itemCount: _slides.length,
@@ -102,46 +102,50 @@ class _SlideCard extends StatelessWidget {
       child: Column(
         children: [
           Expanded(
-            flex: 3,
+            flex: 7,
             child: ClipRRect(
-              child: slide.imageUrl.isEmpty
-                  ? Container(color: Colors.grey.shade100, width: double.infinity)
-                  : CachedNetworkImage(imageUrl: slide.imageUrl, fit: BoxFit.cover, width: double.infinity),
+              child: Container(
+                color: Colors.grey.shade100,
+                width: double.infinity,
+                child: slide.imageUrl.isEmpty
+                    ? null
+                    : CachedNetworkImage(imageUrl: slide.imageUrl, fit: BoxFit.contain, width: double.infinity),
+              ),
             ),
           ),
           Expanded(
-            flex: 4,
+            flex: 3,
             child: Container(
               width: double.infinity,
               color: _maroon,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     slide.heading,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 20, color: _cream, height: 1.2),
+                    style: const TextStyle(fontSize: 17, color: _cream, height: 1.15),
                   ),
                   if (slide.description.isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 6),
                     Text(
                       slide.description,
                       textAlign: TextAlign.center,
-                      maxLines: 3,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12.5, color: _cream.withValues(alpha: 0.8), height: 1.4),
+                      style: TextStyle(fontSize: 11.5, color: _cream.withValues(alpha: 0.8), height: 1.3),
                     ),
                   ],
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   GestureDetector(
                     onTap: () => context.push(resolveMobileRoute(slide.buttonLink)),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
                       color: _cream,
                       child: Text(
                         slide.buttonText,
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _maroon),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _maroon),
                       ),
                     ),
                   ),

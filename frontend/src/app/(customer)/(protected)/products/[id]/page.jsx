@@ -87,12 +87,18 @@ export default function ProductDetailPage() {
           <h1 className="text-3xl font-semibold text-gray-900 mb-4 leading-tight">{product.name}</h1>
           <div className="h-px bg-gray-200 mb-6" />
 
-          <p className="text-2xl font-light text-gray-900 mb-6">
-            MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
-          </p>
-
           {product.description && (
             <p className="text-gray-500 text-sm leading-relaxed mb-8">{product.description}</p>
+          )}
+
+          {product.key_ingredients && (
+            <div className="mb-8 pb-6 border-b border-gray-200">
+              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Composition</p>
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {product.key_ingredients}
+                {product.strength && ` — ${product.strength}`}
+              </p>
+            </div>
           )}
 
           {/* Details */}
@@ -114,6 +120,10 @@ export default function ProductDetailPage() {
               <span className="font-medium text-green-600">In Stock</span>
             </div>
           </div>
+
+          <p className="text-2xl font-light text-gray-900 mb-4">
+            MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
+          </p>
 
           <button
             onClick={handleAddToCart}

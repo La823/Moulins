@@ -18,6 +18,8 @@ import 'screens/home/home_screen.dart';
 import 'screens/home/profile_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
+import 'screens/meetings/meetings_screen.dart';
+import 'screens/requests/requests_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -94,6 +96,13 @@ class MoulinsApp extends ConsumerWidget {
               ],
             ),
             GoRoute(path: '/doctors', builder: (_, __) => const DoctorsScreen()),
+            GoRoute(
+              path: '/meetings',
+              builder: (_, state) => MeetingsScreen(
+                preselectedDoctorId: state.uri.queryParameters['doctor_id'],
+              ),
+            ),
+            GoRoute(path: '/requests', builder: (_, __) => const RequestsScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
           ],

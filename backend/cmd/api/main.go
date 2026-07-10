@@ -12,6 +12,7 @@ import (
 	"github.com/lavanyaarora/server/internal/database"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/server"
+	"github.com/lavanyaarora/server/internal/services"
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
@@ -48,6 +49,8 @@ func main() {
 	}
 
 	utils.InitFCM()
+
+	go services.StartScheduler(db)
 
 	rdb := cache.New()
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -525,6 +526,8 @@ export default function CustomerDetailPage() {
             </div>
           )}
           </div>
+
+          <UserMeetingsRequests userId={customer.id} />
         </div>
       </div>
     </>

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 
 export default function EmployeeDetailPage() {
   const { id } = useParams();
@@ -420,6 +421,8 @@ export default function EmployeeDetailPage() {
               </button>
             </div>
           </div>
+
+          <UserMeetingsRequests userId={employee.id} />
         </div>
       </div>
     </>

@@ -249,7 +249,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		conditions = append(conditions, "is_active = TRUE")
 	}
 	if search != "" {
-		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d)", argIdx, argIdx))
+		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d OR key_ingredients ILIKE $%d)", argIdx, argIdx, argIdx))
 		args = append(args, "%"+search+"%")
 		argIdx++
 	}

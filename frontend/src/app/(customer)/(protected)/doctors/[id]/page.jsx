@@ -104,13 +104,23 @@ export default function DoctorDetailPage() {
         <Link href="/doctors" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
           &larr; Back to doctors
         </Link>
-        <h1 className="text-2xl font-light text-gray-900 mt-3">{doctor.name}</h1>
-        {doctor.clinic_name && (
-          <p className="text-sm text-gray-500 mt-1">{doctor.clinic_name}</p>
-        )}
-        {doctor.phone && (
-          <p className="text-sm text-gray-400 mt-1">{doctor.phone}</p>
-        )}
+        <div className="flex items-start justify-between gap-4 mt-3">
+          <div>
+            <h1 className="text-2xl font-light text-gray-900">{doctor.name}</h1>
+            {doctor.clinic_name && (
+              <p className="text-sm text-gray-500 mt-1">{doctor.clinic_name}</p>
+            )}
+            {doctor.phone && (
+              <p className="text-sm text-gray-400 mt-1">{doctor.phone}</p>
+            )}
+          </div>
+          <Link
+            href={`/meetings?doctor_id=${doctor.id}`}
+            className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500 transition-colors flex-shrink-0"
+          >
+            Schedule Meeting
+          </Link>
+        </div>
       </div>
 
       {/* Assigned Products */}

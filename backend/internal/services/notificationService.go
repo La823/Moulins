@@ -67,3 +67,42 @@ func DispatchBroadcast(ctx context.Context, db *pgxpool.Pool, notification *mode
 
 	return models.UpdateNotificationStatus(ctx, db, notification.ID, status, len(eligibleUserIDs), successCount, failureCount)
 }
+
+// SendDirectNotification delivers a single-user notification (e.g. a meeting
+// reminder) through the same tables/pipeline as a broadcast: one
+// notifications row (audience_type='single_user'), one recipient row (so it
+// shows up in the in-app inbox immediately regardless of push), and a
+// best-effort FCM push to that user's registered devices.
+func SendDirectNotification(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, title, body string, deepLink *string) error {
+	notificationID, err := models.CreateSingleUserNotification(ctx, db, title, body, deepLink)
+	if err != nil {
+		return err
+	}
+
+	if err := models.CreateRecipientsBatch(ctx, db, notificationID, []uuid.UUID{userID}); err != nil {
+		return err
+	}
+
+	tokens, err := models.GetDeviceTokensForUsers(ctx, db, []uuid.UUID{userID})
+	if err != nil {
+		log.Printf("direct notification %s: failed to fetch device tokens: %v", notificationID, err)
+		return nil
+	}
+
+	data := map[string]string{"notification_id": notificationID.String()}
+	if deepLink != nil {
+		data["deep_link"] = *deepLink
+	}
+
+	successCount, _, invalidTokens, sendErr := utils.SendMulticast(ctx, tokens, title, body, "", data)
+	if sendErr != nil {
+		log.Printf("direct notification %s: push send error: %v", notificationID, sendErr)
+	}
+	if len(invalidTokens) > 0 {
+		if err := models.DeactivateDeviceTokens(ctx, db, invalidTokens); err != nil {
+			log.Printf("direct notification %s: failed to deactivate invalid tokens: %v", notificationID, err)
+		}
+	}
+
+	return models.UpdateNotificationStatus(ctx, db, notificationID, "sent", 1, successCount, len(tokens)-successCount)
+}

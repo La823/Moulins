@@ -26,12 +26,12 @@ type Notification struct {
 }
 
 type CreateNotificationRequest struct {
-	Title           string      `json:"title"`
-	Body            string      `json:"body"`
-	ImageKey        *string     `json:"image_key,omitempty"`
-	DeepLink        *string     `json:"deep_link,omitempty"`
-	ExcludeUserIDs  []uuid.UUID `json:"exclude_user_ids"`
-	CreatedBy       uuid.UUID   `json:"-"`
+	Title          string      `json:"title"`
+	Body           string      `json:"body"`
+	ImageKey       *string     `json:"image_key,omitempty"`
+	DeepLink       *string     `json:"deep_link,omitempty"`
+	ExcludeUserIDs []uuid.UUID `json:"exclude_user_ids"`
+	CreatedBy      uuid.UUID   `json:"-"`
 }
 
 // NotificationInboxItem is a recipient row joined with its notification content,
@@ -55,6 +55,19 @@ func CreateNotification(ctx context.Context, db *pgxpool.Pool, req CreateNotific
 		VALUES ($1, $2, $3, $4, 'all', 'sending', $5)
 		RETURNING id
 	`, req.Title, req.Body, req.ImageKey, req.DeepLink, req.CreatedBy).Scan(&id)
+	return id, err
+}
+
+// CreateSingleUserNotification is the individual-send counterpart to
+// CreateNotification's broadcast path — same table, audience_type
+// distinguishes them, per the notification module's original design.
+func CreateSingleUserNotification(ctx context.Context, db *pgxpool.Pool, title, body string, deepLink *string) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := db.QueryRow(ctx, `
+		INSERT INTO notifications (title, body, deep_link, audience_type, status, sent_at)
+		VALUES ($1, $2, $3, 'single_user', 'sent', NOW())
+		RETURNING id
+	`, title, body, deepLink).Scan(&id)
 	return id, err
 }
 

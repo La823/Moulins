@@ -45,7 +45,11 @@ class _Hero extends StatelessWidget {
         SizedBox(
           height: height,
           width: double.infinity,
-          child: Image.asset('assets/images/hero.jpg', fit: BoxFit.cover),
+          child: Image.asset(
+            'assets/images/hero.jpg',
+            fit: BoxFit.cover,
+            alignment: const Alignment(-0.4, -1.0),
+          ),
         ),
         Positioned.fill(
           child: DecoratedBox(
