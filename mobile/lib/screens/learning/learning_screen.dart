@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/learning.dart';
 import '../../services/learning_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
-import 'video_player_screen.dart';
 
 class LearningScreen extends StatefulWidget {
   const LearningScreen({super.key});
@@ -37,6 +37,23 @@ class _LearningScreenState extends State<LearningScreen> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  // Embedding YouTube inside a WebView proved unreliable — YouTube
+  // increasingly rejects non-browser embedded clients regardless of the
+  // video's own settings, so playback opens the real YouTube app/browser
+  // instead, which is always reliable.
+  Future<void> _openVideo(LearningVideo v) async {
+    try {
+      final launched = await launchUrl(Uri.parse(v.youtubeUrl), mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open video')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open video')));
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -115,9 +132,7 @@ class _LearningScreenState extends State<LearningScreen> {
                         itemBuilder: (ctx, i) {
                           final v = _videos[i];
                           return GestureDetector(
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => VideoPlayerScreen(video: v)),
-                            ),
+                            onTap: () => _openVideo(v),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

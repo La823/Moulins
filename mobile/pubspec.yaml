@@ -1,7 +1,7 @@
 name: moulins
 description: Moulins Pharmaceuticals customer app
 publish_to: none
-version: 1.0.4+6
+version: 1.0.5+7
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -27,7 +27,6 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   open_filex: ^4.5.0
   shared_preferences: ^2.3.2
-  youtube_player_iframe: ^5.2.0
 
 dev_dependencies:
   flutter_test:
