@@ -22,4 +22,12 @@ class User {
       );
 
   String get displayName => username ?? phoneNumber;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'phone_number': phoneNumber,
+        'username': username,
+        'role': role,
+        'permissions': permissions,
+      };
 }

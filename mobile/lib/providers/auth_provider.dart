@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,6 +56,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final token = data['token'] as String;
       await saveToken(token);
       final user = User.fromJson(data['user']);
+      await saveCachedUser(jsonEncode(user.toJson()));
       state = state.copyWith(user: user, loading: false, checked: true);
       unawaited(_registerDeviceToken());
       return true;
@@ -71,11 +74,35 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     try {
       final user = await _service.getMe();
+      await saveCachedUser(jsonEncode(user.toJson()));
       state = state.copyWith(user: user, checked: true);
       unawaited(_registerDeviceToken());
+    } on DioException catch (e) {
+      // A real auth failure (expired/invalid token) means the server
+      // itself rejected us — that's the only case where we should log
+      // out. Anything else (no connection, timeout, DNS failure, 5xx) is
+      // just us being unable to reach the server right now; the token is
+      // still good, so open the app with the last-known cached profile
+      // instead of forcing a login screen that also can't work offline.
+      final status = e.response?.statusCode;
+      if (status == 401 || status == 403) {
+        await clearToken();
+        state = state.copyWith(checked: true);
+        return;
+      }
+      final cached = await getCachedUser();
+      if (cached != null) {
+        state = state.copyWith(user: User.fromJson(jsonDecode(cached)), checked: true);
+      } else {
+        state = state.copyWith(checked: true);
+      }
     } catch (_) {
-      await clearToken();
-      state = state.copyWith(checked: true);
+      final cached = await getCachedUser();
+      if (cached != null) {
+        state = state.copyWith(user: User.fromJson(jsonDecode(cached)), checked: true);
+      } else {
+        state = state.copyWith(checked: true);
+      }
     }
   }
 

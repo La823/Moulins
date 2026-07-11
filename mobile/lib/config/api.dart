@@ -59,7 +59,28 @@ Future<String?> getToken() async {
 Future<void> clearToken() async {
   try {
     await _storage.delete(key: 'token');
+    await _storage.delete(key: 'cached_user');
   } catch (e) {
     debugPrint('Token clear error: $e');
+  }
+}
+
+// The last-known user profile, cached alongside the token so the app can
+// still open to a logged-in state while offline instead of forcing a
+// server round-trip (which login itself also can't do without network).
+Future<void> saveCachedUser(String userJson) async {
+  try {
+    await _storage.write(key: 'cached_user', value: userJson);
+  } catch (e) {
+    debugPrint('Cached user save error: $e');
+  }
+}
+
+Future<String?> getCachedUser() async {
+  try {
+    return await _storage.read(key: 'cached_user');
+  } catch (e) {
+    debugPrint('Cached user read error: $e');
+    return null;
   }
 }
