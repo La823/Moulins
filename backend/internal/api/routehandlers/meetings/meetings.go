@@ -25,19 +25,25 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if req.DoctorID == uuid.Nil || req.ScheduledAt.IsZero() {
-			http.Error(w, "doctor_id and scheduled_at are required", http.StatusBadRequest)
+		if req.ScheduledAt.IsZero() {
+			http.Error(w, "scheduled_at is required", http.StatusBadRequest)
+			return
+		}
+		if req.DoctorID == nil && (req.Title == nil || *req.Title == "") {
+			http.Error(w, "either doctor_id or title is required", http.StatusBadRequest)
 			return
 		}
 
-		doctor, err := models.GetDoctorByID(r.Context(), db, req.DoctorID)
-		if err != nil {
-			http.Error(w, "doctor not found", http.StatusNotFound)
-			return
-		}
-		if doctor.CustomerID != getUserID(r) {
-			http.Error(w, "not authorized", http.StatusForbidden)
-			return
+		if req.DoctorID != nil {
+			doctor, err := models.GetDoctorByID(r.Context(), db, *req.DoctorID)
+			if err != nil {
+				http.Error(w, "doctor not found", http.StatusNotFound)
+				return
+			}
+			if doctor.CustomerID != getUserID(r) {
+				http.Error(w, "not authorized", http.StatusForbidden)
+				return
+			}
 		}
 
 		id, err := models.CreateMeeting(r.Context(), db, getUserID(r), req)
@@ -116,19 +122,25 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if req.DoctorID == uuid.Nil || req.ScheduledAt.IsZero() {
-			http.Error(w, "doctor_id and scheduled_at are required", http.StatusBadRequest)
+		if req.ScheduledAt.IsZero() {
+			http.Error(w, "scheduled_at is required", http.StatusBadRequest)
+			return
+		}
+		if req.DoctorID == nil && (req.Title == nil || *req.Title == "") {
+			http.Error(w, "either doctor_id or title is required", http.StatusBadRequest)
 			return
 		}
 
-		doctor, err := models.GetDoctorByID(r.Context(), db, req.DoctorID)
-		if err != nil {
-			http.Error(w, "doctor not found", http.StatusNotFound)
-			return
-		}
-		if doctor.CustomerID != getUserID(r) {
-			http.Error(w, "not authorized", http.StatusForbidden)
-			return
+		if req.DoctorID != nil {
+			doctor, err := models.GetDoctorByID(r.Context(), db, *req.DoctorID)
+			if err != nil {
+				http.Error(w, "doctor not found", http.StatusNotFound)
+				return
+			}
+			if doctor.CustomerID != getUserID(r) {
+				http.Error(w, "not authorized", http.StatusForbidden)
+				return
+			}
 		}
 
 		if err := models.UpdateMeeting(r.Context(), db, id, req); err != nil {
@@ -217,12 +229,12 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if req.Status == "completed" {
+		if req.Status == "completed" && meeting.DoctorID != nil {
 			notes := meeting.Mom
 			if notes == nil || *notes == "" {
 				notes = meeting.Notes
 			}
-			if err := models.SyncDoctorLastMeetingFromCompletedMeeting(r.Context(), db, meeting.DoctorID, meeting.ScheduledAt, notes); err != nil {
+			if err := models.SyncDoctorLastMeetingFromCompletedMeeting(r.Context(), db, *meeting.DoctorID, meeting.ScheduledAt, notes); err != nil {
 				log.Printf("sync doctor last meeting error: %v", err)
 			}
 		}

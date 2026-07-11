@@ -9,14 +9,18 @@ class MeetingService {
     return (res.data as List<dynamic>).map((e) => Meeting.fromJson(e)).toList();
   }
 
+  // Either doctorId or title must be provided — a meeting is identified by
+  // one or the other (staff scheduling a general meeting has no doctor).
   Future<void> createMeeting({
-    required String doctorId,
+    String? doctorId,
+    String? title,
     required DateTime scheduledAt,
     String? notes,
     String? mom,
   }) async {
     await _dio.post('/meetings', data: {
-      'doctor_id': doctorId,
+      if (doctorId != null) 'doctor_id': doctorId,
+      if (title != null) 'title': title,
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       if (notes != null) 'notes': notes,
       if (mom != null) 'mom': mom,

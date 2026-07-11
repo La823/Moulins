@@ -50,7 +50,7 @@ export default function UserMeetingsRequests({ userId }) {
               {meetings.map((m) => (
                 <div key={m.id} className="p-4 flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-sm text-gray-900">Dr. {m.doctor_name}</p>
+                    <p className="text-sm text-gray-900">{m.doctor_name ? `Dr. ${m.doctor_name}` : m.title || "Meeting"}</p>
                     <p className="text-xs text-gray-500">
                       {new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                     </p>

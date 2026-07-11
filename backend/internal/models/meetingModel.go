@@ -10,40 +10,43 @@ import (
 )
 
 type Meeting struct {
-	ID                uuid.UUID `json:"id"`
-	UserID            uuid.UUID `json:"user_id"`
-	UserName          string    `json:"user_name,omitempty"`
-	DoctorID          uuid.UUID `json:"doctor_id"`
-	DoctorName        string    `json:"doctor_name,omitempty"`
-	ScheduledAt       time.Time `json:"scheduled_at"`
-	Notes             *string   `json:"notes,omitempty"`
-	Mom               *string   `json:"mom,omitempty"`
-	Status            string    `json:"status"`
-	Reminder1DaySent  bool      `json:"reminder_1day_sent"`
-	Reminder1HourSent bool      `json:"reminder_1hour_sent"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                uuid.UUID  `json:"id"`
+	UserID            uuid.UUID  `json:"user_id"`
+	UserName          string     `json:"user_name,omitempty"`
+	DoctorID          *uuid.UUID `json:"doctor_id,omitempty"`
+	DoctorName        string     `json:"doctor_name,omitempty"`
+	Title             *string    `json:"title,omitempty"`
+	ScheduledAt       time.Time  `json:"scheduled_at"`
+	Notes             *string    `json:"notes,omitempty"`
+	Mom               *string    `json:"mom,omitempty"`
+	Status            string     `json:"status"`
+	Reminder1DaySent  bool       `json:"reminder_1day_sent"`
+	Reminder1HourSent bool       `json:"reminder_1hour_sent"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 type CreateMeetingRequest struct {
-	DoctorID    uuid.UUID `json:"doctor_id"`
-	ScheduledAt time.Time `json:"scheduled_at"`
-	Notes       *string   `json:"notes,omitempty"`
-	Mom         *string   `json:"mom,omitempty"`
+	DoctorID    *uuid.UUID `json:"doctor_id,omitempty"`
+	Title       *string    `json:"title,omitempty"`
+	ScheduledAt time.Time  `json:"scheduled_at"`
+	Notes       *string    `json:"notes,omitempty"`
+	Mom         *string    `json:"mom,omitempty"`
 }
 
 type UpdateMeetingRequest struct {
-	DoctorID    uuid.UUID `json:"doctor_id"`
-	ScheduledAt time.Time `json:"scheduled_at"`
-	Notes       *string   `json:"notes,omitempty"`
-	Mom         *string   `json:"mom,omitempty"`
+	DoctorID    *uuid.UUID `json:"doctor_id,omitempty"`
+	Title       *string    `json:"title,omitempty"`
+	ScheduledAt time.Time  `json:"scheduled_at"`
+	Notes       *string    `json:"notes,omitempty"`
+	Mom         *string    `json:"mom,omitempty"`
 }
 
 func CreateMeeting(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req CreateMeetingRequest) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO meetings (user_id, doctor_id, scheduled_at, notes, mom) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		userID, req.DoctorID, req.ScheduledAt, req.Notes, req.Mom,
+		`INSERT INTO meetings (user_id, doctor_id, title, scheduled_at, notes, mom) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		userID, req.DoctorID, req.Title, req.ScheduledAt, req.Notes, req.Mom,
 	).Scan(&id)
 	return id, err
 }
@@ -51,10 +54,10 @@ func CreateMeeting(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req 
 func GetMeetingByID(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID) (*Meeting, error) {
 	var m Meeting
 	err := db.QueryRow(ctx,
-		`SELECT id, user_id, doctor_id, scheduled_at, notes, mom, status, reminder_1day_sent, reminder_1hour_sent, created_at, updated_at
+		`SELECT id, user_id, doctor_id, title, scheduled_at, notes, mom, status, reminder_1day_sent, reminder_1hour_sent, created_at, updated_at
 		 FROM meetings WHERE id = $1`,
 		meetingID,
-	).Scan(&m.ID, &m.UserID, &m.DoctorID, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status, &m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt)
+	).Scan(&m.ID, &m.UserID, &m.DoctorID, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status, &m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +91,10 @@ func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 	}
 
 	query := `
-		SELECT m.id, m.user_id, m.doctor_id, d.name, m.scheduled_at, m.notes, m.mom, m.status,
+		SELECT m.id, m.user_id, m.doctor_id, d.name, m.title, m.scheduled_at, m.notes, m.mom, m.status,
 		       m.reminder_1day_sent, m.reminder_1hour_sent, m.created_at, m.updated_at
 		FROM meetings m
-		JOIN doctors d ON d.id = m.doctor_id` + where + `
+		LEFT JOIN doctors d ON d.id = m.doctor_id` + where + `
 		ORDER BY m.scheduled_at ASC`
 
 	rows, err := db.Query(ctx, query, args...)
@@ -103,9 +106,13 @@ func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 	meetings := []Meeting{}
 	for rows.Next() {
 		var m Meeting
-		if err := rows.Scan(&m.ID, &m.UserID, &m.DoctorID, &m.DoctorName, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
+		var doctorName *string
+		if err := rows.Scan(&m.ID, &m.UserID, &m.DoctorID, &doctorName, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
 			&m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if doctorName != nil {
+			m.DoctorName = *doctorName
 		}
 		meetings = append(meetings, m)
 	}
@@ -166,10 +173,10 @@ func GetAllMeetings(ctx context.Context, db *pgxpool.Pool, filters AdminMeetingF
 	}
 
 	query := `
-		SELECT m.id, m.user_id, u.username, m.doctor_id, d.name, m.scheduled_at, m.notes, m.mom, m.status,
+		SELECT m.id, m.user_id, u.username, m.doctor_id, d.name, m.title, m.scheduled_at, m.notes, m.mom, m.status,
 		       m.reminder_1day_sent, m.reminder_1hour_sent, m.created_at, m.updated_at
 		FROM meetings m
-		JOIN doctors d ON d.id = m.doctor_id
+		LEFT JOIN doctors d ON d.id = m.doctor_id
 		JOIN users u ON u.id = m.user_id` + where + fmt.Sprintf(`
 		ORDER BY m.scheduled_at DESC
 		LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
@@ -185,12 +192,16 @@ func GetAllMeetings(ctx context.Context, db *pgxpool.Pool, filters AdminMeetingF
 	for rows.Next() {
 		var m Meeting
 		var username *string
-		if err := rows.Scan(&m.ID, &m.UserID, &username, &m.DoctorID, &m.DoctorName, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
+		var doctorName *string
+		if err := rows.Scan(&m.ID, &m.UserID, &username, &m.DoctorID, &doctorName, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
 			&m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		if username != nil {
 			m.UserName = *username
+		}
+		if doctorName != nil {
+			m.DoctorName = *doctorName
 		}
 		meetings = append(meetings, m)
 	}
@@ -199,10 +210,10 @@ func GetAllMeetings(ctx context.Context, db *pgxpool.Pool, filters AdminMeetingF
 
 func UpdateMeeting(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID, req UpdateMeetingRequest) error {
 	_, err := db.Exec(ctx,
-		`UPDATE meetings SET doctor_id = $1, scheduled_at = $2, notes = $3, mom = $4,
+		`UPDATE meetings SET doctor_id = $1, title = $2, scheduled_at = $3, notes = $4, mom = $5,
 		   reminder_1day_sent = FALSE, reminder_1hour_sent = FALSE, updated_at = now()
-		 WHERE id = $5`,
-		req.DoctorID, req.ScheduledAt, req.Notes, req.Mom, meetingID,
+		 WHERE id = $6`,
+		req.DoctorID, req.Title, req.ScheduledAt, req.Notes, req.Mom, meetingID,
 	)
 	return err
 }
@@ -239,10 +250,10 @@ func GetDueReminders(ctx context.Context, db *pgxpool.Pool, kind string) ([]Meet
 	}
 
 	query := fmt.Sprintf(`
-		SELECT m.id, m.user_id, m.doctor_id, d.name, m.scheduled_at, m.notes, m.mom, m.status,
+		SELECT m.id, m.user_id, m.doctor_id, d.name, m.title, m.scheduled_at, m.notes, m.mom, m.status,
 		       m.reminder_1day_sent, m.reminder_1hour_sent, m.created_at, m.updated_at
 		FROM meetings m
-		JOIN doctors d ON d.id = m.doctor_id
+		LEFT JOIN doctors d ON d.id = m.doctor_id
 		WHERE m.status = 'upcoming'
 		  AND m.%s = FALSE
 		  AND m.scheduled_at > now()
@@ -257,9 +268,13 @@ func GetDueReminders(ctx context.Context, db *pgxpool.Pool, kind string) ([]Meet
 	meetings := []Meeting{}
 	for rows.Next() {
 		var m Meeting
-		if err := rows.Scan(&m.ID, &m.UserID, &m.DoctorID, &m.DoctorName, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
+		var doctorName *string
+		if err := rows.Scan(&m.ID, &m.UserID, &m.DoctorID, &doctorName, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
 			&m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if doctorName != nil {
+			m.DoctorName = *doctorName
 		}
 		meetings = append(meetings, m)
 	}

@@ -132,7 +132,7 @@ export default function AdminMeetingsPage() {
               {meetings.map((m) => (
                 <tr key={m.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 text-gray-900">{m.user_name || "—"}</td>
-                  <td className="px-5 py-3 text-gray-700">{m.doctor_name}</td>
+                  <td className="px-5 py-3 text-gray-700">{m.doctor_name ? `Dr. ${m.doctor_name}` : m.title || "—"}</td>
                   <td className="px-5 py-3 text-gray-700">
                     {new Date(m.scheduled_at).toLocaleString(undefined, {
                       dateStyle: "medium",

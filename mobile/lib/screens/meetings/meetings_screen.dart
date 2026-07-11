@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/doctor.dart';
 import '../../models/meeting.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/request_service.dart';
@@ -15,15 +17,15 @@ const _ink = Color(0xFF1A1A1A);
 String _dateKey(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-class MeetingsScreen extends StatefulWidget {
+class MeetingsScreen extends ConsumerStatefulWidget {
   final String? preselectedDoctorId;
   const MeetingsScreen({super.key, this.preselectedDoctorId});
 
   @override
-  State<MeetingsScreen> createState() => _MeetingsScreenState();
+  ConsumerState<MeetingsScreen> createState() => _MeetingsScreenState();
 }
 
-class _MeetingsScreenState extends State<MeetingsScreen> {
+class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   List<Meeting> _meetings = [];
   bool _loading = true;
   DateTime _monthCursor = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -98,6 +100,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
         date: date,
         meetings: _meetings.where((m) => _dateKey(m.scheduledAt) == _dateKey(date)).toList(),
         preselectedDoctorId: preselectedDoctorId,
+        isCustomer: ref.read(authProvider).user?.role == 'customer',
         onChanged: _load,
       ),
     );
@@ -114,7 +117,7 @@ class _MeetingsScreenState extends State<MeetingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Dr. ${m.doctorName}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(m.displayTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const SizedBox(height: 4),
           Text(_formatDateTime(m.scheduledAt), style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
           if (m.notes != null && m.notes!.isNotEmpty) ...[
@@ -371,12 +374,14 @@ class _DaySheet extends StatefulWidget {
   final DateTime date;
   final List<Meeting> meetings;
   final String? preselectedDoctorId;
+  final bool isCustomer;
   final VoidCallback onChanged;
 
   const _DaySheet({
     required this.date,
     required this.meetings,
     this.preselectedDoctorId,
+    required this.isCustomer,
     required this.onChanged,
   });
 
@@ -388,6 +393,7 @@ class _DaySheetState extends State<_DaySheet> {
   List<Doctor> _doctors = [];
   String? _selectedDoctorId;
   TimeOfDay? _time = const TimeOfDay(hour: 11, minute: 0);
+  final _titleCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _momCtrl = TextEditingController();
   final _requestCtrl = TextEditingController();
@@ -398,6 +404,10 @@ class _DaySheetState extends State<_DaySheet> {
   @override
   void initState() {
     super.initState();
+    if (!widget.isCustomer) {
+      _loadingDoctors = false;
+      return;
+    }
     _selectedDoctorId = widget.preselectedDoctorId;
     DoctorService().getDoctors().then((d) {
       if (mounted) setState(() { _doctors = d; _loadingDoctors = false; });
@@ -407,21 +417,30 @@ class _DaySheetState extends State<_DaySheet> {
   }
 
   Future<void> _submit() async {
-    if (_selectedDoctorId == null || _time == null) {
-      setState(() => _error = 'Doctor and time are required');
+    if (_time == null) {
+      setState(() => _error = 'Time is required');
+      return;
+    }
+    if (widget.isCustomer && _selectedDoctorId == null) {
+      setState(() => _error = 'Doctor is required');
+      return;
+    }
+    if (!widget.isCustomer && _titleCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Title is required');
       return;
     }
     setState(() { _submitting = true; _error = null; });
     try {
       final scheduledAt = DateTime(widget.date.year, widget.date.month, widget.date.day, _time!.hour, _time!.minute);
       await MeetingService().createMeeting(
-        doctorId: _selectedDoctorId!,
+        doctorId: widget.isCustomer ? _selectedDoctorId : null,
+        title: widget.isCustomer ? null : _titleCtrl.text.trim(),
         scheduledAt: scheduledAt,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         mom: _momCtrl.text.trim().isEmpty ? null : _momCtrl.text.trim(),
       );
 
-      if (_requestCtrl.text.trim().isNotEmpty) {
+      if (widget.isCustomer && _requestCtrl.text.trim().isNotEmpty) {
         final matches = _doctors.where((d) => d.id == _selectedDoctorId);
         final doctorName = matches.isEmpty ? 'doctor' : matches.first.name;
         try {
@@ -472,7 +491,7 @@ class _DaySheetState extends State<_DaySheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Dr. ${m.doctorName}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                            Text(m.displayTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                             Text(_formatTime(m.scheduledAt), style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                             if (m.notes != null && m.notes!.isNotEmpty)
                               Text(m.notes!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
@@ -499,21 +518,33 @@ class _DaySheetState extends State<_DaySheet> {
             ),
             const SizedBox(height: 12),
 
-            _loadingDoctors
-                ? const Center(child: CircularProgressIndicator(color: _teal))
-                : DropdownButtonFormField<String>(
-                    initialValue: _selectedDoctorId,
-                    decoration: InputDecoration(
-                      labelText: 'Doctor',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    items: _doctors
-                        .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name, overflow: TextOverflow.ellipsis)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedDoctorId = v),
-                  ),
+            if (widget.isCustomer)
+              _loadingDoctors
+                  ? const Center(child: CircularProgressIndicator(color: _teal))
+                  : DropdownButtonFormField<String>(
+                      initialValue: _selectedDoctorId,
+                      decoration: InputDecoration(
+                        labelText: 'Doctor',
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                      ),
+                      items: _doctors
+                          .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name, overflow: TextOverflow.ellipsis)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedDoctorId = v),
+                    )
+            else
+              TextField(
+                controller: _titleCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Title',
+                  hintText: 'e.g. Team sync, Client call...',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                ),
+              ),
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: () async {
@@ -545,23 +576,25 @@ class _DaySheetState extends State<_DaySheet> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _requestCtrl,
-              maxLines: 2,
-              decoration: InputDecoration(
-                labelText: 'Doctor requested something? (optional)',
-                hintText: 'e.g. needs more samples, a brochure...',
-                filled: true,
-                fillColor: Colors.grey.shade50,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+            if (widget.isCustomer) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _requestCtrl,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Doctor requested something? (optional)',
+                  hintText: 'e.g. needs more samples, a brochure...',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'This gets flagged to our team separately so it doesn\'t get lost in the notes.',
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-            ),
+              const SizedBox(height: 4),
+              Text(
+                'This gets flagged to our team separately so it doesn\'t get lost in the notes.',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
