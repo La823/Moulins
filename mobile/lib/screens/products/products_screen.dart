@@ -17,7 +17,8 @@ final categoriesProvider = FutureProvider<List<String>>((ref) async {
 });
 
 class ProductsScreen extends ConsumerStatefulWidget {
-  const ProductsScreen({super.key});
+  final String? initialCategory;
+  const ProductsScreen({super.key, this.initialCategory});
 
   @override
   ConsumerState<ProductsScreen> createState() => _ProductsScreenState();
@@ -37,6 +38,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   @override
   void initState() {
     super.initState();
+    _category = widget.initialCategory ?? '';
     _load();
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {

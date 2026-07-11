@@ -8,6 +8,18 @@ const _knownMobileRoutes = {
   '/cart',
 };
 
+// The website has dedicated landing pages per product division that don't
+// exist as standalone screens in the app — mapped instead to the products
+// catalogue pre-filtered to that division's category, so "Learn more"
+// links land on the right set of products instead of the full catalogue.
+const _divisionCategoryMap = {
+  '/pediatric': 'Little Planet (Pediatric)',
+  '/orthopaedic': 'Bone Voyage (Orthopaedics)',
+  '/gastroenterology': 'Gusty (Gastro)',
+  '/neurology': 'Mindset (Neuro/Psychiatry)',
+  '/gynaecology': 'Srishti (Gynaecology)',
+};
+
 /// The website and app share the same admin-entered link text (e.g. "/about"
 /// which only exists on the website), so unrecognized paths fall back to
 /// the products catalogue instead of crashing go_router with an unknown route.
@@ -16,6 +28,12 @@ String resolveMobileRoute(String link) {
   final segment = path.startsWith('/') ? path : '/$path';
   final parts = segment.split('/').where((s) => s.isNotEmpty).toList();
   final firstSegment = '/${parts.isNotEmpty ? parts.first : ''}';
+
+  final category = _divisionCategoryMap[firstSegment];
+  if (category != null) {
+    return '/products?category=${Uri.encodeComponent(category)}';
+  }
+
   return _knownMobileRoutes.contains(firstSegment) ? segment : '/products';
 }
 
