@@ -22,6 +22,7 @@ import 'screens/meetings/meetings_screen.dart';
 import 'screens/requests/requests_screen.dart';
 import 'screens/chat/chat_list_screen.dart';
 import 'screens/products/favorites_screen.dart';
+import 'screens/learning/learning_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -108,6 +109,7 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/requests', builder: (_, __) => const RequestsScreen()),
             GoRoute(path: '/chat', builder: (_, __) => const ChatListScreen()),
             GoRoute(path: '/favorites', builder: (_, __) => const FavoritesScreen()),
+            GoRoute(path: '/learning', builder: (_, __) => const LearningScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
           ],

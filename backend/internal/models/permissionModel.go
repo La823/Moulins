@@ -23,6 +23,7 @@ var ValidPermissions = []PermissionDef{
 	{Key: "meetings", Label: "Meetings", Desc: "View and analyze customer/employee doctor meetings"},
 	{Key: "requests", Label: "Requests", Desc: "View and resolve customer/employee requests"},
 	{Key: "ledger", Label: "Ledger", Desc: "Upload and update customer account ledgers"},
+	{Key: "learning", Label: "Learning", Desc: "Manage learning videos and playlists"},
 }
 
 // IsValidPermission checks whether a permission key exists in ValidPermissions.

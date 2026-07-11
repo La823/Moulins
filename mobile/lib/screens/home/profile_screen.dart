@@ -138,6 +138,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _menuItem(Icons.assignment_outlined, 'My Requests', () => context.go('/requests')),
                 _divider(),
                 _menuItem(Icons.chat_bubble_outline, 'Messages', () => context.go('/chat')),
+                _divider(),
+                _menuItem(Icons.ondemand_video_outlined, 'Learning', () => context.go('/learning')),
               ],
             ),
           ),

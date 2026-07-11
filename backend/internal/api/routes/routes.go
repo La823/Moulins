@@ -13,6 +13,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/learning"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/ledger"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
@@ -98,6 +99,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// self-service ledger lookup (customer's own current ledger)
 	protected.HandleFunc("/ledger", ledger.GetMyLedgerHandler(db)).Methods("GET")
+
+	// learning platform — browsing (any authenticated user)
+	protected.HandleFunc("/learning/videos", learning.ListVideosHandler(db)).Methods("GET")
+	protected.HandleFunc("/learning/playlists", learning.ListPlaylistsHandler(db)).Methods("GET")
 
 	// favorite products (any authenticated user)
 	protected.HandleFunc("/favorites", products.ListFavoritesHandler(db)).Methods("GET")
@@ -258,4 +263,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	ledgerStaff.HandleFunc("/ledger/upload-url", ledger.UploadURLHandler()).Methods("POST")
 	ledgerStaff.HandleFunc("/customers/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
 	ledgerStaff.HandleFunc("/customers/{id}/ledger", ledger.GetLedgerHandler(db)).Methods("GET")
+
+	// staff routes — learning platform management
+	learningStaff := protected.PathPrefix("/admin").Subrouter()
+	learningStaff.Use(middleware.StaffOnly)
+	learningStaff.Use(middleware.RequirePermission(db, "learning", rdb))
+
+	learningStaff.HandleFunc("/learning/videos", learning.CreateVideoHandler(db)).Methods("POST")
+	learningStaff.HandleFunc("/learning/videos/{id}", learning.DeleteVideoHandler(db)).Methods("DELETE")
+	learningStaff.HandleFunc("/learning/playlists", learning.CreatePlaylistHandler(db)).Methods("POST")
+	learningStaff.HandleFunc("/learning/playlists/{id}", learning.DeletePlaylistHandler(db)).Methods("DELETE")
+	learningStaff.HandleFunc("/learning/playlists/{id}/videos", learning.AddVideoToPlaylistHandler(db)).Methods("POST")
+	learningStaff.HandleFunc("/learning/playlists/{id}/videos/{videoId}", learning.RemoveVideoFromPlaylistHandler(db)).Methods("DELETE")
 }
