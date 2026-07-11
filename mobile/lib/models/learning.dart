@@ -5,6 +5,8 @@ class LearningVideo {
   final String title;
   final String? description;
   final String thumbnailUrl;
+  final String? productId;
+  final String? productName;
 
   LearningVideo({
     required this.id,
@@ -13,6 +15,8 @@ class LearningVideo {
     required this.title,
     this.description,
     required this.thumbnailUrl,
+    this.productId,
+    this.productName,
   });
 
   factory LearningVideo.fromJson(Map<String, dynamic> json) => LearningVideo(
@@ -22,6 +26,8 @@ class LearningVideo {
         title: json['title'] ?? '',
         description: json['description'],
         thumbnailUrl: json['thumbnail_url'] ?? '',
+        productId: json['product_id'],
+        productName: json['product_name'],
       );
 }
 

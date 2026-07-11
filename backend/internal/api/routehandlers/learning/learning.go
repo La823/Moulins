@@ -20,7 +20,7 @@ func getUserID(r *http.Request) uuid.UUID {
 }
 
 // GET /learning/videos — public listing for customers/employees, with
-// optional ?search= and ?playlist_id= filters.
+// optional ?search=, ?playlist_id= and ?product_id= filters.
 func ListVideosHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		search := strings.TrimSpace(r.URL.Query().Get("search"))
@@ -35,7 +35,17 @@ func ListVideosHandler(db *pgxpool.Pool) http.HandlerFunc {
 			playlistID = &pid
 		}
 
-		videos, err := models.GetLearningVideos(r.Context(), db, search, playlistID)
+		var productID *uuid.UUID
+		if pidStr := r.URL.Query().Get("product_id"); pidStr != "" {
+			pid, err := uuid.Parse(pidStr)
+			if err != nil {
+				http.Error(w, "invalid product id", http.StatusBadRequest)
+				return
+			}
+			productID = &pid
+		}
+
+		videos, err := models.GetLearningVideos(r.Context(), db, search, playlistID, productID)
 		if err != nil {
 			log.Printf("list learning videos error: %v", err)
 			http.Error(w, "could not fetch videos", http.StatusInternalServerError)
@@ -75,6 +85,10 @@ func CreateVideoHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "title and youtube_url are required", http.StatusBadRequest)
 			return
 		}
+		if req.ProductID == nil {
+			http.Error(w, "product_id is required", http.StatusBadRequest)
+			return
+		}
 
 		youtubeID, err := models.ExtractYoutubeID(req.YoutubeURL)
 		if err != nil {
@@ -82,7 +96,7 @@ func CreateVideoHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		videoID, err := models.CreateLearningVideo(r.Context(), db, youtubeID, req.YoutubeURL, req.Title, req.Description, getUserID(r))
+		videoID, err := models.CreateLearningVideo(r.Context(), db, youtubeID, req.YoutubeURL, req.Title, req.Description, req.ProductID, getUserID(r))
 		if err != nil {
 			log.Printf("create learning video error: %v", err)
 			http.Error(w, "could not create video", http.StatusInternalServerError)

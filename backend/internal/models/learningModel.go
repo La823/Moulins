@@ -11,13 +11,15 @@ import (
 )
 
 type LearningVideo struct {
-	ID           uuid.UUID `json:"id"`
-	YoutubeID    string    `json:"youtube_id"`
-	YoutubeURL   string    `json:"youtube_url"`
-	Title        string    `json:"title"`
-	Description  *string   `json:"description,omitempty"`
-	ThumbnailURL string    `json:"thumbnail_url"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           uuid.UUID  `json:"id"`
+	YoutubeID    string     `json:"youtube_id"`
+	YoutubeURL   string     `json:"youtube_url"`
+	Title        string     `json:"title"`
+	Description  *string    `json:"description,omitempty"`
+	ThumbnailURL string     `json:"thumbnail_url"`
+	ProductID    *uuid.UUID `json:"product_id,omitempty"`
+	ProductName  string     `json:"product_name,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 type LearningPlaylist struct {
@@ -29,10 +31,11 @@ type LearningPlaylist struct {
 }
 
 type CreateVideoRequest struct {
-	YoutubeURL  string  `json:"youtube_url"`
-	Title       string  `json:"title"`
-	Description *string `json:"description,omitempty"`
-	PlaylistID  *string `json:"playlist_id,omitempty"`
+	YoutubeURL  string     `json:"youtube_url"`
+	Title       string     `json:"title"`
+	Description *string    `json:"description,omitempty"`
+	PlaylistID  *string    `json:"playlist_id,omitempty"`
+	ProductID   *uuid.UUID `json:"product_id,omitempty"`
 }
 
 type CreatePlaylistRequest struct {
@@ -56,12 +59,12 @@ func ThumbnailURLForYoutubeID(youtubeID string) string {
 	return fmt.Sprintf("https://img.youtube.com/vi/%s/hqdefault.jpg", youtubeID)
 }
 
-func CreateLearningVideo(ctx context.Context, db *pgxpool.Pool, youtubeID, youtubeURL, title string, description *string, createdBy uuid.UUID) (uuid.UUID, error) {
+func CreateLearningVideo(ctx context.Context, db *pgxpool.Pool, youtubeID, youtubeURL, title string, description *string, productID *uuid.UUID, createdBy uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO learning_videos (youtube_id, youtube_url, title, description, created_by)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		youtubeID, youtubeURL, title, description, createdBy,
+		`INSERT INTO learning_videos (youtube_id, youtube_url, title, description, product_id, created_by)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		youtubeID, youtubeURL, title, description, productID, createdBy,
 	).Scan(&id)
 	return id, err
 }
@@ -71,23 +74,29 @@ func DeleteLearningVideo(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) er
 	return err
 }
 
-func GetLearningVideos(ctx context.Context, db *pgxpool.Pool, search string, playlistID *uuid.UUID) ([]LearningVideo, error) {
-	query := `SELECT id, youtube_id, youtube_url, title, description, created_at FROM learning_videos v`
+func GetLearningVideos(ctx context.Context, db *pgxpool.Pool, search string, playlistID, productID *uuid.UUID) ([]LearningVideo, error) {
+	query := `SELECT v.id, v.youtube_id, v.youtube_url, v.title, v.description, v.product_id, COALESCE(p.name, ''), v.created_at
+	          FROM learning_videos v
+	          LEFT JOIN products p ON p.id = v.product_id`
 	args := []any{}
 	argIdx := 1
 	conditions := []string{}
 
 	if playlistID != nil {
-		query = `SELECT v.id, v.youtube_id, v.youtube_url, v.title, v.description, v.created_at
-		         FROM learning_videos v
-		         JOIN learning_playlist_videos pv ON pv.video_id = v.id`
+		query += ` JOIN learning_playlist_videos pv ON pv.video_id = v.id`
 		conditions = append(conditions, fmt.Sprintf("pv.playlist_id = $%d", argIdx))
 		args = append(args, *playlistID)
 		argIdx++
 	}
 
+	if productID != nil {
+		conditions = append(conditions, fmt.Sprintf("v.product_id = $%d", argIdx))
+		args = append(args, *productID)
+		argIdx++
+	}
+
 	if search != "" {
-		conditions = append(conditions, fmt.Sprintf("v.title ILIKE $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("(v.title ILIKE $%d OR p.name ILIKE $%d)", argIdx, argIdx))
 		args = append(args, "%"+search+"%")
 		argIdx++
 	}
@@ -114,7 +123,7 @@ func GetLearningVideos(ctx context.Context, db *pgxpool.Pool, search string, pla
 	videos := []LearningVideo{}
 	for rows.Next() {
 		var v LearningVideo
-		if err := rows.Scan(&v.ID, &v.YoutubeID, &v.YoutubeURL, &v.Title, &v.Description, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.YoutubeID, &v.YoutubeURL, &v.Title, &v.Description, &v.ProductID, &v.ProductName, &v.CreatedAt); err != nil {
 			return nil, err
 		}
 		v.ThumbnailURL = ThumbnailURLForYoutubeID(v.YoutubeID)

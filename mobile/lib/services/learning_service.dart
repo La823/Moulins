@@ -4,10 +4,11 @@ import '../models/learning.dart';
 class LearningService {
   final _dio = createDio();
 
-  Future<List<LearningVideo>> getVideos({String search = '', String? playlistId}) async {
+  Future<List<LearningVideo>> getVideos({String search = '', String? playlistId, String? productId}) async {
     final res = await _dio.get('/learning/videos', queryParameters: {
       if (search.isNotEmpty) 'search': search,
       if (playlistId != null && playlistId.isNotEmpty) 'playlist_id': playlistId,
+      if (productId != null && productId.isNotEmpty) 'product_id': productId,
     });
     return (res.data as List<dynamic>).map((e) => LearningVideo.fromJson(e)).toList();
   }

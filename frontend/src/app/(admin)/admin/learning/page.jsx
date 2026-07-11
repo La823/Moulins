@@ -16,6 +16,10 @@ export default function AdminLearningPage() {
   const [description, setDescription] = useState("");
   const [playlistId, setPlaylistId] = useState("");
   const [addingVideo, setAddingVideo] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [productId, setProductId] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [showProductPicker, setShowProductPicker] = useState(false);
 
   // New playlist form
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
@@ -26,10 +30,11 @@ export default function AdminLearningPage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([apiFetch("/learning/videos"), apiFetch("/learning/playlists")])
-      .then(([v, p]) => {
+    Promise.all([apiFetch("/learning/videos"), apiFetch("/learning/playlists"), apiFetch("/products?limit=1000")])
+      .then(([v, p, prodRes]) => {
         setVideos(v || []);
         setPlaylists(p || []);
+        setProducts(prodRes?.products || prodRes || []);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -49,6 +54,11 @@ export default function AdminLearningPage() {
     setError("");
     setAddingVideo(true);
     try {
+      if (!productId) {
+        setError("Please link a product to this video");
+        setAddingVideo(false);
+        return;
+      }
       await apiFetch("/admin/learning/videos", {
         method: "POST",
         body: JSON.stringify({
@@ -56,12 +66,15 @@ export default function AdminLearningPage() {
           title,
           description: description || null,
           playlist_id: playlistId || null,
+          product_id: productId,
         }),
       });
       setYoutubeUrl("");
       setTitle("");
       setDescription("");
       setPlaylistId("");
+      setProductId("");
+      setProductSearch("");
       setSuccess("Video added and broadcast to all customers");
       load();
     } catch (err) {
@@ -178,6 +191,42 @@ export default function AdminLearningPage() {
                 rows={2}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
               />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={productId ? products.find((p) => p.id === productId)?.name || "" : productSearch}
+                  onChange={(e) => {
+                    setProductId("");
+                    setProductSearch(e.target.value);
+                    setShowProductPicker(true);
+                  }}
+                  onFocus={() => setShowProductPicker(true)}
+                  placeholder="Link a product... *"
+                  required
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+                {showProductPicker && productSearch && !productId && (
+                  <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                    {products
+                      .filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase()))
+                      .slice(0, 30)
+                      .map((p) => (
+                        <button
+                          type="button"
+                          key={p.id}
+                          onClick={() => {
+                            setProductId(p.id);
+                            setProductSearch("");
+                            setShowProductPicker(false);
+                          }}
+                          className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
               <select
                 value={playlistId}
                 onChange={(e) => setPlaylistId(e.target.value)}
@@ -259,6 +308,9 @@ export default function AdminLearningPage() {
                     <img src={v.thumbnail_url} alt={v.title} className="w-full aspect-video object-cover" />
                     <div className="p-3">
                       <p className="text-sm font-medium text-gray-900 line-clamp-2">{v.title}</p>
+                      {v.product_name && (
+                        <p className="text-xs text-gray-400 mt-0.5">Linked: {v.product_name}</p>
+                      )}
                       <div className="flex items-center justify-between mt-2">
                         <button
                           onClick={() => setAssigning(assigning === v.id ? null : v.id)}

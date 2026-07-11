@@ -13,12 +13,16 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
   const [added, setAdded] = useState(false);
+  const [videos, setVideos] = useState([]);
 
   useEffect(() => {
     apiFetch(`/products/${id}`)
       .then((data) => setProduct(data))
       .catch(() => setProduct(null))
       .finally(() => setLoading(false));
+    apiFetch(`/learning/videos?product_id=${id}`)
+      .then((data) => setVideos(Array.isArray(data) ? data : []))
+      .catch(() => setVideos([]));
   }, [id]);
 
   const handleAddToCart = () => {
@@ -151,6 +155,34 @@ export default function ProductDetailPage() {
                     </svg>
                     <span className="text-sm text-gray-700 group-hover:text-gray-900 flex-1 truncate">{doc.name}</span>
                     <span className="text-xs text-red-600 font-medium flex-shrink-0">View PDF &rarr;</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Related videos */}
+          {videos.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <p className="text-xs uppercase tracking-widest text-gray-400 mb-3">Related Videos</p>
+              <div className="grid grid-cols-2 gap-3">
+                {videos.map((v) => (
+                  <a
+                    key={v.id}
+                    href={v.youtube_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group"
+                  >
+                    <div className="aspect-video rounded-lg overflow-hidden bg-gray-100 relative">
+                      <img src={v.thumbnail_url} alt={v.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1.5 line-clamp-2">{v.title}</p>
                   </a>
                 ))}
               </div>

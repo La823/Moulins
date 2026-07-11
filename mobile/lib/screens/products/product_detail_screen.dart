@@ -7,6 +7,9 @@ import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
 import '../../services/product_service.dart';
+import '../../services/learning_service.dart';
+import '../../models/learning.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../utils/responsive.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
@@ -22,11 +25,15 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   bool _loading = true;
   int _selectedImage = 0;
   final Set<String> _downloadingDocs = {};
+  List<LearningVideo> _videos = [];
 
   @override
   void initState() {
     super.initState();
     _load();
+    LearningService().getVideos(productId: widget.productId).then((v) {
+      if (mounted) setState(() => _videos = v);
+    }).catchError((_) {});
   }
 
   Future<void> _load() async {
@@ -210,6 +217,48 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           ),
                         ),
                       ),
+                  ],
+                  if (_videos.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    const Text('Related Videos', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 10),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: 1.4,
+                      ),
+                      itemCount: _videos.length,
+                      itemBuilder: (context, i) {
+                        final v = _videos[i];
+                        return GestureDetector(
+                          onTap: () => launchUrl(Uri.parse(v.youtubeUrl), mode: LaunchMode.externalApplication),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Stack(
+                              children: [
+                                SizedBox.expand(
+                                  child: CachedNetworkImage(
+                                    imageUrl: v.thumbnailUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Container(color: Colors.grey.shade100),
+                                    errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100),
+                                  ),
+                                ),
+                                const Positioned.fill(
+                                  child: Center(
+                                    child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32, shadows: [Shadow(color: Colors.black45, blurRadius: 8)]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                   const SizedBox(height: 100),
                 ],
