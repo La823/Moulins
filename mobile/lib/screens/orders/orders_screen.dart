@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/order.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/order_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
@@ -8,14 +10,14 @@ import '../../widgets/profile_button.dart';
 import 'package:intl/intl.dart';
 import '../../utils/responsive.dart';
 
-class OrdersScreen extends StatefulWidget {
+class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key});
 
   @override
-  State<OrdersScreen> createState() => _OrdersScreenState();
+  ConsumerState<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   List<Order>? _orders;
   bool _loading = true;
 
@@ -27,7 +29,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _load() async {
     try {
-      final orders = await OrderService().getMyOrders();
+      final isCustomer = ref.read(authProvider).user?.role == 'customer';
+      final orders = isCustomer
+          ? await OrderService().getMyOrders()
+          : await OrderService().getAllOrders();
       setState(() { _orders = orders; _loading = false; });
     } catch (_) {
       setState(() => _loading = false);
@@ -36,12 +41,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCustomer = ref.watch(authProvider).user?.role == 'customer';
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('My Orders', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        title: Text(isCustomer ? 'My Orders' : 'Orders', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: ResponsiveCenter(child: _loading

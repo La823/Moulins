@@ -33,6 +33,14 @@ class OrderService {
     return res.data['order_id'] ?? res.data['id'] ?? '';
   }
 
+  // Staff (admin/employee) see every order that comes in, not just their
+  // own — there's no self-service "my orders" concept for them.
+  Future<List<Order>> getAllOrders({int page = 1, int limit = 50}) async {
+    final res = await _dio.get('/admin/orders', queryParameters: {'page': page, 'limit': limit});
+    final list = res.data['orders'] as List<dynamic>? ?? [];
+    return list.map((e) => Order.fromJson(e)).toList();
+  }
+
   Future<Map<String, String>> getPhotoUploadUrl(String filename) async {
     final res = await _dio.post('/admin/orders/upload-url', data: {'filename': filename});
     return {'upload_url': res.data['upload_url'], 'key': res.data['key']};

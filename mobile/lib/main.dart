@@ -146,6 +146,16 @@ class _AppShell extends ConsumerStatefulWidget {
   ConsumerState<_AppShell> createState() => _AppShellState();
 }
 
+class _NavItem {
+  final String route;
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  const _NavItem({required this.route, required this.icon, required this.selectedIcon, required this.label});
+}
+
+const _teal = Color(0xFF00A6A4);
+
 class _AppShellState extends ConsumerState<_AppShell> {
   @override
   void initState() {
@@ -153,14 +163,6 @@ class _AppShellState extends ConsumerState<_AppShell> {
     Future.microtask(() =>
         ref.read(authProvider.notifier).loadUser().catchError((_) {}));
     Future.microtask(() => ref.read(notificationsProvider.notifier).load());
-  }
-
-  int get _selectedIndex {
-    if (widget.location.startsWith('/products')) return 1;
-    if (widget.location.startsWith('/doctors')) return 2;
-    if (widget.location.startsWith('/meetings')) return 3;
-    if (widget.location.startsWith('/orders')) return 4;
-    return 0;
   }
 
   @override
@@ -175,47 +177,36 @@ class _AppShellState extends ConsumerState<_AppShell> {
       );
     }
 
+    // "My Doctors" is a personal doctor-tracking list, which only makes
+    // sense for customers (medical reps track meetings differently) — not
+    // shown to admin/employee logins at all.
+    final isCustomer = user.role == 'customer';
+    final destinations = <_NavItem>[
+      const _NavItem(route: '/home', icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
+      const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),
+      if (isCustomer)
+        const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
+      const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
+      const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+    ];
+
+    var selectedIndex = destinations.indexWhere((d) => widget.location.startsWith(d.route));
+    if (selectedIndex < 0) selectedIndex = 0;
+
     return Scaffold(
       body: widget.child,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (i) {
-          switch (i) {
-            case 0: context.go('/home');
-            case 1: context.go('/products');
-            case 2: context.go('/doctors');
-            case 3: context.go('/meetings');
-            case 4: context.go('/orders');
-          }
-        },
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (i) => context.go(destinations[i].route),
         backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFF00A6A4).withValues(alpha: 0.15),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home, color: Color(0xFF00A6A4)),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.medication_outlined),
-            selectedIcon: Icon(Icons.medication, color: Color(0xFF00A6A4)),
-            label: 'Products',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outlined),
-            selectedIcon: Icon(Icons.people, color: Color(0xFF00A6A4)),
-            label: 'Doctors',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_today_outlined),
-            selectedIcon: Icon(Icons.calendar_today, color: Color(0xFF00A6A4)),
-            label: 'Meetings',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long, color: Color(0xFF00A6A4)),
-            label: 'Orders',
-          ),
+        indicatorColor: _teal.withValues(alpha: 0.15),
+        destinations: [
+          for (final d in destinations)
+            NavigationDestination(
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon, color: _teal),
+              label: d.label,
+            ),
         ],
       ),
     );
