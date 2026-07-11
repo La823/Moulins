@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
+import LedgerPanel from "@/components/admin/LedgerPanel";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -529,6 +530,7 @@ export default function CustomerDetailPage() {
           </div>
 
           <UserMeetingsRequests userId={customer.id} />
+          <LedgerPanel customerId={customer.id} />
           <AssignmentPanel mode="client" userId={customer.id} />
         </div>
       </div>

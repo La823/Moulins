@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../models/onboarding.dart';
 import '../../config/api.dart';
+import '../../services/ledger_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -19,11 +21,19 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   static const teal = Color(0xFF00A6A4);
 
+  String? _ledgerUrl;
+  bool _ledgerLoading = true;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(onboardingProvider.notifier).loadStatus();
+    });
+    LedgerService().getLedgerUrl().then((url) {
+      if (mounted) setState(() { _ledgerUrl = url; _ledgerLoading = false; });
+    }).catchError((_) {
+      if (mounted) setState(() => _ledgerLoading = false);
     });
   }
 
@@ -90,6 +100,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
 
           const SizedBox(height: 16),
+
+          // Account Ledger (customers only)
+          if (user?.role == 'customer' && !_ledgerLoading)
+            Container(
+              color: Colors.white,
+              margin: const EdgeInsets.only(bottom: 16),
+              child: ListTile(
+                leading: Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(color: teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.receipt_long_outlined, color: teal, size: 22),
+                ),
+                title: const Text('Account Ledger', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                subtitle: Text(
+                  _ledgerUrl != null ? 'Tap to view your ledger' : 'No ledger uploaded yet',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+                trailing: _ledgerUrl != null ? const Icon(Icons.chevron_right, color: Colors.grey, size: 20) : null,
+                onTap: _ledgerUrl != null
+                    ? () => launchUrl(Uri.parse(_ledgerUrl!), mode: LaunchMode.externalApplication)
+                    : null,
+              ),
+            ),
 
           // Menu items
           Container(

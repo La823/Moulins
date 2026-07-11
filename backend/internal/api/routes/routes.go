@@ -13,6 +13,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/ledger"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
@@ -94,6 +95,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// their employees, employees see their clients; used for chat contacts)
 	protected.HandleFunc("/my-assignments", assignments.MyAssignmentsHandler(db)).Methods("GET")
 	protected.HandleFunc("/chat-contacts", assignments.ChatContactsHandler(db)).Methods("GET")
+
+	// self-service ledger lookup (customer's own current ledger)
+	protected.HandleFunc("/ledger", ledger.GetMyLedgerHandler(db)).Methods("GET")
 
 	// chat routes (any authenticated user)
 	protected.HandleFunc("/messages/conversations", messages.ListConversationsHandler(db)).Methods("GET")
@@ -239,4 +243,13 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	requestsStaff.HandleFunc("/requests", requests.AdminListHandler(db)).Methods("GET")
 	requestsStaff.HandleFunc("/requests/{id}/status", requests.AdminUpdateStatusHandler(db)).Methods("PUT")
+
+	// staff routes — customer ledger management
+	ledgerStaff := protected.PathPrefix("/admin").Subrouter()
+	ledgerStaff.Use(middleware.StaffOnly)
+	ledgerStaff.Use(middleware.RequirePermission(db, "ledger", rdb))
+
+	ledgerStaff.HandleFunc("/ledger/upload-url", ledger.UploadURLHandler()).Methods("POST")
+	ledgerStaff.HandleFunc("/customers/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
+	ledgerStaff.HandleFunc("/customers/{id}/ledger", ledger.GetLedgerHandler(db)).Methods("GET")
 }
