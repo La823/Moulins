@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_service.dart';
 import 'chat_thread_screen.dart';
+import '../../utils/responsive.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -65,7 +66,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           ),
         ],
       ),
-      body: _loading
+      body: ResponsiveCenter(child: _loading
           ? const Center(child: CircularProgressIndicator(color: teal))
           : RefreshIndicator(
               onRefresh: _load,
@@ -130,6 +131,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 }

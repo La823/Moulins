@@ -145,6 +145,44 @@ func DeleteDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// PUT /doctors/{id}/last-meeting — manually set/correct the doctor's last
+// meeting date + notes (also kept in sync automatically when a meeting
+// with this doctor is marked completed).
+func UpdateDoctorLastMeetingHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid doctor id", http.StatusBadRequest)
+			return
+		}
+
+		doctor, err := models.GetDoctorByID(r.Context(), db, doctorID)
+		if err != nil {
+			http.Error(w, "doctor not found", http.StatusNotFound)
+			return
+		}
+		if doctor.CustomerID != getUserID(r) {
+			http.Error(w, "not authorized", http.StatusForbidden)
+			return
+		}
+
+		var req models.UpdateDoctorLastMeetingRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateDoctorLastMeeting(r.Context(), db, doctorID, req); err != nil {
+			log.Printf("update doctor last meeting error: %v", err)
+			http.Error(w, "could not update last meeting", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
+	}
+}
+
 func ListDoctorProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_service.dart';
+import '../../utils/responsive.dart';
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
   final String otherUserId;
@@ -99,7 +100,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           ),
         ),
       ),
-      body: Column(
+      body: ResponsiveCenter(child: Column(
         children: [
           Expanded(
             child: _loading
@@ -172,7 +173,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 }

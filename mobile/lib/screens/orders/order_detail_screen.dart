@@ -7,6 +7,7 @@ import '../../models/order.dart';
 import '../../services/order_service.dart';
 import '../../providers/auth_provider.dart';
 import 'package:intl/intl.dart';
+import '../../utils/responsive.dart';
 
 class OrderDetailScreen extends ConsumerStatefulWidget {
   final String orderId;
@@ -124,7 +125,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         title: Text('Order #${o.id.substring(0, 8).toUpperCase()}',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       ),
-      body: ListView(
+      body: ResponsiveCenter(child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           // Status card
@@ -268,7 +269,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               },
             ),
         ],
-      ),
+      )),
     );
   }
 

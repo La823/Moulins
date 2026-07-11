@@ -7,6 +7,7 @@ import '../../providers/favorites_provider.dart';
 import '../../services/favorite_service.dart';
 import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
+import '../../utils/responsive.dart';
 
 class FavoritesScreen extends ConsumerStatefulWidget {
   const FavoritesScreen({super.key});
@@ -160,8 +161,8 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                           )
                         : GridView.builder(
                             padding: const EdgeInsets.all(16),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: responsiveGridColumns(context),
                               childAspectRatio: 0.72,
                               crossAxisSpacing: 12,
                               mainAxisSpacing: 12,

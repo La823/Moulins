@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/onboarding_provider.dart';
+import '../../utils/responsive.dart';
 
 class LicenseUploadScreen extends ConsumerStatefulWidget {
   const LicenseUploadScreen({super.key});
@@ -80,7 +81,7 @@ class _LicenseUploadScreenState extends ConsumerState<LicenseUploadScreen> {
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
+      body: ResponsiveCenter(child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,7 +191,7 @@ class _LicenseUploadScreenState extends ConsumerState<LicenseUploadScreen> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 }

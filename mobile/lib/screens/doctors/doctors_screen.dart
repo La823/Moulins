@@ -6,6 +6,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import 'doctor_detail_screen.dart';
+import '../../utils/responsive.dart';
 
 class DoctorsScreen extends StatefulWidget {
   const DoctorsScreen({super.key});
@@ -124,7 +125,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: _loading
+      body: ResponsiveCenter(child: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
           : _doctors == null || _doctors!.isEmpty
               ? Center(
@@ -176,6 +177,11 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                   Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                                   if (d.clinicName != null) Text(d.clinicName!, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                                   if (d.phone != null) Text(d.phone!, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                                  if (d.lastMeetingAt != null)
+                                    Text(
+                                      'Last met ${d.lastMeetingAt!.day}/${d.lastMeetingAt!.month}/${d.lastMeetingAt!.year}',
+                                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400),
+                                    ),
                                 ],
                               ),
                             ),
@@ -192,6 +198,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                     },
                   ),
                 ),
+      ),
     );
   }
 }

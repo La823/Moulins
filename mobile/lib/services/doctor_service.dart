@@ -40,4 +40,11 @@ class DoctorService {
   Future<void> removeDoctorProduct(String doctorId, String productId) async {
     await _dio.delete('/doctors/$doctorId/products/$productId');
   }
+
+  Future<void> updateLastMeeting(String doctorId, {DateTime? lastMeetingAt, String? notes}) async {
+    await _dio.put('/doctors/$doctorId/last-meeting', data: {
+      'last_meeting_at': lastMeetingAt?.toUtc().toIso8601String(),
+      'last_meeting_notes': notes,
+    });
+  }
 }

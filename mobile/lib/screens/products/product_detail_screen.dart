@@ -7,6 +7,7 @@ import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
 import '../../services/product_service.dart';
+import '../../utils/responsive.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final String productId;
@@ -73,7 +74,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: CustomScrollView(
+      body: ResponsiveCenter(child: CustomScrollView(
         slivers: [
           // Image header
           SliverAppBar(
@@ -216,7 +217,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             ),
           ),
         ],
-      ),
+      )),
 
       // Add to cart button
       bottomNavigationBar: Container(

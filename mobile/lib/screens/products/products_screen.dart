@@ -8,6 +8,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/profile_button.dart';
+import '../../utils/responsive.dart';
 
 final _productService = ProductService();
 
@@ -208,8 +209,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     : GridView.builder(
                         controller: _scrollCtrl,
                         padding: const EdgeInsets.all(16),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: responsiveGridColumns(context),
                           childAspectRatio: 0.72,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/notification_item.dart';
 import '../../providers/notification_provider.dart';
+import '../../utils/responsive.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -39,7 +40,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         elevation: 0,
         title: const Text('Notifications', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
       ),
-      body: state.loading
+      body: ResponsiveCenter(child: state.loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
           : state.items.isEmpty
               ? Center(
@@ -146,6 +147,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     },
                   ),
                 ),
+      ),
     );
   }
 }

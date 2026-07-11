@@ -1,0 +1,2 @@
+ALTER TABLE doctors ADD COLUMN IF NOT EXISTS last_meeting_at TIMESTAMPTZ;
+ALTER TABLE doctors ADD COLUMN IF NOT EXISTS last_meeting_notes TEXT;

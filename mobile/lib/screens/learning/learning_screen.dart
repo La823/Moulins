@@ -6,6 +6,7 @@ import '../../services/learning_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
+import '../../utils/responsive.dart';
 
 class LearningScreen extends StatefulWidget {
   const LearningScreen({super.key});
@@ -122,8 +123,8 @@ class _LearningScreenState extends State<LearningScreen> {
                     ? Center(child: Text('No videos found', style: TextStyle(color: Colors.grey.shade400)))
                     : GridView.builder(
                         padding: const EdgeInsets.all(16),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: responsiveGridColumns(context),
                           childAspectRatio: 0.85,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,

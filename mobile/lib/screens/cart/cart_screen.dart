@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/order_service.dart';
+import '../../utils/responsive.dart';
 
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
@@ -53,7 +54,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         title: Text('Cart (${items.length})', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         foregroundColor: Colors.black,
       ),
-      body: items.isEmpty
+      body: ResponsiveCenter(child: items.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -155,6 +156,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 ),
               ],
             ),
+      ),
     );
   }
 

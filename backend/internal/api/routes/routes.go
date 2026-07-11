@@ -78,6 +78,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/doctors/{id}/products", doctors.ListDoctorProductsHandler(db)).Methods("GET")
 	protected.HandleFunc("/doctors/{id}/products", doctors.AddDoctorProductHandler(db)).Methods("POST")
 	protected.HandleFunc("/doctors/{id}/products/{productId}", doctors.RemoveDoctorProductHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/doctors/{id}/last-meeting", doctors.UpdateDoctorLastMeetingHandler(db)).Methods("PUT")
 
 	// meeting routes (any authenticated user — customers and employees both own doctors/meetings)
 	protected.HandleFunc("/meetings", meetings.CreateHandler(db)).Methods("POST")

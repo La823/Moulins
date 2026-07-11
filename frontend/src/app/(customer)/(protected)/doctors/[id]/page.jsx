@@ -16,6 +16,10 @@ export default function DoctorDetailPage() {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [adding, setAdding] = useState(null);
   const [removing, setRemoving] = useState(null);
+  const [editingMeeting, setEditingMeeting] = useState(false);
+  const [meetingDate, setMeetingDate] = useState("");
+  const [meetingNotes, setMeetingNotes] = useState("");
+  const [savingMeeting, setSavingMeeting] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -63,6 +67,35 @@ export default function DoctorDetailPage() {
       alert(err.message);
     } finally {
       setRemoving(null);
+    }
+  };
+
+  const startEditMeeting = () => {
+    setMeetingDate(doctor.last_meeting_at ? doctor.last_meeting_at.slice(0, 10) : "");
+    setMeetingNotes(doctor.last_meeting_notes || "");
+    setEditingMeeting(true);
+  };
+
+  const saveMeeting = async () => {
+    setSavingMeeting(true);
+    try {
+      await apiFetch(`/doctors/${id}/last-meeting`, {
+        method: "PUT",
+        body: JSON.stringify({
+          last_meeting_at: meetingDate ? new Date(meetingDate).toISOString() : null,
+          last_meeting_notes: meetingNotes || null,
+        }),
+      });
+      setDoctor((prev) => ({
+        ...prev,
+        last_meeting_at: meetingDate ? new Date(meetingDate).toISOString() : null,
+        last_meeting_notes: meetingNotes || null,
+      }));
+      setEditingMeeting(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingMeeting(false);
     }
   };
 
@@ -121,6 +154,68 @@ export default function DoctorDetailPage() {
             Schedule Meeting
           </Link>
         </div>
+      </div>
+
+      {/* Last Meeting */}
+      <div className="mb-8 border border-gray-200 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-900">Last Meeting</h2>
+          {!editingMeeting && (
+            <button
+              onClick={startEditMeeting}
+              className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              {doctor.last_meeting_at ? "Edit" : "+ Add"}
+            </button>
+          )}
+        </div>
+
+        {editingMeeting ? (
+          <div className="space-y-3">
+            <input
+              type="date"
+              value={meetingDate}
+              onChange={(e) => setMeetingDate(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+            />
+            <textarea
+              value={meetingNotes}
+              onChange={(e) => setMeetingNotes(e.target.value)}
+              placeholder="Notes from the meeting..."
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors resize-none"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={saveMeeting}
+                disabled={savingMeeting}
+                className="text-sm px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {savingMeeting ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={() => setEditingMeeting(false)}
+                className="text-sm px-4 py-2 text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : doctor.last_meeting_at ? (
+          <div>
+            <p className="text-sm text-gray-900">
+              {new Date(doctor.last_meeting_at).toLocaleDateString(undefined, { dateStyle: "long" })}
+            </p>
+            {doctor.last_meeting_notes && (
+              <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap">{doctor.last_meeting_notes}</p>
+            )}
+            <p className="text-[11px] text-gray-400 mt-3">
+              Auto-updates when you mark a meeting with this doctor as completed — edit anytime to correct it.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">No meeting recorded yet</p>
+        )}
       </div>
 
       {/* Assigned Products */}

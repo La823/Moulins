@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/onboarding_provider.dart';
 import 'license_upload_screen.dart';
 import 'gst_upload_screen.dart';
+import '../../utils/responsive.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -34,7 +35,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       body: status.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
-        data: (data) => SingleChildScrollView(
+        data: (data) => ResponsiveCenter(child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,7 +140,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ],
             ],
           ),
-        ),
+        )),
       ),
     );
   }

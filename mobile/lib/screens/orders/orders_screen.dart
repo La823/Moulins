@@ -6,6 +6,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import 'package:intl/intl.dart';
+import '../../utils/responsive.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -43,7 +44,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         title: const Text('My Orders', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
-      body: _loading
+      body: ResponsiveCenter(child: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
           : _orders == null || _orders!.isEmpty
               ? Center(
@@ -66,6 +67,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     itemBuilder: (ctx, i) => _OrderCard(order: _orders![i]),
                   ),
                 ),
+      ),
     );
   }
 }

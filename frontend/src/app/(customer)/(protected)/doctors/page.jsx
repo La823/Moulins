@@ -152,6 +152,13 @@ export default function DoctorsPage() {
                       day: "numeric", month: "short", year: "numeric",
                     })}
                   </p>
+                  {doctor.last_meeting_at && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Last met {new Date(doctor.last_meeting_at).toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric",
+                      })}
+                    </p>
+                  )}
                 </Link>
                 <div className="flex items-center gap-2 ml-4">
                   <Link

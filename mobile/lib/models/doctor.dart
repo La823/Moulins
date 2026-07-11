@@ -3,12 +3,16 @@ class Doctor {
   final String name;
   final String? phone;
   final String? clinicName;
+  final DateTime? lastMeetingAt;
+  final String? lastMeetingNotes;
 
   Doctor({
     required this.id,
     required this.name,
     this.phone,
     this.clinicName,
+    this.lastMeetingAt,
+    this.lastMeetingNotes,
   });
 
   factory Doctor.fromJson(Map<String, dynamic> json) => Doctor(
@@ -16,6 +20,8 @@ class Doctor {
         name: json['name'] ?? '',
         phone: json['phone'],
         clinicName: json['clinic_name'],
+        lastMeetingAt: json['last_meeting_at'] != null ? DateTime.tryParse(json['last_meeting_at'])?.toLocal() : null,
+        lastMeetingNotes: json['last_meeting_notes'],
       );
 }
 

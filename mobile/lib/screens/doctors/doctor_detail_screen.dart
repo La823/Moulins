@@ -5,6 +5,7 @@ import '../../models/doctor.dart';
 import '../../models/product.dart';
 import '../../services/doctor_service.dart';
 import '../../services/product_service.dart';
+import '../../utils/responsive.dart';
 
 class DoctorDetailScreen extends StatefulWidget {
   final Doctor doctor;
@@ -15,15 +16,69 @@ class DoctorDetailScreen extends StatefulWidget {
 }
 
 class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
+  static const teal = Color(0xFF00A6A4);
   List<DoctorProduct> _assigned = [];
   bool _loading = true;
   String? _removingId;
   final _service = DoctorService();
 
+  DateTime? _lastMeetingAt;
+  String? _lastMeetingNotes;
+  bool _editingMeeting = false;
+  bool _savingMeeting = false;
+  DateTime? _draftDate;
+  final _notesCtrl = TextEditingController();
+
   @override
   void initState() {
     super.initState();
+    _lastMeetingAt = widget.doctor.lastMeetingAt;
+    _lastMeetingNotes = widget.doctor.lastMeetingNotes;
     _loadProducts();
+  }
+
+  @override
+  void dispose() {
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  void _startEditMeeting() {
+    setState(() {
+      _draftDate = _lastMeetingAt ?? DateTime.now();
+      _notesCtrl.text = _lastMeetingNotes ?? '';
+      _editingMeeting = true;
+    });
+  }
+
+  Future<void> _pickDraftDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _draftDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _draftDate = picked);
+  }
+
+  Future<void> _saveMeeting() async {
+    setState(() => _savingMeeting = true);
+    try {
+      await _service.updateLastMeeting(
+        widget.doctor.id,
+        lastMeetingAt: _draftDate,
+        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+      );
+      setState(() {
+        _lastMeetingAt = _draftDate;
+        _lastMeetingNotes = _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
+        _editingMeeting = false;
+      });
+    } catch (_) {
+      _showError('Could not save last meeting');
+    } finally {
+      if (mounted) setState(() => _savingMeeting = false);
+    }
   }
 
   Future<void> _loadProducts() async {
@@ -97,7 +152,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
           ),
         ],
       ),
-      body: ListView(
+      body: ResponsiveCenter(child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           // Doctor info card
@@ -128,6 +183,92 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Last meeting card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Last Meeting', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    if (!_editingMeeting)
+                      TextButton(
+                        onPressed: _startEditMeeting,
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                        child: Text(_lastMeetingAt != null ? 'Edit' : '+ Add', style: const TextStyle(fontSize: 12.5, color: teal, fontWeight: FontWeight.w600)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (_editingMeeting) ...[
+                  GestureDetector(
+                    onTap: _pickDraftDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today, size: 15, color: Colors.grey.shade600),
+                          const SizedBox(width: 8),
+                          Text(
+                            _draftDate != null
+                                ? '${_draftDate!.day}/${_draftDate!.month}/${_draftDate!.year}'
+                                : 'Select date',
+                            style: const TextStyle(fontSize: 13.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _notesCtrl,
+                    maxLines: 3,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Notes from the meeting...',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: _savingMeeting ? null : _saveMeeting,
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                        child: Text(_savingMeeting ? 'Saving...' : 'Save', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 16),
+                      TextButton(
+                        onPressed: () => setState(() => _editingMeeting = false),
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                        child: Text('Cancel', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                      ),
+                    ],
+                  ),
+                ] else if (_lastMeetingAt != null) ...[
+                  Text(
+                    '${_lastMeetingAt!.day}/${_lastMeetingAt!.month}/${_lastMeetingAt!.year}',
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+                  ),
+                  if (_lastMeetingNotes != null && _lastMeetingNotes!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(_lastMeetingNotes!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                  ],
+                ] else
+                  Text('No meeting recorded yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
               ],
             ),
           ),
@@ -241,7 +382,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
               ),
             ),
         ],
-      ),
+      )),
     );
   }
 

@@ -217,6 +217,16 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		if req.Status == "completed" {
+			notes := meeting.Mom
+			if notes == nil || *notes == "" {
+				notes = meeting.Notes
+			}
+			if err := models.SyncDoctorLastMeetingFromCompletedMeeting(r.Context(), db, meeting.DoctorID, meeting.ScheduledAt, notes); err != nil {
+				log.Printf("sync doctor last meeting error: %v", err)
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 	}

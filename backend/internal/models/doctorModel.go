@@ -9,12 +9,19 @@ import (
 )
 
 type Doctor struct {
-	ID         uuid.UUID `json:"id"`
-	CustomerID uuid.UUID `json:"customer_id"`
-	Name       string    `json:"name"`
-	Phone      *string   `json:"phone,omitempty"`
-	ClinicName *string   `json:"clinic_name,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID               uuid.UUID  `json:"id"`
+	CustomerID       uuid.UUID  `json:"customer_id"`
+	Name             string     `json:"name"`
+	Phone            *string    `json:"phone,omitempty"`
+	ClinicName       *string    `json:"clinic_name,omitempty"`
+	LastMeetingAt    *time.Time `json:"last_meeting_at,omitempty"`
+	LastMeetingNotes *string    `json:"last_meeting_notes,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+}
+
+type UpdateDoctorLastMeetingRequest struct {
+	LastMeetingAt    *time.Time `json:"last_meeting_at"`
+	LastMeetingNotes *string    `json:"last_meeting_notes"`
 }
 
 type DoctorProduct struct {
@@ -46,7 +53,8 @@ func CreateDoctor(ctx context.Context, db *pgxpool.Pool, customerID uuid.UUID, r
 
 func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid.UUID) ([]Doctor, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, customer_id, name, phone, clinic_name, created_at FROM doctors WHERE customer_id = $1 ORDER BY created_at DESC`,
+		`SELECT id, customer_id, name, phone, clinic_name, last_meeting_at, last_meeting_notes, created_at
+		 FROM doctors WHERE customer_id = $1 ORDER BY created_at DESC`,
 		customerID,
 	)
 	if err != nil {
@@ -57,7 +65,7 @@ func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid
 	doctors := []Doctor{}
 	for rows.Next() {
 		var d Doctor
-		if err := rows.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		doctors = append(doctors, d)
@@ -68,13 +76,39 @@ func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid
 func GetDoctorByID(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) (*Doctor, error) {
 	var d Doctor
 	err := db.QueryRow(ctx,
-		`SELECT id, customer_id, name, phone, clinic_name, created_at FROM doctors WHERE id = $1`,
+		`SELECT id, customer_id, name, phone, clinic_name, last_meeting_at, last_meeting_notes, created_at FROM doctors WHERE id = $1`,
 		doctorID,
-	).Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.CreatedAt)
+	).Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// UpdateDoctorLastMeeting is the manual-edit path — the user can always
+// hand-correct these fields even though they're also kept in sync
+// automatically whenever a meeting with this doctor is marked completed
+// (see SyncDoctorLastMeetingFromCompletedMeeting).
+func UpdateDoctorLastMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req UpdateDoctorLastMeetingRequest) error {
+	_, err := db.Exec(ctx,
+		`UPDATE doctors SET last_meeting_at = $1, last_meeting_notes = $2 WHERE id = $3`,
+		req.LastMeetingAt, req.LastMeetingNotes, doctorID,
+	)
+	return err
+}
+
+// SyncDoctorLastMeetingFromCompletedMeeting advances the doctor's last
+// meeting date/notes to a just-completed meeting, but only if that
+// meeting is the same age or newer than what's already stored — so
+// completing an old backlogged meeting doesn't clobber a more recent
+// manual edit or a more recent completed meeting.
+func SyncDoctorLastMeetingFromCompletedMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, scheduledAt time.Time, notes *string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE doctors SET last_meeting_at = $1, last_meeting_notes = $2
+		 WHERE id = $3 AND (last_meeting_at IS NULL OR last_meeting_at <= $1)`,
+		scheduledAt, notes, doctorID,
+	)
+	return err
 }
 
 func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req CreateDoctorRequest) error {

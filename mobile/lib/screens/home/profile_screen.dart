@@ -10,6 +10,7 @@ import '../../providers/onboarding_provider.dart';
 import '../../models/onboarding.dart';
 import '../../config/api.dart';
 import '../../services/ledger_service.dart';
+import '../../utils/responsive.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -49,7 +50,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         elevation: 0,
         title: const Text('Profile', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
       ),
-      body: ListView(
+      body: ResponsiveCenter(child: ListView(
         children: [
           // User card
           Container(
@@ -159,7 +160,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Center(child: Text('v1.0.0', style: TextStyle(color: Colors.grey.shade400, fontSize: 11))),
           const SizedBox(height: 24),
         ],
-      ),
+      )),
     );
   }
 
