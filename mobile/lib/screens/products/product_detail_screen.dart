@@ -1,7 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:open_filex/open_filex.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../services/product_service.dart';
@@ -18,6 +19,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Product? _product;
   bool _loading = true;
   int _selectedImage = 0;
+  final Set<String> _downloadingDocs = {};
 
   @override
   void initState() {
@@ -166,7 +168,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                                 Expanded(
                                   child: Text(doc.name, style: const TextStyle(fontSize: 13.5, color: Color(0xFF1A1A1A)), maxLines: 1, overflow: TextOverflow.ellipsis),
                                 ),
-                                Text('View', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red.shade600)),
+                                _downloadingDocs.contains(doc.fileUrl)
+                                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : Text('View', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red.shade600)),
                               ],
                             ),
                           ),
@@ -210,26 +214,29 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     );
   }
 
+  // Downloads the document into the on-device cache (flutter_cache_manager
+  // dedupes by URL and skips the network entirely once cached), then opens
+  // the local file with the system's PDF viewer — this works offline for
+  // any document already viewed once while online.
   Future<void> _openDocument(String url) async {
-    if (url.isEmpty) return;
-    final uri = Uri.parse(url);
-    // canLaunchUrl() can false-negative on Android 11+ if package-visibility
-    // queries aren't declared just right on a given device/OEM build, so we
-    // attempt the launch directly and only fall back to the error message on
-    // an actual failure rather than trusting the pre-check.
+    if (url.isEmpty || _downloadingDocs.contains(url)) return;
+    setState(() => _downloadingDocs.add(url));
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched && mounted) {
+      final file = await DefaultCacheManager().getSingleFile(url);
+      final result = await OpenFilex.open(file.path);
+      if (result.type != ResultType.done && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open document')),
+          SnackBar(content: Text(result.message.isNotEmpty ? result.message : 'Could not open document')),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open document')),
+          const SnackBar(content: Text('Could not open document — check your connection')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _downloadingDocs.remove(url));
     }
   }
 
