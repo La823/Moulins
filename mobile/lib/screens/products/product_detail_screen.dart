@@ -101,7 +101,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               const SizedBox(width: 4),
             ],
             flexibleSpace: FlexibleSpaceBar(
-              background: p.images.isEmpty
+              background: Padding(
+                padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + (isWide(context) ? 24 : 12)),
+                child: p.images.isEmpty
                   ? Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 80, color: Colors.grey))
                   : Stack(
                       children: [
@@ -133,6 +135,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           ),
                       ],
                     ),
+              ),
             ),
           ),
 
