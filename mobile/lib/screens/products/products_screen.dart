@@ -29,6 +29,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   int _page = 1;
   bool _loading = false;
   bool _hasMore = true;
+  bool _offline = false;
   final List<Product> _products = [];
   final _scrollCtrl = ScrollController();
 
@@ -67,6 +68,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       setState(() {
         _products.addAll(res.products);
         _hasMore = _page < res.totalPages;
+        _offline = res.isFromCache;
         _loading = false;
       });
     } catch (_) {
@@ -177,6 +179,20 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             loading: () => const SizedBox(height: 44),
             error: (_, __) => const SizedBox(height: 44),
           ),
+
+          if (_offline)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade50,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off, size: 14, color: Colors.orange.shade700),
+                  const SizedBox(width: 6),
+                  Text('Offline — showing saved products', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
+                ],
+              ),
+            ),
 
           // Product grid
           Expanded(

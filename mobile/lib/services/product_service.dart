@@ -1,5 +1,6 @@
 import '../config/api.dart';
 import '../models/product.dart';
+import 'offline_cache.dart';
 
 class ProductService {
   final _dio = createDio();
@@ -10,18 +11,48 @@ class ProductService {
     String search = '',
     String category = '',
   }) async {
-    final res = await _dio.get('/products', queryParameters: {
-      'page': page,
-      'limit': limit,
-      if (search.isNotEmpty) 'search': search,
-      if (category.isNotEmpty) 'category': category,
-    });
-    return ProductListResponse.fromJson(res.data);
+    try {
+      final res = await _dio.get('/products', queryParameters: {
+        'page': page,
+        'limit': limit,
+        if (search.isNotEmpty) 'search': search,
+        if (category.isNotEmpty) 'category': category,
+      });
+      final result = ProductListResponse.fromJson(res.data);
+      // Only the default unfiltered first page is cached as the offline
+      // fallback — it's the one screen that must never dead-end offline.
+      // Caching each product individually here (not just on detail-view)
+      // means any product seen in the list opens offline too, not just
+      // ones the user happened to tap into while still online.
+      if (page == 1 && search.isEmpty && category.isEmpty) {
+        OfflineCache.saveProductList(result.products);
+        for (final p in result.products) {
+          OfflineCache.saveProduct(p);
+        }
+      }
+      return result;
+    } catch (e) {
+      if (page == 1 && search.isEmpty && category.isEmpty) {
+        final cached = await OfflineCache.loadProductList();
+        if (cached.isNotEmpty) {
+          return ProductListResponse(products: cached, total: cached.length, page: 1, totalPages: 1, isFromCache: true);
+        }
+      }
+      rethrow;
+    }
   }
 
   Future<Product> getProduct(String id) async {
-    final res = await _dio.get('/products/$id');
-    return Product.fromJson(res.data);
+    try {
+      final res = await _dio.get('/products/$id');
+      final product = Product.fromJson(res.data);
+      OfflineCache.saveProduct(product);
+      return product;
+    } catch (e) {
+      final cached = await OfflineCache.loadProduct(id);
+      if (cached != null) return cached;
+      rethrow;
+    }
   }
 
   Future<List<String>> getCategories() async {

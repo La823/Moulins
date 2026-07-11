@@ -10,6 +10,8 @@ class ProductImage {
         imageUrl: json['image_url'] ?? '',
         sortOrder: json['sort_order'] ?? 0,
       );
+
+  Map<String, dynamic> toJson() => {'id': id, 'image_url': imageUrl, 'sort_order': sortOrder};
 }
 
 class ProductDocument {
@@ -24,6 +26,8 @@ class ProductDocument {
         name: json['name'] ?? '',
         fileUrl: json['file_url'] ?? '',
       );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'file_url': fileUrl};
 }
 
 class Product {
@@ -76,6 +80,21 @@ class Product {
 
   String? get primaryImageUrl =>
       images.isNotEmpty ? images.first.imageUrl : null;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'price': price,
+        'categories': categories,
+        'stock': stock,
+        'is_active': isActive,
+        'mrp': mrp,
+        'pack_size': packSize,
+        'product_form': productForm,
+        'images': images.map((e) => e.toJson()).toList(),
+        'documents': documents.map((e) => e.toJson()).toList(),
+      };
 }
 
 class ProductListResponse {
@@ -83,12 +102,14 @@ class ProductListResponse {
   final int total;
   final int page;
   final int totalPages;
+  final bool isFromCache;
 
   ProductListResponse({
     required this.products,
     required this.total,
     required this.page,
     required this.totalPages,
+    this.isFromCache = false,
   });
 
   factory ProductListResponse.fromJson(Map<String, dynamic> json) =>

@@ -42,7 +42,28 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))));
     }
     if (_product == null) {
-      return Scaffold(appBar: AppBar(), body: const Center(child: Text('Product not found')));
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cloud_off, size: 40, color: Colors.grey.shade300),
+                const SizedBox(height: 12),
+                const Text('Product not available', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text(
+                  'This product hasn\'t been viewed on this device yet, so it can\'t be shown offline.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final p = _product!;
