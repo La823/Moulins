@@ -5,6 +5,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:open_filex/open_filex.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/favorites_provider.dart';
 import '../../services/product_service.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
@@ -80,6 +81,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             pinned: true,
             backgroundColor: Colors.white,
             foregroundColor: Colors.black,
+            actions: [
+              IconButton(
+                icon: Icon(
+                  ref.watch(favoritesProvider).contains(p.id) ? Icons.star : Icons.star_border,
+                  color: ref.watch(favoritesProvider).contains(p.id) ? const Color(0xFFF5A623) : Colors.grey.shade600,
+                ),
+                onPressed: () => ref.read(favoritesProvider.notifier).toggle(p),
+                tooltip: 'Favorite',
+              ),
+              const SizedBox(width: 4),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: p.images.isEmpty
                   ? Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 80, color: Colors.grey))

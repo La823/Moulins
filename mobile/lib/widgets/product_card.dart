@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
+import '../providers/favorites_provider.dart';
 
-class ProductCard extends StatelessWidget {
+class ProductCard extends ConsumerWidget {
   final Product product;
   final VoidCallback onTap;
   final VoidCallback onAddToCart;
@@ -15,7 +17,9 @@ class ProductCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFavorite = ref.watch(favoritesProvider).contains(product.id);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -29,20 +33,43 @@ class ProductCard extends StatelessWidget {
           children: [
             // Image
             Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: product.primaryImageUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: product.primaryImageUrl!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        placeholder: (_, __) => Container(color: Colors.grey.shade100, child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey))),
-                        errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey))),
-                      )
-                    : Container(
-                        color: Colors.grey.shade100,
-                        child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey, size: 36)),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: double.infinity,
+                      child: product.primaryImageUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: product.primaryImageUrl!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              placeholder: (_, __) => Container(color: Colors.grey.shade100, child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey))),
+                              errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey))),
+                            )
+                          : Container(
+                              color: Colors.grey.shade100,
+                              child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey, size: 36)),
+                            ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 6, right: 6,
+                    child: GestureDetector(
+                      onTap: () => ref.read(favoritesProvider.notifier).toggle(product),
+                      child: Container(
+                        width: 28, height: 28,
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
+                        child: Icon(
+                          isFavorite ? Icons.star : Icons.star_border,
+                          color: isFavorite ? const Color(0xFFF5A623) : Colors.grey.shade400,
+                          size: 18,
+                        ),
                       ),
+                    ),
+                  ),
+                ],
               ),
             ),
 

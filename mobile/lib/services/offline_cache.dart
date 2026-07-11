@@ -9,6 +9,8 @@ import '../models/product.dart';
 class OfflineCache {
   static const _listKey = 'cached_product_list';
   static const _productPrefix = 'cached_product_';
+  static const _favoritesKey = 'cached_favorite_products';
+  static const _favoriteIdsKey = 'cached_favorite_ids';
 
   static Future<void> saveProductList(List<Product> products) async {
     final prefs = await SharedPreferences.getInstance();
@@ -42,5 +44,45 @@ class OfflineCache {
     } catch (_) {
       return null;
     }
+  }
+
+  // Favorites are cached separately from the general product cache and are
+  // never evicted by browsing — once favorited, a product's full detail
+  // (images/documents included) stays available offline indefinitely.
+  static Future<void> saveFavorites(List<Product> products) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_favoritesKey, jsonEncode(products.map((p) => p.toJson()).toList()));
+    await prefs.setStringList(_favoriteIdsKey, products.map((p) => p.id).toList());
+    for (final p in products) {
+      await saveProduct(p);
+    }
+  }
+
+  static Future<List<Product>> loadFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_favoritesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.map((e) => Product.fromJson(e)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<String>> loadFavoriteIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_favoriteIdsKey) ?? [];
+  }
+
+  static Future<void> addFavoriteLocally(Product product) async {
+    final current = await loadFavorites();
+    if (current.any((p) => p.id == product.id)) return;
+    await saveFavorites([...current, product]);
+  }
+
+  static Future<void> removeFavoriteLocally(String productId) async {
+    final current = await loadFavorites();
+    await saveFavorites(current.where((p) => p.id != productId).toList());
   }
 }

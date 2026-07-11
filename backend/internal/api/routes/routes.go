@@ -99,6 +99,12 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// self-service ledger lookup (customer's own current ledger)
 	protected.HandleFunc("/ledger", ledger.GetMyLedgerHandler(db)).Methods("GET")
 
+	// favorite products (any authenticated user)
+	protected.HandleFunc("/favorites", products.ListFavoritesHandler(db)).Methods("GET")
+	protected.HandleFunc("/favorites/ids", products.ListFavoriteIDsHandler(db)).Methods("GET")
+	protected.HandleFunc("/favorites/{id}", products.AddFavoriteHandler(db)).Methods("POST")
+	protected.HandleFunc("/favorites/{id}", products.RemoveFavoriteHandler(db)).Methods("DELETE")
+
 	// chat routes (any authenticated user)
 	protected.HandleFunc("/messages/conversations", messages.ListConversationsHandler(db)).Methods("GET")
 	protected.HandleFunc("/messages/{userId}", messages.HistoryHandler(db)).Methods("GET")

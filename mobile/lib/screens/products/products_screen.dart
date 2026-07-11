@@ -104,6 +104,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         elevation: 0,
         title: const Text('Products', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.star_border, color: Color(0xFF1A1A1A)),
+            onPressed: () => context.push('/favorites'),
+            tooltip: 'Favorites',
+          ),
           Stack(
             children: [
               IconButton(
