@@ -23,7 +23,13 @@ class _HomeCarouselSectionState extends State<HomeCarouselSection> {
   @override
   void initState() {
     super.initState();
-    HomeSectionsService().getCarouselSlides().then((slides) {
+    final service = HomeSectionsService();
+    service.getCachedCarouselSlides().then((cached) {
+      if (mounted && cached.isNotEmpty) {
+        setState(() => _slides = cached.where((s) => s.heading.isNotEmpty).toList());
+      }
+    });
+    service.getCarouselSlides().then((slides) {
       if (mounted) setState(() => _slides = slides.where((s) => s.heading.isNotEmpty).toList());
     }).catchError((_) {});
   }

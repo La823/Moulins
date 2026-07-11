@@ -47,6 +47,16 @@ class HomeHighlights {
         card2ButtonText: json['card2_button_text'] ?? '',
         card2LinkUrl: json['card2_link_url'] ?? '/products',
       );
+
+  Map<String, dynamic> toJson() => {
+        'heading': heading,
+        'card1_image_url': card1ImageUrl,
+        'card1_button_text': card1ButtonText,
+        'card1_link_url': card1LinkUrl,
+        'card2_image_url': card2ImageUrl,
+        'card2_button_text': card2ButtonText,
+        'card2_link_url': card2LinkUrl,
+      };
 }
 
 class CarouselSlide {
@@ -74,6 +84,15 @@ class CarouselSlide {
         buttonText: json['button_text'] ?? '',
         buttonLink: json['button_link'] ?? '/products',
       );
+
+  Map<String, dynamic> toJson() => {
+        'position': position,
+        'image_url': imageUrl,
+        'heading': heading,
+        'description': description,
+        'button_text': buttonText,
+        'button_link': buttonLink,
+      };
 }
 
 class FocusCard {
@@ -95,6 +114,13 @@ class FocusCard {
         title: json['title'] ?? '',
         linkUrl: json['link_url'] ?? '/products',
       );
+
+  Map<String, dynamic> toJson() => {
+        'position': position,
+        'image_url': imageUrl,
+        'title': title,
+        'link_url': linkUrl,
+      };
 }
 
 class HomeFocusSection {
@@ -115,4 +141,10 @@ class HomeFocusSection {
             .map((c) => FocusCard.fromJson(c))
             .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'heading': heading,
+        'description': description,
+        'cards': cards.map((c) => c.toJson()).toList(),
+      };
 }

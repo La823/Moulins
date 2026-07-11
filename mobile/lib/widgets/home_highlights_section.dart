@@ -20,7 +20,11 @@ class _HomeHighlightsSectionState extends State<HomeHighlightsSection> {
   @override
   void initState() {
     super.initState();
-    HomeSectionsService().getHighlights().then((d) {
+    final service = HomeSectionsService();
+    service.getCachedHighlights().then((cached) {
+      if (mounted && cached != null) setState(() => _data = cached);
+    });
+    service.getHighlights().then((d) {
       if (mounted) setState(() => _data = d);
     }).catchError((_) {});
   }

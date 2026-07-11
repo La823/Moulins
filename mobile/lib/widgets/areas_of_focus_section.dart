@@ -19,7 +19,11 @@ class _AreasOfFocusSectionState extends State<AreasOfFocusSection> {
   @override
   void initState() {
     super.initState();
-    HomeSectionsService().getFocusSection().then((d) {
+    final service = HomeSectionsService();
+    service.getCachedFocusSection().then((cached) {
+      if (mounted && cached != null) setState(() => _data = cached);
+    });
+    service.getFocusSection().then((d) {
       if (mounted) setState(() => _data = d);
     }).catchError((_) {});
   }
