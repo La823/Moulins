@@ -33,7 +33,8 @@ workflows:
           zip -r build/ios/iphoneos/app-unsigned.ipa Payload
           rm -rf Payload
     artifacts:
-      - mobile/build/ios/iphoneos/app-unsigned.ipa
+      - mobile/build/ios/iphoneos/*.ipa
+      - mobile/build/ios/iphoneos/*.app
 
   ios-testflight:
     name: iOS signed build → TestFlight (needs paid Apple Developer account)
