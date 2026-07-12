@@ -23,6 +23,7 @@ import 'screens/requests/requests_screen.dart';
 import 'screens/chat/chat_list_screen.dart';
 import 'screens/products/favorites_screen.dart';
 import 'screens/learning/learning_screen.dart';
+import 'screens/admin/admin_dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -110,6 +111,7 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/chat', builder: (_, __) => const ChatListScreen()),
             GoRoute(path: '/favorites', builder: (_, __) => const FavoritesScreen()),
             GoRoute(path: '/learning', builder: (_, __) => const LearningScreen()),
+            GoRoute(path: '/admin', builder: (_, __) => const AdminDashboardScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
           ],
@@ -188,6 +190,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
         const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
       const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
       const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+      if (user.role == 'admin')
+        const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),
     ];
 
     var selectedIndex = destinations.indexWhere((d) => widget.location.startsWith(d.route));
