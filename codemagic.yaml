@@ -77,7 +77,13 @@ workflows:
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - mobile/build/ios/ipa/*.ipa
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
+    # Publishing to TestFlight needs a named App Store Connect integration
+    # (Codemagic → Team settings → Integrations → App Store Connect →
+    # connect with an API key from a paid Apple Developer account), then
+    # add it back here as:
+    #   publishing:
+    #     app_store_connect:
+    #       auth: integration
+    #       integration_name: <name you gave it in Codemagic>
+    #       submit_to_testflight: true
+    # Left out for now since there's no Apple Developer account yet.
