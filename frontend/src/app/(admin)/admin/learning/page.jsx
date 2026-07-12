@@ -19,7 +19,6 @@ export default function AdminLearningPage() {
   const [products, setProducts] = useState([]);
   const [productId, setProductId] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [showProductPicker, setShowProductPicker] = useState(false);
 
   // New playlist form
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
@@ -191,41 +190,27 @@ export default function AdminLearningPage() {
                 rows={2}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
               />
-              <div className="relative">
+              <div className="space-y-2">
                 <input
                   type="text"
-                  value={productId ? products.find((p) => p.id === productId)?.name || "" : productSearch}
-                  onChange={(e) => {
-                    setProductId("");
-                    setProductSearch(e.target.value);
-                    setShowProductPicker(true);
-                  }}
-                  onFocus={() => setShowProductPicker(true)}
-                  placeholder="Link a product... *"
-                  required
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Search products..."
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
                 />
-                {showProductPicker && productSearch && !productId && (
-                  <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
-                    {products
-                      .filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase()))
-                      .slice(0, 30)
-                      .map((p) => (
-                        <button
-                          type="button"
-                          key={p.id}
-                          onClick={() => {
-                            setProductId(p.id);
-                            setProductSearch("");
-                            setShowProductPicker(false);
-                          }}
-                          className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                        >
-                          {p.name}
-                        </button>
-                      ))}
-                  </div>
-                )}
+                <select
+                  value={productId}
+                  onChange={(e) => setProductId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                >
+                  <option value="">Link a product... *</option>
+                  {products
+                    .filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase()))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                </select>
               </div>
               <select
                 value={playlistId}
