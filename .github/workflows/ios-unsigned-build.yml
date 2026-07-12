@@ -1,0 +1,55 @@
+name: iOS unsigned build (Sideloadly testing)
+
+# Manual trigger only — this consumes macOS runner minutes (billed at a
+# 10x multiplier against the free monthly quota), so it shouldn't run on
+# every push. Trigger it from the Actions tab → this workflow → "Run workflow".
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Place GoogleService-Info.plist
+        # Add this secret in GitHub: repo → Settings → Secrets and
+        # variables → Actions → New repository secret, named
+        # GOOGLE_SERVICE_INFO_PLIST_BASE64, value = base64 of the file
+        # downloaded from the Firebase console (same one used for Codemagic).
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}" | base64 --decode > ios/Runner/GoogleService-Info.plist
+
+      - name: Get Flutter packages
+        run: flutter pub get
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios
+          pod install
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned .ipa
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -r app-unsigned.ipa Payload
+          rm -rf Payload
+
+      - name: Upload .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned-ipa
+          path: mobile/app-unsigned.ipa
+          retention-days: 14
