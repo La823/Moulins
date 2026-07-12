@@ -19,7 +19,13 @@ workflows:
         script: |
           echo $GOOGLE_SERVICE_INFO_PLIST | base64 --decode > ios/Runner/GoogleService-Info.plist
       - name: Get Flutter packages
-        script: flutter pub get
+        script: |
+          # Force the CocoaPods-only path — Flutter's new default of
+          # auto-enabling Swift Package Manager (when no Podfile exists
+          # yet, as here) pulls in a Firebase SDK build that needs
+          # Swift 6, and 3 of our plugins don't support SPM yet anyway.
+          flutter config --no-enable-swift-package-manager
+          flutter pub get
       - name: Install CocoaPods dependencies
         script: |
           cd ios && pod install
@@ -60,7 +66,13 @@ workflows:
         script: |
           echo $GOOGLE_SERVICE_INFO_PLIST | base64 --decode > ios/Runner/GoogleService-Info.plist
       - name: Get Flutter packages
-        script: flutter pub get
+        script: |
+          # Force the CocoaPods-only path — Flutter's new default of
+          # auto-enabling Swift Package Manager (when no Podfile exists
+          # yet, as here) pulls in a Firebase SDK build that needs
+          # Swift 6, and 3 of our plugins don't support SPM yet anyway.
+          flutter config --no-enable-swift-package-manager
+          flutter pub get
       - name: Fetch signing files
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \

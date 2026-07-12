@@ -8,7 +8,10 @@ on:
 
 jobs:
   build-unsigned-ipa:
-    runs-on: macos-14
+    # macos-14's default Xcode is too old for the Firebase iOS SDK version
+    # pulled in via Swift Package Manager (needs Swift 6 language features).
+    # macos-15 defaults to a newer Xcode that supports it.
+    runs-on: macos-15
     defaults:
       run:
         working-directory: mobile
@@ -30,7 +33,13 @@ jobs:
           echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}" | base64 --decode > ios/Runner/GoogleService-Info.plist
 
       - name: Get Flutter packages
-        run: flutter pub get
+        run: |
+          # Force the CocoaPods-only path — Flutter's new default of
+          # auto-enabling Swift Package Manager (when no Podfile exists
+          # yet, as here) pulls in a Firebase SDK build that needs
+          # Swift 6, and 3 of our plugins don't support SPM yet anyway.
+          flutter config --no-enable-swift-package-manager
+          flutter pub get
 
       - name: Install CocoaPods dependencies
         run: |
