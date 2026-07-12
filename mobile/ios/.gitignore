@@ -27,6 +27,10 @@ Flutter/flutter_export_environment.sh
 ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 
+# Firebase iOS config — has project API keys, injected by CI (see
+# codemagic.yaml) or added locally for one-off testing; never commit it.
+Runner/GoogleService-Info.plist
+
 # Exceptions to above rules.
 !default.mode1v3
 !default.mode2v3

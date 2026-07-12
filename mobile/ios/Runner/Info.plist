@@ -45,5 +45,35 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- image_picker: bill/document photo uploads (products, doctors, meetings) -->
+	<key>NSCameraUsageDescription</key>
+	<string>Moulins needs camera access to let you take photos of bills, documents and products.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Moulins needs photo library access to let you attach existing photos to bills, documents and orders.</string>
+
+	<!-- firebase_messaging: push notifications for broadcasts, chat, meeting reminders -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>fetch</string>
+	</array>
+
+	<!-- App only talks to our own HTTPS API and standard third-party HTTPS
+	     services (YouTube, S3) — no custom/proprietary encryption, so this
+	     skips the App Store Connect export-compliance questionnaire. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- TEMPORARY: the backend (52.66.121.187) is still plain HTTP, no TLS
+	     certificate yet — iOS blocks all HTTP by default. Remove this and
+	     replace with a real HTTPS domain + NSExceptionDomains entry before
+	     any App Store / TestFlight-to-real-testers submission; blanket
+	     arbitrary-loads is fine for our own sideloaded test builds only. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
