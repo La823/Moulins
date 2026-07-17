@@ -219,7 +219,7 @@ export default function CustomersPage() {
                 <tr
                   key={c.id}
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => router.push(`/admin/users/${c.id}`)}
+                  onClick={() => router.push(`/panel/users/${c.id}`)}
                 >
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">

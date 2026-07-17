@@ -150,7 +150,7 @@ export default function AssignmentPanel({ mode, userId }) {
               className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
             >
               <Link
-                href={isClient ? `/admin/employees/${a.id}` : `/admin/users/${a.id}`}
+                href={isClient ? `/panel/employees/${a.id}` : `/panel/users/${a.id}`}
                 className="text-sm font-medium text-gray-900 hover:underline"
               >
                 {a.username || a.phone_number}

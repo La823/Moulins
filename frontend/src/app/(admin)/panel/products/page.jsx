@@ -490,7 +490,7 @@ export default function AdminProducts() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between">
                     <div>
-                      <Link href={`/admin/products/${p.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">{p.name}</Link>
+                      <Link href={`/panel/products/${p.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">{p.name}</Link>
                       <p className="text-sm text-gray-500 mt-0.5">
                         ₹{p.price} &middot; {p.stock} in stock
                       </p>

@@ -92,7 +92,7 @@ export default function PurchaseOrderDetailPage() {
   return (
     <>
       <div className="mb-6">
-        <Link href="/admin/purchase-orders" className="text-xs text-gray-400 hover:text-gray-600">
+        <Link href="/panel/purchase-orders" className="text-xs text-gray-400 hover:text-gray-600">
           &larr; Back to purchase orders
         </Link>
       </div>

@@ -280,7 +280,7 @@ export default function AdminOrdersPage() {
                 <tr
                   key={order.id}
                   className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => router.push(`/admin/orders/${order.id}`)}
+                  onClick={() => router.push(`/panel/orders/${order.id}`)}
                 >
                   <td className="px-5 py-3 font-mono text-xs text-gray-500">
                     {order.id.slice(0, 8)}

@@ -85,7 +85,7 @@ export default function PurchaseOrdersPage() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-gray-800">Purchase Orders</h2>
         <Link
-          href="/admin/purchase-orders/new"
+          href="/panel/purchase-orders/new"
           className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
         >
           Create PO
@@ -151,7 +151,7 @@ export default function PurchaseOrdersPage() {
                 {paginated.map((po) => (
                   <tr key={po.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
-                      <Link href={`/admin/purchase-orders/${po.id}`} className="font-mono text-xs text-gray-900 font-medium hover:text-blue-600">
+                      <Link href={`/panel/purchase-orders/${po.id}`} className="font-mono text-xs text-gray-900 font-medium hover:text-blue-600">
                         {po.po_number}
                       </Link>
                     </td>

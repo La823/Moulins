@@ -255,27 +255,27 @@ export default function AdminDashboard() {
         <MetricCard
           label="Total Products"
           value={stats.totalProducts}
-          href="/admin/products"
+          href="/panel/products"
           color="blue"
         />
         <MetricCard
           label="Active Products"
           value={stats.activeProducts}
-          href="/admin/products"
+          href="/panel/products"
           color="green"
         />
         {isAdmin && (
           <MetricCard
             label="Customers"
             value={stats.totalUsers}
-            href="/admin/users"
+            href="/panel/users"
             color="purple"
           />
         )}
         <MetricCard
           label="Orders"
           value="--"
-          href="/admin/orders"
+          href="/panel/orders"
           color="amber"
           sub="Coming soon"
         />
@@ -542,7 +542,7 @@ export default function AdminDashboard() {
               Recent Products
             </h3>
             <Link
-              href="/admin/products"
+              href="/panel/products"
               className="text-xs text-blue-600 hover:underline"
             >
               View all
@@ -555,7 +555,7 @@ export default function AdminDashboard() {
               {recentProducts.map((p) => (
                 <Link
                   key={p.id}
-                  href={`/admin/products/${p.id}`}
+                  href={`/panel/products/${p.id}`}
                   className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1.5 -mx-1.5 transition-colors"
                 >
                   {p.images && p.images.length > 0 ? (
@@ -600,7 +600,7 @@ export default function AdminDashboard() {
                 Recent Customers
               </h3>
               <Link
-                href="/admin/users"
+                href="/panel/users"
                 className="text-xs text-blue-600 hover:underline"
               >
                 View all

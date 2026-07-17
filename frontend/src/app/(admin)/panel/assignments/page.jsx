@@ -156,12 +156,12 @@ export default function AssignmentsPage() {
                 {filtered.map((a) => (
                   <tr key={a.id} className="border-b border-gray-100 last:border-0">
                     <td className="py-3 pr-4">
-                      <Link href={`/admin/users/${a.client_id}`} className="text-gray-900 hover:underline font-medium">
+                      <Link href={`/panel/users/${a.client_id}`} className="text-gray-900 hover:underline font-medium">
                         {a.client_name}
                       </Link>
                     </td>
                     <td className="py-3 pr-4">
-                      <Link href={`/admin/employees/${a.employee_id}`} className="text-gray-900 hover:underline font-medium">
+                      <Link href={`/panel/employees/${a.employee_id}`} className="text-gray-900 hover:underline font-medium">
                         {a.employee_name}
                       </Link>
                     </td>

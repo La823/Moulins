@@ -204,7 +204,7 @@ export default function AdminOrderDetail() {
       <div className="text-center py-16">
         <p className="text-sm text-gray-400">Order not found</p>
         <Link
-          href="/admin/orders"
+          href="/panel/orders"
           className="text-sm text-blue-600 hover:underline mt-2 inline-block"
         >
           Back to orders
@@ -217,7 +217,7 @@ export default function AdminOrderDetail() {
     <div className="max-w-4xl">
       {/* Back link */}
       <Link
-        href="/admin/orders"
+        href="/panel/orders"
         className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
       >
         &larr; All orders

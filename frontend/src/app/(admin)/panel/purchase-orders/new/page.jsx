@@ -169,7 +169,7 @@ export default function NewPurchaseOrderPage() {
           remarks: form.remarks.trim() || null,
         }),
       });
-      router.push(`/admin/purchase-orders/${res.id}`);
+      router.push(`/panel/purchase-orders/${res.id}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -362,7 +362,7 @@ export default function NewPurchaseOrderPage() {
           </button>
           <button
             type="button"
-            onClick={() => router.push("/admin/purchase-orders")}
+            onClick={() => router.push("/panel/purchase-orders")}
             className="px-6 py-2.5 text-sm text-gray-600 hover:text-gray-900"
           >
             Cancel

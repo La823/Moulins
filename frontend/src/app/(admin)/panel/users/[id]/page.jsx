@@ -61,7 +61,7 @@ export default function CustomerDetailPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
         <p className="text-sm text-gray-400">Customer not found</p>
         <Link
-          href="/admin/users"
+          href="/panel/users"
           className="mt-3 inline-block text-sm text-gray-600 hover:text-gray-900 underline"
         >
           Back to customers
@@ -99,7 +99,7 @@ export default function CustomerDetailPage() {
     setDeleting(true);
     try {
       await apiFetch(`/admin/customers/${id}`, { method: "DELETE" });
-      router.push("/admin/users");
+      router.push("/panel/users");
     } catch (err) {
       alert("Failed to delete customer: " + err.message);
       setDeleting(false);
@@ -131,7 +131,7 @@ export default function CustomerDetailPage() {
     <>
       {/* Back link */}
       <Link
-        href="/admin/users"
+        href="/panel/users"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-5"
       >
         <svg
@@ -482,7 +482,7 @@ export default function CustomerDetailPage() {
               {orders.map((order) => (
                 <div
                   key={order.id}
-                  onClick={() => router.push(`/admin/orders/${order.id}`)}
+                  onClick={() => router.push(`/panel/orders/${order.id}`)}
                   className="bg-white rounded-xl border border-gray-200 p-5 hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-start justify-between mb-3">

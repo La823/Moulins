@@ -8,7 +8,7 @@ export default function AdminChatPage() {
     <>
       <h1 className="text-xl font-semibold text-gray-900 mb-5">Messages</h1>
       <Suspense fallback={null}>
-        <ChatPage basePath="/admin/chat" />
+        <ChatPage basePath="/panel/chat" />
       </Suspense>
     </>
   );

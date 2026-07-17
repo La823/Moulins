@@ -108,7 +108,7 @@ export default function EmployeeDetailPage() {
     setDeleting(true);
     try {
       await apiFetch(`/admin/employees/${id}`, { method: "DELETE" });
-      router.push("/admin/employees");
+      router.push("/panel/employees");
     } catch (err) {
       alert("Failed to delete employee: " + err.message);
       setDeleting(false);
@@ -135,7 +135,7 @@ export default function EmployeeDetailPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
         <p className="text-sm text-gray-400">Employee not found</p>
         <Link
-          href="/admin/employees"
+          href="/panel/employees"
           className="mt-3 inline-block text-sm text-gray-600 hover:text-gray-900 underline"
         >
           Back to employees
@@ -148,7 +148,7 @@ export default function EmployeeDetailPage() {
     <>
       {/* Back link */}
       <Link
-        href="/admin/employees"
+        href="/panel/employees"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-5"
       >
         <svg

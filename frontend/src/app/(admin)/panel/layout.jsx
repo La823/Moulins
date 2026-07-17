@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   {
     label: "Dashboard",
-    href: "/admin",
+    href: "/panel",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" />
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Products",
-    href: "/admin/products",
+    href: "/panel/products",
     permission: "products",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Orders",
-    href: "/admin/orders",
+    href: "/panel/orders",
     permission: "orders",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -38,7 +38,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Employees",
-    href: "/admin/employees",
+    href: "/panel/employees",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -48,7 +48,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Messages",
-    href: "/admin/chat",
+    href: "/panel/chat",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
@@ -57,7 +57,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Learning",
-    href: "/admin/learning",
+    href: "/panel/learning",
     permission: "learning",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,7 +67,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Assignments",
-    href: "/admin/assignments",
+    href: "/panel/assignments",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -77,7 +77,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Purchase Orders",
-    href: "/admin/purchase-orders",
+    href: "/panel/purchase-orders",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,7 +87,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Manufacturers",
-    href: "/admin/manufacturers",
+    href: "/panel/manufacturers",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -97,7 +97,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Attendance",
-    href: "/admin/attendance",
+    href: "/panel/attendance",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,7 +107,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Customers",
-    href: "/admin/users",
+    href: "/panel/users",
     permission: "customers",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +117,7 @@ const NAV_ITEMS = [
   },
   {
     label: "My Attendance",
-    href: "/admin/my-attendance",
+    href: "/panel/my-attendance",
     employeeOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,7 +127,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Meetings",
-    href: "/admin/meetings",
+    href: "/panel/meetings",
     permission: "meetings",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,7 +137,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Requests",
-    href: "/admin/requests",
+    href: "/panel/requests",
     permission: "requests",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,7 +147,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Notifications",
-    href: "/admin/notifications",
+    href: "/panel/notifications",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,7 +157,7 @@ const NAV_ITEMS = [
   },
   {
     label: "Settings",
-    href: "/admin/settings",
+    href: "/panel/settings",
     adminOnly: true,
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,7 +173,7 @@ export default function AdminLayout({ children }) {
   const pathname = usePathname();
 
   const isActive = (href) => {
-    if (href === "/admin") return pathname === "/admin";
+    if (href === "/panel") return pathname === "/panel";
     return pathname.startsWith(href);
   };
 
@@ -202,7 +202,7 @@ export default function AdminLayout({ children }) {
         {/* Sidebar */}
         <aside className="w-60 bg-gray-900 text-white flex flex-col fixed inset-y-0 left-0 z-30">
           <div className="px-5 py-5 border-b border-gray-800">
-            <Link href="/admin" className="flex items-center gap-2">
+            <Link href="/panel" className="flex items-center gap-2">
               <Image
                 src="/Moulins Logo High Res - V2.png"
                 alt="Moulins"

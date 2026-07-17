@@ -220,7 +220,7 @@ export default function EmployeesPage() {
             <div
               key={emp.id}
               className="bg-white rounded-xl border border-gray-200 p-5 hover:bg-gray-50 cursor-pointer transition-colors"
-              onClick={() => router.push(`/admin/employees/${emp.id}`)}
+              onClick={() => router.push(`/panel/employees/${emp.id}`)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">

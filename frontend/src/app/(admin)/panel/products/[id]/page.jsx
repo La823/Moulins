@@ -243,7 +243,7 @@ export default function EditProduct() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Link
-            href="/admin/products"
+            href="/panel/products"
             className="text-gray-400 hover:text-gray-600 text-sm"
           >
             &larr; Back
@@ -744,7 +744,7 @@ export default function EditProduct() {
             {saving ? "Saving..." : "Save Changes"}
           </button>
           <Link
-            href="/admin/products"
+            href="/panel/products"
             className="px-5 py-2.5 text-gray-600 text-sm hover:text-gray-900"
           >
             Cancel
