@@ -240,7 +240,7 @@ func GetProductCategoriesBatch(ctx context.Context, db *pgxpool.Pool, productIDs
 	return result, rows.Err()
 }
 
-func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category string, limit, offset int) ([]Product, int, error) {
+func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category string, limit, offset int, nameOnly bool) ([]Product, int, error) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
@@ -249,7 +249,11 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		conditions = append(conditions, "is_active = TRUE")
 	}
 	if search != "" {
-		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d OR key_ingredients ILIKE $%d)", argIdx, argIdx, argIdx))
+		if nameOnly {
+			conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIdx))
+		} else {
+			conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d OR key_ingredients ILIKE $%d)", argIdx, argIdx, argIdx))
+		}
 		args = append(args, "%"+search+"%")
 		argIdx++
 	}

@@ -157,9 +157,10 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		}
 		search := r.URL.Query().Get("search")
 		category := r.URL.Query().Get("category")
+		nameOnly := r.URL.Query().Get("name_only") == "true"
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s", activeOnly, page, limit, search, category)
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:no=%v", activeOnly, page, limit, search, category, nameOnly)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -167,7 +168,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, limit, offset)
+		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, limit, offset, nameOnly)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)

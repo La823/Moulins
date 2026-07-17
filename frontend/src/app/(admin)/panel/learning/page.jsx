@@ -46,7 +46,7 @@ export default function AdminLearningPage() {
   // filter client-side, so we debounce and let the backend's ILIKE search do the work.
   useEffect(() => {
     const t = setTimeout(() => {
-      apiFetch(`/products?search=${encodeURIComponent(productSearch)}&limit=50`)
+      apiFetch(`/products?search=${encodeURIComponent(productSearch)}&limit=50&name_only=true`)
         .then((res) => setProducts(res?.products || res || []))
         .catch(() => setProducts([]));
     }, 300);
