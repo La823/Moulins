@@ -150,8 +150,10 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		if page < 1 {
 			page = 1
 		}
-		if limit < 0 || (limit > 100 && limit != 0) {
+		if limit < 0 {
 			limit = 20
+		} else if limit > 100 {
+			limit = 0 // treat "more than 100" as "no limit" rather than silently shrinking to 20
 		}
 		search := r.URL.Query().Get("search")
 		category := r.URL.Query().Get("category")
@@ -174,7 +176,10 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 
 		loadProductRelationsBatch(r, db, products)
 
-		totalPages := int(math.Ceil(float64(total) / float64(limit)))
+		totalPages := 1
+		if limit > 0 {
+			totalPages = int(math.Ceil(float64(total) / float64(limit)))
+		}
 
 		result := productListResult{
 			Products:   products,

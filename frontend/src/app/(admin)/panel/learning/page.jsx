@@ -29,17 +29,27 @@ export default function AdminLearningPage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([apiFetch("/learning/videos"), apiFetch("/learning/playlists"), apiFetch("/products?limit=1000")])
-      .then(([v, p, prodRes]) => {
+    Promise.all([apiFetch("/learning/videos"), apiFetch("/learning/playlists")])
+      .then(([v, p]) => {
         setVideos(v || []);
         setPlaylists(p || []);
-        setProducts(prodRes?.products || prodRes || []);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(load, []);
+
+  // Server-side product search — the catalog is too large to preload and
+  // filter client-side, so we debounce and let the backend's ILIKE search do the work.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      apiFetch(`/products?search=${encodeURIComponent(productSearch)}&limit=50`)
+        .then((res) => setProducts(res?.products || res || []))
+        .catch(() => setProducts([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [productSearch]);
 
   useEffect(() => {
     if (success) {
@@ -205,11 +215,9 @@ export default function AdminLearningPage() {
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
                 >
                   <option value="">Link a product... *</option>
-                  {products
-                    .filter((p) => p.name.toLowerCase().includes(productSearch.toLowerCase()))
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
                 </select>
               </div>
               <select
