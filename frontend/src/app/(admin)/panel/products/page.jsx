@@ -1,10 +1,23 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
 export default function AdminProducts() {
+  return (
+    <Suspense fallback={null}>
+      <AdminProductsInner />
+    </Suspense>
+  );
+}
+
+function AdminProductsInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const categoryFilter = searchParams.get("category") || "";
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -18,7 +31,9 @@ export default function AdminProducts() {
     price: "",
     stock: "",
   });
-  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState(
+    categoryFilter ? [categoryFilter] : []
+  );
   const [imageFiles, setImageFiles] = useState([]);
   const [pdfFiles, setPdfFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +57,7 @@ export default function AdminProducts() {
       setLoading(true);
       const params = new URLSearchParams({ page: p, limit });
       if (q) params.set("search", q);
+      if (categoryFilter) params.set("category", categoryFilter);
       const data = await apiFetch(`/admin/products?${params}`);
       setProducts(data.products || []);
       setTotal(data.total || 0);
@@ -54,8 +70,12 @@ export default function AdminProducts() {
   };
 
   useEffect(() => {
+    setPage(1);
+  }, [categoryFilter]);
+
+  useEffect(() => {
     fetchProducts(page, search);
-  }, [page, search]);
+  }, [page, search, categoryFilter]);
 
   const handleSearchChange = (e) => {
     const val = e.target.value;
@@ -218,14 +238,68 @@ export default function AdminProducts() {
     }
   };
 
+  const [catEditorOpenFor, setCatEditorOpenFor] = useState(null);
+  const listCatRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (listCatRef.current && !listCatRef.current.contains(e.target)) {
+        setCatEditorOpenFor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const toggleProductCategory = async (product, cat) => {
+    const current = product.categories || [];
+    const updated = current.includes(cat)
+      ? current.filter((c) => c !== cat)
+      : [...current, cat];
+
+    // Optimistic update so the dropdown feels instant
+    setProducts((prev) =>
+      prev.map((p) => (p.id === product.id ? { ...p, categories: updated } : p))
+    );
+
+    try {
+      await apiFetch(`/admin/products/${product.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ categories: updated }),
+      });
+    } catch (err) {
+      alert(err.message);
+      fetchProducts();
+    }
+  };
+
   if (loading) return <p className="text-gray-500">Loading products...</p>;
 
   return (
     <>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-800">Products</h2>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Products</h2>
+          {categoryFilter && (
+            <p className="text-xs text-gray-500 mt-1">
+              Filtered by category:{" "}
+              <span className="font-medium text-gray-700">{categoryFilter}</span>{" "}
+              <button
+                onClick={() => router.push("/panel/products")}
+                className="text-blue-600 hover:underline ml-1"
+              >
+                Clear
+              </button>
+            </p>
+          )}
+        </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            if (!showForm && categoryFilter && !selectedCategories.includes(categoryFilter)) {
+              setSelectedCategories((prev) => [...prev, categoryFilter]);
+            }
+            setShowForm(!showForm);
+          }}
           className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
         >
           {showForm ? "Cancel" : "Add Product"}
@@ -515,19 +589,70 @@ export default function AdminProducts() {
                     </div>
                   </div>
 
-                  {/* Categories */}
-                  {p.categories && p.categories.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {p.categories.map((cat) => (
-                        <span
-                          key={cat}
-                          className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs"
-                        >
-                          {cat}
-                        </span>
-                      ))}
+                  {/* Categories — editable inline, no need to open the product */}
+                  <div
+                    ref={catEditorOpenFor === p.id ? listCatRef : null}
+                    className="relative mt-2"
+                  >
+                    <div
+                      onClick={() =>
+                        setCatEditorOpenFor(catEditorOpenFor === p.id ? null : p.id)
+                      }
+                      className="flex flex-wrap items-center gap-1 cursor-pointer group"
+                    >
+                      {p.categories && p.categories.length > 0 ? (
+                        p.categories.map((cat) => (
+                          <span
+                            key={cat}
+                            className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs"
+                          >
+                            {cat}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleProductCategory(p, cat);
+                              }}
+                              className="hover:text-blue-900 text-[10px] leading-none rounded-full w-3.5 h-3.5 flex items-center justify-center hover:bg-blue-100"
+                              title={`Remove ${cat}`}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-gray-400">No categories</span>
+                      )}
+                      <span className="text-[10px] text-gray-400 group-hover:text-gray-700 ml-1">
+                        {catEditorOpenFor === p.id ? "close" : "edit"}
+                      </span>
                     </div>
-                  )}
+
+                    {catEditorOpenFor === p.id && (
+                      <div className="absolute z-10 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-56 overflow-y-auto">
+                        {categoryOptions.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-gray-400">No categories exist yet</p>
+                        ) : (
+                          categoryOptions.map((cat) => {
+                            const selected = (p.categories || []).includes(cat);
+                            return (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => toggleProductCategory(p, cat)}
+                                className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 ${
+                                  selected ? "text-gray-900 font-medium" : "text-gray-600"
+                                }`}
+                              >
+                                {cat}
+                                {selected && <span className="text-gray-900 text-xs">✓</span>}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Documents */}
                   {p.documents && p.documents.length > 0 && (

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/admin_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
@@ -6,18 +8,19 @@ import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import 'admin_customers_screen.dart';
 import 'admin_employees_screen.dart';
+import 'admin_products_screen.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
 
-class AdminDashboardScreen extends StatefulWidget {
+class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+  ConsumerState<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   DashboardStats? _stats;
   bool _loading = true;
 
@@ -29,8 +32,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final user = ref.read(authProvider).user!;
+    final isAdmin = user.role == 'admin';
     try {
-      final stats = await AdminService().getDashboardStats();
+      final stats = await AdminService().getDashboardStats(
+        canSeeProducts: isAdmin || user.permissions.contains('products'),
+        canSeeCustomers: isAdmin || user.permissions.contains('customers'),
+        // Employee management is admin-only on the web too — not permission-gated.
+        canSeeEmployees: isAdmin,
+      );
       setState(() { _stats = stats; _loading = false; });
     } catch (_) {
       setState(() => _loading = false);
@@ -39,6 +49,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(authProvider).user!;
+    final isAdmin = user.role == 'admin';
+    final canSeeProducts = isAdmin || user.permissions.contains('products');
+    final canSeeCustomers = isAdmin || user.permissions.contains('customers');
+    final canSeeEmployees = isAdmin;
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -65,28 +81,57 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   mainAxisSpacing: 12,
                   childAspectRatio: 1.6,
                   children: [
-                    _StatCard(label: 'Total Products', value: _stats?.totalProducts ?? 0, icon: Icons.medication_outlined),
-                    _StatCard(label: 'Active Products', value: _stats?.activeProducts ?? 0, icon: Icons.check_circle_outline),
-                    _StatCard(label: 'Customers', value: _stats?.totalCustomers ?? 0, icon: Icons.people_outline),
-                    _StatCard(label: 'Employees', value: _stats?.totalEmployees ?? 0, icon: Icons.badge_outlined),
+                    if (canSeeProducts) ...[
+                      _StatCard(label: 'Total Products', value: _stats?.totalProducts ?? 0, icon: Icons.medication_outlined),
+                      _StatCard(label: 'Active Products', value: _stats?.activeProducts ?? 0, icon: Icons.check_circle_outline),
+                    ],
+                    if (canSeeCustomers)
+                      _StatCard(label: 'Customers', value: _stats?.totalCustomers ?? 0, icon: Icons.people_outline),
+                    if (canSeeEmployees)
+                      _StatCard(label: 'Employees', value: _stats?.totalEmployees ?? 0, icon: Icons.badge_outlined),
                   ],
                 ),
                 const SizedBox(height: 24),
                 const Text('Manage', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _ink)),
                 const SizedBox(height: 10),
-                _ManageTile(
-                  icon: Icons.people_outline,
-                  label: 'Customers',
-                  subtitle: 'View and manage customer accounts',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCustomersScreen())),
-                ),
-                const SizedBox(height: 10),
-                _ManageTile(
-                  icon: Icons.badge_outlined,
-                  label: 'Employees',
-                  subtitle: 'View and manage employee accounts & permissions',
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminEmployeesScreen())),
-                ),
+                if (canSeeProducts) ...[
+                  _ManageTile(
+                    icon: Icons.medication_outlined,
+                    label: 'Products',
+                    subtitle: 'Add, view, or delete products',
+                    onTap: () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => const AdminProductsScreen()))
+                        .then((_) => _load()),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (canSeeCustomers) ...[
+                  _ManageTile(
+                    icon: Icons.people_outline,
+                    label: 'Customers',
+                    subtitle: 'View and manage customer accounts',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCustomersScreen())),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (canSeeEmployees)
+                  _ManageTile(
+                    icon: Icons.badge_outlined,
+                    label: 'Employees',
+                    subtitle: 'View and manage employee accounts & permissions',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminEmployeesScreen())),
+                  ),
+                if (!canSeeProducts && !canSeeCustomers && !canSeeEmployees)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Text(
+                        "You don't have any admin permissions assigned yet.",
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
               ],
             ],
           ),

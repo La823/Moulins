@@ -1,35 +1,61 @@
 import '../config/api.dart';
 import '../models/admin_user.dart';
+import '../models/product.dart';
 
 class DashboardStats {
-  final int totalProducts;
-  final int activeProducts;
-  final int totalCustomers;
-  final int totalEmployees;
+  // null means "not shown" — either the request failed or the caller isn't
+  // permitted to see that stat, distinct from a real value of 0.
+  final int? totalProducts;
+  final int? activeProducts;
+  final int? totalCustomers;
+  final int? totalEmployees;
 
   DashboardStats({
-    required this.totalProducts,
-    required this.activeProducts,
-    required this.totalCustomers,
-    required this.totalEmployees,
+    this.totalProducts,
+    this.activeProducts,
+    this.totalCustomers,
+    this.totalEmployees,
   });
 }
 
 class AdminService {
   final _dio = createDio();
 
-  Future<DashboardStats> getDashboardStats() async {
+  Future<int?> _tryCount(Future<int> Function() fetch) async {
+    try {
+      return await fetch();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Each stat is fetched independently so a 403 on one (e.g. an employee
+  // without the "customers" permission) doesn't blank out the others —
+  // mirrors the web dashboard's per-card fetch-and-catch pattern.
+  Future<DashboardStats> getDashboardStats({
+    required bool canSeeProducts,
+    required bool canSeeCustomers,
+    required bool canSeeEmployees,
+  }) async {
     final results = await Future.wait([
-      _dio.get('/admin/products', queryParameters: {'page': 1, 'limit': 1}),
-      _dio.get('/products', queryParameters: {'page': 1, 'limit': 1}),
-      _dio.get('/admin/customers'),
-      _dio.get('/admin/employees'),
+      canSeeProducts
+          ? _tryCount(() async => (await _dio.get('/admin/products', queryParameters: {'page': 1, 'limit': 1})).data['total'] ?? 0)
+          : Future.value(null),
+      canSeeProducts
+          ? _tryCount(() async => (await _dio.get('/products', queryParameters: {'page': 1, 'limit': 1})).data['total'] ?? 0)
+          : Future.value(null),
+      canSeeCustomers
+          ? _tryCount(() async => ((await _dio.get('/admin/customers')).data as List<dynamic>? ?? []).length)
+          : Future.value(null),
+      canSeeEmployees
+          ? _tryCount(() async => ((await _dio.get('/admin/employees')).data as List<dynamic>? ?? []).length)
+          : Future.value(null),
     ]);
     return DashboardStats(
-      totalProducts: results[0].data['total'] ?? 0,
-      activeProducts: results[1].data['total'] ?? 0,
-      totalCustomers: (results[2].data as List<dynamic>? ?? []).length,
-      totalEmployees: (results[3].data as List<dynamic>? ?? []).length,
+      totalProducts: results[0],
+      activeProducts: results[1],
+      totalCustomers: results[2],
+      totalEmployees: results[3],
     );
   }
 
@@ -94,5 +120,51 @@ class AdminService {
 
   Future<void> deleteEmployee(String id) async {
     await _dio.delete('/admin/employees/$id');
+  }
+
+  Future<ProductListResponse> getAdminProducts({
+    int page = 1,
+    int limit = 20,
+    String search = '',
+  }) async {
+    final res = await _dio.get('/admin/products', queryParameters: {
+      'page': page,
+      'limit': limit,
+      if (search.isNotEmpty) 'search': search,
+    });
+    return ProductListResponse.fromJson(res.data);
+  }
+
+  Future<String> createProduct({
+    required String name,
+    required double price,
+    String description = '',
+    int stock = 0,
+    double? mrp,
+    String? brandName,
+  }) async {
+    final res = await _dio.post('/admin/products', data: {
+      'name': name,
+      'price': price,
+      'description': description,
+      'stock': stock,
+      'categories': <String>[],
+      if (mrp != null) 'mrp': mrp,
+      if (brandName != null && brandName.isNotEmpty) 'brand_name': brandName,
+    });
+    return res.data['id'] as String;
+  }
+
+  Future<void> deleteProduct(String id) async {
+    await _dio.delete('/admin/products/$id');
+  }
+
+  Future<Map<String, String>> getProductImageUploadUrl(String filename) async {
+    final res = await _dio.post('/admin/products/upload-url', data: {'filename': filename});
+    return {'upload_url': res.data['upload_url'], 'key': res.data['key']};
+  }
+
+  Future<void> addProductImage(String productId, String imageKey) async {
+    await _dio.post('/admin/products/$productId/images', data: {'image_key': imageKey});
   }
 }

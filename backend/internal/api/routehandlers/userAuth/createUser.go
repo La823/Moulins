@@ -37,6 +37,9 @@ func CreateUserHandler(db *pgxpool.Pool) http.HandlerFunc {
 			req.Username,
 			req.Email,
 			req.Role,
+			req.Pincode,
+			req.City,
+			req.State,
 		)
 
 		if err != nil {

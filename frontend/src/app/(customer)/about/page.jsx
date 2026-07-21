@@ -17,8 +17,8 @@ const TEAM = [
   {
     name: "Pardeep Arora",
     title: "Director, Sales & Marketing",
-    photo: "/team/pardeeparora.jpg",
-    bio: "With over 33 years of experience in pharmaceutical sales and marketing, Pardeep Arora chose to step away from a successful corporate career to make a greater impact in healthcare. As the founder of Metamorf Lifesciences, he led the company to touch the lives of 1 crore patients per annum, driven by the vision of \"Transforming Lives to Transform the Lives of Healthcare Partners.\"\n\nNow, as Director of Sales and Marketing at Moulins Pharmaceuticals, Pardeep brings his extensive expertise and strategic leadership to drive growth and expand access to quality healthcare.",
+    photo: "/team/pardeeparora.jpeg",
+    bio: "With over 33 years of experience in pharmaceutical sales and marketing, Mr. Pardeep Arora chose to step away from a successful corporate career to make a greater impact in healthcare. As the founder of Metamorf Lifesciences, he led the company to touch the lives of 1 crore patients per annum, driven by the vision of \"Transforming Lives to Transform the Lives of Healthcare Partners.\"\n\nNow, as Director of Sales and Marketing at Moulins Pharmaceuticals, Mr. Arora brings his extensive expertise and strategic leadership to drive growth and expand access to quality healthcare.",
   },
   {
     name: "Tanmay Arora",

@@ -5,19 +5,24 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 
-// Category name -> filter icon, matched by keyword since category names carry
-// a division nickname plus the specialization in parentheses (e.g. "Gusty (Gastro)").
-const CATEGORY_ICONS = [
-  { match: /pediatric/i, src: "/filters/Pedia.jpg.jpeg" },
-  { match: /gastro/i, src: "/filters/Gastro.jpg.jpeg" },
-  { match: /gynaecology/i, src: "/filters/Gynae.jpg.jpeg" },
-  { match: /neuro/i, src: "/filters/Neuro.jpg.jpeg" },
-  { match: /orthopaedic/i, src: "/filters/Ortho.jpg.jpeg" },
-];
+// Category name (as stored in the DB) -> its division banner image.
+const CATEGORY_ICONS = {
+  "Aerozone(Respiratory & ENT)": "/moulins divisions/Aerozone.jpg.jpeg",
+  "Bone Voyage (Orthopaedics)": "/moulins divisions/Bone Voyage.jpg.jpeg",
+  "Fluidity (Urology and renal)": "/moulins divisions/Fluidity.jpg.jpeg",
+  "Gutsy (Gastro)": "/moulins divisions/GUTSY.jpg.jpeg",
+  "Jivya (Cardio Diabetic Division)": "/moulins divisions/Jivvya.jpg.jpeg",
+  "Life Gard (Antibiotics/ Trauma)": "/moulins divisions/Lifegard.jpg.jpeg",
+  "Little Planet (Pediatric)": "/moulins divisions/Little Planet.jpg.jpeg",
+  "Matrix": "/moulins divisions/Matrix.jpg.jpeg",
+  "Mindset (Neuro/Psychiatry)": "/moulins divisions/Mindset.jpg.jpeg",
+  "Missbella(Derma and Skin Wellness)": "/moulins divisions/Misbella.jpg.jpeg",
+  "Srishti (Gynaecology)": "/moulins divisions/Srishti.jpg.jpeg",
+  "View Point (Ophthalmology)": "/moulins divisions/View Point.jpg.jpeg",
+};
 
 function getCategoryIcon(name) {
-  const found = CATEGORY_ICONS.find((c) => c.match.test(name));
-  return found?.src;
+  return CATEGORY_ICONS[name];
 }
 
 export default function ProductsPage() {
@@ -198,40 +203,64 @@ function ProductsPageInner() {
 
       {/* Category pills */}
       {categories.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-10">
+        <div
+          className="grid grid-flow-col grid-rows-2 justify-between gap-3 mb-10 w-full p-3 border border-gray-200 rounded-xl bg-gray-200"
+          style={{
+            gridTemplateColumns: `repeat(${Math.ceil((categories.length + 1) / 2)}, 1fr)`,
+          }}
+        >
           <button
             onClick={() => setActiveCategory("")}
-            className="px-4 py-1.5 text-sm font-medium transition-all duration-200"
+            className={`px-4 py-1.5 text-sm font-medium transition-all duration-200 min-w-0 border-4 rounded-md ${
+              activeCategory === ""
+                ? "border-transparent"
+                : "border-gray-200 hover:border-[#AC2528]"
+            }`}
             style={
               activeCategory === ""
                 ? { backgroundColor: "#AC2528", color: "white" }
-                : { backgroundColor: "transparent", color: "#6b7280", border: "1px solid #e5e7eb" }
+                : { backgroundColor: "transparent", color: "#6b7280" }
             }
           >
             All
           </button>
           {categories.map((cat) => {
             const icon = getCategoryIcon(cat);
+            const isActive = activeCategory === cat;
+
+            if (icon) {
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(isActive ? "" : cat)}
+                  title={cat}
+                  className={`group/icon rounded-md overflow-hidden transition-all duration-200 w-full h-full min-w-0 bg-gray-50 hover:scale-[1.02] border-4 ${
+                    isActive
+                      ? "border-[#AC2528]"
+                      : "border-transparent hover:border-[#AC2528]"
+                  }`}
+                  style={{ padding: 2 }}
+                >
+                  <img
+                    src={icon}
+                    alt={cat}
+                    className="w-full h-full rounded-md object-contain transition-transform duration-200 group-hover/icon:scale-105"
+                  />
+                </button>
+              );
+            }
+
             return (
               <button
                 key={cat}
-                onClick={() =>
-                  setActiveCategory(activeCategory === cat ? "" : cat)
-                }
-                className="flex items-center gap-2 pl-2 pr-4 py-1.5 text-sm font-medium transition-all duration-200"
+                onClick={() => setActiveCategory(isActive ? "" : cat)}
+                className="flex items-center gap-2 pl-2 pr-4 py-1.5 text-sm font-medium transition-all duration-200 min-w-0"
                 style={
-                  activeCategory === cat
+                  isActive
                     ? { backgroundColor: "#AC2528", color: "white" }
                     : { backgroundColor: "transparent", color: "#6b7280", border: "1px solid #e5e7eb" }
                 }
               >
-                {icon && (
-                  <img
-                    src={icon}
-                    alt=""
-                    className="w-6 h-6 rounded-full object-cover flex-shrink-0"
-                  />
-                )}
                 {cat}
               </button>
             );

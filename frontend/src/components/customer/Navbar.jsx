@@ -11,9 +11,25 @@ import { apiFetch } from "@/lib/api";
 
 const panelEase = [0.33, 1, 0.68, 1];
 
+// All 12 division landing pages, in display order.
+const DIVISIONS = [
+  { name: "Aerozone", desc: "Respiratory & ENT", href: "/aerozone" },
+  { name: "Bone Voyage", desc: "Orthopaedics", href: "/bonevoyage" },
+  { name: "Fluidity", desc: "Urology & Renal", href: "/fluidity" },
+  { name: "Gutsy", desc: "Gastro", href: "/gutsy" },
+  { name: "Jivya", desc: "Cardio Diabetic", href: "/jivya" },
+  { name: "Life Gard", desc: "Antibiotics/Trauma", href: "/lifegard" },
+  { name: "Little Planet", desc: "Pediatric", href: "/littleplanet" },
+  { name: "Matrix", desc: "", href: "/matrix" },
+  { name: "Mindset", desc: "Neuro/Psychiatry", href: "/mindset" },
+  { name: "Missbella", desc: "Derma & Skin", href: "/missbella" },
+  { name: "Srishti", desc: "Gynaecology", href: "/srishti" },
+  { name: "View Point", desc: "Ophthalmology", href: "/viewpoint" },
+];
+
 const dropdownContent = {
   products: (onClose) => (
-    <div className="max-w-7xl mx-auto px-8 py-10 grid grid-cols-3 gap-8">
+    <div className="max-w-7xl mx-auto px-8 py-10 grid grid-cols-[1fr_auto] gap-8 items-start">
       <div>
         <h3 className="text-2xl font-light text-gray-900 leading-snug mb-6">
           Explore our
@@ -32,58 +48,56 @@ const dropdownContent = {
         </Link>
       </div>
 
-      <div className="border-l border-gray-200 pl-8">
-        <Link
-          href="/products"
-          onClick={onClose}
-          className="group inline-flex items-center gap-2 text-red-600 font-medium mb-5 hover:text-red-700 transition-colors"
-        >
-          Health &amp; Wellness
-          <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
-            &rarr;
-          </span>
-        </Link>
+      <div className="border-l border-gray-200 pl-10 flex gap-28">
+      <div>
+        <p className="font-heading text-xl font-thin text-red-600 mb-5">Our Divisions</p>
         <ul className="space-y-3">
-          {["Pain Relief", "Vitamins & Supplements", "Digestive Health", "Respiratory Care"].map(
-            (item) => (
-              <li key={item}>
-                <Link
-                  href="/products"
-                  onClick={onClose}
-                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  {item}
-                </Link>
-              </li>
-            )
-          )}
-        </ul>
-      </div>
-
-      <div className="border-l border-gray-200 pl-8">
-        <Link
-          href="/products"
-          onClick={onClose}
-          className="group inline-flex items-center gap-2 text-red-600 font-medium mb-5 hover:text-red-700 transition-colors"
-        >
-          Personal Care
-          <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
-            &rarr;
-          </span>
-        </Link>
-        <ul className="space-y-3">
-          {["Skin Care", "Oral Care", "Hair Care", "Eye Care"].map((item) => (
-            <li key={item}>
+          {DIVISIONS.slice(0, 6).map((division) => (
+            <li key={division.href}>
               <Link
-                href="/products"
+                href={division.href}
                 onClick={onClose}
-                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                className="group block text-base border-b border-transparent hover:border-red-600 transition-colors"
               >
-                {item}
+                <span className="font-heading text-gray-900 font-medium group-hover:text-red-600 transition-colors">
+                  {division.name}
+                </span>
+                {division.desc && (
+                  <span className="text-gray-400 group-hover:text-red-600 transition-colors">
+                    {" "}
+                    &middot; {division.desc}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
         </ul>
+      </div>
+
+      <div>
+        <p className="font-heading text-xl font-thin text-red-600 mb-5 opacity-0 select-none">Our Divisions</p>
+        <ul className="space-y-3">
+          {DIVISIONS.slice(6).map((division) => (
+            <li key={division.href}>
+              <Link
+                href={division.href}
+                onClick={onClose}
+                className="group block text-base border-b border-transparent hover:border-red-600 transition-colors"
+              >
+                <span className="font-heading text-gray-900 font-medium group-hover:text-red-600 transition-colors">
+                  {division.name}
+                </span>
+                {division.desc && (
+                  <span className="text-gray-400 group-hover:text-red-600 transition-colors">
+                    {" "}
+                    &middot; {division.desc}
+                  </span>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
       </div>
     </div>
   ),

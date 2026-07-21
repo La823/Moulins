@@ -276,6 +276,42 @@ export default function ContactPage() {
           </div>
         </div>
       </section>
+
+      {/* Careers */}
+      <section className="max-w-7xl mx-auto px-8 py-20">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+          <div>
+            <h2 className="text-5xl font-light text-gray-900 mb-10">Careers at Moulins</h2>
+            <div className="border-t border-gray-200">
+              {[
+                { label: "Explore the latest job openings", href: "/careers" },
+                { label: "Learn about our hiring programs", href: "/careers" },
+              ].map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="group flex items-center justify-between py-6 border-b border-gray-200"
+                >
+                  <span className="text-lg text-gray-900 transition-colors duration-200 group-hover:text-red-600">
+                    {item.label}
+                  </span>
+                  <span className="text-xl text-gray-900 transition-all duration-200 group-hover:translate-x-1 group-hover:text-red-600">
+                    &rarr;
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative aspect-[16/9] overflow-hidden rounded-none">
+            <img
+              src="/doctor patient croped.jpg"
+              alt="Careers at Moulins"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      </section>
     </>
   );
 }

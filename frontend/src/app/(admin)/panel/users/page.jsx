@@ -12,10 +12,11 @@ export default function CustomersPage() {
 
   // Add customer form
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ phone_number: "", password: "", username: "" });
+  const [form, setForm] = useState({ phone_number: "", password: "", username: "", pincode: "", city: "", state: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [lookingUpPincode, setLookingUpPincode] = useState(false);
 
   const fetchCustomers = () => {
     setLoading(true);
@@ -28,6 +29,23 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchCustomers();
   }, []);
+
+  // Live city/state autofill as the admin types a 6-digit pincode.
+  useEffect(() => {
+    if (!/^\d{6}$/.test(form.pincode)) return;
+    setLookingUpPincode(true);
+    const t = setTimeout(() => {
+      apiFetch(`/admin/geocode/pincode?pincode=${form.pincode}`)
+        .then((res) => {
+          if (res?.found) {
+            setForm((f) => ({ ...f, city: res.city || f.city, state: res.state || f.state }));
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLookingUpPincode(false));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [form.pincode]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,10 +60,13 @@ export default function CustomersPage() {
           password: form.password,
           username: form.username || undefined,
           role: "customer",
+          pincode: form.pincode || undefined,
+          city: form.city || undefined,
+          state: form.state || undefined,
         }),
       });
       setSuccess(`Customer created: ${form.username || form.phone_number}`);
-      setForm({ phone_number: "", password: "", username: "" });
+      setForm({ phone_number: "", password: "", username: "", pincode: "", city: "", state: "" });
       setShowForm(false);
       fetchCustomers();
       setTimeout(() => setSuccess(""), 4000);
@@ -134,6 +155,48 @@ export default function CustomersPage() {
             <p className="text-[10px] text-gray-400 mt-1">
               This password will be visible to you in the dashboard
             </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Pincode
+            </label>
+            <input
+              type="text"
+              value={form.pincode}
+              onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+              placeholder="e.g. 110001"
+              maxLength={6}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">
+              {lookingUpPincode ? "Looking up city/state..." : "Used to place this customer on the customer map"}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City
+              </label>
+              <input
+                type="text"
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+                placeholder="Auto-filled from pincode"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                State
+              </label>
+              <input
+                type="text"
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value })}
+                placeholder="Auto-filled from pincode"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button

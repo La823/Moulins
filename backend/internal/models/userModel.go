@@ -19,6 +19,11 @@ type User struct {
 	Role             string     `json:"role"`
 	IsPhoneVerified  bool       `json:"is_phone_verified"`
 	OnboardingStep   int        `json:"onboarding_step"`
+	Pincode          *string    `json:"pincode,omitempty"`
+	City             *string    `json:"city,omitempty"`
+	State            *string    `json:"state,omitempty"`
+	Latitude         *float64   `json:"latitude,omitempty"`
+	Longitude        *float64   `json:"longitude,omitempty"`
 	LastLoginAt      *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
@@ -31,6 +36,9 @@ type CreateUserRequest struct {
 	Username    *string `json:"username,omitempty"`
 	Email       *string `json:"email,omitempty"`
 	Role        string  `json:"role"`
+	Pincode     *string `json:"pincode,omitempty"`
+	City        *string `json:"city,omitempty"`
+	State       *string `json:"state,omitempty"`
 }
 
 type CreateUserResponse struct {
@@ -45,6 +53,9 @@ func CreateUser(
 	username *string,
 	email *string,
 	role string,
+	pincode *string,
+	city *string,
+	state *string,
 ) (uuid.UUID, error) {
 
 	hashedPassword, err := utils.HashPassword(password)
@@ -56,6 +67,21 @@ func CreateUser(
 		role = "customer"
 	}
 
+	var lat, lng *float64
+	if pincode != nil && *pincode != "" {
+		if result, ok := utils.GeocodePincode(*pincode); ok {
+			lat, lng = &result.Lat, &result.Lng
+			// Prefer the caller's (admin-edited) city/state; fall back to
+			// the geocoded value only when the caller didn't supply one.
+			if city == nil || *city == "" {
+				city = &result.City
+			}
+			if state == nil || *state == "" {
+				state = &result.State
+			}
+		}
+	}
+
 	query := `
 		INSERT INTO users (
 			phone_number,
@@ -64,9 +90,14 @@ func CreateUser(
 			username,
 			email,
 			role,
+			pincode,
+			city,
+			state,
+			latitude,
+			longitude,
 			is_phone_verified
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE)
 		RETURNING id;
 	`
 
@@ -80,6 +111,11 @@ func CreateUser(
 		username,
 		email,
 		role,
+		pincode,
+		city,
+		state,
+		lat,
+		lng,
 	).Scan(&userID)
 
 	return userID, err
@@ -234,7 +270,8 @@ func DeleteUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) error {
 func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password, role,
-			is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			is_phone_verified, onboarding_step, pincode, city, state, latitude, longitude,
+			last_login_at, created_at, updated_at
 		FROM users
 		WHERE role = $1
 		ORDER BY created_at DESC
@@ -249,7 +286,8 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role,
-			&u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			&u.IsPhoneVerified, &u.OnboardingStep, &u.Pincode, &u.City, &u.State, &u.Latitude, &u.Longitude,
+			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)

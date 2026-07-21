@@ -140,6 +140,21 @@ func GeneratePresignedLedgerUploadURL(filename string) (uploadURL string, key st
 	return req.URL, key, nil
 }
 
+func GeneratePresignedResumeUploadURL(filename string) (uploadURL string, key string, err error) {
+	bucket := os.Getenv("S3_BUCKET")
+	key = fmt.Sprintf("resumes/%s-%s", uuid.New().String(), filename)
+
+	req, err := s3PresignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		return "", "", err
+	}
+
+	return req.URL, key, nil
+}
+
 func UploadToS3(key string, data []byte, contentType string) error {
 	bucket := os.Getenv("S3_BUCKET")
 	_, err := s3Client.PutObject(context.TODO(), &s3.PutObjectInput{

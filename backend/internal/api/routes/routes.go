@@ -13,6 +13,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/jobs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/learning"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/ledger"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
@@ -48,6 +49,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-carousel", homecarousel.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-focus", homefocus.GetHandler(db, rdb)).Methods("GET")
+
+	// careers — public (active postings, applying, resume upload)
+	router.HandleFunc("/careers", jobs.ListHandler(db)).Methods("GET")
+	router.HandleFunc("/careers/upload-url", jobs.UploadURLHandler()).Methods("POST")
+	router.HandleFunc("/careers/{id}/apply", jobs.ApplyHandler(db)).Methods("POST")
 
 	// protected routes (require valid JWT)
 	protected := router.PathPrefix("").Subrouter()
@@ -127,6 +133,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.Use(middleware.AdminOnly)
 
 	admin.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
+	admin.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
 	admin.HandleFunc("/users", userauth.GetLastUsersHandler(db)).Methods("GET")
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
 	admin.HandleFunc("/employees", userauth.GetEmployeesHandler(db)).Methods("GET")
@@ -194,6 +201,13 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/home-focus", homefocus.UpdateSectionHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/home-focus/cards/{position}", homefocus.UpdateCardHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/home-focus/upload-url", homefocus.UploadURLHandler()).Methods("POST")
+
+	// careers — job openings management (admin only)
+	admin.HandleFunc("/careers", jobs.AdminListHandler(db)).Methods("GET")
+	admin.HandleFunc("/careers", jobs.CreateHandler(db)).Methods("POST")
+	admin.HandleFunc("/careers/{id}", jobs.UpdateHandler(db)).Methods("PUT")
+	admin.HandleFunc("/careers/{id}", jobs.DeleteHandler(db)).Methods("DELETE")
+	admin.HandleFunc("/careers/{id}/applications", jobs.ListApplicationsHandler(db)).Methods("GET")
 
 	// staff routes — customer management
 	customerStaff := protected.PathPrefix("/admin").Subrouter()
