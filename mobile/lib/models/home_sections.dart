@@ -13,11 +13,18 @@ const _knownMobileRoutes = {
 // catalogue pre-filtered to that division's category, so "Learn more"
 // links land on the right set of products instead of the full catalogue.
 const _divisionCategoryMap = {
-  '/pediatric': 'Little Planet (Pediatric)',
-  '/orthopaedic': 'Bone Voyage (Orthopaedics)',
-  '/gastroenterology': 'Gusty (Gastro)',
-  '/neurology': 'Mindset (Neuro/Psychiatry)',
-  '/gynaecology': 'Srishti (Gynaecology)',
+  '/aerozone': 'Aerozone(Respiratory & ENT)',
+  '/bonevoyage': 'Bone Voyage (Orthopaedics)',
+  '/fluidity': 'Fluidity (Urology and renal)',
+  '/gutsy': 'Gutsy (Gastro)',
+  '/jivya': 'Jivya (Cardio Diabetic Division)',
+  '/lifegard': 'Life Gard (Antibiotics/ Trauma)',
+  '/littleplanet': 'Little Planet (Pediatric)',
+  '/matrix': 'Matrix',
+  '/mindset': 'Mindset (Neuro/Psychiatry)',
+  '/missbella': 'Missbella(Derma and Skin Wellness)',
+  '/srishti': 'Srishti (Gynaecology)',
+  '/viewpoint': 'View Point (Ophthalmology)',
 };
 
 /// The website and app share the same admin-entered link text (e.g. "/about"

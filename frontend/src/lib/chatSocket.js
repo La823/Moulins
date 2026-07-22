@@ -51,9 +51,16 @@ export function useChatSocket(onMessage) {
     };
   }, []);
 
-  const sendMessage = useCallback((to, body) => {
+  // target is either { to: <userId> } (start/continue by user id — resolved
+  // server-side into a group thread or the legacy direct path depending on
+  // roles) or { conversationId: <id> } (continue a known group thread).
+  const sendMessage = useCallback((target, body) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ to, body }));
+      const payload =
+        target && target.conversationId
+          ? { conversation_id: target.conversationId, body }
+          : { to: target?.to ?? target, body };
+      wsRef.current.send(JSON.stringify(payload));
       return true;
     }
     return false;

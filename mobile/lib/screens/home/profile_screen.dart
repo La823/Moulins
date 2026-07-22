@@ -11,6 +11,7 @@ import '../../models/onboarding.dart';
 import '../../config/api.dart';
 import '../../services/ledger_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -45,6 +46,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

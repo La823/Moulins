@@ -24,6 +24,8 @@ import 'screens/chat/chat_list_screen.dart';
 import 'screens/products/favorites_screen.dart';
 import 'screens/learning/learning_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
+import 'screens/divisions/division_landing_screen.dart';
+import 'data/divisions.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +116,7 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/admin', builder: (_, __) => const AdminDashboardScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
+            ..._divisionRoutes,
           ],
         ),
       ],
@@ -137,6 +140,21 @@ class MoulinsApp extends ConsumerWidget {
     );
   }
 }
+
+// Same 12 divisions as the website, each with its own hero banner + a
+// products list filtered to its category — sharing one screen widget.
+// Division data itself lives in data/divisions.dart, shared with AppDrawer.
+final List<GoRoute> _divisionRoutes = kDivisions
+    .map((d) => GoRoute(
+          path: d.route,
+          builder: (_, __) => DivisionLandingScreen(
+            heroLabel: d.heroLabel,
+            heroTitle: d.heroTitle,
+            heroImage: d.heroImage,
+            category: d.category,
+          ),
+        ))
+    .toList();
 
 class _AppShell extends ConsumerStatefulWidget {
   final Widget child;

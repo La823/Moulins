@@ -4,6 +4,7 @@ import '../../models/chat_message.dart';
 import '../../services/chat_service.dart';
 import 'chat_thread_screen.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -55,6 +56,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

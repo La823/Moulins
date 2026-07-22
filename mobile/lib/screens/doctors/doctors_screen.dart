@@ -7,6 +7,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import 'doctor_detail_screen.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class DoctorsScreen extends StatefulWidget {
   const DoctorsScreen({super.key});
@@ -105,6 +106,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

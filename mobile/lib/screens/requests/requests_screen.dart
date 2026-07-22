@@ -5,6 +5,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -68,6 +69,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

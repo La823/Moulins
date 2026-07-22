@@ -7,6 +7,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class LearningScreen extends StatefulWidget {
   const LearningScreen({super.key});
@@ -71,6 +72,7 @@ class _LearningScreenState extends State<LearningScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

@@ -5,7 +5,9 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../widgets/home_highlights_section.dart';
 import '../../widgets/home_carousel_section.dart';
-import '../../widgets/areas_of_focus_section.dart';
+// import '../../widgets/areas_of_focus_section.dart'; // temporarily unused — see below
+import '../../widgets/app_drawer.dart';
+import '../../data/divisions.dart';
 
 const _ink = Color(0xFF1A1A1A);
 
@@ -16,6 +18,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -29,7 +32,8 @@ class HomeScreen extends StatelessWidget {
           _CategorySection(),
           const HomeHighlightsSection(),
           const HomeCarouselSection(),
-          const AreasOfFocusSection(),
+          // Areas of Focus — temporarily hidden, not removed; may be needed again later.
+          // const AreasOfFocusSection(),
           const SizedBox(height: 24),
         ],
       ),
@@ -40,16 +44,36 @@ class HomeScreen extends StatelessWidget {
 class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height - kToolbarHeight - MediaQuery.of(context).padding.top;
+    // Crop 20% off the image overall — 8% from the top, 12% from the bottom —
+    // then scale the remaining 80% back up to fill the hero height.
+    const topCropFraction = 0.08;
+    const bottomCropFraction = 0.12;
+    final virtualHeight = height / (1 - topCropFraction - bottomCropFraction);
+    final topOffset = topCropFraction * virtualHeight;
     return Stack(
       children: [
         SizedBox(
           height: height,
           width: double.infinity,
-          child: Image.asset(
-            'assets/images/hero.jpg',
-            fit: BoxFit.cover,
-            alignment: const Alignment(-0.4, -1.0),
+          child: ClipRect(
+            child: OverflowBox(
+              maxHeight: virtualHeight,
+              alignment: Alignment.topCenter,
+              child: Transform.translate(
+                offset: Offset(0, -topOffset),
+                child: SizedBox(
+                  height: virtualHeight,
+                  width: width,
+                  child: Image.asset(
+                    'assets/images/mobilehome.png',
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(-0.4, -1.0),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
         Positioned.fill(
@@ -84,12 +108,22 @@ class _Hero extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Quality medicines,\ndelivered with care',
+              const Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Healthcare\n',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    TextSpan(
+                      text: 'beyond medicine',
+                      style: TextStyle(fontWeight: FontWeight.w300),
+                    ),
+                  ],
+                ),
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 30,
-                  fontWeight: FontWeight.w500,
                   height: 1.15,
                 ),
               ),
@@ -160,12 +194,6 @@ class _TrustBar extends StatelessWidget {
 }
 
 class _CategorySection extends StatelessWidget {
-  static const _categories = [
-    ('Pharmaceuticals', 'Tablets, capsules, syrups and injectables across therapeutic categories.'),
-    ('Nutraceuticals', 'Vitamins, supplements and wellness products for everyday health.'),
-    ('Custom Formulations', 'Tailored manufacturing solutions for your specific requirements.'),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -173,46 +201,99 @@ class _CategorySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Our Product Range', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: _ink)),
+          const Text('Our Divisions', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: _ink)),
           const SizedBox(height: 8),
           Text(
             'From active ingredients to finished formulations — explore our catalogue.',
             style: TextStyle(fontSize: 13, color: Colors.grey.shade500, height: 1.4),
           ),
           const SizedBox(height: 20),
-          for (final (title, desc) in _categories)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: InkWell(
-                onTap: () => context.push('/products'),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade200),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _ink)),
-                      const SizedBox(height: 6),
-                      Text(desc, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500, height: 1.4)),
-                      const SizedBox(height: 10),
-                      const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Explore', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red)),
-                          SizedBox(width: 4),
-                          Icon(Icons.arrow_forward, size: 14, color: Colors.red),
-                        ],
-                      ),
-                    ],
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: kDivisions.length,
+            gridDelegate: const SliceGridDelegate(),
+            itemBuilder: (context, i) {
+              final d = kDivisions[i];
+              return _DivisionCard(name: d.heroLabel, desc: d.heroTitle, image: d.gridImage, route: d.route);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 2 columns × 6 rows, matching the website's division grid.
+class SliceGridDelegate extends SliverGridDelegateWithFixedCrossAxisCount {
+  const SliceGridDelegate()
+      : super(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 16 / 9);
+}
+
+class _DivisionCard extends StatelessWidget {
+  final String name;
+  final String desc;
+  final String image;
+  final String route;
+
+  const _DivisionCard({required this.name, required this.desc, required this.image, required this.route});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => context.push(route),
+      child: ClipRRect(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              color: Colors.white,
+              child: Image.asset(
+                image,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) =>
+                    Container(color: Colors.grey.shade200, child: const Icon(Icons.image_not_supported_outlined, color: Colors.grey)),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 44,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
                   ),
                 ),
               ),
             ),
-        ],
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 6,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (desc.isNotEmpty)
+                    Text(
+                      desc,
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -8,6 +8,7 @@ import '../../services/favorite_service.dart';
 import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class FavoritesScreen extends ConsumerStatefulWidget {
   const FavoritesScreen({super.key});
@@ -75,6 +76,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

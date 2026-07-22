@@ -9,6 +9,10 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
+import '../../data/divisions.dart';
+
+const _filterRed = Color(0xFFAC2528);
 
 final _productService = ProductService();
 
@@ -102,6 +106,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -137,9 +142,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           const SizedBox(width: 4),
         ],
       ),
+      // Search bar stays fixed above the scroll; everything else (filter grid,
+      // product grid) lives in one CustomScrollView below it so the division
+      // filter isn't a separate fixed-height scroll box — it just takes its
+      // natural content height and scrolls away with the rest of the page.
       body: Column(
         children: [
-          // Search bar
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
@@ -157,78 +165,150 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ),
             ),
           ),
-
-          // Categories
-          categories.when(
-            data: (cats) => SizedBox(
-              height: 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                children: cats.map((cat) {
-                  final selected = _category == cat;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () => _onCategory(cat),
+          Expanded(
+            child: CustomScrollView(
+              controller: _scrollCtrl,
+              slivers: [
+          // Category filter: "All" bar spanning full width, then a 3x4 grid
+          // of division tiles below it (mirrors the website's product filter).
+          SliverToBoxAdapter(
+            child: categories.when(
+              data: (cats) => Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (_category != '') setState(() => _category = '');
+                        _load(reset: true);
+                      },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: selected ? const Color(0xFF00A6A4) : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(20),
+                          color: _category == '' ? _filterRed : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text(cat, style: TextStyle(fontSize: 13, color: selected ? Colors.white : Colors.grey.shade700, fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+                        child: Text(
+                          'All',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _category == '' ? Colors.white : Colors.grey.shade700,
+                          ),
+                        ),
                       ),
                     ),
-                  );
-                }).toList(),
+                    const SizedBox(height: 8),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: kDivisions.length,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        // Division images are mostly landscape/rectangular, not square —
+                        // match the tile shape to that instead of forcing a 1:1 box.
+                        childAspectRatio: 2.6,
+                      ),
+                      itemBuilder: (context, i) {
+                        final d = kDivisions[i];
+                        final isActive = _category == d.category;
+                        return GestureDetector(
+                          onTap: () => _onCategory(d.category),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              color: Colors.grey.shade50,
+                              border: Border.all(color: isActive ? _filterRed : Colors.transparent, width: 3),
+                            ),
+                            padding: const EdgeInsets.all(2),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(7),
+                              child: Image.asset(
+                                d.gridImage,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(Icons.image_not_supported_outlined, color: Colors.grey),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                ),
               ),
+              loading: () => const SizedBox(height: 44),
+              error: (_, __) => const SizedBox(height: 44),
             ),
-            loading: () => const SizedBox(height: 44),
-            error: (_, __) => const SizedBox(height: 44),
           ),
 
           if (_offline)
-            Container(
-              width: double.infinity,
-              color: Colors.orange.shade50,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.cloud_off, size: 14, color: Colors.orange.shade700),
-                  const SizedBox(width: 6),
-                  Text('Offline — showing saved products', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
-                ],
+            SliverToBoxAdapter(
+              child: Container(
+                width: double.infinity,
+                color: Colors.orange.shade50,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off, size: 14, color: Colors.orange.shade700),
+                    const SizedBox(width: 6),
+                    Text('Offline — showing saved products', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
+                  ],
+                ),
               ),
             ),
 
           // Product grid
-          Expanded(
-            child: _products.isEmpty && _loading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
-                : _products.isEmpty
-                    ? const Center(child: Text('No products found', style: TextStyle(color: Colors.grey)))
-                    : GridView.builder(
-                        controller: _scrollCtrl,
-                        padding: const EdgeInsets.all(16),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: responsiveGridColumns(context),
-                          childAspectRatio: 0.72,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
-                        itemCount: _products.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (ctx, i) {
-                          if (i >= _products.length) {
-                            return const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)));
-                          }
-                          return ProductCard(
-                            product: _products[i],
-                            onTap: () => context.push('/products/${_products[i].id}'),
-                            onAddToCart: () => ref.read(cartProvider.notifier).add(_products[i]),
-                          );
-                        },
-                      ),
+          if (_products.isEmpty && _loading)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+            )
+          else if (_products.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: Text('No products found', style: TextStyle(color: Colors.grey))),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: responsiveGridColumns(context),
+                  childAspectRatio: 0.72,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, i) {
+                    if (i >= _products.length) {
+                      return const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)));
+                    }
+                    return ProductCard(
+                      product: _products[i],
+                      onTap: () => context.push('/products/${_products[i].id}'),
+                      onAddToCart: () => ref.read(cartProvider.notifier).add(_products[i]),
+                    );
+                  },
+                  childCount: _products.length + (_hasMore ? 1 : 0),
+                ),
+              ),
+            ),
+              ],
+            ),
           ),
         ],
       ),

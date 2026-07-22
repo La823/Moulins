@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../models/notification_item.dart';
 import '../../providers/notification_provider.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -35,6 +36,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

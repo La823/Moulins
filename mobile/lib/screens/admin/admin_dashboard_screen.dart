@@ -9,6 +9,7 @@ import '../../utils/responsive.dart';
 import 'admin_customers_screen.dart';
 import 'admin_employees_screen.dart';
 import 'admin_products_screen.dart';
+import '../../widgets/app_drawer.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -57,6 +58,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,

@@ -119,6 +119,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// chat routes (any authenticated user)
 	protected.HandleFunc("/messages/conversations", messages.ListConversationsHandler(db)).Methods("GET")
+	protected.HandleFunc("/messages/thread/{conversationId}", messages.ThreadHistoryHandler(db)).Methods("GET")
+	protected.HandleFunc("/messages/thread/{conversationId}/read", messages.MarkThreadReadHandler(db)).Methods("PUT")
 	protected.HandleFunc("/messages/{userId}", messages.HistoryHandler(db)).Methods("GET")
 	protected.HandleFunc("/messages/{userId}/read", messages.MarkReadHandler(db)).Methods("PUT")
 
@@ -132,8 +134,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin := protected.PathPrefix("/admin").Subrouter()
 	admin.Use(middleware.AdminOnly)
 
-	admin.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
-	admin.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
 	admin.HandleFunc("/users", userauth.GetLastUsersHandler(db)).Methods("GET")
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
 	admin.HandleFunc("/employees", userauth.GetEmployeesHandler(db)).Methods("GET")
@@ -214,6 +214,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	customerStaff.Use(middleware.StaffOnly)
 	customerStaff.Use(middleware.RequirePermission(db, "customers", rdb))
 
+	customerStaff.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
+	customerStaff.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
 	customerStaff.HandleFunc("/customers", userauth.GetCustomersHandler(db)).Methods("GET")
 	customerStaff.HandleFunc("/customers/verify-document", userauth.VerifyCustomerDocumentHandler(db)).Methods("POST")
 	customerStaff.HandleFunc("/customers/{id}", userauth.GetCustomerDetailHandler(db)).Methods("GET")

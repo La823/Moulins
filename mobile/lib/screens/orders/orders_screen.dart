@@ -9,6 +9,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import 'package:intl/intl.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/app_drawer.dart';
 
 class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key});
@@ -45,6 +46,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
