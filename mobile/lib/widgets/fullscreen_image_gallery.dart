@@ -85,8 +85,11 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
               transformationController: i == _current ? _transformController : null,
               minScale: 1,
               maxScale: 4,
-              child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
+              // Force the pannable/zoomable region to fill the entire
+              // screen (not just the image's own bounds) — otherwise a
+              // pinch gesture only registers when both fingers land
+              // directly on the rendered image.
+              child: SizedBox.expand(
                 child: Center(
                   child: CachedNetworkImage(
                     imageUrl: widget.imageUrls[i],
