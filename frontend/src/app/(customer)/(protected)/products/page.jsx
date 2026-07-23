@@ -45,7 +45,7 @@ function ProductsPageInner() {
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get("search") || "");
   const [categories, setCategories] = useState([]);
-  const [activeCategory, setActiveCategory] = useState("");
+  const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "");
 
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -62,11 +62,13 @@ function ProductsPageInner() {
       .catch(() => setCategories([]));
   }, []);
 
-  // Pick up ?search= when navigating here again with a new query (e.g. from the navbar search)
+  // Pick up ?search= / ?category= when navigating here again with a new
+  // query (e.g. from the navbar search, or "Explore more in <category>")
   useEffect(() => {
     const q = searchParams.get("search") || "";
     setSearch(q);
     setDebouncedSearch(q);
+    setActiveCategory(searchParams.get("category") || "");
   }, [searchParams]);
 
   // Lightweight top-5 suggestions as you type — does NOT reload the full grid

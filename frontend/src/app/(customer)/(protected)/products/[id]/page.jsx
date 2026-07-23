@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
-import ProductCard from "@/components/products/ProductCard";
+import SmallProductCard from "@/components/products/SmallProductCard";
+import { divisionRouteForCategory } from "@/lib/divisionRoutes";
+import { DIVISIONS } from "@/lib/divisions";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -237,29 +240,74 @@ export default function ProductDetailPage() {
 
       {/* Recently Viewed */}
       {recentlyViewed.length > 0 && (
-        <div className="mt-16 pt-10 border-t border-gray-200">
-          <p className="text-xs uppercase tracking-widest text-gray-400 mb-6">Recently Viewed</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
+        <>
+          <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen mt-16 border-t border-gray-200" />
+        <div className="mt-8 bg-gray-100 rounded-2xl px-6 py-8 md:px-10">
+          <p className="text-base md:text-lg font-semibold text-gray-900 mb-6">Recently Viewed</p>
+          <div className="no-scrollbar flex gap-4 overflow-x-auto pb-2">
             {recentlyViewed.map((p) => (
-              <ProductCard key={p.id} product={p} />
+              <div key={p.id} className="flex-shrink-0 w-64">
+                <SmallProductCard product={p} />
+              </div>
+            ))}
+          </div>
+        </div>
+        </>
+      )}
+
+      {/* Explore more in this category */}
+      {sameCategory.length > 0 && (
+        <div className="mt-8 bg-gray-100 rounded-2xl px-6 py-8 md:px-10">
+          <Link
+            href={divisionRouteForCategory(product.categories[0])}
+            className="inline-block text-base md:text-lg font-semibold text-gray-900 hover:text-red-600 transition-colors mb-6"
+          >
+            Explore more in &ldquo;{product.categories[0]}&rdquo; &rarr;
+          </Link>
+          <div className="no-scrollbar flex gap-4 overflow-x-auto pb-2">
+            {sameCategory.map((p) => (
+              <div key={p.id} className="flex-shrink-0 w-64">
+                <SmallProductCard product={p} />
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Explore more in this category */}
-      {sameCategory.length > 0 && (
-        <div className="mt-16 pt-10 border-t border-gray-200">
-          <p className="text-xs uppercase tracking-widest text-gray-400 mb-6">
-            Explore more in &ldquo;{product.categories[0]}&rdquo;
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
-            {sameCategory.map((p) => (
-              <ProductCard key={p.id} product={p} />
-            ))}
-          </div>
+      {/* Explore Our Portfolio */}
+      <div className="mt-8 bg-white rounded-2xl px-6 py-8 md:px-10">
+        <p className="text-base md:text-lg font-semibold text-gray-900 mb-6">Explore Our Portfolio</p>
+        <div className="grid grid-cols-3 gap-4">
+          {DIVISIONS.map((d) => (
+            <Link
+              key={d.route}
+              href={d.route}
+              className="group relative overflow-hidden bg-white"
+              style={{ height: "15vh" }}
+            >
+              {/* Fixed height, full width — object-cover crops whatever
+                  overflows so the image always fills the box. Shorter than
+                  the 2-column layout since columns are narrower here. */}
+              <img
+                src={d.heroImage}
+                alt={d.label}
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-black/35 group-hover:bg-black/45 transition-colors" />
+              <div className="absolute bottom-3 left-3">
+                <span className="block text-white text-xl md:text-2xl font-semibold tracking-wide">
+                  {d.label}
+                </span>
+                {d.desc && (
+                  <span className="block text-white/70 text-[10px] font-medium uppercase tracking-widest mt-0.5">
+                    {d.desc}
+                  </span>
+                )}
+              </div>
+            </Link>
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }

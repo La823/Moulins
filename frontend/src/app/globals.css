@@ -12,3 +12,13 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
 }
+
+/* Hides the scrollbar on horizontally-scrollable rows (Recently Viewed,
+   Explore More) while keeping the scroll gesture itself fully working. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

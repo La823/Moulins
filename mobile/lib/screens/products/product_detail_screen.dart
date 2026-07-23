@@ -14,6 +14,16 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/fullscreen_image_gallery.dart';
 import '../../widgets/product_card.dart';
+import '../../data/divisions.dart';
+
+// Falls back to the filtered products list for any category that isn't one
+// of the 12 dedicated divisions.
+String _divisionRouteForCategory(String category) {
+  for (final d in kDivisions) {
+    if (d.category == category) return d.route;
+  }
+  return '/products?category=${Uri.encodeComponent(category)}';
+}
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final String productId;
@@ -29,6 +39,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   int _selectedImage = 0;
   final _imagePageCtrl = PageController();
   final Set<String> _downloadingDocs = {};
+  bool _downloadingImage = false;
   List<LearningVideo> _videos = [];
   List<Product> _recentlyViewed = [];
   List<Product> _sameCategory = [];
@@ -116,6 +127,17 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             backgroundColor: Colors.white,
             foregroundColor: Colors.black,
             actions: [
+              if (p.images.isNotEmpty)
+                _downloadingImage
+                    ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00A6A4))),
+                      )
+                    : IconButton(
+                        icon: Icon(Icons.download_outlined, color: Colors.grey.shade600),
+                        onPressed: () => _downloadImage(p.images[_selectedImage].id),
+                        tooltip: 'Download image',
+                      ),
               IconButton(
                 icon: Icon(
                   ref.watch(favoritesProvider).contains(p.id) ? Icons.star : Icons.star_border,
@@ -314,10 +336,19 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               ),
             ),
           ),
-          if (_recentlyViewed.isNotEmpty)
-            _ProductRow(title: 'Recently Viewed', products: _recentlyViewed),
+          if (_recentlyViewed.isNotEmpty) ...[
+            SliverToBoxAdapter(child: Container(height: 1, color: Colors.grey.shade300, margin: const EdgeInsets.only(bottom: 16))),
+            SliverToBoxAdapter(child: _ProductRow(title: 'Recently Viewed', products: _recentlyViewed)),
+          ],
           if (_sameCategory.isNotEmpty)
-            _ProductRow(title: 'Explore more in "${p.categories.first}"', products: _sameCategory),
+            SliverToBoxAdapter(
+              child: _ProductRow(
+                title: 'Explore more in "${p.categories.first}"',
+                products: _sameCategory,
+                onTitleTap: () => context.push(_divisionRouteForCategory(p.categories.first)),
+              ),
+            ),
+          const SliverToBoxAdapter(child: _ExplorePortfolioGrid()),
         ],
       )),
 
@@ -376,6 +407,33 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     }
   }
 
+  // Fetches the login-gated, short-lived download URL then opens it with the
+  // system viewer (same cache-then-open pattern as _openDocument) — from
+  // there the user can save to gallery / share, since no gallery-saver
+  // package is installed.
+  Future<void> _downloadImage(String imageId) async {
+    if (_downloadingImage) return;
+    setState(() => _downloadingImage = true);
+    try {
+      final downloadUrl = await ProductService().getImageDownloadUrl(imageId);
+      final file = await DefaultCacheManager().getSingleFile(downloadUrl);
+      final result = await OpenFilex.open(file.path);
+      if (result.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.message.isNotEmpty ? result.message : 'Could not open image')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not download image — check your connection')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingImage = false);
+    }
+  }
+
   Widget _detailRow(String label, String value, {Color? valueColor}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -391,36 +449,138 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 class _ProductRow extends ConsumerWidget {
   final String title;
   final List<Product> products;
+  final VoidCallback? onTitleTap;
 
-  const _ProductRow({required this.title, required this.products});
+  const _ProductRow({required this.title, required this.products, this.onTitleTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          GestureDetector(
+            onTap: onTitleTap,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: onTitleTap != null ? const Color(0xFF00A6A4) : const Color(0xFF1A1A1A)),
+                  ),
+                ),
+                if (onTitleTap != null) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward, size: 15, color: Color(0xFF00A6A4)),
+                ],
+              ],
+            ),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             height: 240,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: products.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, i) {
-                final rp = products[i];
-                return SizedBox(
-                  width: 160,
-                  child: ProductCard(
-                    product: rp,
-                    onTap: () => context.push('/products/${rp.id}'),
-                    onAddToCart: () => ref.read(cartProvider.notifier).add(rp),
-                  ),
-                );
-              },
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: products.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, i) {
+                  final rp = products[i];
+                  return SizedBox(
+                    width: 160,
+                    child: ProductCard(
+                      product: rp,
+                      onTap: () => context.push('/products/${rp.id}'),
+                      onAddToCart: () => ref.read(cartProvider.notifier).add(rp),
+                    ),
+                  );
+                },
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// "Explore Our Portfolio" — 3x4 grid of all 12 divisions, matching the web
+// product detail page: fixed height (~1/5-ish of screen height, scaled down
+// a bit further for 3 columns), full width cover-cropped image, bottom-left
+// label + desc overlay, white background, no rounded corners.
+class _ExplorePortfolioGrid extends StatelessWidget {
+  const _ExplorePortfolioGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    final tileHeight = MediaQuery.of(context).size.height * 0.15;
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Explore Our Portfolio', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: kDivisions.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: (MediaQuery.of(context).size.width / 3 - 6) / tileHeight,
+            ),
+            itemBuilder: (context, i) {
+              final d = kDivisions[i];
+              return GestureDetector(
+                onTap: () => context.push(d.route),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      d.heroImage,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200),
+                    ),
+                    Container(color: Colors.black.withValues(alpha: 0.35)),
+                    Positioned(
+                      left: 8,
+                      bottom: 8,
+                      right: 8,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            d.heroLabel,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (d.heroTitle.isNotEmpty)
+                            Text(
+                              d.heroTitle.toUpperCase(),
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 8, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),

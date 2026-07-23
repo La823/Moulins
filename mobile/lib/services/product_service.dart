@@ -80,4 +80,12 @@ class ProductService {
       return [];
     }
   }
+
+  // Returns a short-lived, login-gated S3 download URL (Content-Disposition:
+  // attachment) for a product image — same endpoint the web "Download" button
+  // uses.
+  Future<String> getImageDownloadUrl(String imageId) async {
+    final res = await _dio.get('/products/images/$imageId/download-url');
+    return res.data['download_url'] as String;
+  }
 }
