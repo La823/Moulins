@@ -111,6 +111,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/learning/videos", learning.ListVideosHandler(db)).Methods("GET")
 	protected.HandleFunc("/learning/playlists", learning.ListPlaylistsHandler(db)).Methods("GET")
 
+	// product image downloads — gated behind login (any authenticated user)
+	protected.HandleFunc("/products/images/{imgId}/download-url", products.DownloadImageHandler(db)).Methods("GET")
+
 	// favorite products (any authenticated user)
 	protected.HandleFunc("/favorites", products.ListFavoritesHandler(db)).Methods("GET")
 	protected.HandleFunc("/favorites/ids", products.ListFavoriteIDsHandler(db)).Methods("GET")

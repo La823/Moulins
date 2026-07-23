@@ -14,6 +14,7 @@ export default function ProductDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [added, setAdded] = useState(false);
   const [videos, setVideos] = useState([]);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     apiFetch(`/products/${id}`)
@@ -29,6 +30,18 @@ export default function ProductDetailPage() {
     addToCart(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
+  };
+
+  const handleDownloadImage = async (imageId) => {
+    setDownloading(true);
+    try {
+      const { download_url } = await apiFetch(`/products/images/${imageId}/download-url`);
+      window.location.href = download_url;
+    } catch {
+      // best-effort
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loading) return (
@@ -58,9 +71,21 @@ export default function ProductDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
         {/* Images */}
         <div>
-          <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-4">
+          <div className="relative aspect-square bg-gray-50 rounded-lg overflow-hidden mb-4">
             {images.length > 0 ? (
-              <img src={images[activeImage].image_url} alt={product.name} className="w-full h-full object-contain p-8" />
+              <>
+                <img src={images[activeImage].image_url} alt={product.name} className="w-full h-full object-contain p-8" />
+                <button
+                  onClick={() => handleDownloadImage(images[activeImage].id)}
+                  disabled={downloading}
+                  title="Download image"
+                  className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-sm border border-gray-200 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                </button>
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <svg className="w-16 h-16 text-gray-200" fill="none" stroke="currentColor" strokeWidth={1} viewBox="0 0 24 24">

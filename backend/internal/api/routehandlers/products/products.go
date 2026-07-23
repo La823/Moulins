@@ -465,3 +465,47 @@ func DocumentUploadURLHandler() http.HandlerFunc {
 		})
 	}
 }
+
+// DownloadImageHandler gates product image downloads behind login: product
+// listing/detail is public (so the site is browsable), but a raw S3 image
+// URL is otherwise a plain public link with no auth check at all. This
+// endpoint requires a valid session to even obtain a (short-lived) download
+// URL, and forces a real "Save As" download via Content-Disposition rather
+// than just opening the image in a new tab.
+func DownloadImageHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		imgID, err := uuid.Parse(mux.Vars(r)["imgId"])
+		if err != nil {
+			http.Error(w, "invalid image id", http.StatusBadRequest)
+			return
+		}
+
+		var imageKey, productName string
+		err = db.QueryRow(r.Context(),
+			`SELECT pi.image_key, p.name FROM product_images pi
+			 JOIN products p ON p.id = pi.product_id
+			 WHERE pi.id = $1`,
+			imgID,
+		).Scan(&imageKey, &productName)
+		if err != nil {
+			http.Error(w, "image not found", http.StatusNotFound)
+			return
+		}
+
+		ext := "jpg"
+		if i := strings.LastIndex(imageKey, "."); i != -1 {
+			ext = imageKey[i+1:]
+		}
+		filename := fmt.Sprintf("%s.%s", strings.ReplaceAll(productName, " ", "_"), ext)
+
+		downloadURL, err := utils.GeneratePresignedDownloadURL(imageKey, filename)
+		if err != nil {
+			log.Printf("presign download error: %v", err)
+			http.Error(w, "could not generate download url", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"download_url": downloadURL})
+	}
+}

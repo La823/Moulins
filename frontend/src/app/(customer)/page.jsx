@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import HomeCarousel from "@/components/customer/HomeCarousel";
-import AreasOfFocus from "@/components/customer/AreasOfFocus";
+// import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
 // All 12 divisions, using the same banner images used as filters on the Products page.
 const DIVISIONS = [
@@ -59,7 +59,7 @@ export default function HomePage() {
             {...rise(0.1)}
             className="text-sm uppercase tracking-[0.3em] text-white/50 mb-5"
           >
-            Trusted Pharmaceutical Partner
+            Because every treatment begins with trust.
           </motion.p>
 
           <motion.h1
@@ -82,8 +82,9 @@ export default function HomePage() {
             {...rise(0.55)}
             className="text-lg text-white/60 font-light max-w-xl mb-10"
           >
-            Pharmaceuticals, nutraceuticals and active ingredients — manufactured
-            with precision for healthcare professionals across India.
+            Delivering pharmaceuticals, nutraceuticals and active ingredients
+            with scientific precision, uncompromising quality, and an
+            unwavering commitment to better patient outcomes.
           </motion.p>
 
           <motion.div {...rise(0.7)} className="flex items-center gap-4">
@@ -124,6 +125,27 @@ export default function HomePage() {
               <p className="text-xs text-gray-400 mt-1 uppercase tracking-wider">Delivery</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Video hero — same clip/settings as the original site's landing hero */}
+      <section className="relative w-full aspect-[32/9] overflow-hidden">
+        <video
+          className="absolute inset-0 w-full h-full object-cover object-center"
+          autoPlay
+          muted
+          loop
+          playsInline
+          disablePictureInPicture
+          preload="auto"
+        >
+          <source src="/videos/moulinslander.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 bg-black/40" />
+        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-8">
+          <motion.p {...rise()} className="text-white/70 max-w-2xl leading-relaxed">
+            At Moulins Pharma, healthcare goes beyond medicine—it&apos;s about trust, compassion, and lasting care. Like a moulin channelling life-giving water, we create pathways to well-being, ensuring care reaches every individual in need.
+          </motion.p>
         </div>
       </section>
 
@@ -201,7 +223,8 @@ export default function HomePage() {
       )}
 
       <HomeCarousel />
-      <AreasOfFocus />
+      {/* Areas of Focus — temporarily hidden, not removed; may be needed again later. */}
+      {/* <AreasOfFocus /> */}
 
       {/* Careers */}
       <section className="max-w-7xl mx-auto px-8 py-20">

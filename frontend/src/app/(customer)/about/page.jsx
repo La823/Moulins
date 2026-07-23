@@ -154,6 +154,72 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* ── Recognition / Press ── */}
+      <section className="bg-gray-50 border-t border-gray-200">
+        <div className="max-w-6xl mx-auto px-8 py-24">
+          <motion.div {...rise()} className="text-center mb-16">
+            <div className="h-1 w-12 rounded-full mx-auto mb-6" style={{ backgroundColor: TEAL }} />
+            <p className="text-sm uppercase tracking-[0.3em] text-gray-400 mb-3">As Featured In</p>
+            <h2 className="text-4xl font-semibold text-gray-900">Pharma Outlook — Startup of the Year 2026</h2>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
+            {/* Two-page magazine spread — A4 portrait placeholders, swap the
+                src below for the real scans (e.g. /press/pharma-outlook-page1.jpg
+                and /press/pharma-outlook-page2.jpg) once available. */}
+            <motion.div {...rise(0.1)} className="grid grid-cols-2 gap-4">
+              {[1, 2].map((page) => (
+                <div
+                  key={page}
+                  className="relative w-full rounded-lg border-2 border-dashed border-gray-300 bg-white flex flex-col items-center justify-center gap-2 shadow-sm"
+                  style={{ aspectRatio: "210 / 297" }}
+                >
+                  <span className="text-gray-300 text-4xl font-light">{page}</span>
+                  <span className="text-xs text-gray-400 uppercase tracking-wider">Page {page} placeholder</span>
+                </div>
+              ))}
+            </motion.div>
+
+            {/* Quote + blurb */}
+            <motion.div {...rise(0.2)}>
+              <div className="h-1 w-10 rounded-full mb-5" style={{ backgroundColor: TEAL }} />
+              <blockquote className="text-2xl md:text-3xl font-light text-gray-900 leading-snug mb-6">
+                &ldquo;For Moulins Pharmaceuticals, the answer has not been to compete head-on in overcrowded categories but to identify opportunities hidden within the market.&rdquo;
+              </blockquote>
+              <p className="text-gray-600 leading-relaxed text-[15px] mb-4">
+                Moulins Pharmaceuticals was recognized as Pharmaceutical Medicine Supplier — Startup of the Year 2026 by Pharma Outlook, featured in a two-page spread covering the company&apos;s entrepreneur-first partner model, its leadership, and its vision for expanding access to quality healthcare beyond conventional distribution.
+              </p>
+              <p className="text-sm text-gray-400">Pharma Outlook · July 2026</p>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Our Story */}
+      <section className="max-w-4xl mx-auto px-8 py-14">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+          <motion.div {...rise()}>
+            <div className="relative w-full rounded-xl overflow-hidden shadow-md aspect-video">
+              <iframe
+                className="absolute inset-0 w-full h-full"
+                src="https://www.youtube.com/embed/JyLUGtcdcP0"
+                title="Our Story — Moulins Pharmaceuticals"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </motion.div>
+          <motion.div {...rise(0.15)}>
+            <div className="h-1 w-8 rounded-full mb-4" style={{ backgroundColor: TEAL }} />
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">Our Story</h2>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              The name Moulins is inspired by a natural wonder — a moulin, a transformative opening in a glacier that channels water to nourish life beyond it. Like a moulin, we start small but create ripples that shape the future of healthcare. We don&apos;t just provide medicines; we empower lives, offering not just prescriptions but the promise of a better tomorrow.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="bg-gray-50 border-t border-gray-200 py-20 text-center">
         <motion.h2 {...rise()} className="text-3xl font-semibold text-gray-900 mb-4">Interested in partnering?</motion.h2>

@@ -181,6 +181,26 @@ func UploadToS3(key string, data []byte, contentType string) error {
 	return err
 }
 
+// GeneratePresignedDownloadURL creates a short-lived S3 GET URL that forces
+// the browser to download (rather than display) the object, with a friendly
+// filename. Used to gate file downloads behind login — obtaining this URL
+// requires hitting an authenticated endpoint first, unlike the object's
+// plain public URL.
+func GeneratePresignedDownloadURL(key, filename string) (string, error) {
+	bucket := os.Getenv("S3_BUCKET")
+	disposition := fmt.Sprintf(`attachment; filename="%s"`, filename)
+
+	req, err := s3PresignClient.PresignGetObject(context.TODO(), &s3.GetObjectInput{
+		Bucket:                     aws.String(bucket),
+		Key:                        aws.String(key),
+		ResponseContentDisposition: aws.String(disposition),
+	}, s3.WithPresignExpires(2*time.Minute))
+	if err != nil {
+		return "", err
+	}
+	return req.URL, nil
+}
+
 func GetPublicURL(key string) string {
 	bucket := os.Getenv("S3_BUCKET")
 	region := os.Getenv("AWS_REGION")
