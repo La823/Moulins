@@ -119,7 +119,9 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   void _clearPendingImage() => setState(() => _pendingImage = null);
 
   void _openFullScreenImage(BuildContext context, String url) {
-    Navigator.of(context).push(
+    // rootNavigator: true — covers the whole screen even if this screen is
+    // nested inside a shell with a persistent bottom nav bar.
+    Navigator.of(context, rootNavigator: true).push(
       PageRouteBuilder(
         opaque: false,
         barrierColor: Colors.black,

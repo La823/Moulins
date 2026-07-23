@@ -11,7 +11,11 @@ void openFullScreenImageGallery(
   int initialIndex = 0,
   void Function(int index)? onPageChanged,
 }) {
-  Navigator.of(context).push(
+  // rootNavigator: true — product detail (and other) screens live inside a
+  // ShellRoute with a persistent bottom nav bar, so a plain Navigator.of()
+  // push stays nested inside that shell and the nav bar remains visible
+  // around the viewer. Pushing on the root navigator covers the whole screen.
+  Navigator.of(context, rootNavigator: true).push(
     PageRouteBuilder(
       opaque: false,
       barrierColor: Colors.black,
@@ -46,14 +50,14 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
   void initState() {
     super.initState();
     // Hide the status/nav bars while viewing — this is a full-screen viewer.
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
     _transformController.addListener(_onTransformChanged);
   }
 
   void _toggleChrome() {
     setState(() => _chromeVisible = !_chromeVisible);
     SystemChrome.setEnabledSystemUIMode(
-      _chromeVisible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
+      _chromeVisible ? SystemUiMode.edgeToEdge : SystemUiMode.immersive,
     );
   }
 
