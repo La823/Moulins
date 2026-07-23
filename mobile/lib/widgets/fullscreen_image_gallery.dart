@@ -40,6 +40,7 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
   late final TransformationController _transformController = TransformationController();
   late int _current = widget.initialIndex;
   bool _zoomedIn = false;
+  bool _chromeVisible = true;
 
   @override
   void initState() {
@@ -47,6 +48,13 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
     // Hide the status/nav bars while viewing — this is a full-screen viewer.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _transformController.addListener(_onTransformChanged);
+  }
+
+  void _toggleChrome() {
+    setState(() => _chromeVisible = !_chromeVisible);
+    SystemChrome.setEnabledSystemUIMode(
+      _chromeVisible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky,
+    );
   }
 
   void _onTransformChanged() {
@@ -89,24 +97,34 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
               // screen (not just the image's own bounds) — otherwise a
               // pinch gesture only registers when both fingers land
               // directly on the rendered image.
-              child: SizedBox.expand(
-                child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: widget.imageUrls[i],
-                    fit: BoxFit.contain,
-                    placeholder: (_, __) => const CircularProgressIndicator(color: Color(0xFF00A6A4)),
-                    errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+              child: GestureDetector(
+                onTap: _toggleChrome,
+                child: SizedBox.expand(
+                  child: Center(
+                    child: CachedNetworkImage(
+                      imageUrl: widget.imageUrls[i],
+                      fit: BoxFit.contain,
+                      placeholder: (_, __) => const CircularProgressIndicator(color: Color(0xFF00A6A4)),
+                      errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
+          IgnorePointer(
+            ignoring: !_chromeVisible,
+            child: AnimatedOpacity(
+              opacity: _chromeVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
               ),
             ),
           ),
@@ -115,19 +133,26 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
               bottom: 24,
               left: 0,
               right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: widget.imageUrls.asMap().entries.map((e) {
-                  return Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _current == e.key ? const Color(0xFF00A6A4) : Colors.white.withValues(alpha: 0.4),
-                    ),
-                  );
-                }).toList(),
+              child: IgnorePointer(
+                ignoring: !_chromeVisible,
+                child: AnimatedOpacity(
+                  opacity: _chromeVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: widget.imageUrls.asMap().entries.map((e) {
+                      return Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _current == e.key ? const Color(0xFF00A6A4) : Colors.white.withValues(alpha: 0.4),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
               ),
             ),
         ],
