@@ -60,4 +60,24 @@ class ProductService {
     final list = res.data as List<dynamic>? ?? [];
     return list.map((c) => c['name'] as String).toList();
   }
+
+  // Fire-and-forget — records this product as viewed for the recently-
+  // viewed queue (server caps it at the last 25).
+  Future<void> recordView(String id) async {
+    try {
+      await _dio.post('/products/$id/view');
+    } catch (_) {
+      // best-effort
+    }
+  }
+
+  Future<List<Product>> getRecentlyViewed() async {
+    try {
+      final res = await _dio.get('/recently-viewed');
+      final list = res.data as List<dynamic>? ?? [];
+      return list.map((e) => Product.fromJson(e)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

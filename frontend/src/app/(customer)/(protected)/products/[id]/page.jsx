@@ -15,6 +15,7 @@ export default function ProductDetailPage() {
   const [added, setAdded] = useState(false);
   const [videos, setVideos] = useState([]);
   const [downloading, setDownloading] = useState(false);
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
 
   useEffect(() => {
     apiFetch(`/products/${id}`)
@@ -24,6 +25,14 @@ export default function ProductDetailPage() {
     apiFetch(`/learning/videos?product_id=${id}`)
       .then((data) => setVideos(Array.isArray(data) ? data : []))
       .catch(() => setVideos([]));
+    // Fire-and-forget — track the view, then refresh the queue for display.
+    apiFetch(`/products/${id}/view`, { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        apiFetch("/recently-viewed")
+          .then((data) => setRecentlyViewed(Array.isArray(data) ? data.filter((p) => p.id !== id) : []))
+          .catch(() => setRecentlyViewed([]));
+      });
   }, [id]);
 
   const handleAddToCart = () => {
@@ -215,6 +224,39 @@ export default function ProductDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Recently Viewed */}
+      {recentlyViewed.length > 0 && (
+        <div className="mt-16 pt-10 border-t border-gray-200">
+          <p className="text-xs uppercase tracking-widest text-gray-400 mb-5">Recently Viewed</p>
+          <div className="flex gap-5 overflow-x-auto pb-2">
+            {recentlyViewed.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => router.push(`/products/${p.id}`)}
+                className="flex-shrink-0 w-40 text-left group"
+              >
+                <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden mb-2">
+                  {p.images && p.images.length > 0 ? (
+                    <img
+                      src={p.images[0].image_url}
+                      alt={p.name}
+                      className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <svg className="w-8 h-8 text-gray-200" fill="none" stroke="currentColor" strokeWidth={1} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-700 line-clamp-2 group-hover:text-gray-900">{p.name}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

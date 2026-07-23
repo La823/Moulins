@@ -28,6 +28,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   final _imagePageCtrl = PageController();
   final Set<String> _downloadingDocs = {};
   List<LearningVideo> _videos = [];
+  List<Product> _recentlyViewed = [];
 
   @override
   void initState() {
@@ -36,6 +37,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     LearningService().getVideos(productId: widget.productId).then((v) {
       if (mounted) setState(() => _videos = v);
     }).catchError((_) {});
+    ProductService().recordView(widget.productId).whenComplete(() {
+      ProductService().getRecentlyViewed().then((list) {
+        if (mounted) {
+          setState(() => _recentlyViewed = list.where((p) => p.id != widget.productId).toList());
+        }
+      });
+    });
   }
 
   @override
@@ -296,6 +304,67 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
               ),
             ),
           ),
+          if (_recentlyViewed.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Recently Viewed', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 150,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _recentlyViewed.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, i) {
+                          final rp = _recentlyViewed[i];
+                          return GestureDetector(
+                            onTap: () => Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: rp.id)),
+                            ),
+                            child: SizedBox(
+                              width: 110,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Container(
+                                      width: 110,
+                                      height: 110,
+                                      color: Colors.grey.shade50,
+                                      padding: const EdgeInsets.all(8),
+                                      child: rp.primaryImageUrl != null
+                                          ? CachedNetworkImage(
+                                              imageUrl: rp.primaryImageUrl!,
+                                              fit: BoxFit.contain,
+                                              placeholder: (_, __) => const SizedBox.shrink(),
+                                              errorWidget: (_, __, ___) => const Icon(Icons.medication_outlined, color: Colors.grey),
+                                            )
+                                          : const Icon(Icons.medication_outlined, color: Colors.grey),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    rp.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF1A1A1A)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       )),
 
