@@ -118,6 +118,16 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   void _clearPendingImage() => setState(() => _pendingImage = null);
 
+  void _openFullScreenImage(BuildContext context, String url) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (_, __, ___) => _FullScreenImageViewer(url: url),
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final text = _draftCtrl.text.trim();
     if (text.isEmpty && _pendingImage == null) return;
@@ -207,24 +217,27 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                   if (m.imageUrl != null)
                                     Padding(
                                       padding: EdgeInsets.only(bottom: m.body.isNotEmpty ? 6 : 0),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: CachedNetworkImage(
-                                          imageUrl: m.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          width: 200,
-                                          height: 200,
-                                          placeholder: (_, __) => Container(
+                                      child: GestureDetector(
+                                        onTap: () => _openFullScreenImage(context, m.imageUrl!),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: CachedNetworkImage(
+                                            imageUrl: m.imageUrl!,
+                                            fit: BoxFit.cover,
                                             width: 200,
                                             height: 200,
-                                            color: Colors.grey.shade100,
-                                            child: const Center(child: CircularProgressIndicator(color: teal, strokeWidth: 2)),
-                                          ),
-                                          errorWidget: (_, __, ___) => Container(
-                                            width: 200,
-                                            height: 200,
-                                            color: Colors.grey.shade100,
-                                            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+                                            placeholder: (_, __) => Container(
+                                              width: 200,
+                                              height: 200,
+                                              color: Colors.grey.shade100,
+                                              child: const Center(child: CircularProgressIndicator(color: teal, strokeWidth: 2)),
+                                            ),
+                                            errorWidget: (_, __, ___) => Container(
+                                              width: 200,
+                                              height: 200,
+                                              color: Colors.grey.shade100,
+                                              child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -320,6 +333,48 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           ),
         ],
       )),
+    );
+  }
+}
+
+// Pinch-to-zoom, tap-to-dismiss full-screen view of a chat image.
+class _FullScreenImageViewer extends StatelessWidget {
+  final String url;
+
+  const _FullScreenImageViewer({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: CachedNetworkImage(
+                  imageUrl: url,
+                  fit: BoxFit.contain,
+                  placeholder: (_, __) => const CircularProgressIndicator(color: Color(0xFF00A6A4)),
+                  errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+                ),
+              ),
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
