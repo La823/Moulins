@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/chat_message.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/chat_service.dart';
 import 'chat_thread_screen.dart';
 import '../../utils/responsive.dart';
@@ -16,12 +17,14 @@ class ChatListScreen extends ConsumerStatefulWidget {
 class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   static const teal = Color(0xFF00A6A4);
   final _service = ChatService();
+  final _searchCtrl = TextEditingController();
   late final ChatSocket _socket;
 
   List<ChatConversation> _conversations = [];
   List<ChatContact> _contacts = [];
   bool _loading = true;
   bool _showContacts = false;
+  String _search = '';
 
   @override
   void initState() {
@@ -37,6 +40,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   @override
   void dispose() {
     _socket.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -56,6 +60,15 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     }
   }
 
+  // Conversation-list name color: black for group threads, green for a
+  // direct chat with an admin, blue for a direct chat with an employee.
+  Color _nameColor(ChatConversation c) {
+    if (c.isThread) return const Color(0xFF1A1A1A);
+    if (c.role == 'admin') return Colors.green.shade700;
+    if (c.role == 'employee') return Colors.blue.shade700;
+    return const Color(0xFF1A1A1A);
+  }
+
   void _openThread({required String id, required bool isThread, required String displayName}) {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => ChatThreadScreen(id: id, isThread: isThread, title: displayName)))
@@ -64,10 +77,14 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final myId = ref.watch(authProvider).user?.id;
     // Only direct conversations correspond 1:1 to a raw contact id — thread
     // conversations don't, so they're excluded from this dedup set.
     final directIds = _conversations.where((c) => !c.isThread).map((c) => c.id).toSet();
     final newContacts = _contacts.where((c) => !directIds.contains(c.id)).toList();
+    final filteredConversations = _search.isEmpty
+        ? _conversations
+        : _conversations.where((c) => c.labelFor(myId).toLowerCase().contains(_search.toLowerCase())).toList();
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -90,6 +107,23 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               color: teal,
               child: ListView(
                 children: [
+                  Container(
+                    color: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (v) => setState(() => _search = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search chats...',
+                        prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
                   if (_showContacts) ...[
                     Container(
                       color: Colors.white,
@@ -125,15 +159,22 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       padding: const EdgeInsets.only(top: 80),
                       child: Center(child: Text('No conversations yet', style: TextStyle(color: Colors.grey.shade400))),
                     )
+                  else if (filteredConversations.isEmpty && !_showContacts)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 80),
+                      child: Center(child: Text('No chats match "$_search"', style: TextStyle(color: Colors.grey.shade400))),
+                    )
                   else
-                    ..._conversations.map((c) => Container(
+                    ...filteredConversations.map((c) {
+                      final label = c.labelFor(myId);
+                      return Container(
                           color: Colors.white,
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: teal.withValues(alpha: 0.15),
-                              child: Text(c.displayName.isNotEmpty ? c.displayName[0].toUpperCase() : '?', style: const TextStyle(color: teal, fontWeight: FontWeight.bold)),
+                              child: Text(label.isNotEmpty ? label[0].toUpperCase() : '?', style: const TextStyle(color: teal, fontWeight: FontWeight.bold)),
                             ),
-                            title: Text(c.displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                            title: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: _nameColor(c))),
                             subtitle: Text(c.lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
                             trailing: c.unreadCount > 0
                                 ? Container(
@@ -142,9 +183,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                     child: Text('${c.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                                   )
                                 : null,
-                            onTap: () => _openThread(id: c.id, isThread: c.isThread, displayName: c.displayName),
+                            onTap: () => _openThread(id: c.id, isThread: c.isThread, displayName: label),
                           ),
-                        )),
+                        );
+                    }),
                 ],
               ),
             ),

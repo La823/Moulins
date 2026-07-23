@@ -109,14 +109,21 @@ class ChatConversation {
 
   bool get isThread => type == 'thread';
 
-  String get displayName {
-    if (isThread) {
-      if (participants.isEmpty) return 'Care Team';
-      return participants
-          .map((p) => p.role == 'employee' ? '${p.displayName} (Employee)' : p.displayName)
-          .join(' · ');
+  // Threads have no single "other party" — pick the most useful name for
+  // *this* viewer: a customer sees their assigned employee's name (or
+  // "Support" if none is assigned yet); an employee or admin sees the
+  // customer's name, since that's what actually distinguishes one thread
+  // from another in their list.
+  String labelFor(String? myId) {
+    if (!isThread) return username ?? phoneNumber;
+    final others = participants.where((p) => p.id != myId).toList();
+    for (final p in others) {
+      if (p.role == 'customer') return p.displayName;
     }
-    return username ?? phoneNumber;
+    for (final p in others) {
+      if (p.role == 'employee') return p.displayName;
+    }
+    return 'Support';
   }
 
   factory ChatConversation.fromJson(Map<String, dynamic> json) => ChatConversation(

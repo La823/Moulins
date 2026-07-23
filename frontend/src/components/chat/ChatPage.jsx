@@ -10,13 +10,27 @@ function displayName(u) {
   return u.username || u.phone_number || "Unknown";
 }
 
-// Threads have no single "other party" — label them by their participants
-// (the customer + whichever employee, if any) instead.
-function threadLabel(c) {
-  if (!c.participants || c.participants.length === 0) return "Care Team";
-  return c.participants
-    .map((p) => `${displayName(p)}${p.role === "employee" ? " (Employee)" : ""}`)
-    .join(" · ");
+// Threads have no single "other party" — pick the most useful name for
+// *this* viewer: a customer sees their assigned employee's name (or
+// "Support" if none is assigned yet); an employee or admin sees the
+// customer's name, since that's what actually distinguishes one thread
+// from another in their list.
+function threadLabel(c, myId) {
+  const others = (c.participants || []).filter((p) => p.id !== myId);
+  const client = others.find((p) => p.role === "customer");
+  if (client) return displayName(client);
+  const employee = others.find((p) => p.role === "employee");
+  if (employee) return displayName(employee);
+  return "Support";
+}
+
+// Conversation-list name color: black for group threads, green for a direct
+// chat with an admin, blue for a direct chat with an employee.
+function nameColorClass(c) {
+  if (c.type === "thread") return "text-gray-900";
+  if (c.role === "admin") return "text-green-600";
+  if (c.role === "employee") return "text-blue-600";
+  return "text-gray-900";
 }
 
 export default function ChatPage({ basePath }) {
@@ -36,6 +50,7 @@ export default function ChatPage({ basePath }) {
   const [draft, setDraft] = useState("");
   const [showContacts, setShowContacts] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [search, setSearch] = useState("");
   const bottomRef = useRef(null);
 
   const loadConversations = useCallback(() => {
@@ -100,6 +115,11 @@ export default function ChatPage({ basePath }) {
 
   const directIds = new Set(conversations.filter((c) => c.type === "direct").map((c) => c.id));
   const newContacts = contacts.filter((c) => !directIds.has(c.id));
+  const filteredConversations = search.trim()
+    ? conversations.filter((c) =>
+        (c.type === "thread" ? threadLabel(c, user?.id) : displayName(c)).toLowerCase().includes(search.trim().toLowerCase())
+      )
+    : conversations;
   const activeThread = active?.type === "thread" ? conversations.find((c) => c.type === "thread" && c.id === active.id) : null;
   const activeDirectPartner =
     active?.type === "direct"
@@ -119,6 +139,16 @@ export default function ChatPage({ basePath }) {
             >
               {showContacts ? "Close" : "+ New chat"}
             </button>
+          </div>
+
+          <div className="p-3 border-b border-gray-200">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search chats..."
+              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 text-gray-900 placeholder:text-gray-400"
+            />
           </div>
 
           {showContacts && (
@@ -146,8 +176,10 @@ export default function ChatPage({ basePath }) {
           <div className="flex-1 overflow-y-auto">
             {conversations.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">No conversations yet</p>
+            ) : filteredConversations.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No chats match &quot;{search}&quot;</p>
             ) : (
-              conversations.map((c) => {
+              filteredConversations.map((c) => {
                 const isActive = active?.type === c.type && active.id === c.id;
                 return (
                   <button
@@ -158,8 +190,8 @@ export default function ChatPage({ basePath }) {
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {c.type === "thread" ? threadLabel(c) : displayName(c)}
+                      <p className={`text-[13px] font-medium truncate ${nameColorClass(c)}`}>
+                        {c.type === "thread" ? threadLabel(c, user?.id) : displayName(c)}
                       </p>
                       <p className="text-xs text-gray-500 truncate max-w-[180px]">{c.last_message}</p>
                     </div>
@@ -188,7 +220,7 @@ export default function ChatPage({ basePath }) {
                   <p className="text-sm font-semibold text-gray-900">
                     {active.type === "thread"
                       ? activeThread
-                        ? threadLabel(activeThread)
+                        ? threadLabel(activeThread, user?.id)
                         : "..."
                       : activeDirectPartner
                         ? displayName(activeDirectPartner)
