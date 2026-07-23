@@ -16,6 +16,7 @@ class ChatListScreen extends ConsumerStatefulWidget {
 class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   static const teal = Color(0xFF00A6A4);
   final _service = ChatService();
+  late final ChatSocket _socket;
 
   List<ChatConversation> _conversations = [];
   List<ChatContact> _contacts = [];
@@ -26,12 +27,24 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   void initState() {
     super.initState();
     _load();
+    // Keep the list live while it's open — otherwise a new message only
+    // shows up after a manual pull-to-refresh, even though the push
+    // notification for it already arrived.
+    _socket = ChatSocket(onMessage: (_) => _load(showSpinner: false));
+    _socket.connect();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _socket.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({bool showSpinner = true}) async {
+    if (showSpinner) setState(() => _loading = true);
     try {
       final results = await Future.wait([_service.getConversations(), _service.getContacts()]);
+      if (!mounted) return;
       setState(() {
         _conversations = results[0] as List<ChatConversation>;
         _contacts = results[1] as List<ChatContact>;
@@ -39,7 +52,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     } catch (_) {
       // keep whatever was loaded before
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && showSpinner) setState(() => _loading = false);
     }
   }
 
