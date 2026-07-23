@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 // Pinch-to-zoom, swipe-between-images full-screen viewer. Opens at
@@ -35,12 +36,31 @@ class _FullScreenImageGallery extends StatefulWidget {
 }
 
 class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
-  late final PageController _controller = PageController(initialPage: widget.initialIndex);
+  late final PageController _pageController = PageController(initialPage: widget.initialIndex);
+  late final TransformationController _transformController = TransformationController();
   late int _current = widget.initialIndex;
+  bool _zoomedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Hide the status/nav bars while viewing — this is a full-screen viewer.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _transformController.addListener(_onTransformChanged);
+  }
+
+  void _onTransformChanged() {
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    final zoomed = scale > 1.01;
+    if (zoomed != _zoomedIn) setState(() => _zoomedIn = zoomed);
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _transformController.removeListener(_onTransformChanged);
+    _transformController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -51,18 +71,23 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
       body: Stack(
         children: [
           PageView.builder(
-            controller: _controller,
+            controller: _pageController,
+            // Disable page swiping while zoomed in — otherwise panning a
+            // zoomed image fights with the page-swipe gesture and neither
+            // works reliably (PageView's drag recognizer tends to win).
+            physics: _zoomedIn ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
             itemCount: widget.imageUrls.length,
             onPageChanged: (i) {
               setState(() => _current = i);
               widget.onPageChanged?.call(i);
             },
-            itemBuilder: (context, i) => GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              child: Center(
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 4,
+            itemBuilder: (context, i) => InteractiveViewer(
+              transformationController: i == _current ? _transformController : null,
+              minScale: 1,
+              maxScale: 4,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Center(
                   child: CachedNetworkImage(
                     imageUrl: widget.imageUrls[i],
                     fit: BoxFit.contain,
