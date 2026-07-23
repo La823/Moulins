@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:go_router/go_router.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
@@ -12,6 +13,7 @@ import '../../models/learning.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/fullscreen_image_gallery.dart';
+import '../../widgets/product_card.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final String productId;
@@ -29,6 +31,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   final Set<String> _downloadingDocs = {};
   List<LearningVideo> _videos = [];
   List<Product> _recentlyViewed = [];
+  List<Product> _sameCategory = [];
 
   @override
   void initState() {
@@ -56,6 +59,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     try {
       final p = await ProductService().getProduct(widget.productId);
       setState(() { _product = p; _loading = false; });
+      if (p.categories.isNotEmpty) {
+        ProductService().getProducts(category: p.categories.first, limit: 13).then((res) {
+          if (mounted) {
+            setState(() => _sameCategory = res.products.where((sp) => sp.id != widget.productId).take(12).toList());
+          }
+        }).catchError((_) {});
+      }
     } catch (_) {
       setState(() => _loading = false);
     }
@@ -305,66 +315,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             ),
           ),
           if (_recentlyViewed.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Recently Viewed', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 150,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _recentlyViewed.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (context, i) {
-                          final rp = _recentlyViewed[i];
-                          return GestureDetector(
-                            onTap: () => Navigator.of(context).pushReplacement(
-                              MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: rp.id)),
-                            ),
-                            child: SizedBox(
-                              width: 110,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Container(
-                                      width: 110,
-                                      height: 110,
-                                      color: Colors.grey.shade50,
-                                      padding: const EdgeInsets.all(8),
-                                      child: rp.primaryImageUrl != null
-                                          ? CachedNetworkImage(
-                                              imageUrl: rp.primaryImageUrl!,
-                                              fit: BoxFit.contain,
-                                              placeholder: (_, __) => const SizedBox.shrink(),
-                                              errorWidget: (_, __, ___) => const Icon(Icons.medication_outlined, color: Colors.grey),
-                                            )
-                                          : const Icon(Icons.medication_outlined, color: Colors.grey),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    rp.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11, color: Color(0xFF1A1A1A)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _ProductRow(title: 'Recently Viewed', products: _recentlyViewed),
+          if (_sameCategory.isNotEmpty)
+            _ProductRow(title: 'Explore more in "${p.categories.first}"', products: _sameCategory),
         ],
       )),
 
@@ -433,4 +386,44 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ],
         ),
       );
+}
+
+class _ProductRow extends ConsumerWidget {
+  final String title;
+  final List<Product> products;
+
+  const _ProductRow({required this.title, required this.products});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 240,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: products.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, i) {
+                final rp = products[i];
+                return SizedBox(
+                  width: 160,
+                  child: ProductCard(
+                    product: rp,
+                    onTap: () => context.push('/products/${rp.id}'),
+                    onAddToCart: () => ref.read(cartProvider.notifier).add(rp),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
