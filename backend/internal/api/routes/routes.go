@@ -137,10 +137,12 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/users", userauth.GetLastUsersHandler(db)).Methods("GET")
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
 	admin.HandleFunc("/employees", userauth.GetEmployeesHandler(db)).Methods("GET")
+	admin.HandleFunc("/admins", userauth.GetAdminsHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}", userauth.GetEmployeeDetailHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}/password", userauth.UpdateEmployeePasswordHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/employees/{id}/permissions", userauth.GetPermissionsHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}/permissions", userauth.SetPermissionsHandler(db, rdb)).Methods("PUT")
+	admin.HandleFunc("/employees/{id}/role", userauth.UpdateEmployeeRoleHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/employees/{id}", userauth.DeleteEmployeeHandler(db, rdb)).Methods("DELETE")
 
 	// client-employee assignment routes (admin only)

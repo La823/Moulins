@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -64,6 +65,10 @@ export default function EmployeesPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    if (!isPasswordValid(form.password)) {
+      setError("Password doesn't meet all the requirements below");
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -178,6 +183,7 @@ export default function EmployeesPage() {
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
+            <PasswordRules password={form.password} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

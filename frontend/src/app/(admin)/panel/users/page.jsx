@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -51,6 +52,10 @@ export default function CustomersPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    if (!isPasswordValid(form.password)) {
+      setError("Password doesn't meet all the requirements below");
+      return;
+    }
     setSubmitting(true);
     try {
       await apiFetch("/admin/createuser", {
@@ -155,6 +160,7 @@ export default function CustomersPage() {
             <p className="text-[10px] text-gray-400 mt-1">
               This password will be visible to you in the dashboard
             </p>
+            <PasswordRules password={form.password} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

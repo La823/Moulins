@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
+import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 
 export default function EmployeeDetailPage() {
   const { id } = useParams();
@@ -27,6 +28,10 @@ export default function EmployeeDetailPage() {
   const [savingPerms, setSavingPerms] = useState(false);
   const [permSuccess, setPermSuccess] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  // Role state
+  const [changingRole, setChangingRole] = useState(false);
+  const [roleError, setRoleError] = useState("");
 
   useEffect(() => {
     apiFetch(`/admin/employees/${id}`)
@@ -62,8 +67,8 @@ export default function EmployeeDetailPage() {
   }, [permSuccess]);
 
   const handlePasswordSave = async () => {
-    if (newPassword.length < 4) {
-      setPwError("Password must be at least 4 characters");
+    if (!isPasswordValid(newPassword)) {
+      setPwError("Password doesn't meet all the requirements below");
       return;
     }
     setSavingPassword(true);
@@ -100,6 +105,24 @@ export default function EmployeeDetailPage() {
       alert("Failed to save permissions: " + err.message);
     } finally {
       setSavingPerms(false);
+    }
+  };
+
+  const handleRoleChange = async (newRole) => {
+    const verb = newRole === "admin" ? "promote" : "demote";
+    if (!window.confirm(`${verb === "promote" ? "Promote" : "Demote"} "${employee.username || employee.phone_number}" ${verb === "promote" ? "to" : "from"} admin? They'll need to log in again for this to take effect.`)) return;
+    setChangingRole(true);
+    setRoleError("");
+    try {
+      await apiFetch(`/admin/employees/${id}/role`, {
+        method: "PUT",
+        body: JSON.stringify({ role: newRole }),
+      });
+      setEmployee((prev) => ({ ...prev, role: newRole }));
+    } catch (err) {
+      setRoleError(err.message);
+    } finally {
+      setChangingRole(false);
     }
   };
 
@@ -182,8 +205,31 @@ export default function EmployeeDetailPage() {
                 <h2 className="text-lg font-semibold text-gray-900">
                   {employee.username || "No name"}
                 </h2>
-                <p className="text-sm text-gray-500">{employee.role}</p>
+                <p className="text-sm text-gray-500 capitalize">{employee.role}</p>
               </div>
+            </div>
+
+            <div className="mb-4">
+              {roleError && (
+                <p className="text-xs text-red-600 mb-2">{roleError}</p>
+              )}
+              {employee.role === "employee" ? (
+                <button
+                  onClick={() => handleRoleChange("admin")}
+                  disabled={changingRole}
+                  className="w-full px-3 py-2 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors"
+                >
+                  {changingRole ? "Updating..." : "Promote to Admin"}
+                </button>
+              ) : employee.role === "admin" ? (
+                <button
+                  onClick={() => handleRoleChange("employee")}
+                  disabled={changingRole}
+                  className="w-full px-3 py-2 text-xs font-medium bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 disabled:opacity-50 transition-colors"
+                >
+                  {changingRole ? "Updating..." : "Demote to Employee"}
+                </button>
+              ) : null}
             </div>
 
             <div className="space-y-3">
@@ -293,6 +339,7 @@ export default function EmployeeDetailPage() {
                       autoFocus
                       className="w-full px-3 py-2 text-sm text-gray-900 font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                     />
+                    <PasswordRules password={newPassword} />
                     {pwError && (
                       <p className="text-xs text-red-600">{pwError}</p>
                     )}
@@ -334,97 +381,103 @@ export default function EmployeeDetailPage() {
             </p>
           </div>
 
-          {/* Delete */}
-          <div className="bg-white rounded-xl border border-red-200 p-6">
-            <h3 className="text-sm font-semibold text-red-700 uppercase tracking-wider mb-2">
-              Danger Zone
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              Permanently delete this employee and all associated data. This action cannot be undone.
-            </p>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              {deleting ? "Deleting..." : "Delete Employee"}
-            </button>
-          </div>
-        </div>
-
-        {/* Right column — permissions */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                Permissions
+          {/* Delete — admins can't be deleted from this page (demote first) */}
+          {employee.role === "employee" && (
+            <div className="bg-white rounded-xl border border-red-200 p-6">
+              <h3 className="text-sm font-semibold text-red-700 uppercase tracking-wider mb-2">
+                Danger Zone
               </h3>
-              {permSuccess && (
-                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg">
-                  {permSuccess}
-                </span>
-              )}
-            </div>
-
-            {/* Current permission badges */}
-            <div className="flex items-center gap-2 mb-5">
-              {(employee.permissions || []).length === 0 ? (
-                <span className="text-xs text-gray-400 italic">
-                  No permissions assigned
-                </span>
-              ) : (
-                (employee.permissions || []).map((p) => (
-                  <span
-                    key={p}
-                    className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-700"
-                  >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </span>
-                ))
-              )}
-            </div>
-
-            {/* Permission checkboxes */}
-            <div className="space-y-2">
-              {allPermissions.map((perm) => (
-                <label
-                  key={perm.key}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={permState[perm.key] || false}
-                    onChange={(e) =>
-                      setPermState({
-                        ...permState,
-                        [perm.key]: e.target.checked,
-                      })
-                    }
-                    className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {perm.label}
-                    </p>
-                    <p className="text-xs text-gray-500">{perm.desc}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            <div className="mt-5 flex justify-end">
+              <p className="text-xs text-gray-500 mb-4">
+                Permanently delete this employee and all associated data. This action cannot be undone.
+              </p>
               <button
-                onClick={handleSavePermissions}
-                disabled={savingPerms}
-                className="px-5 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
               >
-                {savingPerms ? "Saving..." : "Save Permissions"}
+                {deleting ? "Deleting..." : "Delete Employee"}
               </button>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* Right column — permissions (employees only; admins have full access already) */}
+        <div className="lg:col-span-2">
+          {employee.role === "employee" && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                  Permissions
+                </h3>
+                {permSuccess && (
+                  <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                    {permSuccess}
+                  </span>
+                )}
+              </div>
+
+              {/* Current permission badges */}
+              <div className="flex items-center gap-2 mb-5">
+                {(employee.permissions || []).length === 0 ? (
+                  <span className="text-xs text-gray-400 italic">
+                    No permissions assigned
+                  </span>
+                ) : (
+                  (employee.permissions || []).map((p) => (
+                    <span
+                      key={p}
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-700"
+                    >
+                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {/* Permission checkboxes */}
+              <div className="space-y-2">
+                {allPermissions.map((perm) => (
+                  <label
+                    key={perm.key}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={permState[perm.key] || false}
+                      onChange={(e) =>
+                        setPermState({
+                          ...permState,
+                          [perm.key]: e.target.checked,
+                        })
+                      }
+                      className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {perm.label}
+                      </p>
+                      <p className="text-xs text-gray-500">{perm.desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  onClick={handleSavePermissions}
+                  disabled={savingPerms}
+                  className="px-5 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                >
+                  {savingPerms ? "Saving..." : "Save Permissions"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <UserMeetingsRequests userId={employee.id} />
-          <AssignmentPanel mode="employee" userId={employee.id} />
+          {employee.role === "employee" && (
+            <AssignmentPanel mode="employee" userId={employee.id} />
+          )}
         </div>
       </div>
     </>

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 type EmployeeDetailResponse struct {
@@ -41,8 +42,8 @@ func GetEmployeeDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if user.Role != "employee" {
-			http.Error(w, "user is not an employee", http.StatusBadRequest)
+		if user.Role != "employee" && user.Role != "admin" {
+			http.Error(w, "user is not staff", http.StatusBadRequest)
 			return
 		}
 
@@ -89,8 +90,8 @@ func UpdateEmployeePasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if len(body.Password) < 4 {
-			http.Error(w, "password must be at least 4 characters", http.StatusBadRequest)
+		if err := utils.ValidatePasswordStrength(body.Password); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -104,6 +105,53 @@ func UpdateEmployeePasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "password updated"})
+	}
+}
+
+// PUT /admin/employees/{id}/role — promote an employee to admin (or demote an
+// admin back to employee). The caller's own current session token keeps its
+// old role until they log in again, since role lives in the JWT claims.
+func UpdateEmployeeRoleHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Role string `json:"role"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if body.Role != "admin" && body.Role != "employee" {
+			http.Error(w, "role must be 'admin' or 'employee'", http.StatusBadRequest)
+			return
+		}
+
+		user, err := models.GetUserByID(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("update employee role lookup error: %v", err)
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		if user.Role != "employee" && user.Role != "admin" {
+			http.Error(w, "user is not staff", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateUserRole(r.Context(), db, userID, body.Role); err != nil {
+			log.Printf("update employee role error: %v", err)
+			http.Error(w, "could not update role", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "role updated", "role": body.Role})
 	}
 }
 

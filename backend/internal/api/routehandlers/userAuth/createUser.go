@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 func CreateUserHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -25,6 +26,10 @@ func CreateUserHandler(db *pgxpool.Pool) http.HandlerFunc {
 		// Basic validation
 		if req.PhoneNumber == "" || req.Password == "" {
 			http.Error(w, "phone_number and password are required", http.StatusBadRequest)
+			return
+		}
+		if err := utils.ValidatePasswordStrength(req.Password); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 

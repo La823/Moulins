@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
+import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -71,8 +72,8 @@ export default function CustomerDetailPage() {
   }
 
   const handlePasswordSave = async () => {
-    if (newPassword.length < 4) {
-      setPwError("Password must be at least 4 characters");
+    if (!isPasswordValid(newPassword)) {
+      setPwError("Password doesn't meet all the requirements below");
       return;
     }
     setSavingPassword(true);
@@ -276,6 +277,7 @@ export default function CustomerDetailPage() {
                       autoFocus
                       className="w-full px-3 py-2 text-sm text-gray-900 font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                     />
+                    <PasswordRules password={newPassword} />
                     {pwError && (
                       <p className="text-xs text-red-600">{pwError}</p>
                     )}

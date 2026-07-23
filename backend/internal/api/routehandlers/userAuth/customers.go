@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 func GetCustomersHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -139,8 +140,8 @@ func UpdateCustomerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if len(body.Password) < 4 {
-			http.Error(w, "password must be at least 4 characters", http.StatusBadRequest)
+		if err := utils.ValidatePasswordStrength(body.Password); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 

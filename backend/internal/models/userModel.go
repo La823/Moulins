@@ -267,6 +267,14 @@ func DeleteUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) error {
 	return err
 }
 
+func UpdateUserRole(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, role string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2`,
+		role, userID,
+	)
+	return err
+}
+
 func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password, role,

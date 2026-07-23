@@ -37,3 +37,17 @@ func GetEmployeesHandler(db *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(users)
 	}
 }
+
+func GetAdminsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		users, err := models.GetUsersByRole(r.Context(), db, "admin")
+		if err != nil {
+			log.Printf("failed to fetch admins: %v", err)
+			http.Error(w, "could not fetch admins", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}
+}
