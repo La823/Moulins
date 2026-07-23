@@ -11,6 +11,7 @@ import '../../services/learning_service.dart';
 import '../../models/learning.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/fullscreen_image_gallery.dart';
 
 class ProductDetailScreen extends ConsumerStatefulWidget {
   final String productId;
@@ -24,6 +25,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Product? _product;
   bool _loading = true;
   int _selectedImage = 0;
+  final _imagePageCtrl = PageController();
   final Set<String> _downloadingDocs = {};
   List<LearningVideo> _videos = [];
 
@@ -34,6 +36,12 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     LearningService().getVideos(productId: widget.productId).then((v) {
       if (mounted) setState(() => _videos = v);
     }).catchError((_) {});
+  }
+
+  @override
+  void dispose() {
+    _imagePageCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -107,12 +115,28 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   ? Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 80, color: Colors.grey))
                   : Stack(
                       children: [
-                        CachedNetworkImage(
-                          imageUrl: p.images[_selectedImage].imageUrl,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          placeholder: (_, __) => Container(color: Colors.grey.shade100),
-                          errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 60, color: Colors.grey)),
+                        PageView.builder(
+                          controller: _imagePageCtrl,
+                          itemCount: p.images.length,
+                          onPageChanged: (i) => setState(() => _selectedImage = i),
+                          itemBuilder: (context, i) => GestureDetector(
+                            onTap: () => openFullScreenImageGallery(
+                              context,
+                              imageUrls: p.images.map((img) => img.imageUrl).toList(),
+                              initialIndex: _selectedImage,
+                              onPageChanged: (newIndex) {
+                                setState(() => _selectedImage = newIndex);
+                                _imagePageCtrl.jumpToPage(newIndex);
+                              },
+                            ),
+                            child: CachedNetworkImage(
+                              imageUrl: p.images[i].imageUrl,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              placeholder: (_, __) => Container(color: Colors.grey.shade100),
+                              errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 60, color: Colors.grey)),
+                            ),
+                          ),
                         ),
                         if (p.images.length > 1)
                           Positioned(
@@ -121,7 +145,11 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: p.images.asMap().entries.map((e) => GestureDetector(
-                                onTap: () => setState(() => _selectedImage = e.key),
+                                onTap: () => _imagePageCtrl.animateToPage(
+                                  e.key,
+                                  duration: const Duration(milliseconds: 250),
+                                  curve: Curves.easeOut,
+                                ),
                                 child: Container(
                                   width: 8, height: 8,
                                   margin: const EdgeInsets.symmetric(horizontal: 4),
