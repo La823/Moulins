@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -389,6 +390,13 @@ func GetConversations(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (
 			UnreadCount:   unread,
 		})
 	}
+
+	// Direct rows and thread rows come from separate queries, each
+	// individually ordered — merge-sort them here by most recent activity so
+	// the combined list is newest-first regardless of type.
+	sort.Slice(conversations, func(i, j int) bool {
+		return conversations[i].LastMessageAt.After(conversations[j].LastMessageAt)
+	})
 
 	return conversations, nil
 }

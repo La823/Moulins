@@ -17,9 +17,19 @@ class ChatService {
     return (res.data as List<dynamic>).map((e) => ChatContact.fromJson(e)).toList();
   }
 
-  Future<List<ChatMessage>> getHistory(String otherUserId) async {
-    final res = await _dio.get('/messages/$otherUserId');
+  Future<List<ChatMessage>> getHistory({required String id, required bool isThread}) async {
+    final path = isThread ? '/messages/thread/$id' : '/messages/$id';
+    final res = await _dio.get(path);
     return (res.data as List<dynamic>).map((e) => ChatMessage.fromJson(e)).toList();
+  }
+
+  Future<void> markRead({required String id, required bool isThread}) async {
+    final path = isThread ? '/messages/thread/$id/read' : '/messages/$id/read';
+    try {
+      await _dio.put(path);
+    } catch (_) {
+      // best-effort
+    }
   }
 }
 
@@ -70,9 +80,13 @@ class ChatSocket {
     _retryTimer = Timer(const Duration(seconds: 3), connect);
   }
 
-  bool send(String toUserId, String body) {
+  // Send to a direct user (isThread: false) or into a group conversation
+  // (isThread: true) — the server resolves/creates the right conversation
+  // for direct sends that turn out to involve a customer.
+  bool send({required String id, required bool isThread, required String body}) {
     if (_channel == null) return false;
-    _channel!.sink.add(jsonEncode({'to': toUserId, 'body': body}));
+    final payload = isThread ? {'conversation_id': id, 'body': body} : {'to': id, 'body': body};
+    _channel!.sink.add(jsonEncode(payload));
     return true;
   }
 

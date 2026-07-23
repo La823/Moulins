@@ -6,10 +6,11 @@ import '../../services/chat_service.dart';
 import '../../utils/responsive.dart';
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
-  final String otherUserId;
-  final String otherUserName;
+  final String id; // other user's id for direct, conversation id for thread
+  final bool isThread;
+  final String title;
 
-  const ChatThreadScreen({super.key, required this.otherUserId, required this.otherUserName});
+  const ChatThreadScreen({super.key, required this.id, required this.isThread, required this.title});
 
   @override
   ConsumerState<ChatThreadScreen> createState() => _ChatThreadScreenState();
@@ -26,9 +27,18 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   bool _loading = true;
   bool _connected = false;
 
+  // Local, mutable view of what we're showing — starts as whatever the
+  // widget was opened with, but a direct chat can "promote" into a group
+  // thread mid-conversation (see _handleIncoming), so this can't just be
+  // widget.id/widget.isThread.
+  late String _id;
+  late bool _isThread;
+
   @override
   void initState() {
     super.initState();
+    _id = widget.id;
+    _isThread = widget.isThread;
     _socket = ChatSocket(
       onMessage: _handleIncoming,
       onConnectionChanged: (c) {
@@ -37,6 +47,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     );
     _socket.connect();
     _loadHistory();
+    _service.markRead(id: _id, isThread: _isThread);
   }
 
   @override
@@ -49,7 +60,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   Future<void> _loadHistory() async {
     try {
-      final history = await _service.getHistory(widget.otherUserId);
+      final history = await _service.getHistory(id: _id, isThread: _isThread);
+      if (!mounted) return;
       setState(() => _messages = history);
       _scrollToBottom();
     } catch (_) {
@@ -61,10 +73,28 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
   void _handleIncoming(ChatMessage msg) {
     final myId = ref.read(authProvider).user?.id;
-    final otherId = msg.senderId == myId ? msg.receiverId : msg.senderId;
-    if (otherId != widget.otherUserId) return;
+    if (_isThread) {
+      if (msg.conversationId != _id) return;
+    } else if (msg.conversationId != null && msg.senderId == myId) {
+      // My own first message to a raw contact resolved server-side into a
+      // group thread — follow the echo into that thread instead of
+      // silently dropping it.
+      setState(() {
+        _isThread = true;
+        _id = msg.conversationId!;
+        _messages = [..._messages, msg];
+      });
+      _scrollToBottom();
+      _service.markRead(id: _id, isThread: _isThread);
+      return;
+    } else {
+      if (msg.conversationId != null) return; // some other direct chat's message resolved into a thread we're not viewing
+      final otherId = msg.senderId == myId ? msg.receiverId : msg.senderId;
+      if (otherId != _id) return;
+    }
     setState(() => _messages = [..._messages, msg]);
     _scrollToBottom();
+    _service.markRead(id: _id, isThread: _isThread);
   }
 
   void _scrollToBottom() {
@@ -78,7 +108,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   void _send() {
     final text = _draftCtrl.text.trim();
     if (text.isEmpty) return;
-    final ok = _socket.send(widget.otherUserId, text);
+    final ok = _socket.send(id: _id, isThread: _isThread, body: text);
     if (ok) _draftCtrl.clear();
   }
 
@@ -91,7 +121,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(widget.otherUserName, style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        title: Text(widget.title, style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(18),
           child: Padding(
@@ -114,6 +144,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         itemBuilder: (context, i) {
                           final m = _messages[i];
                           final mine = m.senderId == myId;
+                          // In a group thread, "not mine" can be 2+ different
+                          // people (customer, employee, admin) — label who
+                          // sent it so it's clear at a glance.
+                          final showSenderLabel = _isThread && !mine && m.senderName != null;
                           return Align(
                             alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
                             child: Container(
@@ -129,6 +163,18 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  if (showSenderLabel)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 3),
+                                      child: Text(
+                                        m.senderRole == 'admin'
+                                            ? '${m.senderName} · Admin'
+                                            : m.senderRole == 'employee'
+                                                ? '${m.senderName} · Employee'
+                                                : m.senderName!,
+                                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade500),
+                                      ),
+                                    ),
                                   Text(m.body, style: TextStyle(color: mine ? Colors.white : const Color(0xFF1A1A1A), fontSize: 14)),
                                   const SizedBox(height: 4),
                                   Text(

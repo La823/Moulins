@@ -43,16 +43,18 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     }
   }
 
-  void _openThread(String userId, String displayName) {
+  void _openThread({required String id, required bool isThread, required String displayName}) {
     Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => ChatThreadScreen(otherUserId: userId, otherUserName: displayName)))
+        .push(MaterialPageRoute(builder: (_) => ChatThreadScreen(id: id, isThread: isThread, title: displayName)))
         .then((_) => _load());
   }
 
   @override
   Widget build(BuildContext context) {
-    final conversationIds = _conversations.map((c) => c.userId).toSet();
-    final newContacts = _contacts.where((c) => !conversationIds.contains(c.id)).toList();
+    // Only direct conversations correspond 1:1 to a raw contact id — thread
+    // conversations don't, so they're excluded from this dedup set.
+    final directIds = _conversations.where((c) => !c.isThread).map((c) => c.id).toSet();
+    final newContacts = _contacts.where((c) => !directIds.contains(c.id)).toList();
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -99,7 +101,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                               subtitle: Text(c.role, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                               onTap: () {
                                 setState(() => _showContacts = false);
-                                _openThread(c.id, c.displayName);
+                                _openThread(id: c.id, isThread: false, displayName: c.displayName);
                               },
                             ),
                           )),
@@ -127,7 +129,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                     child: Text('${c.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                                   )
                                 : null,
-                            onTap: () => _openThread(c.userId, c.displayName),
+                            onTap: () => _openThread(id: c.id, isThread: c.isThread, displayName: c.displayName),
                           ),
                         )),
                 ],
