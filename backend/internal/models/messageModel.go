@@ -15,6 +15,7 @@ type Message struct {
 	ReceiverID     *uuid.UUID `json:"receiver_id,omitempty"`
 	ConversationID *uuid.UUID `json:"conversation_id,omitempty"`
 	Body           string     `json:"body"`
+	ImageURL       *string    `json:"image_url,omitempty"`
 	ReadAt         *time.Time `json:"read_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	// Populated by GetConversationMessages via a join — a thread can have 2-3
@@ -82,13 +83,13 @@ func CanMessage(ctx context.Context, db *pgxpool.Pool, senderID, receiverID uuid
 	return exists, err
 }
 
-func CreateMessage(ctx context.Context, db *pgxpool.Pool, senderID, receiverID uuid.UUID, body string) (*Message, error) {
+func CreateMessage(ctx context.Context, db *pgxpool.Pool, senderID, receiverID uuid.UUID, body string, imageURL *string) (*Message, error) {
 	var m Message
 	err := db.QueryRow(ctx,
-		`INSERT INTO messages (sender_id, receiver_id, body) VALUES ($1, $2, $3)
-		 RETURNING id, sender_id, receiver_id, conversation_id, body, read_at, created_at`,
-		senderID, receiverID, body,
-	).Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ReadAt, &m.CreatedAt)
+		`INSERT INTO messages (sender_id, receiver_id, body, image_url) VALUES ($1, $2, $3, $4)
+		 RETURNING id, sender_id, receiver_id, conversation_id, body, image_url, read_at, created_at`,
+		senderID, receiverID, body, imageURL,
+	).Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ImageURL, &m.ReadAt, &m.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +98,7 @@ func CreateMessage(ctx context.Context, db *pgxpool.Pool, senderID, receiverID u
 
 func GetConversationHistory(ctx context.Context, db *pgxpool.Pool, userA, userB uuid.UUID, limit int) ([]Message, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, sender_id, receiver_id, conversation_id, body, read_at, created_at
+		`SELECT id, sender_id, receiver_id, conversation_id, body, image_url, read_at, created_at
 		 FROM messages
 		 WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
 		 ORDER BY created_at DESC
@@ -112,7 +113,7 @@ func GetConversationHistory(ctx context.Context, db *pgxpool.Pool, userA, userB 
 	messages := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ReadAt, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ImageURL, &m.ReadAt, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -207,13 +208,13 @@ func ConversationRecipients(ctx context.Context, db *pgxpool.Pool, conv *Convers
 	return ids, nil
 }
 
-func CreateGroupMessage(ctx context.Context, db *pgxpool.Pool, conversationID, senderID uuid.UUID, body string) (*Message, error) {
+func CreateGroupMessage(ctx context.Context, db *pgxpool.Pool, conversationID, senderID uuid.UUID, body string, imageURL *string) (*Message, error) {
 	var m Message
 	err := db.QueryRow(ctx,
-		`INSERT INTO messages (sender_id, conversation_id, body) VALUES ($1, $2, $3)
-		 RETURNING id, sender_id, receiver_id, conversation_id, body, read_at, created_at`,
-		senderID, conversationID, body,
-	).Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ReadAt, &m.CreatedAt)
+		`INSERT INTO messages (sender_id, conversation_id, body, image_url) VALUES ($1, $2, $3, $4)
+		 RETURNING id, sender_id, receiver_id, conversation_id, body, image_url, read_at, created_at`,
+		senderID, conversationID, body, imageURL,
+	).Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ImageURL, &m.ReadAt, &m.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +223,7 @@ func CreateGroupMessage(ctx context.Context, db *pgxpool.Pool, conversationID, s
 
 func GetConversationMessages(ctx context.Context, db *pgxpool.Pool, conversationID uuid.UUID, limit int) ([]Message, error) {
 	rows, err := db.Query(ctx,
-		`SELECT m.id, m.sender_id, m.receiver_id, m.conversation_id, m.body, m.read_at, m.created_at,
+		`SELECT m.id, m.sender_id, m.receiver_id, m.conversation_id, m.body, m.image_url, m.read_at, m.created_at,
 		        u.username, u.role
 		 FROM messages m
 		 JOIN users u ON u.id = m.sender_id
@@ -239,7 +240,7 @@ func GetConversationMessages(ctx context.Context, db *pgxpool.Pool, conversation
 	messages := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ReadAt, &m.CreatedAt, &m.SenderName, &m.SenderRole); err != nil {
+		if err := rows.Scan(&m.ID, &m.SenderID, &m.ReceiverID, &m.ConversationID, &m.Body, &m.ImageURL, &m.ReadAt, &m.CreatedAt, &m.SenderName, &m.SenderRole); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -277,7 +278,7 @@ func GetConversations(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (
 		    WHERE (sender_id = $1 OR receiver_id = $1) AND conversation_id IS NULL
 		 )
 		 SELECT u.id, u.username, u.phone_number, u.role,
-		        lm.body AS last_message,
+		        CASE WHEN lm.body = '' AND lm.image_url IS NOT NULL THEN '📷 Photo' ELSE lm.body END AS last_message,
 		        lm.created_at AS last_message_at,
 		        COALESCE((
 		            SELECT COUNT(*) FROM messages
@@ -286,7 +287,7 @@ func GetConversations(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (
 		 FROM partners p
 		 JOIN users u ON u.id = p.other_id
 		 JOIN LATERAL (
-		     SELECT body, created_at FROM messages
+		     SELECT body, image_url, created_at FROM messages
 		     WHERE (sender_id = $1 AND receiver_id = u.id) OR (sender_id = u.id AND receiver_id = $1)
 		     ORDER BY created_at DESC LIMIT 1
 		 ) lm ON true
@@ -349,13 +350,15 @@ func GetConversations(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (
 	for _, ref := range refs {
 		var last Message
 		err := db.QueryRow(ctx,
-			`SELECT body, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1`,
+			`SELECT body, image_url, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1`,
 			ref.ID,
-		).Scan(&last.Body, &last.CreatedAt)
+		).Scan(&last.Body, &last.ImageURL, &last.CreatedAt)
 		if err != nil {
 			// No messages in this thread yet — still show it so the user can
 			// start the conversation, just with no preview.
 			last.Body = ""
+		} else if last.Body == "" && last.ImageURL != nil {
+			last.Body = "📷 Photo"
 		}
 
 		var unread int

@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_service.dart';
@@ -26,6 +29,8 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   List<ChatMessage> _messages = [];
   bool _loading = true;
   bool _connected = false;
+  File? _pendingImage;
+  bool _sendingImage = false;
 
   // Local, mutable view of what we're showing — starts as whatever the
   // widget was opened with, but a direct chat can "promote" into a group
@@ -105,11 +110,35 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     });
   }
 
-  void _send() {
+  Future<void> _pickImage() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+    setState(() => _pendingImage = File(picked.path));
+  }
+
+  void _clearPendingImage() => setState(() => _pendingImage = null);
+
+  Future<void> _send() async {
     final text = _draftCtrl.text.trim();
-    if (text.isEmpty) return;
-    final ok = _socket.send(id: _id, isThread: _isThread, body: text);
-    if (ok) _draftCtrl.clear();
+    if (text.isEmpty && _pendingImage == null) return;
+
+    String? imageKey;
+    if (_pendingImage != null) {
+      setState(() => _sendingImage = true);
+      try {
+        imageKey = await _service.uploadImage(_pendingImage!);
+      } catch (_) {
+        if (mounted) setState(() => _sendingImage = false);
+        return;
+      }
+      if (mounted) setState(() => _sendingImage = false);
+    }
+
+    final ok = _socket.send(id: _id, isThread: _isThread, body: text, imageKey: imageKey);
+    if (ok) {
+      _draftCtrl.clear();
+      _clearPendingImage();
+    }
   }
 
   @override
@@ -175,7 +204,33 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                                         style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade500),
                                       ),
                                     ),
-                                  Text(m.body, style: TextStyle(color: mine ? Colors.white : const Color(0xFF1A1A1A), fontSize: 14)),
+                                  if (m.imageUrl != null)
+                                    Padding(
+                                      padding: EdgeInsets.only(bottom: m.body.isNotEmpty ? 6 : 0),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: CachedNetworkImage(
+                                          imageUrl: m.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          width: 200,
+                                          height: 200,
+                                          placeholder: (_, __) => Container(
+                                            width: 200,
+                                            height: 200,
+                                            color: Colors.grey.shade100,
+                                            child: const Center(child: CircularProgressIndicator(color: teal, strokeWidth: 2)),
+                                          ),
+                                          errorWidget: (_, __, ___) => Container(
+                                            width: 200,
+                                            height: 200,
+                                            color: Colors.grey.shade100,
+                                            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  if (m.body.isNotEmpty)
+                                    Text(m.body, style: TextStyle(color: mine ? Colors.white : const Color(0xFF1A1A1A), fontSize: 14)),
                                   const SizedBox(height: 4),
                                   Text(
                                     '${m.createdAt.hour.toString().padLeft(2, '0')}:${m.createdAt.minute.toString().padLeft(2, '0')}',
@@ -191,28 +246,73 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           SafeArea(
             top: false,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Colors.grey.shade200))),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _draftCtrl,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(
-                        hintText: 'Type a message...',
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
+                  if (_pendingImage != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.file(_pendingImage!, width: 64, height: 64, fit: BoxFit.cover),
+                            ),
+                            Positioned(
+                              top: -6,
+                              right: -6,
+                              child: GestureDetector(
+                                onTap: _clearPendingImage,
+                                child: Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: const BoxDecoration(color: Color(0xFF1A1A1A), shape: BoxShape.circle),
+                                  child: const Icon(Icons.close, color: Colors.white, size: 13),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: teal),
-                    onPressed: _send,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.image_outlined, color: _sendingImage ? Colors.grey.shade300 : teal),
+                          onPressed: _sendingImage ? null : _pickImage,
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _draftCtrl,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(),
+                            decoration: InputDecoration(
+                              hintText: 'Type a message...',
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _sendingImage
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: teal, strokeWidth: 2)),
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.send, color: teal),
+                                onPressed: _send,
+                              ),
+                      ],
+                    ),
                   ),
                 ],
               ),

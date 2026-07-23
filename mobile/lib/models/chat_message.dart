@@ -6,6 +6,7 @@ class ChatMessage {
   final String? senderName;
   final String? senderRole;
   final String body;
+  final String? imageUrl;
   final DateTime createdAt;
   final DateTime? readAt;
 
@@ -17,6 +18,7 @@ class ChatMessage {
     this.senderName,
     this.senderRole,
     required this.body,
+    this.imageUrl,
     required this.createdAt,
     this.readAt,
   });
@@ -29,6 +31,7 @@ class ChatMessage {
         senderName: json['sender_name'],
         senderRole: json['sender_role'],
         body: json['body'] ?? '',
+        imageUrl: json['image_url'],
         createdAt: DateTime.tryParse(json['created_at'] ?? '')?.toLocal() ?? DateTime.now(),
         readAt: json['read_at'] != null ? DateTime.tryParse(json['read_at'])?.toLocal() : null,
       );

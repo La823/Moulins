@@ -54,12 +54,15 @@ export function useChatSocket(onMessage) {
   // target is either { to: <userId> } (start/continue by user id — resolved
   // server-side into a group thread or the legacy direct path depending on
   // roles) or { conversationId: <id> } (continue a known group thread).
-  const sendMessage = useCallback((target, body) => {
+  // imageKey is the S3 object key from POST /messages/upload-url, if this
+  // message has an attached image.
+  const sendMessage = useCallback((target, body, imageKey) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const payload =
-        target && target.conversationId
-          ? { conversation_id: target.conversationId, body }
-          : { to: target?.to ?? target, body };
+      const payload = {
+        ...(target && target.conversationId ? { conversation_id: target.conversationId } : { to: target?.to ?? target }),
+        body,
+        ...(imageKey ? { image_key: imageKey } : {}),
+      };
       wsRef.current.send(JSON.stringify(payload));
       return true;
     }

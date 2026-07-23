@@ -166,6 +166,10 @@ type wsIncoming struct {
 	To             *uuid.UUID `json:"to,omitempty"`
 	ConversationID *uuid.UUID `json:"conversation_id,omitempty"`
 	Body           string     `json:"body"`
+	// ImageKey is the S3 object key returned by POST /messages/upload-url
+	// after the client PUTs the file directly to S3 — never the image
+	// bytes themselves, which never touch this socket.
+	ImageKey *string `json:"image_key,omitempty"`
 }
 
 // WebSocketHandler authenticates via a ?token= query param (browsers'
@@ -199,8 +203,13 @@ func WebSocketHandler(db *pgxpool.Pool, hub *services.ChatHub) http.HandlerFunc 
 			if err := conn.ReadJSON(&in); err != nil {
 				break
 			}
-			if in.Body == "" {
+			if in.Body == "" && in.ImageKey == nil {
 				continue
+			}
+			var imageURL *string
+			if in.ImageKey != nil && *in.ImageKey != "" {
+				url := utils.GetPublicURL(*in.ImageKey)
+				imageURL = &url
 			}
 
 			conv, legacyReceiver, err := models.ResolveSendTarget(r.Context(), db, userID, in.To, in.ConversationID)
@@ -211,7 +220,7 @@ func WebSocketHandler(db *pgxpool.Pool, hub *services.ChatHub) http.HandlerFunc 
 			}
 
 			if conv != nil {
-				sendGroupMessage(r, db, hub, conv, userID, in.Body)
+				sendGroupMessage(r, db, hub, conv, userID, in.Body, imageURL)
 				continue
 			}
 
@@ -219,13 +228,13 @@ func WebSocketHandler(db *pgxpool.Pool, hub *services.ChatHub) http.HandlerFunc 
 				conn.WriteJSON(map[string]string{"type": "error", "message": "not authorized to message this user"})
 				continue
 			}
-			sendLegacyMessage(r, db, hub, userID, *legacyReceiver, in.Body)
+			sendLegacyMessage(r, db, hub, userID, *legacyReceiver, in.Body, imageURL)
 		}
 	}
 }
 
-func sendGroupMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, conv *models.ConversationRef, senderID uuid.UUID, body string) {
-	msg, err := models.CreateGroupMessage(r.Context(), db, conv.ID, senderID, body)
+func sendGroupMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, conv *models.ConversationRef, senderID uuid.UUID, body string, imageURL *string) {
+	msg, err := models.CreateGroupMessage(r.Context(), db, conv.ID, senderID, body, imageURL)
 	if err != nil {
 		log.Printf("create group message error: %v", err)
 		return
@@ -244,7 +253,7 @@ func sendGroupMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, 
 
 	senderName := resolveSenderName(r, db, senderID)
 	deepLink := "/chat?conversation=" + conv.ID.String()
-	preview := truncatePreview(body)
+	preview := previewText(body, imageURL)
 	for _, recipientID := range recipients {
 		if recipientID == senderID || hub.IsOnline(recipientID) {
 			continue
@@ -255,8 +264,8 @@ func sendGroupMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, 
 	}
 }
 
-func sendLegacyMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, senderID, receiverID uuid.UUID, body string) {
-	msg, err := models.CreateMessage(r.Context(), db, senderID, receiverID, body)
+func sendLegacyMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, senderID, receiverID uuid.UUID, body string, imageURL *string) {
+	msg, err := models.CreateMessage(r.Context(), db, senderID, receiverID, body, imageURL)
 	if err != nil {
 		log.Printf("create message error: %v", err)
 		return
@@ -269,7 +278,7 @@ func sendLegacyMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub,
 	if !hub.IsOnline(receiverID) {
 		senderName := resolveSenderName(r, db, senderID)
 		deepLink := "/chat/" + senderID.String()
-		preview := truncatePreview(body)
+		preview := previewText(body, imageURL)
 		if err := services.SendPushOnly(r.Context(), db, receiverID, "New message from "+senderName, preview, &deepLink); err != nil {
 			log.Printf("chat push error: %v", err)
 		}
@@ -292,4 +301,41 @@ func truncatePreview(body string) string {
 		return body[:100]
 	}
 	return body
+}
+
+func previewText(body string, imageURL *string) string {
+	if body == "" && imageURL != nil {
+		return "📷 Photo"
+	}
+	return truncatePreview(body)
+}
+
+// UploadURLHandler generates a presigned S3 PUT URL for a chat image — the
+// client uploads the file directly to S3 and only ever sends the resulting
+// key back over the websocket, never the image bytes.
+func UploadURLHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+		var req struct {
+			Filename string `json:"filename"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Filename == "" {
+			http.Error(w, "filename is required", http.StatusBadRequest)
+			return
+		}
+
+		uploadURL, key, err := utils.GenerateChatImageUploadURL(req.Filename)
+		if err != nil {
+			log.Printf("chat image presign error: %v", err)
+			http.Error(w, "could not generate upload url", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"upload_url": uploadURL,
+			"key":        key,
+		})
+	}
 }

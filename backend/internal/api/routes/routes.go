@@ -118,6 +118,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/favorites/{id}", products.RemoveFavoriteHandler(db)).Methods("DELETE")
 
 	// chat routes (any authenticated user)
+	protected.HandleFunc("/messages/upload-url", messages.UploadURLHandler()).Methods("POST")
 	protected.HandleFunc("/messages/conversations", messages.ListConversationsHandler(db)).Methods("GET")
 	protected.HandleFunc("/messages/thread/{conversationId}", messages.ThreadHistoryHandler(db)).Methods("GET")
 	protected.HandleFunc("/messages/thread/{conversationId}/read", messages.MarkThreadReadHandler(db)).Methods("PUT")

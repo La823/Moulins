@@ -50,6 +50,21 @@ func GeneratePresignedUploadURL(filename string) (uploadURL string, key string, 
 	return req.URL, key, nil
 }
 
+func GenerateChatImageUploadURL(filename string) (uploadURL string, key string, err error) {
+	bucket := os.Getenv("S3_BUCKET")
+	key = fmt.Sprintf("chat/%s-%s", uuid.New().String(), filename)
+
+	req, err := s3PresignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		return "", "", err
+	}
+
+	return req.URL, key, nil
+}
+
 func GeneratePresignedDocUploadURL(filename string) (uploadURL string, key string, err error) {
 	bucket := os.Getenv("S3_BUCKET")
 	key = fmt.Sprintf("documents/%s-%s", uuid.New().String(), filename)

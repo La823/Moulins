@@ -51,7 +51,11 @@ export default function ChatPage({ basePath }) {
   const [showContacts, setShowContacts] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [search, setSearch] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const bottomRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const loadConversations = useCallback(() => {
     apiFetch("/messages/conversations")
@@ -106,11 +110,49 @@ export default function ChatPage({ basePath }) {
 
   const { connected, sendMessage } = useChatSocket(handleIncoming);
 
-  const handleSend = () => {
-    if (!draft.trim() || !active) return;
+  const handlePickImage = () => fileInputRef.current?.click();
+
+  const handleImageSelected = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const clearImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const handleSend = async () => {
+    if ((!draft.trim() && !imageFile) || !active) return;
     const target = active.type === "thread" ? { conversationId: active.id } : { to: active.id };
-    const ok = sendMessage(target, draft.trim());
-    if (ok) setDraft("");
+    const body = draft.trim();
+
+    let imageKey;
+    if (imageFile) {
+      setUploadingImage(true);
+      try {
+        const { upload_url, key } = await apiFetch("/messages/upload-url", {
+          method: "POST",
+          body: JSON.stringify({ filename: imageFile.name }),
+        });
+        await fetch(upload_url, { method: "PUT", body: imageFile, headers: { "Content-Type": imageFile.type } });
+        imageKey = key;
+      } catch {
+        setUploadingImage(false);
+        return;
+      }
+      setUploadingImage(false);
+    }
+
+    const ok = sendMessage(target, body, imageKey);
+    if (ok) {
+      setDraft("");
+      clearImage();
+    }
   };
 
   const directIds = new Set(conversations.filter((c) => c.type === "direct").map((c) => c.id));
@@ -251,7 +293,16 @@ export default function ChatPage({ basePath }) {
                               {m.sender_role === "admin" ? " · Admin" : m.sender_role === "employee" ? " · Employee" : ""}
                             </p>
                           )}
-                          <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                          {m.image_url && (
+                            <a href={m.image_url} target="_blank" rel="noopener noreferrer" className="block mb-1.5">
+                              <img
+                                src={m.image_url}
+                                alt="Attachment"
+                                className="max-w-full max-h-64 rounded-lg object-cover"
+                              />
+                            </a>
+                          )}
+                          {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
                           <p className={`text-[10px] mt-1 ${mine ? "text-gray-300" : "text-gray-400"}`}>
                             {new Date(m.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                           </p>
@@ -263,22 +314,49 @@ export default function ChatPage({ basePath }) {
                 <div ref={bottomRef} />
               </div>
 
-              <div className="p-4 border-t border-gray-200 flex items-center gap-2">
-                <input
-                  type="text"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="Type a message..."
-                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!draft.trim()}
-                  className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                >
-                  Send
-                </button>
+              <div className="border-t border-gray-200">
+                {imagePreview && (
+                  <div className="px-4 pt-3 flex items-center gap-2">
+                    <div className="relative">
+                      <img src={imagePreview} alt="Selected" className="h-16 w-16 rounded-lg object-cover border border-gray-200" />
+                      <button
+                        onClick={clearImage}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-gray-900 text-white text-xs hover:bg-gray-700"
+                        title="Remove image"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="p-4 flex items-center gap-2">
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelected} />
+                  <button
+                    onClick={handlePickImage}
+                    disabled={uploadingImage}
+                    title="Attach image"
+                    className="p-2 text-gray-500 hover:text-gray-900 disabled:opacity-50 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                    </svg>
+                  </button>
+                  <input
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                    placeholder="Type a message..."
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={(!draft.trim() && !imageFile) || uploadingImage}
+                    className="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                  >
+                    {uploadingImage ? "Sending..." : "Send"}
+                  </button>
+                </div>
               </div>
             </>
           )}
