@@ -28,12 +28,25 @@ import (
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/services"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, chatHub *services.ChatHub) {
 
+	// records request count/latency for every route matched below —
+	// registered first so it wraps the whole router via mux's own
+	// middleware chain (needs a matched route to read the path template)
+	router.Use(middleware.Metrics)
+
+	prometheus.MustRegister(middleware.NewDBPoolCollector(db))
+
 	// health check
 	router.HandleFunc("/health", health.Health).Methods("GET")
+
+	// Prometheus scrape target — not proxied through the public nginx
+	// vhost (see nginx.conf), only reachable inside the docker network.
+	router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// chat websocket (authenticates itself via ?token= query param, since
 	// browsers can't set an Authorization header on a WebSocket handshake)
