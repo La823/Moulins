@@ -245,6 +245,18 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     const SizedBox(height: 16),
                   ],
 
+                  if (p.keyIngredients != null && p.keyIngredients!.isNotEmpty) ...[
+                    const Text('Composition', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Text(
+                      p.strength != null && p.strength!.isNotEmpty
+                          ? '${p.keyIngredients} — ${p.strength}'
+                          : p.keyIngredients!,
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // Details
                   Container(
                     padding: const EdgeInsets.all(16),

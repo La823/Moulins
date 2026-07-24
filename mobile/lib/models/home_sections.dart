@@ -6,25 +6,21 @@ const _knownMobileRoutes = {
   '/profile',
   '/notifications',
   '/cart',
-};
-
-// The website has dedicated landing pages per product division that don't
-// exist as standalone screens in the app — mapped instead to the products
-// catalogue pre-filtered to that division's category, so "Learn more"
-// links land on the right set of products instead of the full catalogue.
-const _divisionCategoryMap = {
-  '/aerozone': 'Aerozone(Respiratory & ENT)',
-  '/bonevoyage': 'Bone Voyage (Orthopaedics)',
-  '/fluidity': 'Fluidity (Urology and renal)',
-  '/gutsy': 'Gutsy (Gastro)',
-  '/jivya': 'Jivya (Cardio Diabetic Division)',
-  '/lifegard': 'Life Gard (Antibiotics/ Trauma)',
-  '/littleplanet': 'Little Planet (Pediatric)',
-  '/matrix': 'Matrix',
-  '/mindset': 'Mindset (Neuro/Psychiatry)',
-  '/missbella': 'Missbella(Derma and Skin Wellness)',
-  '/srishti': 'Srishti (Gynaecology)',
-  '/viewpoint': 'View Point (Ophthalmology)',
+  // The 12 division landing screens — these used to not exist as standalone
+  // screens in the app (redirected to the filtered products catalogue
+  // instead), but they're real screens now, so link straight to them.
+  '/aerozone',
+  '/bonevoyage',
+  '/fluidity',
+  '/gutsy',
+  '/jivya',
+  '/lifegard',
+  '/littleplanet',
+  '/matrix',
+  '/mindset',
+  '/missbella',
+  '/srishti',
+  '/viewpoint',
 };
 
 /// The website and app share the same admin-entered link text (e.g. "/about"
@@ -35,11 +31,6 @@ String resolveMobileRoute(String link) {
   final segment = path.startsWith('/') ? path : '/$path';
   final parts = segment.split('/').where((s) => s.isNotEmpty).toList();
   final firstSegment = '/${parts.isNotEmpty ? parts.first : ''}';
-
-  final category = _divisionCategoryMap[firstSegment];
-  if (category != null) {
-    return '/products?category=${Uri.encodeComponent(category)}';
-  }
 
   return _knownMobileRoutes.contains(firstSegment) ? segment : '/products';
 }

@@ -64,11 +64,16 @@ func GetMeetingByID(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID) 
 	return &m, nil
 }
 
-func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, status, from, to string) ([]Meeting, error) {
+func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, doctorID *uuid.UUID, status, from, to string) ([]Meeting, error) {
 	conditions := []string{"m.user_id = $1"}
 	args := []any{userID}
 	argIdx := 2
 
+	if doctorID != nil {
+		conditions = append(conditions, fmt.Sprintf("m.doctor_id = $%d", argIdx))
+		args = append(args, *doctorID)
+		argIdx++
+	}
 	if status != "" {
 		conditions = append(conditions, fmt.Sprintf("m.status = $%d", argIdx))
 		args = append(args, status)

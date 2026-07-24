@@ -9,6 +9,7 @@ export default function DoctorDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const [doctor, setDoctor] = useState(null);
+  const [meetings, setMeetings] = useState([]);
   const [assignedProducts, setAssignedProducts] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,12 +24,14 @@ export default function DoctorDetailPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [doc, products, catalog] = await Promise.all([
+      const [doc, meetingList, products, catalog] = await Promise.all([
         apiFetch(`/doctors/${id}`),
+        apiFetch(`/meetings?doctor_id=${id}`),
         apiFetch(`/doctors/${id}/products`),
         apiFetch("/products"),
       ]);
       setDoctor(doc);
+      setMeetings(Array.isArray(meetingList) ? meetingList : []);
       setAssignedProducts(Array.isArray(products) ? products : []);
       const productList = catalog?.products || catalog || [];
       setAllProducts(Array.isArray(productList) ? productList : []);
@@ -215,6 +218,54 @@ export default function DoctorDetailPage() {
           </div>
         ) : (
           <p className="text-sm text-gray-400">No meeting recorded yet</p>
+        )}
+      </div>
+
+      {/* Meetings with this doctor */}
+      <div className="mb-8">
+        <h2 className="text-sm font-medium text-gray-900 mb-3">
+          Meetings with this Doctor {meetings.length > 0 && `(${meetings.length})`}
+        </h2>
+        {meetings.length === 0 ? (
+          <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
+            <p className="text-sm text-gray-400">No meetings booked yet</p>
+            <Link
+              href={`/meetings?doctor_id=${doctor.id}`}
+              className="text-sm text-red-600 hover:text-red-700 mt-2 inline-block transition-colors"
+            >
+              Schedule one
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {meetings.map((m) => (
+              <Link
+                key={m.id}
+                href={`/meetings?doctor_id=${doctor.id}`}
+                className="block border border-gray-200 rounded-lg px-4 py-3 hover:border-gray-400 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-900">
+                      {new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                    </p>
+                    {m.notes && <p className="text-xs text-gray-400 mt-0.5 truncate">{m.notes}</p>}
+                  </div>
+                  <span
+                    className={`text-[11px] px-2 py-1 rounded-full flex-shrink-0 capitalize ${
+                      m.status === "completed"
+                        ? "bg-green-50 text-green-700"
+                        : m.status === "cancelled"
+                          ? "bg-gray-100 text-gray-500"
+                          : "bg-blue-50 text-blue-700"
+                    }`}
+                  >
+                    {m.status}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
         )}
       </div>
 

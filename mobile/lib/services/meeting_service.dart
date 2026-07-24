@@ -4,8 +4,10 @@ import '../models/meeting.dart';
 class MeetingService {
   final _dio = createDio();
 
-  Future<List<Meeting>> getMeetings() async {
-    final res = await _dio.get('/meetings');
+  Future<List<Meeting>> getMeetings({String? doctorId}) async {
+    final res = await _dio.get('/meetings', queryParameters: {
+      if (doctorId != null) 'doctor_id': doctorId,
+    });
     return (res.data as List<dynamic>).map((e) => Meeting.fromJson(e)).toList();
   }
 

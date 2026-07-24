@@ -41,6 +41,8 @@ class Product {
   final double? mrp;
   final String? packSize;
   final String? productForm;
+  final String? keyIngredients;
+  final String? strength;
   final List<ProductImage> images;
   final List<ProductDocument> documents;
 
@@ -55,6 +57,8 @@ class Product {
     this.mrp,
     this.packSize,
     this.productForm,
+    this.keyIngredients,
+    this.strength,
     this.images = const [],
     this.documents = const [],
   });
@@ -70,6 +74,8 @@ class Product {
         mrp: json['mrp']?.toDouble(),
         packSize: json['pack_size'],
         productForm: json['product_form'],
+        keyIngredients: json['key_ingredients'],
+        strength: json['strength'],
         images: (json['images'] as List<dynamic>? ?? [])
             .map((e) => ProductImage.fromJson(e))
             .toList(),
@@ -92,6 +98,8 @@ class Product {
         'mrp': mrp,
         'pack_size': packSize,
         'product_form': productForm,
+        'key_ingredients': keyIngredients,
+        'strength': strength,
         'images': images.map((e) => e.toJson()).toList(),
         'documents': documents.map((e) => e.toJson()).toList(),
       };

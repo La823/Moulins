@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/doctor.dart';
+import '../../models/meeting.dart';
 import '../../models/product.dart';
 import '../../services/doctor_service.dart';
+import '../../services/meeting_service.dart';
 import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 
@@ -22,6 +24,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   String? _removingId;
   final _service = DoctorService();
 
+  List<Meeting> _meetings = [];
+  bool _loadingMeetings = true;
+
   DateTime? _lastMeetingAt;
   String? _lastMeetingNotes;
   bool _editingMeeting = false;
@@ -35,6 +40,16 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     _lastMeetingAt = widget.doctor.lastMeetingAt;
     _lastMeetingNotes = widget.doctor.lastMeetingNotes;
     _loadProducts();
+    _loadMeetings();
+  }
+
+  Future<void> _loadMeetings() async {
+    try {
+      final meetings = await MeetingService().getMeetings(doctorId: widget.doctor.id);
+      if (mounted) setState(() { _meetings = meetings; _loadingMeetings = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingMeetings = false);
+    }
   }
 
   @override
@@ -269,6 +284,74 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                   ],
                 ] else
                   Text('No meeting recorded yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Meetings booked with this doctor
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Meetings with this Doctor${_meetings.isNotEmpty ? ' (${_meetings.length})' : ''}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                const SizedBox(height: 10),
+                if (_loadingMeetings)
+                  const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: CircularProgressIndicator(strokeWidth: 2, color: teal)))
+                else if (_meetings.isEmpty)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('No meetings booked yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+                      const SizedBox(height: 6),
+                      TextButton(
+                        onPressed: () => context.push('/meetings?doctor_id=${d.id}'),
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                        child: const Text('Schedule one', style: TextStyle(fontSize: 13, color: teal, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  )
+                else
+                  Column(
+                    children: _meetings.map((m) {
+                      final statusColor = m.status == 'completed'
+                          ? Colors.green
+                          : m.status == 'cancelled'
+                              ? Colors.grey
+                              : teal;
+                      return InkWell(
+                        onTap: () => context.push('/meetings?doctor_id=${d.id}'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${m.scheduledAt.day}/${m.scheduledAt.month}/${m.scheduledAt.year} · ${m.scheduledAt.hour.toString().padLeft(2, '0')}:${m.scheduledAt.minute.toString().padLeft(2, '0')}',
+                                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+                                    ),
+                                    if (m.notes != null && m.notes!.isNotEmpty)
+                                      Text(m.notes!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                                child: Text(m.status, style: TextStyle(fontSize: 10.5, color: statusColor, fontWeight: FontWeight.w600)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
               ],
             ),
           ),

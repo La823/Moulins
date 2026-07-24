@@ -59,10 +59,16 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /meetings?status=&from=&to=
+// GET /meetings?doctor_id=&status=&from=&to=
 func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		meetings, err := models.GetMeetingsForUser(r.Context(), db, getUserID(r),
+		var doctorID *uuid.UUID
+		if raw := r.URL.Query().Get("doctor_id"); raw != "" {
+			if parsed, err := uuid.Parse(raw); err == nil {
+				doctorID = &parsed
+			}
+		}
+		meetings, err := models.GetMeetingsForUser(r.Context(), db, getUserID(r), doctorID,
 			r.URL.Query().Get("status"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 		if err != nil {
 			log.Printf("list meetings error: %v", err)
