@@ -14,7 +14,7 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-// DispatchBroadcast resolves the eligible audience (all customers minus
+// DispatchBroadcast resolves the eligible audience (all partners minus
 // excludedUserIDs), creates their in-app inbox rows, and pushes via FCM to
 // their registered device tokens. It always leaves the in-app inbox
 // populated, even if Firebase isn't configured or a push send partially

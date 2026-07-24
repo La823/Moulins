@@ -7,13 +7,13 @@ class DashboardStats {
   // permitted to see that stat, distinct from a real value of 0.
   final int? totalProducts;
   final int? activeProducts;
-  final int? totalCustomers;
+  final int? totalPartners;
   final int? totalEmployees;
 
   DashboardStats({
     this.totalProducts,
     this.activeProducts,
-    this.totalCustomers,
+    this.totalPartners,
     this.totalEmployees,
   });
 }
@@ -30,11 +30,11 @@ class AdminService {
   }
 
   // Each stat is fetched independently so a 403 on one (e.g. an employee
-  // without the "customers" permission) doesn't blank out the others —
+  // without the "partners" permission) doesn't blank out the others —
   // mirrors the web dashboard's per-card fetch-and-catch pattern.
   Future<DashboardStats> getDashboardStats({
     required bool canSeeProducts,
-    required bool canSeeCustomers,
+    required bool canSeePartners,
     required bool canSeeEmployees,
   }) async {
     final results = await Future.wait([
@@ -44,8 +44,8 @@ class AdminService {
       canSeeProducts
           ? _tryCount(() async => (await _dio.get('/products', queryParameters: {'page': 1, 'limit': 1})).data['total'] ?? 0)
           : Future.value(null),
-      canSeeCustomers
-          ? _tryCount(() async => ((await _dio.get('/admin/customers')).data as List<dynamic>? ?? []).length)
+      canSeePartners
+          ? _tryCount(() async => ((await _dio.get('/admin/partners')).data as List<dynamic>? ?? []).length)
           : Future.value(null),
       canSeeEmployees
           ? _tryCount(() async => ((await _dio.get('/admin/employees')).data as List<dynamic>? ?? []).length)
@@ -54,31 +54,31 @@ class AdminService {
     return DashboardStats(
       totalProducts: results[0],
       activeProducts: results[1],
-      totalCustomers: results[2],
+      totalPartners: results[2],
       totalEmployees: results[3],
     );
   }
 
-  Future<List<AdminCustomer>> getCustomers() async {
-    final res = await _dio.get('/admin/customers');
-    return (res.data as List<dynamic>).map((e) => AdminCustomer.fromJson(e)).toList();
+  Future<List<AdminPartner>> getPartners() async {
+    final res = await _dio.get('/admin/partners');
+    return (res.data as List<dynamic>).map((e) => AdminPartner.fromJson(e)).toList();
   }
 
-  Future<AdminCustomer> getCustomerDetail(String id) async {
-    final res = await _dio.get('/admin/customers/$id');
-    return AdminCustomer.fromJson(res.data);
+  Future<AdminPartner> getPartnerDetail(String id) async {
+    final res = await _dio.get('/admin/partners/$id');
+    return AdminPartner.fromJson(res.data);
   }
 
-  Future<void> updateCustomerPassword(String id, String password) async {
-    await _dio.put('/admin/customers/$id/password', data: {'password': password});
+  Future<void> updatePartnerPassword(String id, String password) async {
+    await _dio.put('/admin/partners/$id/password', data: {'password': password});
   }
 
-  Future<void> deleteCustomer(String id) async {
-    await _dio.delete('/admin/customers/$id');
+  Future<void> deletePartner(String id) async {
+    await _dio.delete('/admin/partners/$id');
   }
 
-  Future<void> verifyCustomerDocument(String userId, String docType, bool isVerified, String? rejectionReason) async {
-    await _dio.post('/admin/customers/verify-document', data: {
+  Future<void> verifyPartnerDocument(String userId, String docType, bool isVerified, String? rejectionReason) async {
+    await _dio.post('/admin/partners/verify-document', data: {
       'user_id': userId,
       'doc_type': docType,
       'is_verified': isVerified,
@@ -86,8 +86,8 @@ class AdminService {
     });
   }
 
-  Future<Map<String, String>?> getCustomerLedger(String id) async {
-    final res = await _dio.get('/admin/customers/$id/ledger');
+  Future<Map<String, String>?> getPartnerLedger(String id) async {
+    final res = await _dio.get('/admin/partners/$id/ledger');
     if (res.data == null) return null;
     return {
       'file_url': res.data['file_url'] ?? '',

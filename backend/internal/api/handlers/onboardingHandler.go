@@ -127,8 +127,8 @@ func (h *OnboardingHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
-// GET /api/admin/onboarding - List pending onboarding customers (admin only)
-func (h *OnboardingHandler) GetPendingCustomers(w http.ResponseWriter, r *http.Request) {
+// GET /api/admin/onboarding - List pending onboarding partners (admin only)
+func (h *OnboardingHandler) GetPendingPartners(w http.ResponseWriter, r *http.Request) {
 	userIDStr, _ := r.Context().Value("user_id").(string)
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
@@ -156,15 +156,15 @@ func (h *OnboardingHandler) GetPendingCustomers(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	customers, total, err := models.GetPendingOnboardingCustomers(r.Context(), h.db, limit, offset)
+	partners, total, err := models.GetPendingOnboardingPartners(r.Context(), h.db, limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to fetch customers", http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch partners", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"customers": customers,
+		"partners": partners,
 		"total":     total,
 		"limit":     limit,
 		"offset":    offset,
@@ -219,8 +219,8 @@ func (h *OnboardingHandler) VerifyDocument(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// GET /api/admin/onboarding/customer/{userID} - Get customer's onboarding details (admin only)
-func (h *OnboardingHandler) GetCustomerOnboarding(w http.ResponseWriter, r *http.Request) {
+// GET /api/admin/onboarding/partner/{userID} - Get partner's onboarding details (admin only)
+func (h *OnboardingHandler) GetPartnerOnboarding(w http.ResponseWriter, r *http.Request) {
 	adminIDStr, _ := r.Context().Value("user_id").(string)
 	adminID, err := uuid.Parse(adminIDStr)
 	if err != nil {
@@ -244,7 +244,7 @@ func (h *OnboardingHandler) GetCustomerOnboarding(w http.ResponseWriter, r *http
 
 	status, err := models.GetOnboardingStatus(r.Context(), h.db, userID)
 	if err != nil {
-		http.Error(w, "Failed to fetch customer details", http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch partner details", http.StatusInternalServerError)
 		return
 	}
 

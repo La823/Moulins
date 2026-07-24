@@ -99,7 +99,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/doctors/{id}/products/{productId}", doctors.RemoveDoctorProductHandler(db)).Methods("DELETE")
 	protected.HandleFunc("/doctors/{id}/last-meeting", doctors.UpdateDoctorLastMeetingHandler(db)).Methods("PUT")
 
-	// meeting routes (any authenticated user — customers and employees both own doctors/meetings)
+	// meeting routes (any authenticated user — partners and employees both own doctors/meetings)
 	protected.HandleFunc("/meetings", meetings.CreateHandler(db)).Methods("POST")
 	protected.HandleFunc("/meetings", meetings.ListHandler(db)).Methods("GET")
 	protected.HandleFunc("/meetings/{id}", meetings.GetHandler(db)).Methods("GET")
@@ -117,7 +117,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/my-assignments", assignments.MyAssignmentsHandler(db)).Methods("GET")
 	protected.HandleFunc("/chat-contacts", assignments.ChatContactsHandler(db)).Methods("GET")
 
-	// self-service ledger lookup (customer's own current ledger)
+	// self-service ledger lookup (partner's own current ledger)
 	protected.HandleFunc("/ledger", ledger.GetMyLedgerHandler(db)).Methods("GET")
 
 	// learning platform — browsing (any authenticated user)
@@ -200,8 +200,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.DeleteHandler(db, rdb)).Methods("DELETE")
 
 	// onboarding routes (admin only)
-	admin.HandleFunc("/onboarding", onboardingHandler.GetPendingCustomers).Methods("GET")
-	admin.HandleFunc("/onboarding/customer/{userID}", onboardingHandler.GetCustomerOnboarding).Methods("GET")
+	admin.HandleFunc("/onboarding", onboardingHandler.GetPendingPartners).Methods("GET")
+	admin.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
 	admin.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
 
 	// notification routes (admin only)
@@ -232,19 +232,19 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/careers/{id}", jobs.DeleteHandler(db)).Methods("DELETE")
 	admin.HandleFunc("/careers/{id}/applications", jobs.ListApplicationsHandler(db)).Methods("GET")
 
-	// staff routes — customer management
-	customerStaff := protected.PathPrefix("/admin").Subrouter()
-	customerStaff.Use(middleware.StaffOnly)
-	customerStaff.Use(middleware.RequirePermission(db, "customers", rdb))
+	// staff routes — partner management
+	partnerStaff := protected.PathPrefix("/admin").Subrouter()
+	partnerStaff.Use(middleware.StaffOnly)
+	partnerStaff.Use(middleware.RequirePermission(db, "partners", rdb))
 
-	customerStaff.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
-	customerStaff.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
-	customerStaff.HandleFunc("/customers", userauth.GetCustomersHandler(db)).Methods("GET")
-	customerStaff.HandleFunc("/doctors", doctors.AdminListDoctorsHandler(db)).Methods("GET")
-	customerStaff.HandleFunc("/customers/verify-document", userauth.VerifyCustomerDocumentHandler(db)).Methods("POST")
-	customerStaff.HandleFunc("/customers/{id}", userauth.GetCustomerDetailHandler(db)).Methods("GET")
-	customerStaff.HandleFunc("/customers/{id}/password", userauth.UpdateCustomerPasswordHandler(db, rdb)).Methods("PUT")
-	customerStaff.HandleFunc("/customers/{id}", userauth.DeleteCustomerHandler(db, rdb)).Methods("DELETE")
+	partnerStaff.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
+	partnerStaff.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
+	partnerStaff.HandleFunc("/partners", userauth.GetPartnersHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/doctors", doctors.AdminListDoctorsHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/partners/verify-document", userauth.VerifyPartnerDocumentHandler(db)).Methods("POST")
+	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — order management
 	orderStaff := protected.PathPrefix("/admin").Subrouter()
@@ -296,14 +296,14 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	requestsStaff.HandleFunc("/requests", requests.AdminListHandler(db)).Methods("GET")
 	requestsStaff.HandleFunc("/requests/{id}/status", requests.AdminUpdateStatusHandler(db)).Methods("PUT")
 
-	// staff routes — customer ledger management
+	// staff routes — partner ledger management
 	ledgerStaff := protected.PathPrefix("/admin").Subrouter()
 	ledgerStaff.Use(middleware.StaffOnly)
 	ledgerStaff.Use(middleware.RequirePermission(db, "ledger", rdb))
 
 	ledgerStaff.HandleFunc("/ledger/upload-url", ledger.UploadURLHandler()).Methods("POST")
-	ledgerStaff.HandleFunc("/customers/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
-	ledgerStaff.HandleFunc("/customers/{id}/ledger", ledger.GetLedgerHandler(db)).Methods("GET")
+	ledgerStaff.HandleFunc("/partners/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
+	ledgerStaff.HandleFunc("/partners/{id}/ledger", ledger.GetLedgerHandler(db)).Methods("GET")
 
 	// staff routes — learning platform management
 	learningStaff := protected.PathPrefix("/admin").Subrouter()

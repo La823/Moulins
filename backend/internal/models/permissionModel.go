@@ -18,11 +18,11 @@ type PermissionDef struct {
 // Add new permissions here and they propagate to backend validation and the API.
 var ValidPermissions = []PermissionDef{
 	{Key: "products", Label: "Products", Desc: "Manage products, images, documents"},
-	{Key: "orders", Label: "Orders", Desc: "View and manage customer orders"},
-	{Key: "customers", Label: "Customers", Desc: "View and manage customers"},
-	{Key: "meetings", Label: "Meetings", Desc: "View and analyze customer/employee doctor meetings"},
-	{Key: "requests", Label: "Requests", Desc: "View and resolve customer/employee requests"},
-	{Key: "ledger", Label: "Ledger", Desc: "Upload and update customer account ledgers"},
+	{Key: "orders", Label: "Orders", Desc: "View and manage partner orders"},
+	{Key: "partners", Label: "Partners", Desc: "View and manage partners"},
+	{Key: "meetings", Label: "Meetings", Desc: "View and analyze partner/employee doctor meetings"},
+	{Key: "requests", Label: "Requests", Desc: "View and resolve partner/employee requests"},
+	{Key: "ledger", Label: "Ledger", Desc: "Upload and update partner account ledgers"},
 	{Key: "learning", Label: "Learning", Desc: "Manage learning videos and playlists"},
 }
 

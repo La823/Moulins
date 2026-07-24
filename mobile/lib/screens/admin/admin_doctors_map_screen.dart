@@ -6,8 +6,8 @@ import '../../services/doctor_service.dart';
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
 
-// Admin-only map of every doctor across every customer's clinic locations —
-// a separate map from any customer-location map, showing doctors only.
+// Admin-only map of every doctor across every partner's clinic locations —
+// a separate map from any partner-location map, showing doctors only.
 class AdminDoctorsMapScreen extends StatefulWidget {
   const AdminDoctorsMapScreen({super.key});
 

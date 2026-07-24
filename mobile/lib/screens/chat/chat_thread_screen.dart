@@ -186,7 +186,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                           final m = _messages[i];
                           final mine = m.senderId == myId;
                           // In a group thread, "not mine" can be 2+ different
-                          // people (customer, employee, admin) — label who
+                          // people (partner, employee, admin) — label who
                           // sent it so it's clear at a glance.
                           final showSenderLabel = _isThread && !mine && m.senderName != null;
                           return Align(

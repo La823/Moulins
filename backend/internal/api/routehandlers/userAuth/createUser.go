@@ -33,10 +33,10 @@ func CreateUserHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Employees may only create customer accounts through this endpoint —
+		// Employees may only create partner accounts through this endpoint —
 		// admin/employee creation stays admin-only.
-		if role, _ := r.Context().Value("role").(string); role != "admin" && req.Role != "customer" {
-			http.Error(w, "employees may only create customer accounts", http.StatusForbidden)
+		if role, _ := r.Context().Value("role").(string); role != "admin" && req.Role != "partner" {
+			http.Error(w, "employees may only create partner accounts", http.StatusForbidden)
 			return
 		}
 

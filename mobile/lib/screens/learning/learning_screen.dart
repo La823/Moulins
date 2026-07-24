@@ -247,7 +247,7 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
 
 // Bottom sheet shown to admins/employees to add a new learning video —
 // mirrors the website admin panel's "Add Video" form (YouTube link + a
-// required linked product, broadcast to every customer on save).
+// required linked product, broadcast to every partner on save).
 class _AddVideoSheet extends StatefulWidget {
   final List<LearningPlaylist> playlists;
   final VoidCallback onAdded;

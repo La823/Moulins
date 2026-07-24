@@ -11,13 +11,13 @@ function displayName(u) {
 }
 
 // Threads have no single "other party" — pick the most useful name for
-// *this* viewer: a customer sees their assigned employee's name (or
+// *this* viewer: a partner sees their assigned employee's name (or
 // "Support" if none is assigned yet); an employee or admin sees the
-// customer's name, since that's what actually distinguishes one thread
+// partner's name, since that's what actually distinguishes one thread
 // from another in their list.
 function threadLabel(c, myId) {
   const others = (c.participants || []).filter((p) => p.id !== myId);
-  const client = others.find((p) => p.role === "customer");
+  const client = others.find((p) => p.role === "partner");
   if (client) return displayName(client);
   const employee = others.find((p) => p.role === "employee");
   if (employee) return displayName(employee);
@@ -95,7 +95,7 @@ export default function ChatPage({ basePath }) {
       if (active?.type === "thread" && msg.conversation_id === active.id) {
         setMessages((prev) => [...prev, msg]);
       } else if (active?.type === "direct" && msg.conversation_id && msg.sender_id === user?.id) {
-        // First message to a raw contact (employee/customer/admin) resolves
+        // First message to a raw contact (employee/partner/admin) resolves
         // server-side into a group thread — follow the echo into that thread.
         setActive({ type: "thread", id: msg.conversation_id });
         setMessages((prev) => [...prev, msg]);

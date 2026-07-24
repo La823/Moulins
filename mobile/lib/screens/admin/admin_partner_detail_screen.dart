@@ -15,17 +15,17 @@ const _statusColors = {
   'refunded': Color(0xFFC2410C),
 };
 
-class AdminCustomerDetailScreen extends StatefulWidget {
-  final String customerId;
-  const AdminCustomerDetailScreen({super.key, required this.customerId});
+class AdminPartnerDetailScreen extends StatefulWidget {
+  final String partnerId;
+  const AdminPartnerDetailScreen({super.key, required this.partnerId});
 
   @override
-  State<AdminCustomerDetailScreen> createState() => _AdminCustomerDetailScreenState();
+  State<AdminPartnerDetailScreen> createState() => _AdminPartnerDetailScreenState();
 }
 
-class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
+class _AdminPartnerDetailScreenState extends State<AdminPartnerDetailScreen> {
   final _service = AdminService();
-  AdminCustomer? _customer;
+  AdminPartner? _partner;
   bool _loading = true;
   bool _showPassword = false;
   bool _editingPassword = false;
@@ -50,9 +50,9 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final c = await _service.getCustomerDetail(widget.customerId);
-      setState(() { _customer = c; _loading = false; });
-      _service.getCustomerLedger(widget.customerId).then((l) {
+      final c = await _service.getPartnerDetail(widget.partnerId);
+      setState(() { _partner = c; _loading = false; });
+      _service.getPartnerLedger(widget.partnerId).then((l) {
         if (mounted) setState(() => _ledger = l);
       }).catchError((_) {});
     } catch (_) {
@@ -64,7 +64,7 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
     if (_passwordCtrl.text.length < 4) return;
     setState(() => _savingPassword = true);
     try {
-      await _service.updateCustomerPassword(widget.customerId, _passwordCtrl.text);
+      await _service.updatePartnerPassword(widget.partnerId, _passwordCtrl.text);
       setState(() { _editingPassword = false; _savingPassword = false; });
       _passwordCtrl.clear();
       _load();
@@ -77,7 +77,7 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
   Future<void> _verifyDoc(String docType, bool isVerified, String? reason) async {
     setState(() => _verifyingDoc = docType);
     try {
-      await _service.verifyCustomerDocument(widget.customerId, docType, isVerified, reason);
+      await _service.verifyPartnerDocument(widget.partnerId, docType, isVerified, reason);
       await _load();
     } catch (_) {
       _showError('Could not update document');
@@ -90,8 +90,8 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete customer?'),
-        content: Text('This will permanently delete "${_customer?.displayName}". This cannot be undone.'),
+        title: const Text('Delete partner?'),
+        content: Text('This will permanently delete "${_partner?.displayName}". This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
@@ -101,11 +101,11 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
     if (confirm != true) return;
     setState(() => _deleting = true);
     try {
-      await _service.deleteCustomer(widget.customerId);
+      await _service.deletePartner(widget.partnerId);
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
       setState(() => _deleting = false);
-      _showError('Could not delete customer');
+      _showError('Could not delete partner');
     }
   }
 
@@ -116,8 +116,8 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: _teal)));
-    final c = _customer;
-    if (c == null) return const Scaffold(body: Center(child: Text('Customer not found')));
+    final c = _partner;
+    if (c == null) return const Scaffold(body: Center(child: Text('Partner not found')));
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -283,7 +283,7 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
               child: OutlinedButton(
                 onPressed: _deleting ? null : _delete,
                 style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                child: Text(_deleting ? 'Deleting...' : 'Delete Customer'),
+                child: Text(_deleting ? 'Deleting...' : 'Delete Partner'),
               ),
             ),
           ],
@@ -292,7 +292,7 @@ class _AdminCustomerDetailScreenState extends State<AdminCustomerDetailScreen> {
     );
   }
 
-  Widget _documentCard(CustomerDocument doc) {
+  Widget _documentCard(PartnerDocument doc) {
     final label = doc.docType == 'LICENSE' ? 'Drug License' : 'GST Certificate';
     final busy = _verifyingDoc == doc.docType;
     return Container(

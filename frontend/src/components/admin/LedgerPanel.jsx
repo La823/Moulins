@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 
-export default function LedgerPanel({ customerId }) {
+export default function LedgerPanel({ partnerId }) {
   const [ledger, setLedger] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -11,13 +11,13 @@ export default function LedgerPanel({ customerId }) {
 
   const load = () => {
     setLoading(true);
-    apiFetch(`/admin/customers/${customerId}/ledger`)
+    apiFetch(`/admin/partners/${partnerId}/ledger`)
       .then((data) => setLedger(data))
       .catch(() => setLedger(null))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [customerId]);
+  useEffect(load, [partnerId]);
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -40,7 +40,7 @@ export default function LedgerPanel({ customerId }) {
         body: file,
         headers: { "Content-Type": "application/pdf" },
       });
-      await apiFetch(`/admin/customers/${customerId}/ledger`, {
+      await apiFetch(`/admin/partners/${partnerId}/ledger`, {
         method: "PUT",
         body: JSON.stringify({ file_key: key }),
       });

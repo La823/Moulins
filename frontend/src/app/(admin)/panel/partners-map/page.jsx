@@ -21,8 +21,8 @@ function loadGoogleMaps() {
   return googleMapsScriptPromise;
 }
 
-export default function CustomersMapPage() {
-  const [customers, setCustomers] = useState([]);
+export default function PartnersMapPage() {
+  const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mapReady, setMapReady] = useState(false);
@@ -30,8 +30,8 @@ export default function CustomersMapPage() {
   const mapRef = useRef(null);
 
   useEffect(() => {
-    apiFetch("/admin/customers")
-      .then((data) => setCustomers(Array.isArray(data) ? data : []))
+    apiFetch("/admin/partners")
+      .then((data) => setPartners(Array.isArray(data) ? data : []))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -49,7 +49,7 @@ export default function CustomersMapPage() {
   useEffect(() => {
     if (!mapReady || !mapDivRef.current || loading) return;
 
-    const located = customers.filter((c) => c.latitude != null && c.longitude != null);
+    const located = partners.filter((c) => c.latitude != null && c.longitude != null);
 
     const map = new window.google.maps.Map(mapDivRef.current, {
       center: INDIA_CENTER,
@@ -88,17 +88,17 @@ export default function CustomersMapPage() {
       map.setCenter(located[0] && { lat: located[0].latitude, lng: located[0].longitude });
       map.setZoom(11);
     }
-  }, [mapReady, loading, customers]);
+  }, [mapReady, loading, partners]);
 
-  const withLocation = customers.filter((c) => c.latitude != null && c.longitude != null);
-  const withoutLocation = customers.length - withLocation.length;
+  const withLocation = partners.filter((c) => c.latitude != null && c.longitude != null);
+  const withoutLocation = partners.length - withLocation.length;
 
   return (
     <>
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">Customer Map</h2>
+        <h2 className="text-lg font-semibold text-gray-800">Partner Map</h2>
         <p className="text-xs text-gray-500">
-          {withLocation.length} of {customers.length} customer{customers.length !== 1 ? "s" : ""} shown
+          {withLocation.length} of {partners.length} partner{partners.length !== 1 ? "s" : ""} shown
           {withoutLocation > 0 && ` · ${withoutLocation} missing a pincode`}
         </p>
       </div>

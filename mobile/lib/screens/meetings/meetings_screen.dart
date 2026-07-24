@@ -101,7 +101,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
         date: date,
         meetings: _meetings.where((m) => _dateKey(m.scheduledAt) == _dateKey(date)).toList(),
         preselectedDoctorId: preselectedDoctorId,
-        isCustomer: ref.read(authProvider).user?.role == 'customer',
+        isPartner: ref.read(authProvider).user?.role == 'partner',
         onChanged: _load,
       ),
     );
@@ -376,14 +376,14 @@ class _DaySheet extends StatefulWidget {
   final DateTime date;
   final List<Meeting> meetings;
   final String? preselectedDoctorId;
-  final bool isCustomer;
+  final bool isPartner;
   final VoidCallback onChanged;
 
   const _DaySheet({
     required this.date,
     required this.meetings,
     this.preselectedDoctorId,
-    required this.isCustomer,
+    required this.isPartner,
     required this.onChanged,
   });
 
@@ -406,7 +406,7 @@ class _DaySheetState extends State<_DaySheet> {
   @override
   void initState() {
     super.initState();
-    if (!widget.isCustomer) {
+    if (!widget.isPartner) {
       _loadingDoctors = false;
       return;
     }
@@ -423,11 +423,11 @@ class _DaySheetState extends State<_DaySheet> {
       setState(() => _error = 'Time is required');
       return;
     }
-    if (widget.isCustomer && _selectedDoctorId == null) {
+    if (widget.isPartner && _selectedDoctorId == null) {
       setState(() => _error = 'Doctor is required');
       return;
     }
-    if (!widget.isCustomer && _titleCtrl.text.trim().isEmpty) {
+    if (!widget.isPartner && _titleCtrl.text.trim().isEmpty) {
       setState(() => _error = 'Title is required');
       return;
     }
@@ -435,14 +435,14 @@ class _DaySheetState extends State<_DaySheet> {
     try {
       final scheduledAt = DateTime(widget.date.year, widget.date.month, widget.date.day, _time!.hour, _time!.minute);
       await MeetingService().createMeeting(
-        doctorId: widget.isCustomer ? _selectedDoctorId : null,
-        title: widget.isCustomer ? null : _titleCtrl.text.trim(),
+        doctorId: widget.isPartner ? _selectedDoctorId : null,
+        title: widget.isPartner ? null : _titleCtrl.text.trim(),
         scheduledAt: scheduledAt,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         mom: _momCtrl.text.trim().isEmpty ? null : _momCtrl.text.trim(),
       );
 
-      if (widget.isCustomer && _requestCtrl.text.trim().isNotEmpty) {
+      if (widget.isPartner && _requestCtrl.text.trim().isNotEmpty) {
         final matches = _doctors.where((d) => d.id == _selectedDoctorId);
         final doctorName = matches.isEmpty ? 'doctor' : matches.first.name;
         try {
@@ -520,7 +520,7 @@ class _DaySheetState extends State<_DaySheet> {
             ),
             const SizedBox(height: 12),
 
-            if (widget.isCustomer)
+            if (widget.isPartner)
               _loadingDoctors
                   ? const Center(child: CircularProgressIndicator(color: _teal))
                   : DropdownButtonFormField<String>(
@@ -578,7 +578,7 @@ class _DaySheetState extends State<_DaySheet> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
               ),
             ),
-            if (widget.isCustomer) ...[
+            if (widget.isPartner) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _requestCtrl,

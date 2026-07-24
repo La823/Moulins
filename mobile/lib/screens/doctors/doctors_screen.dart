@@ -38,6 +38,31 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }
   }
 
+  Future<void> _deleteDoctor(Doctor d) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete doctor?'),
+        content: Text('"${d.name}" will be removed from your doctors list.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteDoctor(d.id);
+      _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete doctor')),
+        );
+      }
+    }
+  }
+
   void _showAddDialog() {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
@@ -78,6 +103,19 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                       tooltip: 'Pick from contacts',
                       onPressed: () async {
                         try {
+                          // Reading a picked contact's phone number needs
+                          // READ_CONTACTS — request it up front so a denial
+                          // surfaces as a clean message instead of a native
+                          // crash when the plugin tries to read the contact.
+                          final granted = await FlutterContacts.requestPermission();
+                          if (!granted) {
+                            if (sheetCtx.mounted) {
+                              ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                                const SnackBar(content: Text('Contacts permission is required to pick a number')),
+                              );
+                            }
+                            return;
+                          }
                           final contact = await FlutterContacts.openExternalPick();
                           if (contact == null) return;
                           if (contact.phones.isNotEmpty) {
@@ -296,10 +334,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                              onPressed: () async {
-                                await _service.deleteDoctor(d.id);
-                                _load();
-                              },
+                              onPressed: () => _deleteDoctor(d),
                             ),
                           ],
                         ),

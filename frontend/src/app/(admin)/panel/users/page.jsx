@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 
-export default function CustomersPage() {
+export default function PartnersPage() {
   const router = useRouter();
-  const [customers, setCustomers] = useState([]);
+  const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Add customer form
+  // Add partner form
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ phone_number: "", password: "", username: "", pincode: "", city: "", state: "" });
   const [submitting, setSubmitting] = useState(false);
@@ -19,16 +19,16 @@ export default function CustomersPage() {
   const [success, setSuccess] = useState("");
   const [lookingUpPincode, setLookingUpPincode] = useState(false);
 
-  const fetchCustomers = () => {
+  const fetchPartners = () => {
     setLoading(true);
-    apiFetch("/admin/customers")
-      .then((data) => setCustomers(Array.isArray(data) ? data : []))
-      .catch(() => setCustomers([]))
+    apiFetch("/admin/partners")
+      .then((data) => setPartners(Array.isArray(data) ? data : []))
+      .catch(() => setPartners([]))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchCustomers();
+    fetchPartners();
   }, []);
 
   // Live city/state autofill as the admin types a 6-digit pincode.
@@ -64,16 +64,16 @@ export default function CustomersPage() {
           phone_number: form.phone_number,
           password: form.password,
           username: form.username || undefined,
-          role: "customer",
+          role: "partner",
           pincode: form.pincode || undefined,
           city: form.city || undefined,
           state: form.state || undefined,
         }),
       });
-      setSuccess(`Customer created: ${form.username || form.phone_number}`);
+      setSuccess(`Partner created: ${form.username || form.phone_number}`);
       setForm({ phone_number: "", password: "", username: "", pincode: "", city: "", state: "" });
       setShowForm(false);
-      fetchCustomers();
+      fetchPartners();
       setTimeout(() => setSuccess(""), 4000);
     } catch (err) {
       setError(err.message);
@@ -82,7 +82,7 @@ export default function CustomersPage() {
     }
   };
 
-  const filtered = customers.filter((c) => {
+  const filtered = partners.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -95,12 +95,12 @@ export default function CustomersPage() {
   return (
     <>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-gray-800">Customers</h2>
+        <h2 className="text-lg font-semibold text-gray-800">Partners</h2>
         <button
           onClick={() => setShowForm(!showForm)}
           className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
         >
-          {showForm ? "Cancel" : "Add Customer"}
+          {showForm ? "Cancel" : "Add Partner"}
         </button>
       </div>
 
@@ -110,13 +110,13 @@ export default function CustomersPage() {
         </p>
       )}
 
-      {/* Add Customer Form */}
+      {/* Add Partner Form */}
       {showForm && (
         <form
           onSubmit={handleSubmit}
           className="mb-6 p-5 bg-white rounded-xl border border-gray-200 space-y-4 max-w-md"
         >
-          <h3 className="text-sm font-semibold text-gray-700">New Customer</h3>
+          <h3 className="text-sm font-semibold text-gray-700">New Partner</h3>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Name *
@@ -126,7 +126,7 @@ export default function CustomersPage() {
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
               required
-              placeholder="Customer name"
+              placeholder="Partner name"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
           </div>
@@ -175,7 +175,7 @@ export default function CustomersPage() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
             <p className="text-[10px] text-gray-400 mt-1">
-              {lookingUpPincode ? "Looking up city/state..." : "Used to place this customer on the customer map"}
+              {lookingUpPincode ? "Looking up city/state..." : "Used to place this partner on the partner map"}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -210,7 +210,7 @@ export default function CustomersPage() {
             disabled={submitting}
             className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
           >
-            {submitting ? "Creating..." : "Create Customer"}
+            {submitting ? "Creating..." : "Create Partner"}
           </button>
         </form>
       )}
@@ -243,7 +243,7 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {/* Customer List */}
+      {/* Partner List */}
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -259,14 +259,14 @@ export default function CustomersPage() {
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <p className="text-sm text-gray-400">
-            {search ? "No customers match your search" : "No customers yet"}
+            {search ? "No partners match your search" : "No partners yet"}
           </p>
           {!search && (
             <button
               onClick={() => setShowForm(true)}
               className="mt-3 text-sm text-gray-600 hover:text-gray-900 underline"
             >
-              Create your first customer
+              Create your first partner
             </button>
           )}
         </div>
@@ -275,7 +275,7 @@ export default function CustomersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Partner</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Journey</th>
@@ -313,9 +313,9 @@ export default function CustomersPage() {
           </table>
 
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
-            {filtered.length} customer{filtered.length !== 1 ? "s" : ""}
-            {search && filtered.length !== customers.length
-              ? ` (filtered from ${customers.length})`
+            {filtered.length} partner{filtered.length !== 1 ? "s" : ""}
+            {search && filtered.length !== partners.length
+              ? ` (filtered from ${partners.length})`
               : ""}
           </div>
         </div>

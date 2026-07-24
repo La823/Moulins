@@ -49,27 +49,25 @@ export default function Footer() {
               <p>
                 Moulins Pharmaceuticals Pvt. Ltd.
                 <br />
-                Industrial Area, Phase II,
+                1st Floor, 363, Industrial Area Phase 2,
                 <br />
-                Baddi, Himachal Pradesh 173205
+                Panchkula, Haryana 134113
               </p>
               <p>
-                9 am – 6 pm, Monday to Friday
-                <br />
-                9 am – 1 pm, Saturday
+                10 am – 7 pm, Monday to Saturday
               </p>
               <a
-                href="mailto:info@moulins.in"
+                href="mailto:info@moulinspharma.com"
                 className="inline-block hover:text-white transition-colors"
               >
-                info@moulins.in
+                info@moulinspharma.com
               </a>
               <br />
               <a
-                href="tel:+911234567890"
+                href="tel:+919815535304"
                 className="inline-block hover:text-white transition-colors"
               >
-                +91 12345 67890
+                +91 98155 35304
               </a>
             </div>
           </div>
@@ -151,16 +149,16 @@ export default function Footer() {
       <div className="bg-[#0A0A0A]">
         <div className="max-w-7xl mx-auto px-8 py-8">
           {/* Department contacts */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 mb-8 text-center">
             <div>
               <p className="text-xs text-[#6B6560] mb-1">
                 General &amp; Domestic queries
               </p>
               <a
-                href="mailto:info@moulins.in"
+                href="mailto:info@moulinspharma.com"
                 className="text-xs text-[#9A9286] hover:text-white transition-colors"
               >
-                info@moulins.in
+                info@moulinspharma.com
               </a>
             </div>
             <div>
@@ -168,32 +166,10 @@ export default function Footer() {
                 Sales &amp; B2B
               </p>
               <a
-                href="mailto:sales@moulins.in"
+                href="mailto:Sales@moulinspharma.com"
                 className="text-xs text-[#9A9286] hover:text-white transition-colors"
               >
-                sales@moulins.in
-              </a>
-            </div>
-            <div>
-              <p className="text-xs text-[#6B6560] mb-1">
-                Regulatory &amp; Compliance
-              </p>
-              <a
-                href="mailto:regulatory@moulins.in"
-                className="text-xs text-[#9A9286] hover:text-white transition-colors"
-              >
-                regulatory@moulins.in
-              </a>
-            </div>
-            <div>
-              <p className="text-xs text-[#6B6560] mb-1">
-                Careers &amp; HR
-              </p>
-              <a
-                href="mailto:careers@moulins.in"
-                className="text-xs text-[#9A9286] hover:text-white transition-colors"
-              >
-                careers@moulins.in
+                Sales@moulinspharma.com
               </a>
             </div>
           </div>

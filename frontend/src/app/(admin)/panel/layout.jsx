@@ -116,9 +116,9 @@ const NAV_ITEMS = [
     ),
   },
   {
-    label: "Customers",
+    label: "Partners",
     href: "/panel/users",
-    permission: "customers",
+    permission: "partners",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -126,9 +126,9 @@ const NAV_ITEMS = [
     ),
   },
   {
-    label: "Customer Map",
-    href: "/panel/customers-map",
-    permission: "customers",
+    label: "Partner Map",
+    href: "/panel/partners-map",
+    permission: "partners",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.804a1.125 1.125 0 0 0-1.006 0L3.622 6.241C3.24 6.43 3 6.822 3 7.248v9.986c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z" />
@@ -138,7 +138,7 @@ const NAV_ITEMS = [
   {
     label: "Doctors Map",
     href: "/panel/doctors-map",
-    permission: "customers",
+    permission: "partners",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 21c-4.556-4.03-7-7.828-7-11a7 7 0 1114 0c0 3.172-2.444 6.97-7 11z" />

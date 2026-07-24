@@ -1,7 +1,7 @@
 // One-off backfill: collapses pre-existing 1:1 message history involving a
-// customer (customer<->employee, customer<->admin) into the new group
+// partner (partner<->employee, partner<->admin) into the new group
 // conversation threads, so history isn't lost when the group chat feature
-// ships. Messages where neither party is a customer (admin<->employee,
+// ships. Messages where neither party is a partner (admin<->employee,
 // admin<->admin) are left untouched — they keep using the legacy direct path.
 package main
 
@@ -36,7 +36,7 @@ func main() {
 		JOIN users su ON su.id = m.sender_id
 		JOIN users ru ON ru.id = m.receiver_id
 		WHERE m.conversation_id IS NULL AND m.receiver_id IS NOT NULL
-		  AND (su.role = 'customer' OR ru.role = 'customer')
+		  AND (su.role = 'partner' OR ru.role = 'partner')
 	`)
 	if err != nil {
 		log.Fatal(err)
@@ -59,7 +59,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("found %d customer-involving messages to backfill\n", len(toBackfill))
+	fmt.Printf("found %d partner-involving messages to backfill\n", len(toBackfill))
 
 	convCache := map[convKey]uuid.UUID{}
 	getOrCreateConv := func(clientID uuid.UUID, employeeID uuid.UUID) (uuid.UUID, error) {
@@ -100,16 +100,16 @@ func main() {
 	for _, r := range toBackfill {
 		var clientID, employeeID uuid.UUID
 		switch {
-		case r.senderRole == "customer" && r.receiverRole == "employee":
+		case r.senderRole == "partner" && r.receiverRole == "employee":
 			clientID, employeeID = r.senderID, r.receiverID
-		case r.receiverRole == "customer" && r.senderRole == "employee":
+		case r.receiverRole == "partner" && r.senderRole == "employee":
 			clientID, employeeID = r.receiverID, r.senderID
-		case r.senderRole == "customer" && r.receiverRole == "admin":
+		case r.senderRole == "partner" && r.receiverRole == "admin":
 			clientID = r.senderID
-		case r.receiverRole == "customer" && r.senderRole == "admin":
+		case r.receiverRole == "partner" && r.senderRole == "admin":
 			clientID = r.receiverID
 		default:
-			// customer<->customer shouldn't exist per CanMessage, skip defensively
+			// partner<->partner shouldn't exist per CanMessage, skip defensively
 			continue
 		}
 

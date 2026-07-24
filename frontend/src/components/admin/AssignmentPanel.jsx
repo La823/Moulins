@@ -11,7 +11,7 @@ export default function AssignmentPanel({ mode, userId }) {
   const listUrl = isClient
     ? `/admin/clients/${userId}/employees`
     : `/admin/employees/${userId}/clients`;
-  const optionsUrl = isClient ? "/admin/employees" : "/admin/customers";
+  const optionsUrl = isClient ? "/admin/employees" : "/admin/partners";
   const label = isClient ? "Assigned Employees" : "Assigned Clients";
   const optionLabel = isClient ? "employee" : "client";
 

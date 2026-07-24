@@ -151,7 +151,7 @@ export default function AdminOrdersPage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search by customer name or phone..."
+              placeholder="Search by partner name or phone..."
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 placeholder:text-gray-400"
             />
             {search && (
@@ -262,7 +262,7 @@ export default function AdminOrdersPage() {
                   Order
                 </th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
+                  Partner
                 </th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Items

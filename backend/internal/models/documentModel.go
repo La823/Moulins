@@ -16,7 +16,7 @@ const (
 	DocumentTypeGST     DocumentType = "GST"
 )
 
-type CustomerDocument struct {
+type PartnerDocument struct {
 	ID               uuid.UUID  `json:"id"`
 	UserID           uuid.UUID  `json:"user_id"`
 	DocType          string     `json:"doc_type"`
@@ -34,7 +34,7 @@ type CustomerDocument struct {
 type OnboardingStatus struct {
 	UserID          uuid.UUID            `json:"user_id"`
 	OnboardingStep  int                  `json:"onboarding_step"` // 1=Account, 2=License Pending, 3=GST Pending, 4=All Verified
-	Documents       []CustomerDocument   `json:"documents"`
+	Documents       []PartnerDocument   `json:"documents"`
 	IsFullyVerified bool                 `json:"is_fully_verified"`
 }
 
@@ -60,16 +60,16 @@ func CreateOrUpdateDocument(
 	docNumber string,
 	expiryDate *time.Time,
 	photoURL string,
-) (*CustomerDocument, error) {
+) (*PartnerDocument, error) {
 	query := `
-		INSERT INTO customer_documents (user_id, doc_type, doc_number, expiry_date, photo_url)
+		INSERT INTO partner_documents (user_id, doc_type, doc_number, expiry_date, photo_url)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (user_id, doc_type) DO UPDATE
 		SET doc_number = $3, expiry_date = $4, photo_url = $5, updated_at = NOW()
 		RETURNING id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, created_at, updated_at
 	`
 
-	var doc CustomerDocument
+	var doc PartnerDocument
 	err := db.QueryRow(ctx, query, userID, docType, docNumber, expiryDate, photoURL).Scan(
 		&doc.ID, &doc.UserID, &doc.DocType, &doc.DocNumber, &doc.ExpiryDate,
 		&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
@@ -89,10 +89,10 @@ func GetUserDocuments(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	userID uuid.UUID,
-) ([]CustomerDocument, error) {
+) ([]PartnerDocument, error) {
 	query := `
 		SELECT id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, created_at, updated_at
-		FROM customer_documents
+		FROM partner_documents
 		WHERE user_id = $1
 		ORDER BY created_at DESC
 	`
@@ -103,9 +103,9 @@ func GetUserDocuments(
 	}
 	defer rows.Close()
 
-	var docs []CustomerDocument
+	var docs []PartnerDocument
 	for rows.Next() {
-		var doc CustomerDocument
+		var doc PartnerDocument
 		err := rows.Scan(
 			&doc.ID, &doc.UserID, &doc.DocType, &doc.DocNumber, &doc.ExpiryDate,
 			&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
@@ -160,7 +160,7 @@ func VerifyDocument(
 ) error {
 	if isVerified {
 		query := `
-			UPDATE customer_documents
+			UPDATE partner_documents
 			SET is_verified = TRUE, verified_by = $1, verified_at = NOW(), rejection_reason = NULL
 			WHERE user_id = $2 AND doc_type = $3
 		`
@@ -170,7 +170,7 @@ func VerifyDocument(
 		}
 	} else {
 		query := `
-			UPDATE customer_documents
+			UPDATE partner_documents
 			SET is_verified = FALSE, rejection_reason = $1, verified_by = NULL, verified_at = NULL
 			WHERE user_id = $2 AND doc_type = $3
 		`
@@ -195,7 +195,7 @@ func updateUserOnboardingStep(ctx context.Context, db *pgxpool.Pool, userID uuid
 				ELSE 1
 			END
 		), 1)
-		FROM customer_documents
+		FROM partner_documents
 		WHERE user_id = $1 AND is_verified = TRUE
 	`
 
@@ -210,8 +210,8 @@ func updateUserOnboardingStep(ctx context.Context, db *pgxpool.Pool, userID uuid
 	err = db.QueryRow(
 		ctx,
 		`SELECT
-			COALESCE((SELECT is_verified FROM customer_documents WHERE user_id = $1 AND doc_type = 'LICENSE'), FALSE),
-			COALESCE((SELECT is_verified FROM customer_documents WHERE user_id = $1 AND doc_type = 'GST'), FALSE)`,
+			COALESCE((SELECT is_verified FROM partner_documents WHERE user_id = $1 AND doc_type = 'LICENSE'), FALSE),
+			COALESCE((SELECT is_verified FROM partner_documents WHERE user_id = $1 AND doc_type = 'GST'), FALSE)`,
 		userID,
 	).Scan(&licenseVerified, &gstVerified)
 	if err != nil && err != sql.ErrNoRows {
@@ -233,7 +233,7 @@ func updateUserOnboardingStep(ctx context.Context, db *pgxpool.Pool, userID uuid
 	return err
 }
 
-func GetPendingOnboardingCustomers(
+func GetPendingOnboardingPartners(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	limit int,
@@ -241,12 +241,12 @@ func GetPendingOnboardingCustomers(
 ) ([]map[string]interface{}, int, error) {
 	// Get count
 	var total int
-	err := db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE role = 'customer' AND onboarding_step < 4`).Scan(&total)
+	err := db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE role = 'partner' AND onboarding_step < 4`).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Get customers with their documents
+	// Get partners with their documents
 	query := `
 		SELECT u.id, u.phone_number, u.username, u.onboarding_step, u.created_at,
 			json_agg(json_build_object(
@@ -258,8 +258,8 @@ func GetPendingOnboardingCustomers(
 				'created_at', cd.created_at
 			)) FILTER (WHERE cd.id IS NOT NULL) as documents
 		FROM users u
-		LEFT JOIN customer_documents cd ON u.id = cd.user_id
-		WHERE u.role = 'customer' AND u.onboarding_step < 4
+		LEFT JOIN partner_documents cd ON u.id = cd.user_id
+		WHERE u.role = 'partner' AND u.onboarding_step < 4
 		GROUP BY u.id, u.phone_number, u.username, u.onboarding_step, u.created_at
 		ORDER BY u.created_at DESC
 		LIMIT $1 OFFSET $2
@@ -271,7 +271,7 @@ func GetPendingOnboardingCustomers(
 	}
 	defer rows.Close()
 
-	var customers []map[string]interface{}
+	var partners []map[string]interface{}
 	for rows.Next() {
 		var (
 			id              uuid.UUID
@@ -286,7 +286,7 @@ func GetPendingOnboardingCustomers(
 			return nil, 0, err
 		}
 
-		customers = append(customers, map[string]interface{}{
+		partners = append(partners, map[string]interface{}{
 			"id":               id,
 			"phone_number":     phoneNumber,
 			"username":         username,
@@ -296,5 +296,5 @@ func GetPendingOnboardingCustomers(
 		})
 	}
 
-	return customers, total, rows.Err()
+	return partners, total, rows.Err()
 }

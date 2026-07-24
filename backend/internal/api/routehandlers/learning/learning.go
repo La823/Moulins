@@ -19,7 +19,7 @@ func getUserID(r *http.Request) uuid.UUID {
 	return id
 }
 
-// GET /learning/videos — public listing for customers/employees, with
+// GET /learning/videos — public listing for partners/employees, with
 // optional ?search=, ?playlist_id= and ?product_id= filters.
 func ListVideosHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +71,7 @@ func ListPlaylistsHandler(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 // POST /admin/learning/videos — add a video (staff), optionally into a
-// playlist immediately, and broadcasts a notification to every customer.
+// playlist immediately, and broadcasts a notification to every partner.
 func CreateVideoHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -122,7 +122,7 @@ func CreateVideoHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 // broadcastNewVideo reuses the same broadcast pipeline the admin
 // notifications page uses — one notifications row (audience_type='all'),
-// fanned out to every customer's in-app inbox + push.
+// fanned out to every partner's in-app inbox + push.
 func broadcastNewVideo(db *pgxpool.Pool, title string) {
 	notification := models.CreateNotificationRequest{
 		Title: "New Learning Video",

@@ -15,7 +15,7 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-// POST /orders — customer places an order from their cart
+// POST /orders — partner places an order from their cart
 func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userIDStr, ok := r.Context().Value("user_id").(string)
@@ -61,7 +61,7 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /orders — customer's own orders
+// GET /orders — partner's own orders
 func ListMyOrdersHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userIDStr, ok := r.Context().Value("user_id").(string)

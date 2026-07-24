@@ -44,7 +44,7 @@ func hasType(types []string, target string) bool {
 
 // GeocodePincode resolves an Indian pincode to coordinates + city/state using
 // the Google Geocoding API. Returns ok=false if the pincode couldn't be
-// resolved — callers should treat that as non-fatal (e.g. the customer is
+// resolved — callers should treat that as non-fatal (e.g. the partner is
 // still created, just without a map marker / city / state).
 func GeocodePincode(pincode string) (GeocodeResult, bool) {
 	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")

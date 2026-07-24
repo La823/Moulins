@@ -1,4 +1,4 @@
-class CustomerDocument {
+class PartnerDocument {
   final String id;
   final String docType;
   final String? docNumber;
@@ -7,7 +7,7 @@ class CustomerDocument {
   final bool isVerified;
   final String? rejectionReason;
 
-  CustomerDocument({
+  PartnerDocument({
     required this.id,
     required this.docType,
     this.docNumber,
@@ -17,7 +17,7 @@ class CustomerDocument {
     this.rejectionReason,
   });
 
-  factory CustomerDocument.fromJson(Map<String, dynamic> json) => CustomerDocument(
+  factory PartnerDocument.fromJson(Map<String, dynamic> json) => PartnerDocument(
         id: json['id'] ?? '',
         docType: json['doc_type'] ?? '',
         docNumber: json['doc_number'],
@@ -52,7 +52,7 @@ class AdminOrderSummary {
       );
 }
 
-class AdminCustomer {
+class AdminPartner {
   final String id;
   final String? username;
   final String phoneNumber;
@@ -63,9 +63,9 @@ class AdminCustomer {
   final int onboardingStep;
   final String? plainPassword;
   final List<AdminOrderSummary> orders;
-  final List<CustomerDocument> documents;
+  final List<PartnerDocument> documents;
 
-  AdminCustomer({
+  AdminPartner({
     required this.id,
     this.username,
     required this.phoneNumber,
@@ -81,18 +81,18 @@ class AdminCustomer {
 
   String get displayName => username ?? phoneNumber;
 
-  factory AdminCustomer.fromJson(Map<String, dynamic> json) => AdminCustomer(
+  factory AdminPartner.fromJson(Map<String, dynamic> json) => AdminPartner(
         id: json['id'] ?? '',
         username: json['username'],
         phoneNumber: json['phone_number'] ?? '',
         email: json['email'],
-        role: json['role'] ?? 'customer',
+        role: json['role'] ?? 'partner',
         createdAt: json['created_at'] ?? '',
         lastLoginAt: json['last_login_at'],
         onboardingStep: json['onboarding_step'] ?? 1,
         plainPassword: json['plain_password'],
         orders: (json['orders'] as List<dynamic>? ?? []).map((e) => AdminOrderSummary.fromJson(e)).toList(),
-        documents: (json['documents'] as List<dynamic>? ?? []).map((e) => CustomerDocument.fromJson(e)).toList(),
+        documents: (json['documents'] as List<dynamic>? ?? []).map((e) => PartnerDocument.fromJson(e)).toList(),
       );
 }
 

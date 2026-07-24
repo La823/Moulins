@@ -85,7 +85,7 @@ class ChatParticipant {
 
 // A conversation is either a legacy "direct" 1:1 chat (admin<->employee,
 // admin<->admin) keyed by the other user's id, or a "thread" — a group
-// conversation (customer + assigned employee + admin) keyed by its own
+// conversation (partner + assigned employee + admin) keyed by its own
 // conversation id and carrying the full participant list.
 class ChatConversation {
   final String type; // "direct" | "thread"
@@ -113,15 +113,15 @@ class ChatConversation {
   bool get isThread => type == 'thread';
 
   // Threads have no single "other party" — pick the most useful name for
-  // *this* viewer: a customer sees their assigned employee's name (or
+  // *this* viewer: a partner sees their assigned employee's name (or
   // "Support" if none is assigned yet); an employee or admin sees the
-  // customer's name, since that's what actually distinguishes one thread
+  // partner's name, since that's what actually distinguishes one thread
   // from another in their list.
   String labelFor(String? myId) {
     if (!isThread) return username ?? phoneNumber;
     final others = participants.where((p) => p.id != myId).toList();
     for (final p in others) {
-      if (p.role == 'customer') return p.displayName;
+      if (p.role == 'partner') return p.displayName;
     }
     for (final p in others) {
       if (p.role == 'employee') return p.displayName;

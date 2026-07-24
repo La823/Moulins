@@ -60,9 +60,6 @@ export const metadata = {
   alternates: {
     canonical: "/",
   },
-  icons: {
-    icon: "/favicon.ico",
-  },
   openGraph: {
     type: "website",
     url: SITE_URL,

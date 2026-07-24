@@ -80,7 +80,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       margin: const EdgeInsets.only(top: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(color: const Color(0xFFE8F8F8), borderRadius: BorderRadius.circular(8)),
-                      child: Text(user?.role ?? 'customer', style: const TextStyle(fontSize: 11, color: teal, fontWeight: FontWeight.w500)),
+                      child: Text(user?.role ?? 'partner', style: const TextStyle(fontSize: 11, color: teal, fontWeight: FontWeight.w500)),
                     ),
                   ],
                 ),
@@ -89,8 +89,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Verification Journey (customers only)
-          if (user?.role == 'customer')
+          // Verification Journey (partners only)
+          if (user?.role == 'partner')
             onboarding.when(
               loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
               error: (e, __) => Container(
@@ -104,8 +104,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           const SizedBox(height: 16),
 
-          // Account Ledger (customers only)
-          if (user?.role == 'customer' && !_ledgerLoading)
+          // Account Ledger (partners only)
+          if (user?.role == 'partner' && !_ledgerLoading)
             Container(
               color: Colors.white,
               margin: const EdgeInsets.only(bottom: 16),
@@ -134,7 +134,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/orders')),
                 _divider(),
-                if (user?.role == 'customer') ...[
+                if (user?.role == 'partner') ...[
                   _menuItem(Icons.person_outlined, 'My Doctors', () => context.go('/doctors')),
                   _divider(),
                 ],
@@ -276,7 +276,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 class _DocumentCard extends ConsumerStatefulWidget {
   final String title;
   final String subtitle;
-  final CustomerDocument? doc;
+  final PartnerDocument? doc;
   final String docType;
   final VoidCallback onUploaded;
 

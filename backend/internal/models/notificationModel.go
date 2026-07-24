@@ -98,11 +98,11 @@ func CreateExclusions(ctx context.Context, db *pgxpool.Pool, notificationID uuid
 	return err
 }
 
-// GetEligibleUserIDs returns customer user IDs excluding the given set.
+// GetEligibleUserIDs returns partner user IDs excluding the given set.
 func GetEligibleUserIDs(ctx context.Context, db *pgxpool.Pool, excludedIDs []uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id FROM users
-		WHERE role = 'customer' AND NOT (id = ANY($1::uuid[]))
+		WHERE role = 'partner' AND NOT (id = ANY($1::uuid[]))
 	`, uuidStrings(excludedIDs))
 	if err != nil {
 		return nil, err
@@ -283,7 +283,7 @@ func SearchUsers(ctx context.Context, db *pgxpool.Pool, query string, limit int)
 		SELECT id, phone_number, username, email, role,
 			is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
-		WHERE role = 'customer' AND (username ILIKE $1 OR phone_number ILIKE $1)
+		WHERE role = 'partner' AND (username ILIKE $1 OR phone_number ILIKE $1)
 		ORDER BY username
 		LIMIT $2
 	`, "%"+query+"%", limit)

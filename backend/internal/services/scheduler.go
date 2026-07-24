@@ -66,7 +66,7 @@ func dispatchBirthdayReminders(db *pgxpool.Pool) {
 		}
 		deepLink := fmt.Sprintf("/doctors/%s", d.ID)
 
-		if err := SendDirectNotification(ctx, db, d.CustomerID, title, body, &deepLink); err != nil {
+		if err := SendDirectNotification(ctx, db, d.PartnerID, title, body, &deepLink); err != nil {
 			log.Printf("scheduler: failed to send birthday reminder for doctor %s: %v", d.ID, err)
 		}
 	}

@@ -5,25 +5,25 @@ import axios from "axios";
 import { motion } from "framer-motion";
 
 export default function OnboardingAdminPage() {
-  const [customers, setCustomers] = useState([]);
+  const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedPartner, setSelectedPartner] = useState(null);
   const [verifyingDoc, setVerifyingDoc] = useState(null);
 
   useEffect(() => {
-    fetchPendingCustomers();
+    fetchPendingPartners();
   }, []);
 
-  const fetchPendingCustomers = async () => {
+  const fetchPendingPartners = async () => {
     try {
       const token = localStorage.getItem("token");
       const res = await axios.get("/api/admin/onboarding", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setCustomers(res.data.customers);
+      setPartners(res.data.partners);
       setLoading(false);
     } catch (err) {
-      console.error("Failed to fetch customers:", err);
+      console.error("Failed to fetch partners:", err);
       setLoading(false);
     }
   };
@@ -42,8 +42,8 @@ export default function OnboardingAdminPage() {
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      fetchPendingCustomers();
-      setSelectedCustomer(null);
+      fetchPendingPartners();
+      setSelectedPartner(null);
     } catch (err) {
       console.error("Failed to verify document:", err);
       alert("Failed to verify document");
@@ -71,43 +71,43 @@ export default function OnboardingAdminPage() {
         className="mb-8"
       >
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Customer Verification
+          Partner Verification
         </h1>
         <p className="text-gray-600">
-          Review and verify customer documents
+          Review and verify partner documents
         </p>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Customer List */}
+        {/* Partner List */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-lg border border-gray-200 h-[600px] overflow-y-auto">
-            {customers.length === 0 ? (
+            {partners.length === 0 ? (
               <div className="p-6 text-center text-gray-500">
                 No pending verifications
               </div>
             ) : (
               <div className="divide-y">
-                {customers.map((customer) => (
+                {partners.map((partner) => (
                   <motion.button
-                    key={customer.id}
-                    onClick={() => setSelectedCustomer(customer)}
+                    key={partner.id}
+                    onClick={() => setSelectedPartner(partner)}
                     whileHover={{ backgroundColor: "#f3f4f6" }}
                     className={`w-full p-4 text-left transition ${
-                      selectedCustomer?.id === customer.id
+                      selectedPartner?.id === partner.id
                         ? "bg-teal-50 border-l-4"
                         : "hover:bg-gray-50"
                     }`}
                     style={
-                      selectedCustomer?.id === customer.id
+                      selectedPartner?.id === partner.id
                         ? { borderLeftColor: TEAL }
                         : {}
                     }
                   >
-                    <p className="font-bold text-sm">{customer.username || customer.phone_number}</p>
-                    <p className="text-xs text-gray-600 mt-1">{customer.phone_number}</p>
+                    <p className="font-bold text-sm">{partner.username || partner.phone_number}</p>
+                    <p className="text-xs text-gray-600 mt-1">{partner.phone_number}</p>
                     <div className="mt-2">
-                      <StepBadge step={customer.onboarding_step} teal={TEAL} />
+                      <StepBadge step={partner.onboarding_step} teal={TEAL} />
                     </div>
                   </motion.button>
                 ))}
@@ -118,26 +118,26 @@ export default function OnboardingAdminPage() {
 
         {/* Details Panel */}
         <div className="lg:col-span-2">
-          {selectedCustomer ? (
+          {selectedPartner ? (
             <motion.div
-              key={selectedCustomer.id}
+              key={selectedPartner.id}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               className="bg-white rounded-lg border border-gray-200 p-6"
             >
-              {/* Customer Info */}
+              {/* Partner Info */}
               <div className="mb-6 pb-6 border-b">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  {selectedCustomer.username || selectedCustomer.phone_number}
+                  {selectedPartner.username || selectedPartner.phone_number}
                 </h2>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-gray-600">Phone</p>
-                    <p className="font-bold">{selectedCustomer.phone_number}</p>
+                    <p className="font-bold">{selectedPartner.phone_number}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Status</p>
-                    <StepBadge step={selectedCustomer.onboarding_step} teal={TEAL} />
+                    <StepBadge step={selectedPartner.onboarding_step} teal={TEAL} />
                   </div>
                 </div>
               </div>
@@ -146,20 +146,20 @@ export default function OnboardingAdminPage() {
               <div>
                 <h3 className="font-bold text-lg mb-4">Documents</h3>
                 <div className="space-y-4">
-                  {selectedCustomer.documents_json &&
-                    JSON.parse(selectedCustomer.documents_json).map((doc) => (
+                  {selectedPartner.documents_json &&
+                    JSON.parse(selectedPartner.documents_json).map((doc) => (
                       <DocumentReviewCard
                         key={doc.id}
                         doc={doc}
                         onVerify={(isVerified, reason) =>
                           handleVerifyDocument(
-                            selectedCustomer.id,
+                            selectedPartner.id,
                             doc.doc_type,
                             isVerified,
                             reason
                           )
                         }
-                        isVerifying={verifyingDoc === `${selectedCustomer.id}-${doc.doc_type}`}
+                        isVerifying={verifyingDoc === `${selectedPartner.id}-${doc.doc_type}`}
                         teal={TEAL}
                       />
                     ))}
@@ -168,7 +168,7 @@ export default function OnboardingAdminPage() {
             </motion.div>
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 p-12 flex items-center justify-center h-[600px]">
-              <p className="text-gray-500">Select a customer to review</p>
+              <p className="text-gray-500">Select a partner to review</p>
             </div>
           )}
         </div>

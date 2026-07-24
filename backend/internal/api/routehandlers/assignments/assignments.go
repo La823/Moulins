@@ -45,7 +45,7 @@ func MyAssignmentsHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 // ChatContactsHandler lists everyone the current user is allowed to start a
 // chat with, mirroring the CanMessage rule: admins can reach every
-// customer/employee, and customers/employees can reach admins plus whoever
+// partner/employee, and partners/employees can reach admins plus whoever
 // they're assigned to.
 func ChatContactsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +53,9 @@ func ChatContactsHandler(db *pgxpool.Pool) http.HandlerFunc {
 		role, _ := r.Context().Value("role").(string)
 
 		if role == "admin" {
-			customers, err := models.GetUsersByRole(r.Context(), db, "customer")
+			partners, err := models.GetUsersByRole(r.Context(), db, "partner")
 			if err != nil {
-				log.Printf("chat contacts (customers) error: %v", err)
+				log.Printf("chat contacts (partners) error: %v", err)
 				http.Error(w, "could not fetch contacts", http.StatusInternalServerError)
 				return
 			}
@@ -66,7 +66,7 @@ func ChatContactsHandler(db *pgxpool.Pool) http.HandlerFunc {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(append(customers, employees...))
+			json.NewEncoder(w).Encode(append(partners, employees...))
 			return
 		}
 

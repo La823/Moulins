@@ -263,10 +263,10 @@ export default function AdminOrderDetail() {
       )}
 
       <div className="space-y-6">
-        {/* Customer Info */}
+        {/* Partner Info */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">
-            Customer
+            Partner
           </h3>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -310,7 +310,7 @@ export default function AdminOrderDetail() {
           </div>
           {order.notes && (
             <div className="mt-4 pt-3 border-t border-gray-100">
-              <span className="text-xs text-gray-400">Customer notes</span>
+              <span className="text-xs text-gray-400">Partner notes</span>
               <p className="text-sm text-gray-700 mt-1">{order.notes}</p>
             </div>
           )}
@@ -323,7 +323,7 @@ export default function AdminOrderDetail() {
               Order Items ({items.length})
             </h3>
             <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              Edits visible to customer
+              Edits visible to partner
             </span>
           </div>
 

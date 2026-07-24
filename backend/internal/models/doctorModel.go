@@ -10,7 +10,7 @@ import (
 
 type Doctor struct {
 	ID               uuid.UUID  `json:"id"`
-	CustomerID       uuid.UUID  `json:"customer_id"`
+	PartnerID        uuid.UUID  `json:"partner_id"`
 	Name             string     `json:"name"`
 	Phone            *string    `json:"phone,omitempty"`
 	ClinicName       *string    `json:"clinic_name,omitempty"`
@@ -23,8 +23,8 @@ type Doctor struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
-// DoctorWithOwner adds the owning customer's name/phone — used by the
-// admin-only "all doctors" map, which spans every customer's doctors.
+// DoctorWithOwner adds the owning partner's name/phone — used by the
+// admin-only "all doctors" map, which spans every partner's doctors.
 type DoctorWithOwner struct {
 	Doctor
 	OwnerName  *string `json:"owner_name,omitempty"`
@@ -58,27 +58,27 @@ type AddDoctorProductRequest struct {
 	ProductID uuid.UUID `json:"product_id"`
 }
 
-const doctorColumns = `id, customer_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
+const doctorColumns = `id, partner_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
 
 func scanDoctor(row interface{ Scan(...any) error }, d *Doctor) error {
-	return row.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+	return row.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
 		&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
 }
 
-func CreateDoctor(ctx context.Context, db *pgxpool.Pool, customerID uuid.UUID, req CreateDoctorRequest) (uuid.UUID, error) {
+func CreateDoctor(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, req CreateDoctorRequest) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO doctors (customer_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob)
+		`INSERT INTO doctors (partner_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-		customerID, req.Name, req.Phone, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
+		partnerID, req.Name, req.Phone, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
 	).Scan(&id)
 	return id, err
 }
 
-func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid.UUID) ([]Doctor, error) {
+func GetDoctorsByPartner(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID) ([]Doctor, error) {
 	rows, err := db.Query(ctx,
-		`SELECT `+doctorColumns+` FROM doctors WHERE customer_id = $1 ORDER BY created_at DESC`,
-		customerID,
+		`SELECT `+doctorColumns+` FROM doctors WHERE partner_id = $1 AND is_deleted = FALSE ORDER BY created_at DESC`,
+		partnerID,
 	)
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid
 
 func GetDoctorByID(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) (*Doctor, error) {
 	var d Doctor
-	err := scanDoctor(db.QueryRow(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE id = $1`, doctorID), &d)
+	err := scanDoctor(db.QueryRow(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE id = $1 AND is_deleted = FALSE`, doctorID), &d)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +106,9 @@ func GetDoctorByID(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) (*
 }
 
 // GetDoctorsWithDOB returns every doctor with a birth date set, across all
-// customers — the birthday scheduler runs globally, not per-user.
+// partners — the birthday scheduler runs globally, not per-user.
 func GetDoctorsWithDOB(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) {
-	rows, err := db.Query(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE dob IS NOT NULL`)
+	rows, err := db.Query(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE dob IS NOT NULL AND is_deleted = FALSE`)
 	if err != nil {
 		return nil, err
 	}
@@ -125,15 +125,15 @@ func GetDoctorsWithDOB(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) 
 	return doctors, rows.Err()
 }
 
-// GetAllDoctorsWithLocation returns every doctor across every customer that
+// GetAllDoctorsWithLocation returns every doctor across every partner that
 // has a pinned clinic location, for the admin-only doctors map.
 func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorWithOwner, error) {
 	rows, err := db.Query(ctx,
-		`SELECT d.id, d.customer_id, d.name, d.phone, d.clinic_name, d.clinic_address, d.latitude, d.longitude,
+		`SELECT d.id, d.partner_id, d.name, d.phone, d.clinic_name, d.clinic_address, d.latitude, d.longitude,
 		        d.dob, d.last_meeting_at, d.last_meeting_notes, d.created_at, u.username, u.phone_number
 		 FROM doctors d
-		 JOIN users u ON u.id = d.customer_id
-		 WHERE d.latitude IS NOT NULL AND d.longitude IS NOT NULL
+		 JOIN users u ON u.id = d.partner_id
+		 WHERE d.latitude IS NOT NULL AND d.longitude IS NOT NULL AND d.is_deleted = FALSE
 		 ORDER BY d.created_at DESC`,
 	)
 	if err != nil {
@@ -144,7 +144,7 @@ func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorW
 	doctors := []DoctorWithOwner{}
 	for rows.Next() {
 		var d DoctorWithOwner
-		if err := rows.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+		if err := rows.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
 			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.OwnerName, &d.OwnerPhone); err != nil {
 			return nil, err
 		}
@@ -201,8 +201,10 @@ func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req
 	return err
 }
 
+// DeleteDoctor soft-deletes — the row (and its meeting/product history)
+// stays in the database, just hidden from the partner going forward.
 func DeleteDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) error {
-	_, err := db.Exec(ctx, `DELETE FROM doctors WHERE id = $1`, doctorID)
+	_, err := db.Exec(ctx, `UPDATE doctors SET is_deleted = TRUE WHERE id = $1`, doctorID)
 	return err
 }
 

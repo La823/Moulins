@@ -6,7 +6,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
-import 'admin_customers_screen.dart';
+import 'admin_partners_screen.dart';
 import 'admin_doctors_map_screen.dart';
 import 'admin_employees_screen.dart';
 import 'admin_products_screen.dart';
@@ -39,7 +39,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     try {
       final stats = await AdminService().getDashboardStats(
         canSeeProducts: isAdmin || user.permissions.contains('products'),
-        canSeeCustomers: isAdmin || user.permissions.contains('customers'),
+        canSeePartners: isAdmin || user.permissions.contains('partners'),
         // Employee management is admin-only on the web too — not permission-gated.
         canSeeEmployees: isAdmin,
       );
@@ -54,7 +54,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final user = ref.watch(authProvider).user!;
     final isAdmin = user.role == 'admin';
     final canSeeProducts = isAdmin || user.permissions.contains('products');
-    final canSeeCustomers = isAdmin || user.permissions.contains('customers');
+    final canSeePartners = isAdmin || user.permissions.contains('partners');
     final canSeeEmployees = isAdmin;
 
     return Scaffold(
@@ -88,8 +88,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       _StatCard(label: 'Total Products', value: _stats?.totalProducts ?? 0, icon: Icons.medication_outlined),
                       _StatCard(label: 'Active Products', value: _stats?.activeProducts ?? 0, icon: Icons.check_circle_outline),
                     ],
-                    if (canSeeCustomers)
-                      _StatCard(label: 'Customers', value: _stats?.totalCustomers ?? 0, icon: Icons.people_outline),
+                    if (canSeePartners)
+                      _StatCard(label: 'Partners', value: _stats?.totalPartners ?? 0, icon: Icons.people_outline),
                     if (canSeeEmployees)
                       _StatCard(label: 'Employees', value: _stats?.totalEmployees ?? 0, icon: Icons.badge_outlined),
                   ],
@@ -108,18 +108,18 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                   const SizedBox(height: 10),
                 ],
-                if (canSeeCustomers) ...[
+                if (canSeePartners) ...[
                   _ManageTile(
                     icon: Icons.people_outline,
-                    label: 'Customers',
-                    subtitle: 'View and manage customer accounts',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCustomersScreen())),
+                    label: 'Partners',
+                    subtitle: 'View and manage partner accounts',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminPartnersScreen())),
                   ),
                   const SizedBox(height: 10),
                   _ManageTile(
                     icon: Icons.map_outlined,
                     label: 'Doctors Map',
-                    subtitle: "See every customer's doctors by clinic location",
+                    subtitle: "See every partner's doctors by clinic location",
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminDoctorsMapScreen())),
                   ),
                   const SizedBox(height: 10),
@@ -131,7 +131,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     subtitle: 'View and manage employee accounts & permissions',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminEmployeesScreen())),
                   ),
-                if (!canSeeProducts && !canSeeCustomers && !canSeeEmployees)
+                if (!canSeeProducts && !canSeePartners && !canSeeEmployees)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(

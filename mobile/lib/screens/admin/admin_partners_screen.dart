@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import '../../models/admin_user.dart';
 import '../../services/admin_service.dart';
 import '../../utils/responsive.dart';
-import 'admin_customer_detail_screen.dart';
+import 'admin_partner_detail_screen.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
 
-class AdminCustomersScreen extends StatefulWidget {
-  const AdminCustomersScreen({super.key});
+class AdminPartnersScreen extends StatefulWidget {
+  const AdminPartnersScreen({super.key});
 
   @override
-  State<AdminCustomersScreen> createState() => _AdminCustomersScreenState();
+  State<AdminPartnersScreen> createState() => _AdminPartnersScreenState();
 }
 
-class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
-  List<AdminCustomer> _customers = [];
+class _AdminPartnersScreenState extends State<AdminPartnersScreen> {
+  List<AdminPartner> _partners = [];
   bool _loading = true;
   String _search = '';
 
@@ -28,8 +28,8 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final customers = await AdminService().getCustomers();
-      setState(() { _customers = customers; _loading = false; });
+      final partners = await AdminService().getPartners();
+      setState(() { _partners = partners; _loading = false; });
     } catch (_) {
       setState(() => _loading = false);
     }
@@ -37,7 +37,7 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _customers.where((c) {
+    final filtered = _partners.where((c) {
       final q = _search.toLowerCase();
       if (q.isEmpty) return true;
       return (c.username ?? '').toLowerCase().contains(q) ||
@@ -50,7 +50,7 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Customers', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
+        title: const Text('Partners', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
       ),
       body: ResponsiveCenter(
         child: Column(
@@ -60,7 +60,7 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
               child: TextField(
                 onChanged: (v) => setState(() => _search = v),
                 decoration: InputDecoration(
-                  hintText: 'Search customers...',
+                  hintText: 'Search partners...',
                   prefixIcon: const Icon(Icons.search, color: Colors.grey),
                   filled: true,
                   fillColor: Colors.white,
@@ -73,7 +73,7 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator(color: _teal))
                   : filtered.isEmpty
-                      ? Center(child: Text('No customers found', style: TextStyle(color: Colors.grey.shade400)))
+                      ? Center(child: Text('No partners found', style: TextStyle(color: Colors.grey.shade400)))
                       : RefreshIndicator(
                           onRefresh: _load,
                           color: _teal,
@@ -94,7 +94,7 @@ class _AdminCustomersScreenState extends State<AdminCustomersScreen> {
                                   subtitle: Text(c.phoneNumber, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
                                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                                   onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => AdminCustomerDetailScreen(customerId: c.id)),
+                                    MaterialPageRoute(builder: (_) => AdminPartnerDetailScreen(partnerId: c.id)),
                                   ).then((_) => _load()),
                                 ),
                               );

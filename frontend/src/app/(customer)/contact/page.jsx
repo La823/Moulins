@@ -202,9 +202,8 @@ export default function ContactPage() {
                       Address
                     </h4>
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      #363, Phase 2<br />
-                      Industrial Area, Panchkula<br />
-                      Haryana 134113
+                      1st Floor, 363, Industrial Area Phase 2<br />
+                      Panchkula, Haryana 134113
                     </p>
                   </div>
                 </div>
@@ -253,8 +252,7 @@ export default function ContactPage() {
                       Hours
                     </h4>
                     <div className="text-sm text-gray-600 space-y-0.5">
-                      <p>Mon – Fri: 9 AM – 6 PM</p>
-                      <p>Saturday: 9 AM – 1 PM</p>
+                      <p>Mon – Sat: 10 AM – 7 PM</p>
                     </div>
                   </div>
                 </div>

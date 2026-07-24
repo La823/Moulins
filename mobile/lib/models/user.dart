@@ -17,7 +17,7 @@ class User {
         id: json['id'] ?? '',
         phoneNumber: json['phone_number'] ?? '',
         username: json['username'],
-        role: json['role'] ?? 'customer',
+        role: json['role'] ?? 'partner',
         permissions: List<String>.from(json['permissions'] ?? []),
       );
 

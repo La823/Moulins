@@ -19,7 +19,7 @@ export default function AssignmentsPage() {
     setLoading(true);
     Promise.all([
       apiFetch("/admin/assignments"),
-      apiFetch("/admin/customers"),
+      apiFetch("/admin/partners"),
       apiFetch("/admin/employees"),
     ])
       .then(([a, c, e]) => {

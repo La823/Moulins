@@ -175,7 +175,7 @@ export default function AdminDashboard() {
         />
         {isAdmin && (
           <MetricCard
-            label="Customers"
+            label="Partners"
             value={stats.totalUsers}
             href="/panel/users"
             color="purple"
@@ -378,7 +378,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">
-                Recent Customers
+                Recent Partners
               </h3>
               <Link
                 href="/panel/users"

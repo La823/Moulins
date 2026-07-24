@@ -30,8 +30,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   Future<void> _load() async {
     try {
-      final isCustomer = ref.read(authProvider).user?.role == 'customer';
-      final orders = isCustomer
+      final isPartner = ref.read(authProvider).user?.role == 'partner';
+      final orders = isPartner
           ? await OrderService().getMyOrders()
           : await OrderService().getAllOrders();
       setState(() { _orders = orders; _loading = false; });
@@ -42,7 +42,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isCustomer = ref.watch(authProvider).user?.role == 'customer';
+    final isPartner = ref.watch(authProvider).user?.role == 'partner';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -50,7 +50,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(isCustomer ? 'My Orders' : 'Orders', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        title: Text(isPartner ? 'My Orders' : 'Orders', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: ResponsiveCenter(child: _loading

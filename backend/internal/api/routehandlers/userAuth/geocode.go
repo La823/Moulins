@@ -16,7 +16,7 @@ type geocodePincodeResponse struct {
 }
 
 // GET /admin/geocode/pincode?pincode=110001
-// Used by the "Add Customer" form to live-autofill city/state as the
+// Used by the "Add Partner" form to live-autofill city/state as the
 // admin types a pincode. Kept server-side so the Geocoding API key never
 // reaches the browser.
 func GeocodePincodeHandler() http.HandlerFunc {

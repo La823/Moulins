@@ -64,7 +64,7 @@ func CreateUser(
 	}
 
 	if role == "" {
-		role = "customer"
+		role = "partner"
 	}
 
 	var lat, lng *float64

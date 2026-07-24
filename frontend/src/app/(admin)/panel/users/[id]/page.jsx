@@ -19,10 +19,10 @@ const STATUS_STYLES = {
   refunded: "bg-orange-50 text-orange-700",
 };
 
-export default function CustomerDetailPage() {
+export default function PartnerDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const [customer, setCustomer] = useState(null);
+  const [partner, setPartner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [editingPassword, setEditingPassword] = useState(false);
@@ -36,9 +36,9 @@ export default function CustomerDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
 
   useEffect(() => {
-    apiFetch(`/admin/customers/${id}`)
-      .then((data) => setCustomer(data))
-      .catch(() => setCustomer(null))
+    apiFetch(`/admin/partners/${id}`)
+      .then((data) => setPartner(data))
+      .catch(() => setPartner(null))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -57,15 +57,15 @@ export default function CustomerDetailPage() {
     );
   }
 
-  if (!customer) {
+  if (!partner) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <p className="text-sm text-gray-400">Customer not found</p>
+        <p className="text-sm text-gray-400">Partner not found</p>
         <Link
           href="/panel/users"
           className="mt-3 inline-block text-sm text-gray-600 hover:text-gray-900 underline"
         >
-          Back to customers
+          Back to partners
         </Link>
       </div>
     );
@@ -79,11 +79,11 @@ export default function CustomerDetailPage() {
     setSavingPassword(true);
     setPwError("");
     try {
-      await apiFetch(`/admin/customers/${id}/password`, {
+      await apiFetch(`/admin/partners/${id}/password`, {
         method: "PUT",
         body: JSON.stringify({ password: newPassword }),
       });
-      setCustomer((prev) => ({ ...prev, plain_password: newPassword }));
+      setPartner((prev) => ({ ...prev, plain_password: newPassword }));
       setNewPassword("");
       setEditingPassword(false);
       setPwSuccess("Password updated");
@@ -96,29 +96,29 @@ export default function CustomerDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete customer "${customer.username || customer.phone_number}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete partner "${partner.username || partner.phone_number}"? This cannot be undone.`)) return;
     setDeleting(true);
     try {
-      await apiFetch(`/admin/customers/${id}`, { method: "DELETE" });
+      await apiFetch(`/admin/partners/${id}`, { method: "DELETE" });
       router.push("/panel/users");
     } catch (err) {
-      alert("Failed to delete customer: " + err.message);
+      alert("Failed to delete partner: " + err.message);
       setDeleting(false);
     }
   };
 
-  const orders = customer.orders || [];
-  const documents = customer.documents || [];
+  const orders = partner.orders || [];
+  const documents = partner.documents || [];
 
   const handleVerifyDoc = async (docType, isVerified, reason) => {
     setVerifying(docType);
     try {
-      await apiFetch("/admin/customers/verify-document", {
+      await apiFetch("/admin/partners/verify-document", {
         method: "POST",
-        body: JSON.stringify({ user_id: customer.id, doc_type: docType, is_verified: isVerified, rejection_reason: reason || null }),
+        body: JSON.stringify({ user_id: partner.id, doc_type: docType, is_verified: isVerified, rejection_reason: reason || null }),
       });
-      const updated = await apiFetch(`/admin/customers/${id}`);
-      setCustomer(updated);
+      const updated = await apiFetch(`/admin/partners/${id}`);
+      setPartner(updated);
       setRejectingDoc(null);
       setRejectReason("");
     } catch (err) {
@@ -148,25 +148,25 @@ export default function CustomerDetailPage() {
             d="M15.75 19.5 8.25 12l7.5-7.5"
           />
         </svg>
-        All Customers
+        All Partners
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left column — customer info */}
+        {/* Left column — partner info */}
         <div className="lg:col-span-1 space-y-5">
           {/* Profile card */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center gap-4 mb-5">
               <div className="w-14 h-14 rounded-full bg-gray-900 flex items-center justify-center text-white text-xl font-medium">
-                {(customer.username || customer.phone_number || "?")
+                {(partner.username || partner.phone_number || "?")
                   .charAt(0)
                   .toUpperCase()}
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
-                  {customer.username || "No name"}
+                  {partner.username || "No name"}
                 </h2>
-                <p className="text-sm text-gray-500">{customer.role}</p>
+                <p className="text-sm text-gray-500">{partner.role}</p>
               </div>
             </div>
 
@@ -176,16 +176,16 @@ export default function CustomerDetailPage() {
                   Phone
                 </p>
                 <p className="text-sm text-gray-900 font-mono">
-                  {customer.phone_number}
+                  {partner.phone_number}
                 </p>
               </div>
 
-              {customer.email && (
+              {partner.email && (
                 <div>
                   <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                     Email
                   </p>
-                  <p className="text-sm text-gray-900">{customer.email}</p>
+                  <p className="text-sm text-gray-900">{partner.email}</p>
                 </div>
               )}
 
@@ -194,7 +194,7 @@ export default function CustomerDetailPage() {
                   Joined
                 </p>
                 <p className="text-sm text-gray-900">
-                  {new Date(customer.created_at).toLocaleDateString("en-IN", {
+                  {new Date(partner.created_at).toLocaleDateString("en-IN", {
                     day: "numeric",
                     month: "long",
                     year: "numeric",
@@ -207,8 +207,8 @@ export default function CustomerDetailPage() {
                   Last Login
                 </p>
                 <p className="text-sm text-gray-900">
-                  {customer.last_login_at
-                    ? new Date(customer.last_login_at).toLocaleDateString(
+                  {partner.last_login_at
+                    ? new Date(partner.last_login_at).toLocaleDateString(
                         "en-IN",
                         {
                           day: "numeric",
@@ -248,7 +248,7 @@ export default function CustomerDetailPage() {
               <div>
                 <p className="text-xs text-gray-400 mb-1">Phone (Login)</p>
                 <p className="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded-lg">
-                  {customer.phone_number}
+                  {partner.phone_number}
                 </p>
               </div>
               <div>
@@ -304,7 +304,7 @@ export default function CustomerDetailPage() {
                 ) : (
                   <p className="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded-lg">
                     {showPassword
-                      ? customer.plain_password || "Not available"
+                      ? partner.plain_password || "Not available"
                       : "••••••••••••"}
                   </p>
                 )}
@@ -322,7 +322,7 @@ export default function CustomerDetailPage() {
                 { step: 3, label: "GST Certificate", docType: "GST" },
               ].map(({ step, label, docType, always }) => {
                 const doc = documents.find((d) => d.doc_type === docType);
-                const done = always || (customer.onboarding_step || 1) >= step;
+                const done = always || (partner.onboarding_step || 1) >= step;
                 return (
                   <div key={step} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${done ? "bg-gray-50" : "opacity-40"}`}>
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
@@ -347,7 +347,7 @@ export default function CustomerDetailPage() {
           {/* ID */}
           <div className="px-1">
             <p className="text-[10px] text-gray-400 font-mono">
-              ID: {customer.id}
+              ID: {partner.id}
             </p>
           </div>
 
@@ -357,14 +357,14 @@ export default function CustomerDetailPage() {
               Danger Zone
             </h3>
             <p className="text-xs text-gray-500 mb-4">
-              Permanently delete this customer and all associated data. This action cannot be undone.
+              Permanently delete this partner and all associated data. This action cannot be undone.
             </p>
             <button
               onClick={handleDelete}
               disabled={deleting}
               className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
             >
-              {deleting ? "Deleting..." : "Delete Customer"}
+              {deleting ? "Deleting..." : "Delete Partner"}
             </button>
           </div>
         </div>
@@ -476,7 +476,7 @@ export default function CustomerDetailPage() {
                 />
               </svg>
               <p className="text-sm text-gray-400">
-                This customer hasn&apos;t placed any orders yet
+                This partner hasn&apos;t placed any orders yet
               </p>
             </div>
           ) : (
@@ -531,9 +531,9 @@ export default function CustomerDetailPage() {
           )}
           </div>
 
-          <UserMeetingsRequests userId={customer.id} />
-          <LedgerPanel customerId={customer.id} />
-          <AssignmentPanel mode="client" userId={customer.id} />
+          <UserMeetingsRequests userId={partner.id} />
+          <LedgerPanel partnerId={partner.id} />
+          <AssignmentPanel mode="client" userId={partner.id} />
         </div>
       </div>
     </>

@@ -16,7 +16,7 @@ class OnboardingService {
     }
   }
 
-  Future<CustomerDocument> uploadDocument({
+  Future<PartnerDocument> uploadDocument({
     required String docType, // LICENSE or GST
     required String docNumber,
     required DateTime? expiryDate, // Required for LICENSE
@@ -35,7 +35,7 @@ class OnboardingService {
         data: payload,
       );
 
-      return CustomerDocument.fromJson(response.data['document']);
+      return PartnerDocument.fromJson(response.data['document']);
     } catch (e) {
       throw Exception('Failed to upload document: $e');
     }

@@ -199,7 +199,7 @@ export default function NotificationsPage() {
               value={searchQuery}
               onChange={handleSearchChange}
               onFocus={() => searchResults.length > 0 && setShowResults(true)}
-              placeholder="Search customers by name or phone..."
+              placeholder="Search partners by name or phone..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
             {showResults && searchResults.length > 0 && (
@@ -245,7 +245,7 @@ export default function NotificationsPage() {
 
         {/* Review summary */}
         <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-          Sending to <strong>all customers</strong>
+          Sending to <strong>all partners</strong>
           {excluded.length > 0 && (
             <> except <strong>{excluded.length}</strong> excluded user{excluded.length !== 1 ? "s" : ""}</>
           )}

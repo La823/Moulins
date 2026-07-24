@@ -102,7 +102,7 @@ export default function AdminLearningPage() {
       setPlaylistId("");
       setProductId("");
       setProductSearch("");
-      setSuccess("Video added and broadcast to all customers");
+      setSuccess("Video added and broadcast to all partners");
       load();
     } catch (err) {
       setError(err.message);
@@ -279,7 +279,7 @@ export default function AdminLearningPage() {
                 {addingVideo ? "Adding..." : "Add & Broadcast"}
               </button>
               <p className="text-[11px] text-gray-400">
-                Broadcasts a notification to every customer when added.
+                Broadcasts a notification to every partner when added.
               </p>
             </form>
           </div>

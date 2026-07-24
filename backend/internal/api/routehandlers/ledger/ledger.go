@@ -48,12 +48,12 @@ func UploadURLHandler() http.HandlerFunc {
 	}
 }
 
-// PUT /admin/customers/{id}/ledger — upload/replace a customer's ledger (staff)
+// PUT /admin/partners/{id}/ledger — upload/replace a partner's ledger (staff)
 func UpsertLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		customerID, err := uuid.Parse(mux.Vars(r)["id"])
+		partnerID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
-			http.Error(w, "invalid customer id", http.StatusBadRequest)
+			http.Error(w, "invalid partner id", http.StatusBadRequest)
 			return
 		}
 
@@ -66,14 +66,14 @@ func UpsertLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := models.UpsertLedger(r.Context(), db, customerID, req.FileKey, getUserID(r)); err != nil {
+		if err := models.UpsertLedger(r.Context(), db, partnerID, req.FileKey, getUserID(r)); err != nil {
 			log.Printf("upsert ledger error: %v", err)
 			http.Error(w, "could not save ledger", http.StatusInternalServerError)
 			return
 		}
 
 		deepLink := "/dashboard"
-		if err := services.SendDirectNotification(r.Context(), db, customerID, "Ledger Updated", "Your account ledger has been updated. Tap to view.", &deepLink); err != nil {
+		if err := services.SendDirectNotification(r.Context(), db, partnerID, "Ledger Updated", "Your account ledger has been updated. Tap to view.", &deepLink); err != nil {
 			log.Printf("ledger notification error: %v", err)
 		}
 
@@ -82,19 +82,19 @@ func UpsertLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/customers/{id}/ledger — current ledger for a customer (staff)
+// GET /admin/partners/{id}/ledger — current ledger for a partner (staff)
 func GetLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		customerID, err := uuid.Parse(mux.Vars(r)["id"])
+		partnerID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
-			http.Error(w, "invalid customer id", http.StatusBadRequest)
+			http.Error(w, "invalid partner id", http.StatusBadRequest)
 			return
 		}
-		respondLedger(w, r, db, customerID)
+		respondLedger(w, r, db, partnerID)
 	}
 }
 
-// GET /ledger — the current user's own ledger (self-service, customers)
+// GET /ledger — the current user's own ledger (self-service, partners)
 func GetMyLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		respondLedger(w, r, db, getUserID(r))

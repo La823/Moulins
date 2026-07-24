@@ -40,7 +40,7 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "doctor not found", http.StatusNotFound)
 				return
 			}
-			if doctor.CustomerID != getUserID(r) {
+			if doctor.PartnerID != getUserID(r) {
 				http.Error(w, "not authorized", http.StatusForbidden)
 				return
 			}
@@ -143,7 +143,7 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "doctor not found", http.StatusNotFound)
 				return
 			}
-			if doctor.CustomerID != getUserID(r) {
+			if doctor.PartnerID != getUserID(r) {
 				http.Error(w, "not authorized", http.StatusForbidden)
 				return
 			}

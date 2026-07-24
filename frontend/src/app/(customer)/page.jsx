@@ -24,6 +24,34 @@ const DIVISIONS = [
   { name: "View Point", desc: "Ophthalmology", href: "/viewpoint", icon: "/moulins divisions/View Point.jpg.jpeg" },
 ];
 
+const PARTNER_LOGOS = [
+  {
+    name: "OPITAC",
+    src: "/partnership/opitac_logo.png",
+    tagline: "Advanced Glutathione Technology for antioxidant protection and cellular wellness.",
+  },
+  {
+    name: "Lonza",
+    src: "/partnership/Lonza.png",
+    tagline: "Patented UC-II® Collagen for clinically proven joint health and mobility.",
+  },
+  {
+    name: "Sami-Sabinsa",
+    src: "/partnership/Sami.png",
+    tagline: "Clinically Researched Boswellin® for musculoskeletal care and inflammation support.",
+  },
+  {
+    name: "Fuji Chemical",
+    src: "/partnership/Fuji.png",
+    tagline: "Premium Astaxanthin Innovation for vision, retinal and antioxidant health.",
+  },
+  {
+    name: "Virchow Biotech",
+    src: "/partnership/Virchow.png",
+    tagline: "Regenerative Biotechnology Solutions for advanced wound healing and specialized care.",
+  },
+];
+
 const rise = (delay = 0) => ({
   initial: { opacity: 0, y: 30 },
   animate: { opacity: 1, y: 0 },
@@ -225,6 +253,77 @@ export default function HomePage() {
       <HomeCarousel />
       {/* Areas of Focus — temporarily hidden, not removed; may be needed again later. */}
       {/* <AreasOfFocus /> */}
+
+      {/* Partnerships */}
+      <section className="py-20">
+        <div className="max-w-7xl mx-auto px-8">
+          <h2 className="text-5xl font-light text-gray-900 mb-12 text-center">Our Global Partnerships</h2>
+
+          {/* Partner taglines */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 mb-16">
+            {PARTNER_LOGOS.map((logo) => (
+              <div key={logo.name} className="text-center">
+                <img src={logo.src} alt={logo.name} className="h-10 w-auto object-contain mx-auto mb-4" />
+                <p className="text-sm text-gray-500 leading-relaxed">{logo.tagline}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+            <div className="bg-gray-50 rounded-lg overflow-hidden">
+              <img
+                src="/partnership/companyglobe.jpeg"
+                alt="Moulins Pharmaceuticals — Pioneering Global Collaborations in Advanced Therapeutics"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="bg-gray-50 rounded-lg overflow-hidden">
+              <img
+                src="/partnership/companies.jpeg"
+                alt="Moulins Pharmaceuticals international collaborations — Opitac, Lonza, Sami-Sabinsa, Fuji Chemical, Virchow Biotech"
+                className="w-full h-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Endless scrolling logo strip — each logo gets a fixed-width slot so
+            both duplicated halves are always pixel-identical in width, no
+            matter when/how each image finishes loading; that's what keeps
+            the -50% loop point seamless instead of drifting. */}
+        <div className="relative w-full overflow-hidden">
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-white to-transparent z-10" />
+          <div
+            style={{
+              display: "flex",
+              width: "max-content",
+              flexWrap: "nowrap",
+              animation: "moulins-marquee 25s linear infinite",
+            }}
+          >
+            {[...PARTNER_LOGOS, ...PARTNER_LOGOS].map((logo, i) => (
+              <div
+                key={`${logo.name}-${i}`}
+                style={{ width: 220, height: 56 }}
+                className="flex items-center justify-center flex-shrink-0"
+              >
+                <img src={logo.src} alt={logo.name} className="max-h-14 w-auto object-contain" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <style jsx>{`
+          @keyframes moulins-marquee {
+            from {
+              transform: translateX(0);
+            }
+            to {
+              transform: translateX(-50%);
+            }
+          }
+        `}</style>
+      </section>
 
       {/* Careers */}
       <section className="max-w-7xl mx-auto px-8 py-20">

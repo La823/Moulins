@@ -34,7 +34,7 @@ func ListConversationsHandler(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 // HistoryHandler serves legacy direct 1:1 history (admin<->employee,
-// admin<->admin). Customer-involving history goes through ThreadHistoryHandler.
+// admin<->admin). Partner-involving history goes through ThreadHistoryHandler.
 func HistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		otherID, err := uuid.Parse(mux.Vars(r)["userId"])
@@ -93,7 +93,7 @@ func MarkReadHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// ThreadHistoryHandler serves history for a group thread (customer + their
+// ThreadHistoryHandler serves history for a group thread (partner + their
 // assigned employee + all admins), keyed by conversation id.
 func ThreadHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +175,7 @@ type wsIncoming struct {
 // WebSocketHandler authenticates via a ?token= query param (browsers'
 // WebSocket API cannot set an Authorization header), then relays messages
 // in both directions. Incoming {to|conversation_id, body} payloads are
-// resolved to either a group thread (customer + assigned employee + all
+// resolved to either a group thread (partner + assigned employee + all
 // admins) or the legacy direct 1:1 path (admin<->employee, admin<->admin),
 // persisted, and delivered live to every recipient (with a push notification
 // fallback for anyone not connected).

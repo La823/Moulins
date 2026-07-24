@@ -14,12 +14,12 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-func GetCustomersHandler(db *pgxpool.Pool) http.HandlerFunc {
+func GetPartnersHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users, err := models.GetUsersByRole(r.Context(), db, "customer")
+		users, err := models.GetUsersByRole(r.Context(), db, "partner")
 		if err != nil {
-			log.Printf("failed to fetch customers: %v", err)
-			http.Error(w, "could not fetch customers", http.StatusInternalServerError)
+			log.Printf("failed to fetch partners: %v", err)
+			http.Error(w, "could not fetch partners", http.StatusInternalServerError)
 			return
 		}
 
@@ -28,22 +28,22 @@ func GetCustomersHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-type CustomerDetailResponse struct {
-	ID              uuid.UUID               `json:"id"`
-	PhoneNumber     string                  `json:"phone_number"`
-	Username        *string                 `json:"username,omitempty"`
-	Email           *string                 `json:"email,omitempty"`
-	PlainPassword   *string                 `json:"plain_password,omitempty"`
-	Role            string                  `json:"role"`
-	IsPhoneVerified bool                    `json:"is_phone_verified"`
-	OnboardingStep  int                     `json:"onboarding_step"`
-	LastLoginAt     *string                 `json:"last_login_at,omitempty"`
-	CreatedAt       string                  `json:"created_at"`
-	Orders          []models.Order          `json:"orders"`
-	Documents       []models.CustomerDocument `json:"documents"`
+type PartnerDetailResponse struct {
+	ID              uuid.UUID                `json:"id"`
+	PhoneNumber     string                   `json:"phone_number"`
+	Username        *string                  `json:"username,omitempty"`
+	Email           *string                  `json:"email,omitempty"`
+	PlainPassword   *string                  `json:"plain_password,omitempty"`
+	Role            string                   `json:"role"`
+	IsPhoneVerified bool                     `json:"is_phone_verified"`
+	OnboardingStep  int                      `json:"onboarding_step"`
+	LastLoginAt     *string                  `json:"last_login_at,omitempty"`
+	CreatedAt       string                   `json:"created_at"`
+	Orders          []models.Order           `json:"orders"`
+	Documents       []models.PartnerDocument `json:"documents"`
 }
 
-func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
+func GetPartnerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -53,24 +53,24 @@ func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		user, err := models.GetUserByIDFull(r.Context(), db, userID)
 		if err != nil {
-			log.Printf("get customer detail error: %v", err)
-			http.Error(w, "customer not found", http.StatusNotFound)
+			log.Printf("get partner detail error: %v", err)
+			http.Error(w, "partner not found", http.StatusNotFound)
 			return
 		}
 
 		orders, err := models.GetOrdersByUser(r.Context(), db, userID)
 		if err != nil {
-			log.Printf("get customer orders error: %v", err)
+			log.Printf("get partner orders error: %v", err)
 			orders = []models.Order{}
 		}
 
 		documents, err := models.GetUserDocuments(r.Context(), db, userID)
 		if err != nil {
-			log.Printf("get customer documents error: %v", err)
-			documents = []models.CustomerDocument{}
+			log.Printf("get partner documents error: %v", err)
+			documents = []models.PartnerDocument{}
 		}
 
-		resp := CustomerDetailResponse{
+		resp := PartnerDetailResponse{
 			ID:              user.ID,
 			PhoneNumber:     user.PhoneNumber,
 			Username:        user.Username,
@@ -94,7 +94,7 @@ func GetCustomerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func VerifyCustomerDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
+func VerifyPartnerDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		adminIDStr, _ := r.Context().Value("user_id").(string)
 		adminID, err := uuid.Parse(adminIDStr)
@@ -125,7 +125,7 @@ func VerifyCustomerDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func UpdateCustomerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+func UpdatePartnerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -146,7 +146,7 @@ func UpdateCustomerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 		}
 
 		if err := models.UpdateUserPassword(r.Context(), db, userID, body.Password); err != nil {
-			log.Printf("update customer password error: %v", err)
+			log.Printf("update partner password error: %v", err)
 			http.Error(w, "could not update password", http.StatusInternalServerError)
 			return
 		}
@@ -158,7 +158,7 @@ func UpdateCustomerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 	}
 }
 
-func DeleteCustomerHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+func DeletePartnerHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
@@ -167,14 +167,14 @@ func DeleteCustomerHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc
 		}
 
 		if err := models.DeleteUser(r.Context(), db, userID); err != nil {
-			log.Printf("delete customer error: %v", err)
-			http.Error(w, "could not delete customer", http.StatusInternalServerError)
+			log.Printf("delete partner error: %v", err)
+			http.Error(w, "could not delete partner", http.StatusInternalServerError)
 			return
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "customer deleted"})
+		json.NewEncoder(w).Encode(map[string]string{"message": "partner deleted"})
 	}
 }

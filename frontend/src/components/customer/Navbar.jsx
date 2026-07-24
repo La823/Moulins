@@ -134,14 +134,19 @@ const dropdownContent = {
           </span>
         </Link>
         <ul className="space-y-3">
-          {["Our Story", "Team", "Values", "Careers"].map((item) => (
-            <li key={item}>
+          {[
+            { label: "Our Story", href: "/about" },
+            { label: "Team", href: "/about" },
+            { label: "Values", href: "/about" },
+            { label: "Careers", href: "/careers" },
+          ].map((item) => (
+            <li key={item.label}>
               <Link
-                href="/about"
+                href={item.href}
                 onClick={onClose}
                 className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
-                {item}
+                {item.label}
               </Link>
             </li>
           ))}
@@ -160,17 +165,26 @@ const dropdownContent = {
           </span>
         </Link>
         <ul className="space-y-3">
-          {["FAQ", "Blog", "Support", "Partners"].map((item) => (
-            <li key={item}>
-              <Link
-                href="/about"
-                onClick={onClose}
-                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                {item}
-              </Link>
-            </li>
-          ))}
+          {["FAQ", "Blog", "Support", "Partners"].map((item) =>
+            item === "Blog" ? (
+              <li key={item} className="flex items-center gap-2">
+                <span className="text-sm text-gray-400">{item}</span>
+                <span className="text-[10px] uppercase tracking-wide text-gray-400 border border-gray-200 rounded-full px-2 py-0.5">
+                  Coming soon
+                </span>
+              </li>
+            ) : (
+              <li key={item}>
+                <Link
+                  href="/about"
+                  onClick={onClose}
+                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  {item}
+                </Link>
+              </li>
+            )
+          )}
         </ul>
       </div>
     </div>

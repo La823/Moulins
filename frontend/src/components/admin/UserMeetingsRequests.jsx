@@ -16,7 +16,7 @@ const REQUEST_STATUS_STYLES = {
   rejected: "bg-red-50 text-red-700",
 };
 
-// Shared "Meetings" + "Requests" panel embedded on both the customer and
+// Shared "Meetings" + "Requests" panel embedded on both the partner and
 // employee detail pages — same user_id-filtered admin endpoints power both.
 export default function UserMeetingsRequests({ userId }) {
   const [meetings, setMeetings] = useState(null);

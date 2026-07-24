@@ -11,7 +11,7 @@ const rise = (delay = 0) => ({
   transition: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1], delay },
 });
 
-const TEAL = "#00A6A4";
+const RED = "#dc2626";
 
 const TEAM = [
   {
@@ -53,7 +53,7 @@ export default function AboutPage() {
       <section className="max-w-6xl mx-auto px-8 py-20">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start">
           <motion.div {...rise()}>
-            <div className="h-1 w-12 rounded-full mb-6" style={{ backgroundColor: TEAL }} />
+            <div className="h-1 w-12 rounded-full mb-6" style={{ backgroundColor: RED }} />
             <h2 className="text-3xl font-semibold text-gray-900 mb-6">Who We Are</h2>
             <div className="space-y-4 text-gray-600 leading-relaxed">
               <p>Moulins Pharmaceuticals is a purpose-driven pharmaceutical company based in Panchkula, Haryana. We manufacture and distribute high-quality medicines, nutraceuticals, and active pharmaceutical ingredients across India.</p>
@@ -61,7 +61,7 @@ export default function AboutPage() {
             </div>
           </motion.div>
           <motion.div {...rise(0.15)}>
-            <div className="h-1 w-12 rounded-full mb-6" style={{ backgroundColor: TEAL }} />
+            <div className="h-1 w-12 rounded-full mb-6" style={{ backgroundColor: RED }} />
             <h2 className="text-3xl font-semibold text-gray-900 mb-6">Our Mission</h2>
             <div className="space-y-4 text-gray-600 leading-relaxed">
               <p>To advance health through quality pharmaceuticals — manufactured with precision, distributed with integrity, and delivered with care to every corner of India.</p>
@@ -82,7 +82,7 @@ export default function AboutPage() {
               { title: "Ethical Leadership", desc: "Transparent practices, fair pricing, and honest relationships with every partner, distributor, and healthcare professional." },
             ].map((val) => (
               <motion.div key={val.title} {...rise()} className="bg-white rounded-xl border border-gray-200 p-7">
-                <div className="w-3 h-3 rounded-full mb-5" style={{ backgroundColor: TEAL }} />
+                <div className="w-3 h-3 rounded-full mb-5" style={{ backgroundColor: RED }} />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">{val.title}</h3>
                 <p className="text-sm text-gray-500 leading-relaxed">{val.desc}</p>
               </motion.div>
@@ -92,7 +92,7 @@ export default function AboutPage() {
       </section>
 
       {/* Stats */}
-      <section className="py-14" style={{ backgroundColor: TEAL }}>
+      <section className="py-14" style={{ backgroundColor: RED }}>
         <div className="max-w-6xl mx-auto px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {[{ value: "500+", label: "Products" }, { value: "15+", label: "Years" }, { value: "Pan India", label: "Distribution" }, { value: "ISO", label: "Certified" }].map((stat) => (
@@ -108,7 +108,7 @@ export default function AboutPage() {
       {/* ── Team ── */}
       <section className="max-w-6xl mx-auto px-8 py-24" id="ourteam">
         <motion.div {...rise()} className="text-center mb-16">
-          <div className="h-1 w-12 rounded-full mx-auto mb-6" style={{ backgroundColor: TEAL }} />
+          <div className="h-1 w-12 rounded-full mx-auto mb-6" style={{ backgroundColor: RED }} />
           <h2 className="text-4xl font-semibold text-gray-900 mb-4">Our Team</h2>
           <p className="text-gray-500 max-w-xl mx-auto leading-relaxed">
             Meet the dedicated professionals behind our mission to deliver exceptional healthcare solutions and innovation.
@@ -134,15 +134,15 @@ export default function AboutPage() {
                     sizes="(max-width: 768px) 100vw, 42vw"
                   />
                   {/* Teal accent bar */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1" style={{ backgroundColor: TEAL }} />
+                  <div className="absolute bottom-0 left-0 right-0 h-1" style={{ backgroundColor: RED }} />
                 </div>
               </div>
 
               {/* Details */}
               <div className="w-full md:w-[58%]">
-                <div className="h-1 w-10 rounded-full mb-5" style={{ backgroundColor: TEAL }} />
+                <div className="h-1 w-10 rounded-full mb-5" style={{ backgroundColor: RED }} />
                 <h3 className="text-3xl md:text-4xl font-semibold text-gray-900 mb-2">{member.name}</h3>
-                <p className="text-base font-medium mb-6" style={{ color: TEAL }}>{member.title}</p>
+                <p className="text-base font-medium mb-6" style={{ color: RED }}>{member.title}</p>
                 <div className="space-y-4">
                   {member.bio.split("\n\n").map((para, j) => (
                     <p key={j} className="text-gray-600 leading-relaxed text-[15px]">{para}</p>
@@ -158,38 +158,51 @@ export default function AboutPage() {
       <section className="bg-gray-50 border-t border-gray-200">
         <div className="max-w-6xl mx-auto px-8 py-24">
           <motion.div {...rise()} className="text-center mb-16">
-            <div className="h-1 w-12 rounded-full mx-auto mb-6" style={{ backgroundColor: TEAL }} />
+            <div className="h-1 w-12 rounded-full mx-auto mb-6" style={{ backgroundColor: RED }} />
             <p className="text-sm uppercase tracking-[0.3em] text-gray-400 mb-3">As Featured In</p>
             <h2 className="text-4xl font-semibold text-gray-900">Pharma Outlook — Startup of the Year 2026</h2>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
-            {/* Two-page magazine spread — A4 portrait placeholders, swap the
-                src below for the real scans (e.g. /press/pharma-outlook-page1.jpg
-                and /press/pharma-outlook-page2.jpg) once available. */}
+            {/* Two-page magazine spread */}
             <motion.div {...rise(0.1)} className="grid grid-cols-2 gap-4">
-              {[1, 2].map((page) => (
+              {["/magazine/Magazine_page-0001.jpg", "/magazine/Magazine_page-0002.jpg"].map((src, i) => (
                 <div
-                  key={page}
-                  className="relative w-full rounded-lg border-2 border-dashed border-gray-300 bg-white flex flex-col items-center justify-center gap-2 shadow-sm"
+                  key={src}
+                  className="relative w-full rounded-lg overflow-hidden shadow-sm"
                   style={{ aspectRatio: "210 / 297" }}
                 >
-                  <span className="text-gray-300 text-4xl font-light">{page}</span>
-                  <span className="text-xs text-gray-400 uppercase tracking-wider">Page {page} placeholder</span>
+                  <img
+                    src={src}
+                    alt={`Pharma Outlook feature — page ${i + 1}`}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
                 </div>
               ))}
             </motion.div>
 
             {/* Quote + blurb */}
             <motion.div {...rise(0.2)}>
-              <div className="h-1 w-10 rounded-full mb-5" style={{ backgroundColor: TEAL }} />
+              <div className="h-1 w-10 rounded-full mb-5" style={{ backgroundColor: RED }} />
               <blockquote className="text-2xl md:text-3xl font-light text-gray-900 leading-snug mb-6">
                 &ldquo;For Moulins Pharmaceuticals, the answer has not been to compete head-on in overcrowded categories but to identify opportunities hidden within the market.&rdquo;
               </blockquote>
               <p className="text-gray-600 leading-relaxed text-[15px] mb-4">
                 Moulins Pharmaceuticals was recognized as Pharmaceutical Medicine Supplier — Startup of the Year 2026 by Pharma Outlook, featured in a two-page spread covering the company&apos;s entrepreneur-first partner model, its leadership, and its vision for expanding access to quality healthcare beyond conventional distribution.
               </p>
-              <p className="text-sm text-gray-400">Pharma Outlook · July 2026</p>
+              <p className="text-sm text-gray-400 mb-5">Pharma Outlook · July 2026</p>
+              <a
+                href="https://www.indiapharmaoutlook.com/digital-magazine/pharma-services-july-2026/#page=40"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-2 text-sm font-medium"
+                style={{ color: RED }}
+              >
+                Read more in the digital magazine
+                <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
+                  &rarr;
+                </span>
+              </a>
             </motion.div>
           </div>
         </div>
@@ -211,7 +224,7 @@ export default function AboutPage() {
             </div>
           </motion.div>
           <motion.div {...rise(0.15)}>
-            <div className="h-1 w-8 rounded-full mb-4" style={{ backgroundColor: TEAL }} />
+            <div className="h-1 w-8 rounded-full mb-4" style={{ backgroundColor: RED }} />
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Our Story</h2>
             <p className="text-sm text-gray-600 leading-relaxed">
               The name Moulins is inspired by a natural wonder — a moulin, a transformative opening in a glacier that channels water to nourish life beyond it. Like a moulin, we start small but create ripples that shape the future of healthcare. We don&apos;t just provide medicines; we empower lives, offering not just prescriptions but the promise of a better tomorrow.
@@ -227,7 +240,7 @@ export default function AboutPage() {
           Whether you&apos;re a healthcare professional, distributor, or pharmacy — we&apos;d love to work with you.
         </motion.p>
         <motion.div {...rise(0.2)}>
-          <Link href="/contact" className="inline-block px-8 py-3.5 text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity" style={{ backgroundColor: TEAL }}>
+          <Link href="/contact" className="inline-block px-8 py-3.5 text-white text-sm font-medium rounded-lg hover:opacity-90 transition-opacity" style={{ backgroundColor: RED }}>
             Get in Touch
           </Link>
         </motion.div>

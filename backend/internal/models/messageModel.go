@@ -44,7 +44,7 @@ type Conversation struct {
 // CanMessage decides whether senderID may directly message receiverID:
 // admins can message and be messaged by anyone; otherwise an employee and a
 // client may message each other only if a client_employee_assignments row
-// links them. Customer-involving pairs are expected to go through the group
+// links them. Partner-involving pairs are expected to go through the group
 // conversation path instead (see ResolveSendTarget), but this is kept as-is
 // so direct admin<->employee / admin<->admin chat keeps working unchanged.
 func CanMessage(ctx context.Context, db *pgxpool.Pool, senderID, receiverID uuid.UUID) (bool, error) {
@@ -67,9 +67,9 @@ func CanMessage(ctx context.Context, db *pgxpool.Pool, senderID, receiverID uuid
 
 	var clientID, employeeID uuid.UUID
 	switch {
-	case sender.Role == "employee" && receiver.Role == "customer":
+	case sender.Role == "employee" && receiver.Role == "partner":
 		employeeID, clientID = senderID, receiverID
-	case sender.Role == "customer" && receiver.Role == "employee":
+	case sender.Role == "partner" && receiver.Role == "employee":
 		employeeID, clientID = receiverID, senderID
 	default:
 		return false, nil
@@ -133,7 +133,7 @@ func MarkMessagesRead(ctx context.Context, db *pgxpool.Pool, userID, otherUserID
 	return err
 }
 
-// --- Group conversation path (customer + assigned employee + all admins) ---
+// --- Group conversation path (partner + assigned employee + all admins) ---
 
 type ConversationRef struct {
 	ID         uuid.UUID
@@ -327,7 +327,7 @@ func GetConversations(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (
 		threadRows, err = db.Query(ctx, `SELECT id, client_id, employee_id FROM conversations`)
 	case "employee":
 		threadRows, err = db.Query(ctx, `SELECT id, client_id, employee_id FROM conversations WHERE employee_id = $1`, userID)
-	default: // customer
+	default: // partner
 		threadRows, err = db.Query(ctx, `SELECT id, client_id, employee_id FROM conversations WHERE client_id = $1`, userID)
 	}
 	if err != nil {
@@ -417,10 +417,10 @@ func toAssignedUser(u *User) AssignedUser {
 // ResolveSendTarget figures out where an incoming {to, conversation_id, body}
 // websocket frame should be delivered:
 //   - conversationID given: sender must already be a member; use it directly.
-//   - else, resolved from `to` + roles: customer<->employee/admin and
+//   - else, resolved from `to` + roles: partner<->employee/admin and
 //     employee<->client go through the group conversation path (creating the
 //     thread on first contact); admin<->employee, admin<->admin, and any
-//     customer<->customer/employee<->employee attempt fall through to the
+//     partner<->partner/employee<->employee attempt fall through to the
 //     legacy direct 1:1 path (conv == nil, legacyOK reports whether that
 //     legacy CanMessage check should be used).
 func ResolveSendTarget(ctx context.Context, db *pgxpool.Pool, senderID uuid.UUID, to *uuid.UUID, conversationID *uuid.UUID) (conv *ConversationRef, legacyReceiver *uuid.UUID, err error) {
@@ -450,7 +450,7 @@ func ResolveSendTarget(ctx context.Context, db *pgxpool.Pool, senderID uuid.UUID
 	}
 
 	switch {
-	case sender.Role == "customer" && target.Role == "employee":
+	case sender.Role == "partner" && target.Role == "employee":
 		var assigned bool
 		if err := db.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM client_employee_assignments WHERE client_id = $1 AND employee_id = $2)`,
@@ -461,11 +461,11 @@ func ResolveSendTarget(ctx context.Context, db *pgxpool.Pool, senderID uuid.UUID
 		conv, err = GetOrCreateConversation(ctx, db, senderID, to)
 		return conv, nil, err
 
-	case sender.Role == "customer" && target.Role == "admin":
+	case sender.Role == "partner" && target.Role == "admin":
 		conv, err = GetOrCreateConversation(ctx, db, senderID, nil)
 		return conv, nil, err
 
-	case sender.Role == "employee" && target.Role == "customer":
+	case sender.Role == "employee" && target.Role == "partner":
 		var assigned bool
 		if err := db.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM client_employee_assignments WHERE client_id = $1 AND employee_id = $2)`,
@@ -476,7 +476,7 @@ func ResolveSendTarget(ctx context.Context, db *pgxpool.Pool, senderID uuid.UUID
 		conv, err = GetOrCreateConversation(ctx, db, *to, &senderID)
 		return conv, nil, err
 
-	case sender.Role == "admin" && target.Role == "customer":
+	case sender.Role == "admin" && target.Role == "partner":
 		conv, err = GetOrCreateConversation(ctx, db, *to, nil)
 		return conv, nil, err
 

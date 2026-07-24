@@ -1,6 +1,6 @@
 class OnboardingStatus {
   final int onboardingStep; // 1=Account, 2=License Pending, 3=GST Pending, 4=All Verified
-  final List<CustomerDocument> documents;
+  final List<PartnerDocument> documents;
   final bool isFullyVerified;
 
   OnboardingStatus({
@@ -12,13 +12,13 @@ class OnboardingStatus {
   factory OnboardingStatus.fromJson(Map<String, dynamic> json) {
     return OnboardingStatus(
       onboardingStep: json['onboarding_step'] ?? 1,
-      documents: (json['documents'] as List?)?.map((d) => CustomerDocument.fromJson(d)).toList() ?? [],
+      documents: (json['documents'] as List?)?.map((d) => PartnerDocument.fromJson(d)).toList() ?? [],
       isFullyVerified: json['is_fully_verified'] ?? false,
     );
   }
 }
 
-class CustomerDocument {
+class PartnerDocument {
   final String id;
   final String docType; // LICENSE or GST
   final String? docNumber;
@@ -28,7 +28,7 @@ class CustomerDocument {
   final String? rejectionReason;
   final DateTime createdAt;
 
-  CustomerDocument({
+  PartnerDocument({
     required this.id,
     required this.docType,
     this.docNumber,
@@ -39,8 +39,8 @@ class CustomerDocument {
     required this.createdAt,
   });
 
-  factory CustomerDocument.fromJson(Map<String, dynamic> json) {
-    return CustomerDocument(
+  factory PartnerDocument.fromJson(Map<String, dynamic> json) {
+    return PartnerDocument(
       id: json['id'] ?? '',
       docType: json['doc_type'] ?? '',
       docNumber: json['doc_number'],

@@ -123,7 +123,7 @@ class ChatSocket {
 
   // Send to a direct user (isThread: false) or into a group conversation
   // (isThread: true) — the server resolves/creates the right conversation
-  // for direct sends that turn out to involve a customer. imageKey is the
+  // for direct sends that turn out to involve a partner. imageKey is the
   // S3 object key from ChatService.uploadImage, if this message has an
   // attached image.
   bool send({required String id, required bool isThread, required String body, String? imageKey}) {
