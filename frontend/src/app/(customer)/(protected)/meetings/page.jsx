@@ -73,10 +73,48 @@ function MeetingsPageInner() {
     return map;
   }, [meetings]);
 
-  const upcoming = useMemo(
+  const [upcomingFilter, setUpcomingFilter] = useState("all");
+
+  const allUpcoming = useMemo(
     () => meetings.filter((m) => m.status === "upcoming").sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)),
     [meetings]
   );
+
+  const upcoming = useMemo(() => {
+    if (upcomingFilter === "all") return allUpcoming;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+    let from, to;
+    if (upcomingFilter === "tomorrow") {
+      from = startOfTomorrow;
+      to = new Date(startOfTomorrow);
+      to.setDate(to.getDate() + 1);
+    } else if (upcomingFilter === "week") {
+      from = startOfToday;
+      to = new Date(startOfToday);
+      to.setDate(to.getDate() + 7);
+    } else if (upcomingFilter === "month") {
+      from = startOfToday;
+      to = new Date(startOfToday);
+      to.setDate(to.getDate() + 30);
+    }
+
+    return allUpcoming.filter((m) => {
+      const d = new Date(m.scheduled_at);
+      return d >= from && d < to;
+    });
+  }, [allUpcoming, upcomingFilter]);
+
+  const UPCOMING_FILTERS = [
+    { value: "all", label: "All" },
+    { value: "tomorrow", label: "Tomorrow" },
+    { value: "week", label: "Next 7 Days" },
+    { value: "month", label: "Next 30 Days" },
+  ];
 
   const openDay = (dateKey) => {
     setSelectedDateKey(dateKey);
@@ -422,13 +460,32 @@ function MeetingsPageInner() {
       </div>
 
       {/* Upcoming list */}
-      <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
-        Upcoming ({upcoming.length})
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
+          Upcoming ({upcoming.length})
+        </h2>
+        <div className="flex gap-2">
+          {UPCOMING_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setUpcomingFilter(f.value)}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                upcomingFilter === f.value
+                  ? "bg-gray-900 text-white"
+                  : "bg-white text-gray-600 border border-gray-200 hover:border-gray-400"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
       {loading ? (
         <p className="text-sm text-gray-400">Loading...</p>
       ) : upcoming.length === 0 ? (
-        <p className="text-sm text-gray-400">No upcoming meetings scheduled</p>
+        <p className="text-sm text-gray-400">
+          {upcomingFilter === "all" ? "No upcoming meetings scheduled" : "No meetings in this range"}
+        </p>
       ) : (
         <div className="space-y-2">
           {upcoming.map((m) => (

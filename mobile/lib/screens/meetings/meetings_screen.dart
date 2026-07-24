@@ -34,6 +34,41 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   String? _editingMomId;
   final _momCtrl = TextEditingController();
   bool _savingMom = false;
+  String _upcomingFilter = 'all';
+
+  static const _upcomingFilters = [
+    ('all', 'All'),
+    ('tomorrow', 'Tomorrow'),
+    ('week', 'Next 7 Days'),
+    ('month', 'Next 30 Days'),
+  ];
+
+  List<Meeting> _applyUpcomingFilter(List<Meeting> upcoming) {
+    if (_upcomingFilter == 'all') return upcoming;
+
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    late DateTime from, to;
+
+    switch (_upcomingFilter) {
+      case 'tomorrow':
+        from = startOfToday.add(const Duration(days: 1));
+        to = from.add(const Duration(days: 1));
+        break;
+      case 'week':
+        from = startOfToday;
+        to = startOfToday.add(const Duration(days: 7));
+        break;
+      case 'month':
+        from = startOfToday;
+        to = startOfToday.add(const Duration(days: 30));
+        break;
+      default:
+        return upcoming;
+    }
+
+    return upcoming.where((m) => !m.scheduledAt.isBefore(from) && m.scheduledAt.isBefore(to)).toList();
+  }
 
   @override
   void initState() {
@@ -195,8 +230,9 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final upcoming = _meetings.where((m) => m.status == 'upcoming').toList()
+    final allUpcoming = _meetings.where((m) => m.status == 'upcoming').toList()
       ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    final upcoming = _applyUpcomingFilter(allUpcoming);
 
     final meetingDateKeys = _meetings.map((m) => _dateKey(m.scheduledAt)).toSet();
     final today = DateTime.now();
@@ -319,6 +355,28 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                   // Upcoming list
                   Text('Upcoming (${upcoming.length})', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _ink)),
                   const SizedBox(height: 10),
+                  SizedBox(
+                    height: 34,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (final (value, label) in _upcomingFilters)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(label, style: TextStyle(fontSize: 12, color: _upcomingFilter == value ? Colors.white : Colors.grey.shade700)),
+                              selected: _upcomingFilter == value,
+                              onSelected: (_) => setState(() => _upcomingFilter = value),
+                              selectedColor: _teal,
+                              backgroundColor: Colors.grey.shade100,
+                              showCheckmark: false,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide.none),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   if (upcoming.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -327,7 +385,10 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                           children: [
                             Icon(Icons.calendar_today_outlined, size: 48, color: Colors.grey.shade300),
                             const SizedBox(height: 12),
-                            const Text('No upcoming meetings', style: TextStyle(color: Colors.grey)),
+                            Text(
+                              _upcomingFilter == 'all' ? 'No upcoming meetings' : 'No meetings in this range',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: () => _showDaySheet(DateTime.now()),

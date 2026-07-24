@@ -34,6 +34,8 @@ type Product struct {
 	SafetyInfo       *string           `json:"safety_information,omitempty"`
 	Images           []ProductImage    `json:"images"`
 	Documents        []ProductDocument `json:"documents"`
+	AudioKey         *string           `json:"audio_key,omitempty"`
+	AudioURL         string            `json:"audio_url,omitempty"`
 	CreatedAt        time.Time         `json:"created_at"`
 	UpdatedAt        time.Time         `json:"updated_at"`
 }
@@ -284,7 +286,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		SELECT id, name, description, price, stock, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
-			key_benefits, direction_for_use, safety_information,
+			key_benefits, direction_for_use, safety_information, audio_key,
 			created_at, updated_at
 		FROM products
 	` + where + " ORDER BY name ASC"
@@ -314,7 +316,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 			&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 			&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 			&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
-			&p.SafetyInfo, &p.CreatedAt, &p.UpdatedAt,
+			&p.SafetyInfo, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -330,7 +332,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 		SELECT id, name, description, price, stock, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
-			key_benefits, direction_for_use, safety_information,
+			key_benefits, direction_for_use, safety_information, audio_key,
 			created_at, updated_at
 		FROM products WHERE id = $1
 	`
@@ -341,7 +343,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 		&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 		&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 		&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
-		&p.SafetyInfo, &p.CreatedAt, &p.UpdatedAt,
+		&p.SafetyInfo, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -396,6 +398,13 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 
 func DeleteProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) error {
 	_, err := db.Exec(ctx, "DELETE FROM products WHERE id = $1", id)
+	return err
+}
+
+// SetProductAudio sets (or clears, if audioKey is nil) the product's single
+// audio clip — e.g. a spoken usage guide. One clip per product, not a list.
+func SetProductAudio(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, audioKey *string) error {
+	_, err := db.Exec(ctx, "UPDATE products SET audio_key = $1 WHERE id = $2", audioKey, id)
 	return err
 }
 

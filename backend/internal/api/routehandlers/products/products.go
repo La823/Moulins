@@ -37,6 +37,10 @@ func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) 
 	}
 	p.Documents = docs
 
+	if p.AudioKey != nil {
+		p.AudioURL = utils.GetPublicURL(*p.AudioKey)
+	}
+
 	cats, _ := models.GetProductCategories(r.Context(), db, p.ID)
 	if cats == nil {
 		cats = []string{}
@@ -76,6 +80,10 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 			docs[j].FileURL = utils.GetPublicURL(docs[j].FileKey)
 		}
 		products[i].Documents = docs
+
+		if products[i].AudioKey != nil {
+			products[i].AudioURL = utils.GetPublicURL(*products[i].AudioKey)
+		}
 
 		cats := catsMap[products[i].ID]
 		if cats == nil {
@@ -409,6 +417,44 @@ func AddDocumentHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": docID})
+	}
+}
+
+// PUT /admin/products/{id}/audio — set (or, with an empty file_key, clear)
+// the product's single audio clip. Reuses the same generic S3 doc-upload
+// presign as documents; audio files are just another key/filename.
+func SetProductAudioHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		productID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid product id", http.StatusBadRequest)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			FileKey string `json:"file_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		var audioKey *string
+		if req.FileKey != "" {
+			audioKey = &req.FileKey
+		}
+
+		if err := models.SetProductAudio(r.Context(), db, productID, audioKey); err != nil {
+			log.Printf("set product audio error: %v", err)
+			http.Error(w, "could not set audio", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 	}
 }
 

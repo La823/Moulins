@@ -50,6 +50,16 @@ export default function EditProduct() {
   const [documents, setDocuments] = useState([]);
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [newPdfFiles, setNewPdfFiles] = useState([]);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [newAudioFile, setNewAudioFile] = useState(null);
+  const [newAudioPreviewUrl, setNewAudioPreviewUrl] = useState(null);
+  const [removeAudio, setRemoveAudio] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [recordError, setRecordError] = useState("");
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const recordTimerRef = useRef(null);
 
   // Fetch product data
   useEffect(() => {
@@ -79,6 +89,7 @@ export default function EditProduct() {
         setSelectedCategories(p.categories || []);
         setImages(p.images || []);
         setDocuments(p.documents || []);
+        setAudioUrl(p.audio_url || null);
       })
       .catch(() => setError("Could not load product"))
       .finally(() => setLoading(false));
@@ -93,6 +104,10 @@ export default function EditProduct() {
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    return () => clearInterval(recordTimerRef.current);
   }, []);
 
   const toggleCategory = (cat) => {
@@ -177,12 +192,30 @@ export default function EditProduct() {
         });
       }
 
+      // Upload/replace audio, or clear it
+      if (newAudioFile) {
+        const audioKey = await uploadFileToS3(newAudioFile, "/admin/products/document-upload-url");
+        await apiFetch(`/admin/products/${id}/audio`, {
+          method: "PUT",
+          body: JSON.stringify({ file_key: audioKey }),
+        });
+      } else if (removeAudio) {
+        await apiFetch(`/admin/products/${id}/audio`, {
+          method: "PUT",
+          body: JSON.stringify({ file_key: "" }),
+        });
+      }
+
       // Refresh product data
       const updated = await apiFetch(`/products/${id}`);
       setImages(updated.images || []);
       setDocuments(updated.documents || []);
+      setAudioUrl(updated.audio_url || null);
       setNewImageFiles([]);
       setNewPdfFiles([]);
+      setNewAudioFile(null);
+      setNewAudioPreviewUrl(null);
+      setRemoveAudio(false);
       setSuccess("Product saved successfully");
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
@@ -190,6 +223,41 @@ export default function EditProduct() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const startRecording = async () => {
+    setRecordError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const ext = (recorder.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `recording-${Date.now()}.${ext}`, { type: blob.type });
+        setNewAudioFile(file);
+        setNewAudioPreviewUrl(URL.createObjectURL(blob));
+        setRemoveAudio(false);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch (err) {
+      setRecordError("Could not access microphone");
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    clearInterval(recordTimerRef.current);
+    setRecording(false);
   };
 
   const handleDeleteImage = async (imgId) => {
@@ -732,6 +800,77 @@ export default function EditProduct() {
               </div>
             )}
           </div>
+        </section>
+
+        {/* Audio */}
+        <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Audio
+          </h3>
+          {audioUrl && !removeAudio && !newAudioFile && (
+            <div className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded-lg gap-3">
+              <audio controls src={audioUrl} className="flex-1 h-9" />
+              <button
+                type="button"
+                onClick={() => setRemoveAudio(true)}
+                className="text-red-500 text-xs hover:text-red-700 flex-shrink-0"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+          {removeAudio && (
+            <p className="text-xs text-gray-500">Audio will be removed when you save.</p>
+          )}
+
+          {newAudioPreviewUrl && (
+            <div className="bg-gray-50 px-3 py-2 rounded-lg">
+              <audio controls src={newAudioPreviewUrl} className="w-full h-9" />
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-xs text-gray-400">Not saved yet — click Save Changes to upload</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewAudioFile(null);
+                    setNewAudioPreviewUrl(null);
+                  }}
+                  className="text-red-500 text-xs hover:text-red-700 flex-shrink-0"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={recording ? stopRecording : startRecording}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
+                recording ? "bg-red-600 text-white" : "bg-gray-900 text-white hover:bg-gray-800"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${recording ? "bg-white animate-pulse" : "bg-red-500"}`} />
+              {recording ? `Stop (${String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:${String(recordSeconds % 60).padStart(2, "0")})` : "Record audio"}
+            </button>
+            <span className="text-xs text-gray-400">or</span>
+            <label className="text-sm text-blue-600 hover:underline cursor-pointer">
+              {audioUrl ? "Replace with a file" : "Upload a file"}
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    setNewAudioFile(e.target.files[0]);
+                    setNewAudioPreviewUrl(URL.createObjectURL(e.target.files[0]));
+                    setRemoveAudio(false);
+                  }
+                }}
+                className="hidden"
+              />
+            </label>
+          </div>
+          {recordError && <p className="text-xs text-red-600">{recordError}</p>}
         </section>
 
         {/* Save button */}

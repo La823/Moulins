@@ -45,6 +45,7 @@ class Product {
   final String? strength;
   final List<ProductImage> images;
   final List<ProductDocument> documents;
+  final String? audioUrl;
 
   Product({
     required this.id,
@@ -61,6 +62,7 @@ class Product {
     this.strength,
     this.images = const [],
     this.documents = const [],
+    this.audioUrl,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -82,6 +84,7 @@ class Product {
         documents: (json['documents'] as List<dynamic>? ?? [])
             .map((e) => ProductDocument.fromJson(e))
             .toList(),
+        audioUrl: json['audio_url'],
       );
 
   String? get primaryImageUrl =>

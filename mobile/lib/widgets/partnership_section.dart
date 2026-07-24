@@ -47,8 +47,15 @@ class PartnershipSection extends StatefulWidget {
   State<PartnershipSection> createState() => _PartnershipSectionState();
 }
 
+const _bannerImages = [
+  'assets/partnership/companyglobe.jpeg',
+  'assets/partnership/companies.jpeg',
+];
+
 class _PartnershipSectionState extends State<PartnershipSection> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final PageController _bannerController;
+  int _bannerIndex = 0;
 
   static const _logoSlotWidth = 160.0;
 
@@ -56,11 +63,13 @@ class _PartnershipSectionState extends State<PartnershipSection> with SingleTick
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 18))..repeat();
+    _bannerController = PageController();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _bannerController.dispose();
     super.dispose();
   }
 
@@ -98,14 +107,80 @@ class _PartnershipSectionState extends State<PartnershipSection> with SingleTick
                   ),
                 ),
               const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.asset('assets/partnership/companyglobe.jpeg', fit: BoxFit.contain),
-              ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.asset('assets/partnership/companies.jpeg', fit: BoxFit.contain),
+              AspectRatio(
+                aspectRatio: 3 / 4,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: PageView(
+                        controller: _bannerController,
+                        onPageChanged: (i) => setState(() => _bannerIndex = i),
+                        children: [
+                          for (final img in _bannerImages)
+                            Container(
+                              color: Colors.grey.shade50,
+                              child: Image.asset(img, fit: BoxFit.contain),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      left: 4,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _BannerArrow(
+                          icon: Icons.chevron_left,
+                          onTap: _bannerIndex == 0
+                              ? null
+                              : () => _bannerController.previousPage(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeOut,
+                                  ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 4,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _BannerArrow(
+                          icon: Icons.chevron_right,
+                          onTap: _bannerIndex == _bannerImages.length - 1
+                              ? null
+                              : () => _bannerController.nextPage(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeOut,
+                                  ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 10,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (int i = 0; i < _bannerImages.length; i++)
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              width: i == _bannerIndex ? 18 : 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: i == _bannerIndex ? Colors.white : Colors.white.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(3),
+                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3)],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -141,6 +216,30 @@ class _PartnershipSectionState extends State<PartnershipSection> with SingleTick
           ),
         ),
       ],
+    );
+  }
+}
+
+class _BannerArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _BannerArrow({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Material(
+      color: Colors.black.withValues(alpha: enabled ? 0.35 : 0.12),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ),
     );
   }
 }

@@ -276,6 +276,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/images/{imgId}", products.DeleteImageHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
+	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
 
 	// category routes (admin only, same product permission)
 	productStaff.HandleFunc("/categories", categories.CreateHandler(db, rdb)).Methods("POST")

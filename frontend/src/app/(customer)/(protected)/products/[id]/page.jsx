@@ -142,6 +142,13 @@ export default function ProductDetailPage() {
             <p className="text-gray-500 text-sm leading-relaxed mb-8">{product.description}</p>
           )}
 
+          {product.audio_url && (
+            <div className="mb-8 pb-6 border-b border-gray-200">
+              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Listen</p>
+              <audio controls src={product.audio_url} className="w-full h-10" />
+            </div>
+          )}
+
           {product.key_ingredients && (
             <div className="mb-8 pb-6 border-b border-gray-200">
               <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Composition</p>
