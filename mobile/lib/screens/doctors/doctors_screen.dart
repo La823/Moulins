@@ -69,6 +69,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     final clinicCtrl = TextEditingController();
     DateTime? dob;
     PickedLocation? location;
+    bool submitting = false;
+    String? submitError;
 
     showModalBottomSheet(
       context: context,
@@ -107,7 +109,11 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                           // READ_CONTACTS — request it up front so a denial
                           // surfaces as a clean message instead of a native
                           // crash when the plugin tries to read the contact.
-                          final granted = await FlutterContacts.requestPermission();
+                          // readonly: true — we only read a picked contact's
+                          // number, never write. Requesting WRITE_CONTACTS
+                          // too (the default) would fail permanently since
+                          // that permission isn't declared in the manifest.
+                          final granted = await FlutterContacts.requestPermission(readonly: true);
                           if (!granted) {
                             if (sheetCtx.mounted) {
                               ScaffoldMessenger.of(sheetCtx).showSnackBar(
@@ -195,32 +201,45 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                 'Adds a yearly birthday reminder to your meetings calendar, with daily notifications in the 10 days before.',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
               ),
+              if (submitError != null) ...[
+                const SizedBox(height: 8),
+                Text(submitError!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+              ],
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: () async {
-                    if (nameCtrl.text.trim().isEmpty) return;
-                    Navigator.pop(sheetCtx);
-                    await _service.createDoctor(
-                      name: nameCtrl.text.trim(),
-                      phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-                      clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
-                      clinicAddress: location?.address,
-                      latitude: location?.lat,
-                      longitude: location?.lng,
-                      dob: dob,
-                    );
-                    _load();
-                  },
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          if (nameCtrl.text.trim().isEmpty) return;
+                          setSheetState(() { submitting = true; submitError = null; });
+                          try {
+                            await _service.createDoctor(
+                              name: nameCtrl.text.trim(),
+                              phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                              clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
+                              clinicAddress: location?.address,
+                              latitude: location?.lat,
+                              longitude: location?.lng,
+                              dob: dob,
+                            );
+                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                            _load();
+                          } catch (e) {
+                            setSheetState(() { submitting = false; submitError = 'Could not add doctor. Please try again.'; });
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00A6A4),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
-                  child: const Text('Add Doctor'),
+                  child: submitting
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Add Doctor'),
                 ),
               ),
             ],

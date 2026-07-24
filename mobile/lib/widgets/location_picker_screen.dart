@@ -161,12 +161,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _locating ? null : _useCurrentLocation,
-                  icon: _locating
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: _teal))
-                      : const Icon(Icons.my_location, color: _teal),
-                  tooltip: 'Use current location',
+                Material(
+                  color: _teal,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _locating ? null : _useCurrentLocation,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: _locating
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.my_location, color: Colors.white, size: 20),
+                    ),
+                  ),
                 ),
               ],
             ),

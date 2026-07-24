@@ -23,12 +23,14 @@ type Doctor struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
-// DoctorWithOwner adds the owning partner's name/phone — used by the
-// admin-only "all doctors" map, which spans every partner's doctors.
+// DoctorWithOwner adds the owning partner's name/phone plus the
+// internal-only contact name — used only by admin-facing endpoints (the
+// "all doctors" map), never by anything a partner can call.
 type DoctorWithOwner struct {
 	Doctor
-	OwnerName  *string `json:"owner_name,omitempty"`
-	OwnerPhone string  `json:"owner_phone"`
+	OwnerName           *string `json:"owner_name,omitempty"`
+	OwnerPhone          string  `json:"owner_phone"`
+	InternalContactName *string `json:"internal_contact_name,omitempty"`
 }
 
 type UpdateDoctorLastMeetingRequest struct {
@@ -130,7 +132,7 @@ func GetDoctorsWithDOB(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) 
 func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorWithOwner, error) {
 	rows, err := db.Query(ctx,
 		`SELECT d.id, d.partner_id, d.name, d.phone, d.clinic_name, d.clinic_address, d.latitude, d.longitude,
-		        d.dob, d.last_meeting_at, d.last_meeting_notes, d.created_at, u.username, u.phone_number
+		        d.dob, d.last_meeting_at, d.last_meeting_notes, d.created_at, u.username, u.phone_number, d.internal_contact_name
 		 FROM doctors d
 		 JOIN users u ON u.id = d.partner_id
 		 WHERE d.latitude IS NOT NULL AND d.longitude IS NOT NULL AND d.is_deleted = FALSE
@@ -145,12 +147,20 @@ func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorW
 	for rows.Next() {
 		var d DoctorWithOwner
 		if err := rows.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
-			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.OwnerName, &d.OwnerPhone); err != nil {
+			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.OwnerName, &d.OwnerPhone, &d.InternalContactName); err != nil {
 			return nil, err
 		}
 		doctors = append(doctors, d)
 	}
 	return doctors, rows.Err()
+}
+
+// UpdateDoctorInternalContactName is admin/staff-only — used to annotate a
+// doctor record with an internal contact name for later data cleanup. Never
+// surfaced through any partner-facing endpoint.
+func UpdateDoctorInternalContactName(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, contactName *string) error {
+	_, err := db.Exec(ctx, `UPDATE doctors SET internal_contact_name = $1 WHERE id = $2`, contactName, doctorID)
+	return err
 }
 
 // MarkBirthdayReminderSent records that a doctor's birthday-countdown

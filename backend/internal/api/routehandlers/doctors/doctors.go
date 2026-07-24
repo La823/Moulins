@@ -49,6 +49,36 @@ func syncDoctorBirthdayMeeting(r *http.Request, db *pgxpool.Pool, doctorID, part
 	}
 }
 
+// PUT /admin/doctors/{id}/contact-name — set/clear the internal-only
+// contact name used by staff for data cleanup. Never readable or writable
+// by partners.
+func UpdateDoctorContactNameHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid doctor id", http.StatusBadRequest)
+			return
+		}
+
+		var req struct {
+			ContactName *string `json:"contact_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateDoctorInternalContactName(r.Context(), db, doctorID, req.ContactName); err != nil {
+			log.Printf("update doctor contact name error: %v", err)
+			http.Error(w, "could not update contact name", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
+	}
+}
+
 // GET /admin/doctors — every doctor with a pinned clinic location, across
 // all partners, for the admin-only doctors map.
 func AdminListDoctorsHandler(db *pgxpool.Pool) http.HandlerFunc {
