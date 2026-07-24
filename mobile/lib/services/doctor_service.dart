@@ -25,7 +25,7 @@ class DoctorService {
       if (clinicAddress != null) 'clinic_address': clinicAddress,
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
-      if (dob != null) 'dob': dob.toIso8601String(),
+      if (dob != null) 'dob': dob.toUtc().toIso8601String(),
     });
     return Doctor.fromJson(res.data);
   }
