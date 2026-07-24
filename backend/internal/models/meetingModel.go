@@ -294,3 +294,15 @@ func MarkReminderSent(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID
 	_, err := db.Exec(ctx, `UPDATE meetings SET `+col+` = TRUE WHERE id = $1`, meetingID)
 	return err
 }
+
+// DeleteUpcomingBirthdayMeeting removes the auto-created, not-yet-happened
+// "Birthday" calendar entry for a doctor — called right before re-creating
+// it whenever the doctor's DOB is set or edited, so stale entries (wrong
+// date, or DOB cleared) don't linger.
+func DeleteUpcomingBirthdayMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) error {
+	_, err := db.Exec(ctx,
+		`DELETE FROM meetings WHERE doctor_id = $1 AND title = 'Birthday' AND status = 'upcoming' AND scheduled_at > now()`,
+		doctorID,
+	)
+	return err
+}

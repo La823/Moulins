@@ -7,6 +7,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import 'admin_customers_screen.dart';
+import 'admin_doctors_map_screen.dart';
 import 'admin_employees_screen.dart';
 import 'admin_products_screen.dart';
 import '../../widgets/app_drawer.dart';
@@ -113,6 +114,13 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     label: 'Customers',
                     subtitle: 'View and manage customer accounts',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCustomersScreen())),
+                  ),
+                  const SizedBox(height: 10),
+                  _ManageTile(
+                    icon: Icons.map_outlined,
+                    label: 'Doctors Map',
+                    subtitle: "See every customer's doctors by clinic location",
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminDoctorsMapScreen())),
                   ),
                   const SizedBox(height: 10),
                 ],

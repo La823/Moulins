@@ -3,12 +3,15 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import LocationPicker from "@/components/LocationPicker";
 
 export default function DoctorsPage() {
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", clinic_name: "" });
+  const [form, setForm] = useState({ name: "", phone: "", clinic_name: "", dob: "" });
+  const [location, setLocation] = useState(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -33,9 +36,14 @@ export default function DoctorsPage() {
           name: form.name.trim(),
           phone: form.phone.trim() || null,
           clinic_name: form.clinic_name.trim() || null,
+          dob: form.dob || null,
+          clinic_address: location?.address || null,
+          latitude: location?.lat ?? null,
+          longitude: location?.lng ?? null,
         }),
       });
-      setForm({ name: "", phone: "", clinic_name: "" });
+      setForm({ name: "", phone: "", clinic_name: "", dob: "" });
+      setLocation(null);
       setShowForm(false);
       setLoading(true);
       fetchDoctors();
@@ -101,6 +109,28 @@ export default function DoctorsPage() {
               placeholder="Clinic or hospital name"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Clinic Location</label>
+            <button
+              type="button"
+              onClick={() => setShowLocationPicker(true)}
+              className="w-full text-left border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 hover:border-gray-400 transition-colors"
+            >
+              {location ? `📍 ${location.address || `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`}` : "Set location on map..."}
+            </button>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+            <input
+              type="date"
+              value={form.dob}
+              onChange={(e) => setForm({ ...form, dob: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Adds a yearly birthday reminder to your meetings calendar, with daily notifications in the 10 days before.
+            </p>
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
             type="submit"
@@ -147,6 +177,14 @@ export default function DoctorsPage() {
                   {doctor.phone && (
                     <p className="text-xs text-gray-400 mt-1">{doctor.phone}</p>
                   )}
+                  {doctor.dob && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      🎂 {new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+                    </p>
+                  )}
+                  {doctor.clinic_address && (
+                    <p className="text-xs text-gray-400 mt-1">📍 {doctor.clinic_address}</p>
+                  )}
                   <p className="text-xs text-gray-400 mt-2">
                     Added {new Date(doctor.created_at).toLocaleDateString("en-IN", {
                       day: "numeric", month: "short", year: "numeric",
@@ -178,6 +216,17 @@ export default function DoctorsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {showLocationPicker && (
+        <LocationPicker
+          initial={location}
+          onClose={() => setShowLocationPicker(false)}
+          onConfirm={(loc) => {
+            setLocation(loc);
+            setShowLocationPicker(false);
+          }}
+        />
       )}
     </div>
   );

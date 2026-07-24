@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import FirebaseCore
 import UserNotifications
+import GoogleMaps
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -10,6 +11,7 @@ import UserNotifications
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     FirebaseApp.configure()
+    GMSServices.provideAPIKey("AIzaSyAIjjIrpj8s3eWBjqRuh1XX0q2vgKCrmOc")
 
     // Foreground notification banners (matches the Android high-importance
     // channel behavior already set up in LocalNotificationsService).

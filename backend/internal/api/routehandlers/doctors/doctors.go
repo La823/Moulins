@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -14,6 +15,53 @@ import (
 func getUserID(r *http.Request) uuid.UUID {
 	id, _ := uuid.Parse(r.Context().Value("user_id").(string))
 	return id
+}
+
+// nextBirthdayOccurrence returns the next upcoming date (this year, or next
+// year if this year's has already passed) that shares dob's month/day, at
+// noon local time to stay clear of any midnight DST edge cases.
+func nextBirthdayOccurrence(dob time.Time, now time.Time) time.Time {
+	next := time.Date(now.Year(), dob.Month(), dob.Day(), 12, 0, 0, 0, now.Location())
+	if next.Before(now) {
+		next = next.AddDate(1, 0, 0)
+	}
+	return next
+}
+
+// syncDoctorBirthdayMeeting drops any not-yet-happened auto-created
+// "Birthday" entry for the doctor and, if a DOB is set, adds a fresh one on
+// the next occurrence — so the calendar always reflects the doctor's actual
+// current DOB after create or edit.
+func syncDoctorBirthdayMeeting(r *http.Request, db *pgxpool.Pool, doctorID, customerID uuid.UUID, dob *time.Time) {
+	ctx := r.Context()
+	if err := models.DeleteUpcomingBirthdayMeeting(ctx, db, doctorID); err != nil {
+		log.Printf("sync doctor birthday meeting: failed to clear old entry: %v", err)
+	}
+	if dob == nil {
+		return
+	}
+	next := nextBirthdayOccurrence(*dob, time.Now())
+	title := "Birthday"
+	notes := "Doctor's birthday"
+	req := models.CreateMeetingRequest{DoctorID: &doctorID, Title: &title, ScheduledAt: next, Notes: &notes}
+	if _, err := models.CreateMeeting(ctx, db, customerID, req); err != nil {
+		log.Printf("sync doctor birthday meeting: failed to create entry: %v", err)
+	}
+}
+
+// GET /admin/doctors — every doctor with a pinned clinic location, across
+// all customers, for the admin-only doctors map.
+func AdminListDoctorsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		doctors, err := models.GetAllDoctorsWithLocation(r.Context(), db)
+		if err != nil {
+			log.Printf("admin list doctors error: %v", err)
+			http.Error(w, "could not fetch doctors", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(doctors)
+	}
 }
 
 func ListDoctorsHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -41,11 +89,15 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		id, err := models.CreateDoctor(r.Context(), db, getUserID(r), req)
+		userID := getUserID(r)
+		id, err := models.CreateDoctor(r.Context(), db, userID, req)
 		if err != nil {
 			log.Printf("create doctor error: %v", err)
 			http.Error(w, "could not create doctor", http.StatusInternalServerError)
 			return
+		}
+		if req.DOB != nil {
+			syncDoctorBirthdayMeeting(r, db, id, userID, req.DOB)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -110,6 +162,7 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not update doctor", http.StatusInternalServerError)
 			return
 		}
+		syncDoctorBirthdayMeeting(r, db, doctorID, doctor.CustomerID, req.DOB)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "doctor updated"})

@@ -14,9 +14,21 @@ type Doctor struct {
 	Name             string     `json:"name"`
 	Phone            *string    `json:"phone,omitempty"`
 	ClinicName       *string    `json:"clinic_name,omitempty"`
+	ClinicAddress    *string    `json:"clinic_address,omitempty"`
+	Latitude         *float64   `json:"latitude,omitempty"`
+	Longitude        *float64   `json:"longitude,omitempty"`
+	DOB              *time.Time `json:"dob,omitempty"`
 	LastMeetingAt    *time.Time `json:"last_meeting_at,omitempty"`
 	LastMeetingNotes *string    `json:"last_meeting_notes,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
+}
+
+// DoctorWithOwner adds the owning customer's name/phone — used by the
+// admin-only "all doctors" map, which spans every customer's doctors.
+type DoctorWithOwner struct {
+	Doctor
+	OwnerName  *string `json:"owner_name,omitempty"`
+	OwnerPhone string  `json:"owner_phone"`
 }
 
 type UpdateDoctorLastMeetingRequest struct {
@@ -33,28 +45,39 @@ type DoctorProduct struct {
 }
 
 type CreateDoctorRequest struct {
-	Name       string  `json:"name"`
-	Phone      *string `json:"phone,omitempty"`
-	ClinicName *string `json:"clinic_name,omitempty"`
+	Name          string     `json:"name"`
+	Phone         *string    `json:"phone,omitempty"`
+	ClinicName    *string    `json:"clinic_name,omitempty"`
+	ClinicAddress *string    `json:"clinic_address,omitempty"`
+	Latitude      *float64   `json:"latitude,omitempty"`
+	Longitude     *float64   `json:"longitude,omitempty"`
+	DOB           *time.Time `json:"dob,omitempty"`
 }
 
 type AddDoctorProductRequest struct {
 	ProductID uuid.UUID `json:"product_id"`
 }
 
+const doctorColumns = `id, customer_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
+
+func scanDoctor(row interface{ Scan(...any) error }, d *Doctor) error {
+	return row.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+		&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
+}
+
 func CreateDoctor(ctx context.Context, db *pgxpool.Pool, customerID uuid.UUID, req CreateDoctorRequest) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO doctors (customer_id, name, phone, clinic_name) VALUES ($1, $2, $3, $4) RETURNING id`,
-		customerID, req.Name, req.Phone, req.ClinicName,
+		`INSERT INTO doctors (customer_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+		customerID, req.Name, req.Phone, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
 	).Scan(&id)
 	return id, err
 }
 
 func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid.UUID) ([]Doctor, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, customer_id, name, phone, clinic_name, last_meeting_at, last_meeting_notes, created_at
-		 FROM doctors WHERE customer_id = $1 ORDER BY created_at DESC`,
+		`SELECT `+doctorColumns+` FROM doctors WHERE customer_id = $1 ORDER BY created_at DESC`,
 		customerID,
 	)
 	if err != nil {
@@ -65,7 +88,7 @@ func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid
 	doctors := []Doctor{}
 	for rows.Next() {
 		var d Doctor
-		if err := rows.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt); err != nil {
+		if err := scanDoctor(rows, &d); err != nil {
 			return nil, err
 		}
 		doctors = append(doctors, d)
@@ -75,14 +98,73 @@ func GetDoctorsByCustomer(ctx context.Context, db *pgxpool.Pool, customerID uuid
 
 func GetDoctorByID(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) (*Doctor, error) {
 	var d Doctor
-	err := db.QueryRow(ctx,
-		`SELECT id, customer_id, name, phone, clinic_name, last_meeting_at, last_meeting_notes, created_at FROM doctors WHERE id = $1`,
-		doctorID,
-	).Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
+	err := scanDoctor(db.QueryRow(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE id = $1`, doctorID), &d)
 	if err != nil {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// GetDoctorsWithDOB returns every doctor with a birth date set, across all
+// customers — the birthday scheduler runs globally, not per-user.
+func GetDoctorsWithDOB(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) {
+	rows, err := db.Query(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE dob IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	doctors := []Doctor{}
+	for rows.Next() {
+		var d Doctor
+		if err := scanDoctor(rows, &d); err != nil {
+			return nil, err
+		}
+		doctors = append(doctors, d)
+	}
+	return doctors, rows.Err()
+}
+
+// GetAllDoctorsWithLocation returns every doctor across every customer that
+// has a pinned clinic location, for the admin-only doctors map.
+func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorWithOwner, error) {
+	rows, err := db.Query(ctx,
+		`SELECT d.id, d.customer_id, d.name, d.phone, d.clinic_name, d.clinic_address, d.latitude, d.longitude,
+		        d.dob, d.last_meeting_at, d.last_meeting_notes, d.created_at, u.username, u.phone_number
+		 FROM doctors d
+		 JOIN users u ON u.id = d.customer_id
+		 WHERE d.latitude IS NOT NULL AND d.longitude IS NOT NULL
+		 ORDER BY d.created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	doctors := []DoctorWithOwner{}
+	for rows.Next() {
+		var d DoctorWithOwner
+		if err := rows.Scan(&d.ID, &d.CustomerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.OwnerName, &d.OwnerPhone); err != nil {
+			return nil, err
+		}
+		doctors = append(doctors, d)
+	}
+	return doctors, rows.Err()
+}
+
+// MarkBirthdayReminderSent records that a doctor's birthday-countdown
+// reminder went out for the given calendar date. Returns false if it was
+// already recorded (i.e. already sent today), so the caller can skip it.
+func MarkBirthdayReminderSent(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, date time.Time) (bool, error) {
+	tag, err := db.Exec(ctx,
+		`INSERT INTO doctor_birthday_reminders (doctor_id, reminder_date) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+		doctorID, date.Format("2006-01-02"),
+	)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // UpdateDoctorLastMeeting is the manual-edit path — the user can always
@@ -113,8 +195,8 @@ func SyncDoctorLastMeetingFromCompletedMeeting(ctx context.Context, db *pgxpool.
 
 func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req CreateDoctorRequest) error {
 	_, err := db.Exec(ctx,
-		`UPDATE doctors SET name = $1, phone = $2, clinic_name = $3 WHERE id = $4`,
-		req.Name, req.Phone, req.ClinicName, doctorID,
+		`UPDATE doctors SET name = $1, phone = $2, clinic_name = $3, clinic_address = $4, latitude = $5, longitude = $6, dob = $7 WHERE id = $8`,
+		req.Name, req.Phone, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, doctorID,
 	)
 	return err
 }

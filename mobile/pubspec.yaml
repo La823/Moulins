@@ -27,6 +27,9 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   open_filex: ^4.5.0
   shared_preferences: ^2.3.2
+  google_maps_flutter: ^2.9.0
+  geolocator: ^13.0.1
+  flutter_contacts: ^1.1.9+2
 
 dev_dependencies:
   flutter_test:

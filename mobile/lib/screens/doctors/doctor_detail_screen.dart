@@ -195,6 +195,14 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                         const SizedBox(height: 2),
                         Text(d.phone!, style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
                       ],
+                      if (d.dob != null) ...[
+                        const SizedBox(height: 2),
+                        Text('🎂 ${d.dob!.day}/${d.dob!.month}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                      ],
+                      if (d.clinicAddress != null) ...[
+                        const SizedBox(height: 2),
+                        Text('📍 ${d.clinicAddress}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                      ],
                     ],
                   ),
                 ),

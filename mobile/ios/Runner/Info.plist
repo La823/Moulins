@@ -52,6 +52,15 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Moulins needs photo library access to let you attach existing photos to bills, documents and orders.</string>
 
+	<!-- geolocator: "use current location" when setting a doctor's clinic location -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Moulins needs your location to set a doctor's clinic location on the map.</string>
+
+	<!-- flutter_contacts: required by iOS whenever the Contacts framework is
+	     linked, even though openExternalPick() itself doesn't prompt for it. -->
+	<key>NSContactsUsageDescription</key>
+	<string>Moulins needs contacts access to let you pick a doctor's phone number from your contacts.</string>
+
 	<!-- firebase_messaging: push notifications for broadcasts, chat, meeting reminders -->
 	<key>UIBackgroundModes</key>
 	<array>

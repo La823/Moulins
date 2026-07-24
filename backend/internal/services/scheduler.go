@@ -20,7 +20,63 @@ func StartScheduler(db *pgxpool.Pool) {
 
 	for range ticker.C {
 		dispatchMeetingReminders(db)
+		dispatchBirthdayReminders(db)
 	}
+}
+
+// dispatchBirthdayReminders sends one notification per doctor per day
+// during the 10 days leading up to (and including) their birthday. It's
+// safe to call every tick — MarkBirthdayReminderSent is keyed on
+// (doctor_id, calendar date) so a doctor never gets duplicate reminders
+// on the same day even though this runs every minute.
+func dispatchBirthdayReminders(db *pgxpool.Pool) {
+	ctx := context.Background()
+	now := time.Now()
+
+	doctors, err := models.GetDoctorsWithDOB(ctx, db)
+	if err != nil {
+		log.Printf("scheduler: failed to fetch doctors with dob: %v", err)
+		return
+	}
+
+	for _, d := range doctors {
+		next := time.Date(now.Year(), d.DOB.Month(), d.DOB.Day(), 0, 0, 0, 0, now.Location())
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		if next.Before(today) {
+			next = next.AddDate(1, 0, 0)
+		}
+		daysUntil := int(next.Sub(today).Hours() / 24)
+		if daysUntil < 0 || daysUntil > 9 {
+			continue
+		}
+
+		sent, err := models.MarkBirthdayReminderSent(ctx, db, d.ID, today)
+		if err != nil {
+			log.Printf("scheduler: failed to record birthday reminder for doctor %s: %v", d.ID, err)
+			continue
+		}
+		if !sent {
+			continue // already sent today
+		}
+
+		title := "🎂 Upcoming doctor birthday"
+		body := fmt.Sprintf("Dr. %s's birthday is today!", d.Name)
+		if daysUntil > 0 {
+			body = fmt.Sprintf("Dr. %s's birthday is in %d day%s (%s).", d.Name, daysUntil, plural(daysUntil), next.Format("Jan 2"))
+		}
+		deepLink := fmt.Sprintf("/doctors/%s", d.ID)
+
+		if err := SendDirectNotification(ctx, db, d.CustomerID, title, body, &deepLink); err != nil {
+			log.Printf("scheduler: failed to send birthday reminder for doctor %s: %v", d.ID, err)
+		}
+	}
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func dispatchMeetingReminders(db *pgxpool.Pool) {

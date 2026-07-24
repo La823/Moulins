@@ -149,6 +149,11 @@ export default function DoctorDetailPage() {
             {doctor.phone && (
               <p className="text-sm text-gray-400 mt-1">{doctor.phone}</p>
             )}
+            {doctor.dob && (
+              <p className="text-sm text-gray-400 mt-1">
+                🎂 {new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+              </p>
+            )}
           </div>
           <Link
             href={`/meetings?doctor_id=${doctor.id}`}

@@ -136,6 +136,17 @@ const NAV_ITEMS = [
     ),
   },
   {
+    label: "Doctors Map",
+    href: "/panel/doctors-map",
+    permission: "customers",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 21c-4.556-4.03-7-7.828-7-11a7 7 0 1114 0c0 3.172-2.444 6.97-7 11z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+      </svg>
+    ),
+  },
+  {
     label: "My Attendance",
     href: "/panel/my-attendance",
     employeeOnly: true,

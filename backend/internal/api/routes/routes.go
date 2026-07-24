@@ -240,6 +240,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	customerStaff.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
 	customerStaff.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
 	customerStaff.HandleFunc("/customers", userauth.GetCustomersHandler(db)).Methods("GET")
+	customerStaff.HandleFunc("/doctors", doctors.AdminListDoctorsHandler(db)).Methods("GET")
 	customerStaff.HandleFunc("/customers/verify-document", userauth.VerifyCustomerDocumentHandler(db)).Methods("POST")
 	customerStaff.HandleFunc("/customers/{id}", userauth.GetCustomerDetailHandler(db)).Methods("GET")
 	customerStaff.HandleFunc("/customers/{id}/password", userauth.UpdateCustomerPasswordHandler(db, rdb)).Methods("PUT")

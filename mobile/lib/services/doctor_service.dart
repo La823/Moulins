@@ -13,13 +13,26 @@ class DoctorService {
     required String name,
     String? phone,
     String? clinicName,
+    String? clinicAddress,
+    double? latitude,
+    double? longitude,
+    DateTime? dob,
   }) async {
     final res = await _dio.post('/doctors', data: {
       'name': name,
       if (phone != null) 'phone': phone,
       if (clinicName != null) 'clinic_name': clinicName,
+      if (clinicAddress != null) 'clinic_address': clinicAddress,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (dob != null) 'dob': dob.toIso8601String(),
     });
     return Doctor.fromJson(res.data);
+  }
+
+  Future<List<Doctor>> getAllDoctorsWithLocation() async {
+    final res = await _dio.get('/admin/doctors');
+    return (res.data as List<dynamic>).map((e) => Doctor.fromJson(e)).toList();
   }
 
   Future<void> deleteDoctor(String id) async {
