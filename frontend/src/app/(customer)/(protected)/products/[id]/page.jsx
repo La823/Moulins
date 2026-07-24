@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
@@ -21,6 +21,18 @@ export default function ProductDetailPage() {
   const [downloading, setDownloading] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [sameCategory, setSameCategory] = useState([]);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const audioRef = useRef(null);
+
+  const toggleAudio = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (audioPlaying) {
+      el.pause();
+    } else {
+      el.play();
+    }
+  };
 
   useEffect(() => {
     apiFetch(`/products/${id}`)
@@ -107,6 +119,33 @@ export default function ProductDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                   </svg>
                 </button>
+                {product.audio_url && (
+                  <>
+                    <button
+                      onClick={toggleAudio}
+                      title={audioPlaying ? "Pause audio" : "Play audio"}
+                      className="absolute top-3 left-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-sm border border-gray-200 transition-colors"
+                    >
+                      {audioPlaying ? (
+                        <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                        </svg>
+                      )}
+                    </button>
+                    <audio
+                      ref={audioRef}
+                      src={product.audio_url}
+                      onPlay={() => setAudioPlaying(true)}
+                      onPause={() => setAudioPlaying(false)}
+                      onEnded={() => setAudioPlaying(false)}
+                      className="hidden"
+                    />
+                  </>
+                )}
               </>
             ) : (
               <div className="w-full h-full flex items-center justify-center">
@@ -142,12 +181,6 @@ export default function ProductDetailPage() {
             <p className="text-gray-500 text-sm leading-relaxed mb-8">{product.description}</p>
           )}
 
-          {product.audio_url && (
-            <div className="mb-8 pb-6 border-b border-gray-200">
-              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Listen</p>
-              <audio controls src={product.audio_url} className="w-full h-10" />
-            </div>
-          )}
 
           {product.key_ingredients && (
             <div className="mb-8 pb-6 border-b border-gray-200">

@@ -178,6 +178,23 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                             ),
                           ),
                         ),
+                        if (p.audioUrl != null)
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            child: Material(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: () => launchUrl(Uri.parse(p.audioUrl!), mode: LaunchMode.externalApplication),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(8),
+                                  child: Icon(Icons.volume_up, size: 20, color: Color(0xFF1A1A1A)),
+                                ),
+                              ),
+                            ),
+                          ),
                         if (p.images.length > 1)
                           Positioned(
                             bottom: 12,
@@ -300,32 +317,6 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           ),
                         ),
                       ),
-                  ],
-                  if (p.audioUrl != null) ...[
-                    const SizedBox(height: 20),
-                    const Text('Audio', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 10),
-                    InkWell(
-                      onTap: () => launchUrl(Uri.parse(p.audioUrl!), mode: LaunchMode.externalApplication),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade200),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.play_circle_outline, color: Colors.grey.shade500, size: 20),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text('Listen', style: TextStyle(fontSize: 13.5, color: Color(0xFF1A1A1A))),
-                            ),
-                            Text('Play', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red.shade600)),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                   if (_videos.isNotEmpty) ...[
                     const SizedBox(height: 20),
