@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:go_router/go_router.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
@@ -43,10 +44,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   List<LearningVideo> _videos = [];
   List<Product> _recentlyViewed = [];
   List<Product> _sameCategory = [];
+  final _audioPlayer = AudioPlayer();
+  bool _audioPlaying = false;
+  bool _audioLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _audioPlaying = state == PlayerState.playing);
+    });
     _load();
     LearningService().getVideos(productId: widget.productId).then((v) {
       if (mounted) setState(() => _videos = v);
@@ -63,7 +70,27 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   @override
   void dispose() {
     _imagePageCtrl.dispose();
+    _audioPlayer.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleAudio(String url) async {
+    if (_audioPlaying) {
+      await _audioPlayer.pause();
+      return;
+    }
+    setState(() => _audioLoading = true);
+    try {
+      await _audioPlayer.play(UrlSource(url));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not play audio')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _audioLoading = false);
+    }
   }
 
   Future<void> _load() async {
@@ -187,10 +214,20 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               shape: const CircleBorder(),
                               child: InkWell(
                                 customBorder: const CircleBorder(),
-                                onTap: () => launchUrl(Uri.parse(p.audioUrl!), mode: LaunchMode.externalApplication),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Icon(Icons.volume_up, size: 20, color: Color(0xFF1A1A1A)),
+                                onTap: _audioLoading ? null : () => _toggleAudio(p.audioUrl!),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: _audioLoading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1A1A1A)),
+                                        )
+                                      : Icon(
+                                          _audioPlaying ? Icons.pause : Icons.volume_up,
+                                          size: 20,
+                                          color: _audioPlaying ? Colors.red.shade600 : const Color(0xFF1A1A1A),
+                                        ),
                                 ),
                               ),
                             ),
@@ -266,9 +303,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     const Text('Composition', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     Text(
-                      p.strength != null && p.strength!.isNotEmpty
-                          ? '${p.keyIngredients} — ${p.strength}'
-                          : p.keyIngredients!,
+                      p.keyIngredients!,
                       style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
                     ),
                     const SizedBox(height: 16),

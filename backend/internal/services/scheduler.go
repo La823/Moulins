@@ -21,7 +21,55 @@ func StartScheduler(db *pgxpool.Pool) {
 	for range ticker.C {
 		dispatchMeetingReminders(db)
 		dispatchBirthdayReminders(db)
+		dispatchBirthdayMeetingSync(db)
 	}
+}
+
+// dispatchBirthdayMeetingSync keeps the "Birthday" calendar entry perpetual:
+// once a doctor's upcoming Birthday meeting has passed (or was never
+// created), it creates the next occurrence — mirroring what
+// syncDoctorBirthdayMeeting does on doctor create/edit, but without needing
+// a human to touch the record again. Safe to call every tick:
+// HasUpcomingBirthdayMeeting makes this a no-op once next year's entry
+// already exists.
+func dispatchBirthdayMeetingSync(db *pgxpool.Pool) {
+	ctx := context.Background()
+
+	doctors, err := models.GetDoctorsWithDOB(ctx, db)
+	if err != nil {
+		log.Printf("scheduler: failed to fetch doctors with dob: %v", err)
+		return
+	}
+
+	for _, d := range doctors {
+		has, err := models.HasUpcomingBirthdayMeeting(ctx, db, d.ID)
+		if err != nil {
+			log.Printf("scheduler: failed to check birthday meeting for doctor %s: %v", d.ID, err)
+			continue
+		}
+		if has {
+			continue
+		}
+
+		next := nextBirthdayOccurrence(*d.DOB, time.Now())
+		title := "Birthday"
+		notes := "Doctor's birthday"
+		req := models.CreateMeetingRequest{DoctorID: &d.ID, Title: &title, ScheduledAt: next, Notes: &notes}
+		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, req); err != nil {
+			log.Printf("scheduler: failed to create birthday meeting for doctor %s: %v", d.ID, err)
+		}
+	}
+}
+
+// nextBirthdayOccurrence returns the next upcoming date (this year, or next
+// year if this year's has already passed) that shares dob's month/day, at
+// noon local time to stay clear of any midnight DST edge cases.
+func nextBirthdayOccurrence(dob time.Time, now time.Time) time.Time {
+	next := time.Date(now.Year(), dob.Month(), dob.Day(), 12, 0, 0, 0, now.Location())
+	if next.Before(now) {
+		next = next.AddDate(1, 0, 0)
+	}
+	return next
 }
 
 // dispatchBirthdayReminders sends one notification per doctor per day

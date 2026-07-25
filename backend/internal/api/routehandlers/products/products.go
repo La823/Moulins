@@ -147,6 +147,31 @@ type productListResult struct {
 }
 
 // GET /products and GET /admin/products
+// GET /products/forms — every distinct product_form in use, for the
+// "Type" filter on the product listing.
+func ProductFormsHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const cacheKey = "products:forms"
+		var cached []string
+		if rdb.GetJSON(r.Context(), cacheKey, &cached) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cached)
+			return
+		}
+
+		forms, err := models.GetDistinctProductForms(r.Context(), db)
+		if err != nil {
+			log.Printf("list product forms error: %v", err)
+			http.Error(w, "could not fetch product forms", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.SetJSON(r.Context(), cacheKey, forms, 30*time.Minute)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(forms)
+	}
+}
+
 func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client) http.HandlerFunc {
 	var c *cache.Client
 	if len(rdb) > 0 {
@@ -165,10 +190,11 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		}
 		search := r.URL.Query().Get("search")
 		category := r.URL.Query().Get("category")
+		form := r.URL.Query().Get("form")
 		nameOnly := r.URL.Query().Get("name_only") == "true"
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:no=%v", activeOnly, page, limit, search, category, nameOnly)
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:no=%v", activeOnly, page, limit, search, category, form, nameOnly)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -176,7 +202,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, limit, offset, nameOnly)
+		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, form, limit, offset, nameOnly)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)

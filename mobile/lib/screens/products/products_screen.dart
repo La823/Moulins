@@ -20,6 +20,10 @@ final categoriesProvider = FutureProvider<List<String>>((ref) async {
   return _productService.getCategories();
 });
 
+final formsProvider = FutureProvider<List<String>>((ref) async {
+  return _productService.getForms();
+});
+
 class ProductsScreen extends ConsumerStatefulWidget {
   final String? initialCategory;
   const ProductsScreen({super.key, this.initialCategory});
@@ -32,6 +36,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   String _category = '';
+  String _form = '';
   int _page = 1;
   bool _loading = false;
   bool _hasMore = true;
@@ -71,6 +76,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         page: _page,
         search: _search,
         category: _category,
+        form: _form,
       );
       setState(() {
         _products.addAll(res.products);
@@ -96,6 +102,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
   void _onCategory(String cat) {
     setState(() => _category = _category == cat ? '' : cat);
+    _load(reset: true);
+  }
+
+  void _onForm(String form) {
+    setState(() => _form = form);
     _load(reset: true);
   }
 
@@ -252,6 +263,49 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ),
               loading: () => const SizedBox(height: 44),
               error: (_, __) => const SizedBox(height: 44),
+            ),
+          ),
+
+          // Type (product form) filter
+          SliverToBoxAdapter(
+            child: Consumer(
+              builder: (context, ref, _) {
+                final forms = ref.watch(formsProvider);
+                return forms.when(
+                  data: (list) => list.isEmpty
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: Row(
+                            children: [
+                              Text('Type', style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey.shade300),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _form.isEmpty ? '' : _form,
+                                    isDense: true,
+                                    style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                                    items: [
+                                      const DropdownMenuItem(value: '', child: Text('All')),
+                                      for (final f in list) DropdownMenuItem(value: f, child: Text(f)),
+                                    ],
+                                    onChanged: (v) => _onForm(v ?? ''),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                );
+              },
             ),
           ),
 

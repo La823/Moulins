@@ -4,7 +4,7 @@ export default function JivyaPage() {
   return (
     <CategoryLandingPage
       categoryName="Jivya (Cardio Diabetic Division)"
-      heroImage="/pages/Jivvya.jpg.jpeg"
+      heroImage="/pages/Jivvya.png"
       heroLabel="Jivya"
       heroTitle="Cardio-Diabetic Care"
     />

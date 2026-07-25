@@ -8,15 +8,26 @@ import { useCart } from "@/context/CartContext";
 export default function CategoryLandingPage({ categoryName, heroImage, heroLabel, heroTitle }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [forms, setForms] = useState([]);
+  const [activeForm, setActiveForm] = useState("");
   const { addToCart } = useCart();
   const router = useRouter();
 
   useEffect(() => {
-    apiFetch(`/products?category=${encodeURIComponent(categoryName)}&limit=100`)
+    apiFetch("/products/forms")
+      .then((data) => setForms(Array.isArray(data) ? data : []))
+      .catch(() => setForms([]));
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams({ category: categoryName, limit: "100" });
+    if (activeForm) params.set("form", activeForm);
+    apiFetch(`/products?${params}`)
       .then((data) => setProducts(data.products || []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [categoryName]);
+  }, [categoryName, activeForm]);
 
   return (
     <div>
@@ -40,12 +51,32 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
 
       {/* Products */}
       <div className="max-w-[96rem] mx-auto px-10 py-10">
-        <div className="mb-8">
-          <h2 className="text-2xl font-light text-gray-900">{heroTitle} Products</h2>
-          {!loading && (
-            <p className="text-sm text-gray-400 mt-1">
-              {products.length} product{products.length !== 1 ? "s" : ""}
-            </p>
+        <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-2xl font-light text-gray-900">{heroTitle} Products</h2>
+            {!loading && (
+              <p className="text-sm text-gray-400 mt-1">
+                {products.length} product{products.length !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+          {forms.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label htmlFor="type-filter" className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                Type
+              </label>
+              <select
+                id="type-filter"
+                value={activeForm}
+                onChange={(e) => setActiveForm(e.target.value)}
+                className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-gray-400 transition-colors"
+              >
+                <option value="">All</option>
+                {forms.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
 

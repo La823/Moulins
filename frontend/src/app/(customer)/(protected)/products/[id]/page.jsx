@@ -185,10 +185,7 @@ export default function ProductDetailPage() {
           {product.key_ingredients && (
             <div className="mb-8 pb-6 border-b border-gray-200">
               <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Composition</p>
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {product.key_ingredients}
-                {product.strength && ` — ${product.strength}`}
-              </p>
+              <p className="text-sm text-gray-700 leading-relaxed">{product.key_ingredients}</p>
             </div>
           )}
 

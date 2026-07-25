@@ -10,6 +10,7 @@ class ProductService {
     int limit = 20,
     String search = '',
     String category = '',
+    String form = '',
   }) async {
     try {
       final res = await _dio.get('/products', queryParameters: {
@@ -17,6 +18,7 @@ class ProductService {
         'limit': limit,
         if (search.isNotEmpty) 'search': search,
         if (category.isNotEmpty) 'category': category,
+        if (form.isNotEmpty) 'form': form,
       });
       final result = ProductListResponse.fromJson(res.data);
       // Only the default unfiltered first page is cached as the offline
@@ -59,6 +61,12 @@ class ProductService {
     final res = await _dio.get('/products/categories');
     final list = res.data as List<dynamic>? ?? [];
     return list.map((c) => c['name'] as String).toList();
+  }
+
+  Future<List<String>> getForms() async {
+    final res = await _dio.get('/products/forms');
+    final list = res.data as List<dynamic>? ?? [];
+    return list.map((f) => f as String).toList();
   }
 
   // Fire-and-forget — records this product as viewed for the recently-

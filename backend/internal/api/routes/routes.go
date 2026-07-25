@@ -58,6 +58,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// public product routes
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
 	router.HandleFunc("/products/categories", categories.ListHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/products/forms", products.ProductFormsHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/{id}", products.GetProductHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-carousel", homecarousel.ListHandler(db, rdb)).Methods("GET")

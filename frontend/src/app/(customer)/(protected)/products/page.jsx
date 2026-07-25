@@ -46,6 +46,8 @@ function ProductsPageInner() {
   const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get("search") || "");
   const [categories, setCategories] = useState([]);
   const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "");
+  const [forms, setForms] = useState([]);
+  const [activeForm, setActiveForm] = useState(searchParams.get("form") || "");
 
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -62,13 +64,21 @@ function ProductsPageInner() {
       .catch(() => setCategories([]));
   }, []);
 
-  // Pick up ?search= / ?category= when navigating here again with a new
-  // query (e.g. from the navbar search, or "Explore more in <category>")
+  // Fetch the distinct product types (forms) once
+  useEffect(() => {
+    apiFetch("/products/forms")
+      .then((data) => setForms(Array.isArray(data) ? data : []))
+      .catch(() => setForms([]));
+  }, []);
+
+  // Pick up ?search= / ?category= / ?form= when navigating here again with a
+  // new query (e.g. from the navbar search, or "Explore more in <category>")
   useEffect(() => {
     const q = searchParams.get("search") || "";
     setSearch(q);
     setDebouncedSearch(q);
     setActiveCategory(searchParams.get("category") || "");
+    setActiveForm(searchParams.get("form") || "");
   }, [searchParams]);
 
   // Lightweight top-5 suggestions as you type — does NOT reload the full grid
@@ -96,10 +106,10 @@ function ProductsPageInner() {
     setShowSuggestions(false);
   };
 
-  // Reset page on category change
+  // Reset page on category/type change
   useEffect(() => {
     setPage(1);
-  }, [activeCategory]);
+  }, [activeCategory, activeForm]);
 
   // Fetch products
   useEffect(() => {
@@ -110,6 +120,7 @@ function ProductsPageInner() {
     });
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (activeCategory) params.set("category", activeCategory);
+    if (activeForm) params.set("form", activeForm);
 
     apiFetch(`/products?${params}`)
       .then((data) => {
@@ -119,7 +130,7 @@ function ProductsPageInner() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, debouncedSearch, activeCategory]);
+  }, [page, debouncedSearch, activeCategory, activeForm]);
 
   return (
     <div className="max-w-[96rem] mx-auto px-10 py-10">
@@ -131,6 +142,7 @@ function ProductsPageInner() {
             <p className="text-sm text-gray-400 mt-1">
               {total} product{total !== 1 ? "s" : ""}
               {activeCategory ? ` in ${activeCategory}` : ""}
+              {activeForm ? ` (${activeForm})` : ""}
               {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
             </p>
           )}
@@ -269,6 +281,26 @@ function ProductsPageInner() {
         </div>
       )}
 
+      {/* Type (product form) filter */}
+      {forms.length > 0 && (
+        <div className="flex items-center gap-2 mb-8">
+          <label htmlFor="type-filter" className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+            Type
+          </label>
+          <select
+            id="type-filter"
+            value={activeForm}
+            onChange={(e) => setActiveForm(e.target.value)}
+            className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-gray-400 transition-colors"
+          >
+            <option value="">All</option>
+            {forms.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Products grid */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
@@ -284,11 +316,12 @@ function ProductsPageInner() {
       ) : products.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-400 text-sm">No products found</p>
-          {(debouncedSearch || activeCategory) && (
+          {(debouncedSearch || activeCategory || activeForm) && (
             <button
               onClick={() => {
                 setSearch("");
                 setActiveCategory("");
+                setActiveForm("");
               }}
               className="mt-3 text-xs text-red-600 hover:text-red-700 transition-colors"
             >

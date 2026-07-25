@@ -3,8 +3,10 @@ package models
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -242,7 +244,70 @@ func GetProductCategoriesBatch(ctx context.Context, db *pgxpool.Pool, productIDs
 	return result, rows.Err()
 }
 
-func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category string, limit, offset int, nameOnly bool) ([]Product, int, error) {
+// GetDistinctProductForms returns one canonical label per product_form in
+// use, across active products — powers the "Type" filter on the product
+// listing. Raw data has case/whitespace variants of the same form (e.g.
+// "Capsule", "Capsules ", "capsule") which are collapsed into a single
+// entry here; GetAllProducts' form filter does the matching case- and
+// whitespace-insensitively so selecting the canonical label still catches
+// every variant in the actual data.
+func GetDistinctProductForms(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+	rows, err := db.Query(ctx,
+		`SELECT DISTINCT product_form FROM products
+		 WHERE is_active = TRUE AND product_form IS NOT NULL AND TRIM(product_form) != ''`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// key (lowercased, trimmed) -> chosen display label for that group.
+	seen := map[string]string{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		label := titleCase(trimmed)
+		// Prefer the shortest label for a group (e.g. "Capsule" over
+		// "Capsules") as a simple, deterministic tie-breaker.
+		if existing, ok := seen[key]; !ok || len(label) < len(existing) {
+			seen[key] = label
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	forms := make([]string, 0, len(seen))
+	for _, label := range seen {
+		forms = append(forms, label)
+	}
+	sort.Strings(forms)
+	return forms, nil
+}
+
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		r := []rune(w)
+		if len(r) > 0 {
+			r[0] = unicode.ToUpper(r[0])
+			for j := 1; j < len(r); j++ {
+				r[j] = unicode.ToLower(r[j])
+			}
+			words[i] = string(r)
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form string, limit, offset int, nameOnly bool) ([]Product, int, error) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
@@ -264,6 +329,11 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 			`EXISTS (SELECT 1 FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = products.id AND c.name = $%d)`,
 			argIdx))
 		args = append(args, category)
+		argIdx++
+	}
+	if form != "" {
+		conditions = append(conditions, fmt.Sprintf("LOWER(TRIM(product_form)) = LOWER(TRIM($%d))", argIdx))
+		args = append(args, form)
 		argIdx++
 	}
 

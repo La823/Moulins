@@ -127,6 +127,21 @@ func GetDoctorsWithDOB(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) 
 	return doctors, rows.Err()
 }
 
+// HasUpcomingBirthdayMeeting reports whether a doctor already has a
+// not-yet-happened auto-created "Birthday" calendar entry — used by the
+// scheduler to know whether next year's occurrence still needs creating.
+func HasUpcomingBirthdayMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) (bool, error) {
+	var exists bool
+	err := db.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM meetings
+			WHERE doctor_id = $1 AND title = 'Birthday' AND status = 'upcoming' AND scheduled_at > now()
+		)`,
+		doctorID,
+	).Scan(&exists)
+	return exists, err
+}
+
 // GetAllDoctorsWithLocation returns every doctor across every partner that
 // has a pinned clinic location, for the admin-only doctors map.
 func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorWithOwner, error) {
