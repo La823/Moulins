@@ -67,14 +67,23 @@ export default function HomePage() {
 
   return (
     <>
-      {/* Hero */}
-      <section className="relative h-[92vh] flex items-end overflow-hidden">
+      {/* Hero — same crop the mobile app uses below md, desktop banner above */}
+      <section className="relative h-[100svh] md:h-[92vh] flex items-end overflow-hidden">
         {/* Backdrop image */}
         <Image
           src="/pic.jpg.jpeg"
           alt=""
           fill
-          className="object-cover"
+          className="hidden md:block object-cover"
+          priority
+          quality={90}
+        />
+        <Image
+          src="/mobilehome.png"
+          alt=""
+          fill
+          className="md:hidden object-cover"
+          style={{ objectPosition: "30% 0%" }}
           priority
           quality={90}
         />
@@ -82,10 +91,10 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
 
         {/* Content — left aligned, bottom */}
-        <div className="relative z-10 max-w-7xl w-full mx-auto px-8 pb-20">
+        <div className="relative z-10 max-w-7xl w-full mx-auto px-6 md:px-8 pb-14 md:pb-20">
           <motion.p
             {...rise(0.1)}
-            className="text-sm uppercase tracking-[0.3em] text-white/50 mb-5"
+            className="text-xs md:text-sm uppercase tracking-[0.2em] md:tracking-[0.3em] text-white/50 mb-4 md:mb-5"
           >
             Because every treatment begins with trust.
           </motion.p>
@@ -93,7 +102,7 @@ export default function HomePage() {
           <motion.h1
             {...rise(0.25)}
             style={{ fontWeight: 600 }}
-            className="text-5xl md:text-6xl lg:text-7xl text-white leading-[1.1] mb-4"
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl text-white leading-[1.1] mb-3 md:mb-4"
           >
             Healthcare
           </motion.h1>
@@ -101,30 +110,30 @@ export default function HomePage() {
           <motion.h1
             {...rise(0.4)}
             style={{ fontWeight: 350 }}
-            className="text-5xl md:text-6xl lg:text-7xl text-white leading-[1.1] mb-8"
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl text-white leading-[1.1] mb-6 md:mb-8"
           >
             beyond medicine
           </motion.h1>
 
           <motion.p
             {...rise(0.55)}
-            className="text-lg text-white/60 font-light max-w-xl mb-10"
+            className="text-base md:text-lg text-white/60 font-light max-w-xl mb-8 md:mb-10"
           >
             Delivering pharmaceuticals, nutraceuticals and active ingredients
             with scientific precision, uncompromising quality, and an
             unwavering commitment to better patient outcomes.
           </motion.p>
 
-          <motion.div {...rise(0.7)} className="flex items-center gap-4">
+          <motion.div {...rise(0.7)} className="flex flex-wrap items-center gap-3 md:gap-4">
             <Link
               href="/products"
-              className="px-8 py-3.5 bg-white text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
+              className="px-6 md:px-8 py-3 md:py-3.5 bg-white text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-100 transition-colors"
             >
               Browse Products
             </Link>
             <Link
               href="/about"
-              className="px-8 py-3.5 border border-white/30 text-white text-sm font-medium rounded-lg hover:bg-white/10 transition-colors"
+              className="px-6 md:px-8 py-3 md:py-3.5 border border-white/30 text-white text-sm font-medium rounded-lg hover:bg-white/10 transition-colors"
             >
               About Us
             </Link>

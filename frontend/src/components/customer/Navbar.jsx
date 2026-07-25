@@ -201,6 +201,7 @@ export default function CustomerNavbar() {
   const { user, logout } = useAuth();
   const { itemCount, openCart } = useCart();
   const [activeMenu, setActiveMenu] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -251,6 +252,7 @@ export default function CustomerNavbar() {
     const handleClickOutside = (e) => {
       if (navRef.current && !navRef.current.contains(e.target)) {
         setActiveMenu(null);
+        setMobileMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -260,14 +262,35 @@ export default function CustomerNavbar() {
   // Close on Escape key
   useEffect(() => {
     const handleEsc = (e) => {
-      if (e.key === "Escape") setActiveMenu(null);
+      if (e.key === "Escape") {
+        setActiveMenu(null);
+        setMobileMenuOpen(false);
+      }
     };
     document.addEventListener("keydown", handleEsc);
     return () => document.removeEventListener("keydown", handleEsc);
   }, []);
 
+  // Lock body scroll while the mobile drawer is open
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
   const toggle = (id) => setActiveMenu((prev) => (prev === id ? null : id));
-  const close = () => setActiveMenu(null);
+  const close = () => {
+    setActiveMenu(null);
+    setMobileMenuOpen(false);
+  };
+
+  // Special-type customers get an extra top-level tile leading to their own
+  // private product division. Hidden from everyone else.
+  const navItems =
+    user?.customer_type === "special"
+      ? [...NAV_ITEMS, { id: "special", label: "Special", href: "/special" }]
+      : NAV_ITEMS;
 
   const isDropdownOpen =
     activeMenu && activeMenu !== "search" && dropdownContent[activeMenu];
@@ -276,7 +299,7 @@ export default function CustomerNavbar() {
     <header ref={navRef} className="sticky top-0 z-50">
       {/* Main navigation bar */}
       <nav className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-8 h-[72px] flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 lg:h-[72px] flex items-center justify-between">
           {/* Logo */}
           <Link href="/" onClick={close}>
             <Image
@@ -284,14 +307,53 @@ export default function CustomerNavbar() {
               alt="Moulins"
               width={120}
               height={40}
-              className="h-9 w-auto"
+              className="h-7 sm:h-8 lg:h-9 w-auto"
               priority
             />
           </Link>
 
-          {/* Nav items + utilities */}
-          <div className="flex items-center gap-10">
-            {NAV_ITEMS.map((item) =>
+          {/* Mobile utilities: cart (logged in only) + hamburger */}
+          <div className="flex lg:hidden items-center gap-4">
+            {user && (
+              <button
+                onClick={() => { close(); openCart(); }}
+                className="relative text-gray-700"
+                aria-label="Cart"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                  />
+                </svg>
+                {itemCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
+                    {itemCount > 9 ? "9+" : itemCount}
+                  </span>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-label="Menu"
+              className="text-gray-700 w-8 h-8 flex items-center justify-center"
+            >
+              {mobileMenuOpen ? (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Nav items + utilities (desktop) */}
+          <div className="hidden lg:flex items-center gap-10">
+            {navItems.map((item) =>
               item.href ? (
                 <Link
                   key={item.id}
@@ -394,31 +456,33 @@ export default function CustomerNavbar() {
               </svg>
             </a>
 
-            {/* Cart icon */}
-            <button
-              onClick={() => { close(); openCart(); }}
-              className="relative text-gray-700 hover:text-red-600 transition-colors duration-200"
-              aria-label="Cart"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                viewBox="0 0 24 24"
+            {/* Cart icon — only shown to logged-in users, nothing to cart otherwise */}
+            {user && (
+              <button
+                onClick={() => { close(); openCart(); }}
+                className="relative text-gray-700 hover:text-red-600 transition-colors duration-200"
+                aria-label="Cart"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                />
-              </svg>
-              {itemCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
-                  {itemCount > 9 ? "9+" : itemCount}
-                </span>
-              )}
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                  />
+                </svg>
+                {itemCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
+                    {itemCount > 9 ? "9+" : itemCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* User area */}
             {!user && (
@@ -519,6 +583,122 @@ export default function CustomerNavbar() {
           </div>
         </div>
       </nav>
+
+      {/* Mobile drawer */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: panelEase }}
+            className="lg:hidden bg-white border-b border-gray-200 shadow-sm overflow-hidden"
+          >
+            <div className="px-4 sm:px-8 py-6 max-h-[80vh] overflow-y-auto">
+              {/* Search */}
+              <form onSubmit={handleSearchSubmit} className="mb-6">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search products..."
+                  className="w-full text-base text-gray-900 placeholder:text-gray-400 outline-none border border-gray-200 rounded-lg px-4 py-2.5"
+                />
+              </form>
+
+              {/* Top-level nav */}
+              <div className="flex flex-col divide-y divide-gray-100 border-t border-gray-100">
+                <Link href="/products" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
+                  Products
+                </Link>
+                {navItems.some((i) => i.id === "special") && (
+                  <Link href="/special" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
+                    Special
+                  </Link>
+                )}
+                <Link href="/about" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
+                  About
+                </Link>
+                <Link href="/contact" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
+                  Contact
+                </Link>
+              </div>
+
+              {/* Divisions */}
+              <div className="mt-6">
+                <p className="font-heading text-sm font-medium text-red-600 mb-3">Our Divisions</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {DIVISIONS.map((division) => (
+                    <Link
+                      key={division.href}
+                      href={division.href}
+                      onClick={close}
+                      className="text-sm text-gray-700"
+                    >
+                      {division.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              {/* Contact icons */}
+              <div className="flex items-center gap-6 mt-6 pt-6 border-t border-gray-100">
+                <a
+                  href="https://wa.me/9815535304?text=Hi%2C%20I%E2%80%99m%20interested%20in%20partnering%20with%20Moulins%20Pharmaceuticals."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="WhatsApp"
+                >
+                  <svg className="w-7 h-7" fill="#000000" viewBox="0 0 640 640" aria-hidden="true">
+                    <path d="M476.9 161.1C435 119.1 379.2 96 319.9 96C197.5 96 97.9 195.6 97.9 318C97.9 357.1 108.1 395.3 127.5 429L96 544L213.7 513.1C246.1 530.8 282.6 540.1 319.8 540.1L319.9 540.1C442.2 540.1 544 440.5 544 318.1C544 258.8 518.8 203.1 476.9 161.1zM319.9 502.7C286.7 502.7 254.2 493.8 225.9 477L219.2 473L149.4 491.3L168 423.2L163.6 416.2C145.1 386.8 135.4 352.9 135.4 318C135.4 216.3 218.2 133.5 320 133.5C369.3 133.5 415.6 152.7 450.4 187.6C485.2 222.5 506.6 268.8 506.5 318.1C506.5 419.9 421.6 502.7 319.9 502.7zM421.1 364.5C415.6 361.7 388.3 348.3 383.2 346.5C378.1 344.6 374.4 343.7 370.7 349.3C367 354.9 356.4 367.3 353.1 371.1C349.9 374.8 346.6 375.3 341.1 372.5C308.5 356.2 287.1 343.4 265.6 306.5C259.9 296.7 271.3 297.4 281.9 276.2C283.7 272.5 282.8 269.3 281.4 266.5C280 263.7 268.9 236.4 264.3 225.3C259.8 214.5 255.2 216 251.8 215.8C248.6 215.6 244.9 215.6 241.2 215.6C237.5 215.6 231.5 217 226.4 222.5C221.3 228.1 207 241.5 207 268.8C207 296.1 226.9 322.5 229.6 326.2C232.4 329.9 268.7 385.9 324.4 410C359.6 425.2 373.4 426.5 391 423.9C401.7 422.3 423.8 410.5 428.4 397.5C433 384.5 433 373.4 431.6 371.1C430.3 368.6 426.6 367.2 421.1 364.5z" />
+                  </svg>
+                </a>
+                <a href="mailto:info@moulinspharma.com" aria-label="Email us">
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7" />
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                  </svg>
+                </a>
+              </div>
+
+              {/* Account */}
+              <div className="mt-6 pt-6 border-t border-gray-100">
+                {!user && (
+                  <Link
+                    href="/login"
+                    onClick={close}
+                    className="block w-full text-center px-4 py-3 text-sm font-medium text-white rounded-lg"
+                    style={{ backgroundColor: "#00A6A4" }}
+                  >
+                    Login
+                  </Link>
+                )}
+                {user && (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium text-gray-900 mb-2">{user.username || user.phone_number}</p>
+                    <Link href="/profile" onClick={close} className="py-2 text-sm text-gray-700">My Profile</Link>
+                    <Link
+                      href={user.role === "admin" || user.role === "employee" ? "/panel" : "/dashboard"}
+                      onClick={close}
+                      className="py-2 text-sm text-gray-700"
+                    >
+                      {user.role === "admin" || user.role === "employee" ? "Panel" : "Dashboard"}
+                    </Link>
+                    <Link href="/chat" onClick={close} className="py-2 text-sm text-gray-700">Messages</Link>
+                    <Link href="/learning" onClick={close} className="py-2 text-sm text-gray-700">Learning</Link>
+                    <button
+                      onClick={() => { close(); logout(); }}
+                      className="text-left py-2 text-sm text-gray-700"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Dropdown panels — container animates height on open/close,
           content crossfades when switching between menus */}

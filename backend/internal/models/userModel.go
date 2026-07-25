@@ -17,6 +17,7 @@ type User struct {
 	PasswordHash     string     `json:"-"`
 	PlainPassword    *string    `json:"plain_password,omitempty"`
 	Role             string     `json:"role"`
+	CustomerType     string     `json:"customer_type"`
 	IsPhoneVerified  bool       `json:"is_phone_verified"`
 	OnboardingStep   int        `json:"onboarding_step"`
 	Pincode          *string    `json:"pincode,omitempty"`
@@ -129,7 +130,7 @@ func GetUserByPhone(
 	query := `
 		SELECT
 			id, phone_number, password_hash, username, email,
-			role, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE phone_number = $1;
 	`
@@ -137,7 +138,7 @@ func GetUserByPhone(
 	var u User
 	err := db.QueryRow(ctx, query, phoneNumber).Scan(
 		&u.ID, &u.PhoneNumber, &u.PasswordHash, &u.Username, &u.Email,
-		&u.Role, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -153,7 +154,7 @@ func GetUserByID(
 	query := `
 		SELECT
 			id, phone_number, username, email,
-			role, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1;
 	`
@@ -161,7 +162,7 @@ func GetUserByID(
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email,
-		&u.Role, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -235,14 +236,14 @@ func GetLastUsers(
 func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password,
-			role, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
-		&u.Role, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -275,9 +276,20 @@ func UpdateUserRole(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, rol
 	return err
 }
 
+// UpdateCustomerType sets a partner's product-catalog type ("normal" or
+// "special"). Never set at onboarding — admin-only, changed later via the
+// partner detail page.
+func UpdateCustomerType(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, customerType string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE users SET customer_type = $1, updated_at = NOW() WHERE id = $2`,
+		customerType, userID,
+	)
+	return err
+}
+
 func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User, error) {
 	query := `
-		SELECT id, phone_number, username, email, plain_password, role,
+		SELECT id, phone_number, username, email, plain_password, role, customer_type,
 			is_phone_verified, onboarding_step, pincode, city, state, latitude, longitude,
 			last_login_at, created_at, updated_at
 		FROM users
@@ -293,7 +305,7 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	users := make([]User, 0)
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role,
+		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role, &u.CustomerType,
 			&u.IsPhoneVerified, &u.OnboardingStep, &u.Pincode, &u.City, &u.State, &u.Latitude, &u.Longitude,
 			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err

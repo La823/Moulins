@@ -11,17 +11,26 @@ import (
 )
 
 // StartScheduler runs a lightweight background ticker for time-based jobs.
-// Meeting reminders are the first user; any future scheduled job (e.g.
-// picking up notifications.scheduled_at once that path is built) can add a
-// branch here without introducing a second scheduler.
+// Meeting reminders need minute-level precision (the "1 hour before" alert
+// has to fire close to the actual hour mark), so the ticker itself stays at
+// 1 minute — but the birthday checks don't need that granularity at all, so
+// they're gated to actually run once per calendar day instead of on every
+// tick, tracked via lastBirthdayRunDate below.
 func StartScheduler(db *pgxpool.Pool) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
+	var lastBirthdayRunDate string
+
 	for range ticker.C {
 		dispatchMeetingReminders(db)
-		dispatchBirthdayReminders(db)
-		dispatchBirthdayMeetingSync(db)
+
+		today := time.Now().Format("2006-01-02")
+		if today != lastBirthdayRunDate {
+			dispatchBirthdayReminders(db)
+			dispatchBirthdayMeetingSync(db)
+			lastBirthdayRunDate = today
+		}
 	}
 }
 

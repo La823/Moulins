@@ -24,6 +24,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
@@ -127,6 +128,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// product image downloads — gated behind login (any authenticated user)
 	protected.HandleFunc("/products/images/{imgId}/download-url", products.DownloadImageHandler(db)).Methods("GET")
+
+	// special products — a special-type customer's own private catalog
+	// (auth-gated on the requester's own id inside the handlers)
+	protected.HandleFunc("/special-products", specialproducts.ListMySpecialProductsHandler(db)).Methods("GET")
+	protected.HandleFunc("/special-products/{id}", specialproducts.GetMySpecialProductHandler(db)).Methods("GET")
 
 	// recently viewed products (any authenticated user)
 	protected.HandleFunc("/products/{id}/view", products.RecordProductViewHandler(db)).Methods("POST")
@@ -246,6 +252,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/verify-document", userauth.VerifyPartnerDocumentHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — order management
@@ -278,6 +285,18 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
+
+	// special product management (admin only, same product permission)
+	productStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
+	productStaff.HandleFunc("/special-products", specialproducts.AdminCreateSpecialProductHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/special-products/upload-url", specialproducts.AdminUploadURLHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/special-products/document-upload-url", specialproducts.AdminDocUploadURLHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/special-products/{id}", specialproducts.AdminUpdateSpecialProductHandler(db)).Methods("PUT")
+	productStaff.HandleFunc("/special-products/{id}", specialproducts.AdminDeleteSpecialProductHandler(db)).Methods("DELETE")
+	productStaff.HandleFunc("/special-products/{id}/images", specialproducts.AdminAddImageHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/special-products/images/{imgId}", specialproducts.AdminDeleteImageHandler(db)).Methods("DELETE")
+	productStaff.HandleFunc("/special-products/{id}/documents", specialproducts.AdminAddDocumentHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/special-products/documents/{docId}", specialproducts.AdminDeleteDocumentHandler(db)).Methods("DELETE")
 
 	// category routes (admin only, same product permission)
 	productStaff.HandleFunc("/categories", categories.CreateHandler(db, rdb)).Methods("POST")

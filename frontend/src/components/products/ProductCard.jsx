@@ -6,13 +6,13 @@ import { useCart } from "@/context/CartContext";
 // Shared product card — used on the products listing page and the
 // Recently Viewed / Explore More sections on the product detail page, so
 // they all look and behave identically.
-export default function ProductCard({ product: p }) {
+export default function ProductCard({ product: p, basePath = "/products" }) {
   const router = useRouter();
   const { addToCart } = useCart();
 
   return (
     <div
-      onClick={() => router.push(`/products/${p.id}`)}
+      onClick={() => router.push(`${basePath}/${p.id}`)}
       className="group cursor-pointer transition-all duration-300 hover:-translate-y-1"
     >
       {p.categories && p.categories.length > 0 && (

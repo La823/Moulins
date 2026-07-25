@@ -13,7 +13,6 @@ import '../../services/learning_service.dart';
 import '../../models/learning.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/responsive.dart';
-import '../../widgets/fullscreen_image_gallery.dart';
 import '../../widgets/product_card.dart';
 import '../../data/divisions.dart';
 
@@ -187,15 +186,16 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                           itemCount: p.images.length,
                           onPageChanged: (i) => setState(() => _selectedImage = i),
                           itemBuilder: (context, i) => GestureDetector(
-                            onTap: () => openFullScreenImageGallery(
-                              context,
-                              imageUrls: p.images.map((img) => img.imageUrl).toList(),
-                              initialIndex: _selectedImage,
-                              onPageChanged: (newIndex) {
-                                setState(() => _selectedImage = newIndex);
-                                _imagePageCtrl.jumpToPage(newIndex);
-                              },
-                            ),
+                            onTap: () async {
+                              final lastViewed = await context.push<int>('/gallery', extra: {
+                                'imageUrls': p.images.map((img) => img.imageUrl).toList(),
+                                'initialIndex': _selectedImage,
+                              });
+                              if (lastViewed != null && mounted) {
+                                setState(() => _selectedImage = lastViewed);
+                                _imagePageCtrl.jumpToPage(lastViewed);
+                              }
+                            },
                             child: CachedNetworkImage(
                               imageUrl: p.images[i].imageUrl,
                               fit: BoxFit.cover,

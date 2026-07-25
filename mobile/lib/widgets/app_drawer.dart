@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../data/divisions.dart';
+import '../providers/auth_provider.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -9,11 +11,13 @@ const _ink = Color(0xFF1A1A1A);
 /// this to a screen's Scaffold is enough — Flutter auto-adds the 3-line
 /// menu icon to that screen's AppBar when `drawer` is set and no explicit
 /// `leading` is given.
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+
     return Drawer(
       backgroundColor: Colors.white,
       child: SafeArea(
@@ -31,6 +35,16 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
 
+            // Special-type customers get a tile into their own private catalog.
+            if (user?.isSpecial ?? false)
+              ListTile(
+                leading: const Icon(Icons.star_outline, color: _teal),
+                title: const Text('Special'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/special');
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.people_outline, color: _teal),
               title: const Text('Doctors'),

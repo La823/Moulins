@@ -31,6 +31,8 @@ export default function PartnerDetailPage() {
   const [pwSuccess, setPwSuccess] = useState("");
   const [pwError, setPwError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [changingType, setChangingType] = useState(false);
+  const [typeError, setTypeError] = useState("");
   const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -92,6 +94,23 @@ export default function PartnerDetailPage() {
       setPwError(err.message);
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleCustomerTypeChange = async (newType) => {
+    if (newType === (partner.customer_type || "normal")) return;
+    setChangingType(true);
+    setTypeError("");
+    try {
+      await apiFetch(`/admin/partners/${id}/customer-type`, {
+        method: "PUT",
+        body: JSON.stringify({ customer_type: newType }),
+      });
+      setPartner((prev) => ({ ...prev, customer_type: newType }));
+    } catch (err) {
+      setTypeError(err.message);
+    } finally {
+      setChangingType(false);
     }
   };
 
@@ -168,6 +187,32 @@ export default function PartnerDetailPage() {
                 </h2>
                 <p className="text-sm text-gray-500">{partner.role}</p>
               </div>
+            </div>
+
+            {/* Customer type — controls whether this partner sees their own
+                private "Special" product division. Admin-only. */}
+            <div className="mb-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                Customer Type
+              </p>
+              <select
+                value={partner.customer_type || "normal"}
+                onChange={(e) => handleCustomerTypeChange(e.target.value)}
+                disabled={changingType}
+                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent disabled:opacity-50"
+              >
+                <option value="normal">Normal</option>
+                <option value="special">Special</option>
+              </select>
+              {changingType && (
+                <p className="text-xs text-gray-400 mt-1">Updating...</p>
+              )}
+              {typeError && (
+                <p className="text-xs text-red-600 mt-1">{typeError}</p>
+              )}
+              <p className="text-[11px] text-gray-400 mt-1">
+                Special partners get their own private product catalog.
+              </p>
             </div>
 
             <div className="space-y-3">

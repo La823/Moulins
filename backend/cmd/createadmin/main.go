@@ -26,6 +26,9 @@ func main() {
 		&username,
 		nil,
 		"admin",
+		nil,
+		nil,
+		nil,
 	)
 	if err != nil {
 		log.Fatalf("failed to create admin: %v", err)

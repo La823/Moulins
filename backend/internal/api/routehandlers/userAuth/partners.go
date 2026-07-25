@@ -35,6 +35,7 @@ type PartnerDetailResponse struct {
 	Email           *string                  `json:"email,omitempty"`
 	PlainPassword   *string                  `json:"plain_password,omitempty"`
 	Role            string                   `json:"role"`
+	CustomerType    string                   `json:"customer_type"`
 	IsPhoneVerified bool                     `json:"is_phone_verified"`
 	OnboardingStep  int                      `json:"onboarding_step"`
 	LastLoginAt     *string                  `json:"last_login_at,omitempty"`
@@ -77,6 +78,7 @@ func GetPartnerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Email:           user.Email,
 			PlainPassword:   user.PlainPassword,
 			Role:            user.Role,
+			CustomerType:    user.CustomerType,
 			IsPhoneVerified: user.IsPhoneVerified,
 			OnboardingStep:  user.OnboardingStep,
 			CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -155,6 +157,43 @@ func UpdatePartnerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Hand
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "password updated"})
+	}
+}
+
+// PUT /admin/partners/{id}/customer-type — switch a partner between the
+// normal Moulins catalog and their own private "special" product division.
+// Admin-only; never set at onboarding. Lives in the DB (and the cached user
+// object), so the partner sees the change on their next /auth/me refresh.
+func UpdatePartnerCustomerTypeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			CustomerType string `json:"customer_type"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if body.CustomerType != "normal" && body.CustomerType != "special" {
+			http.Error(w, "customer_type must be 'normal' or 'special'", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateCustomerType(r.Context(), db, userID, body.CustomerType); err != nil {
+			log.Printf("update partner customer type error: %v", err)
+			http.Error(w, "could not update customer type", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "customer type updated", "customer_type": body.CustomerType})
 	}
 }
 

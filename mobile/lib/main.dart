@@ -10,6 +10,8 @@ import 'services/local_notifications_service.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/products/products_screen.dart';
 import 'screens/products/product_detail_screen.dart';
+import 'screens/products/special_products_screen.dart';
+import 'screens/products/special_product_detail_screen.dart';
 import 'screens/orders/orders_screen.dart';
 import 'screens/orders/order_detail_screen.dart';
 import 'screens/doctors/doctors_screen.dart';
@@ -26,6 +28,7 @@ import 'screens/learning/learning_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/divisions/division_landing_screen.dart';
 import 'data/divisions.dart';
+import 'widgets/fullscreen_image_gallery.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,6 +78,20 @@ class MoulinsApp extends ConsumerWidget {
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/cart', builder: (_, __) => const CartScreen()),
         GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
+        // Top-level (not nested in the ShellRoute) so it covers the full
+        // screen including the persistent bottom nav bar, and so go_router
+        // itself owns back/predictive-back handling for it — see the
+        // comment in fullscreen_image_gallery.dart for why that matters.
+        GoRoute(
+          path: '/gallery',
+          builder: (_, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return FullScreenImageGalleryScreen(
+              imageUrls: List<String>.from(extra['imageUrls'] as List),
+              initialIndex: extra['initialIndex'] as int? ?? 0,
+            );
+          },
+        ),
         ShellRoute(
           builder: (_, state, child) =>
               _AppShell(child: child, location: state.uri.path),
@@ -88,6 +105,17 @@ class MoulinsApp extends ConsumerWidget {
                   path: ':id',
                   builder: (_, state) =>
                       ProductDetailScreen(productId: state.pathParameters['id']!),
+                ),
+              ],
+            ),
+            GoRoute(
+              path: '/special',
+              builder: (_, __) => const SpecialProductsScreen(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (_, state) =>
+                      SpecialProductDetailScreen(productId: state.pathParameters['id']!),
                 ),
               ],
             ),
