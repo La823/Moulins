@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import ProductCard from "@/components/products/ProductCard";
+import { useAuth } from "@/context/AuthContext";
 
 // Category name (as stored in the DB) -> its division banner image.
 const CATEGORY_ICONS = {
@@ -25,6 +26,24 @@ function getCategoryIcon(name) {
   return CATEGORY_ICONS[name];
 }
 
+// Sentinel activeCategory value for the "Special" filter tile — special
+// products aren't categorized/paginated server-side like regular products,
+// so this branches the fetch/merge logic below instead of ever being sent
+// to the backend as a real category name.
+const SPECIAL_FILTER = "__special__";
+
+function matchesSpecialFilters(sp, search, form) {
+  if (search) {
+    const q = search.toLowerCase();
+    const hay = `${sp.name || ""} ${sp.description || ""}`.toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  if (form) {
+    if ((sp.product_form || "").trim().toLowerCase() !== form.trim().toLowerCase()) return false;
+  }
+  return true;
+}
+
 export default function ProductsPage() {
   return (
     <Suspense fallback={null}>
@@ -34,6 +53,9 @@ export default function ProductsPage() {
 }
 
 function ProductsPageInner() {
+  const { user } = useAuth();
+  const isSpecialCustomer = user?.customer_type === "special";
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -52,8 +74,25 @@ function ProductsPageInner() {
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  const [specialProducts, setSpecialProducts] = useState([]);
+
   const searchRef = useRef(null);
   const router = useRouter();
+
+  // Fetch this customer's own private catalog once — small list, no
+  // pagination needed. Tagged is_special so ProductCard routes to /special
+  // instead of /products, and so it can be merged into (or exclusively
+  // shown for) the regular grid below.
+  useEffect(() => {
+    if (!isSpecialCustomer) return;
+    apiFetch("/special-products")
+      .then((data) =>
+        setSpecialProducts(
+          (Array.isArray(data) ? data : []).map((p) => ({ ...p, is_special: true }))
+        )
+      )
+      .catch(() => setSpecialProducts([]));
+  }, [isSpecialCustomer]);
 
   // Fetch categories once
   useEffect(() => {
@@ -113,6 +152,20 @@ function ProductsPageInner() {
 
   // Fetch products
   useEffect(() => {
+    // "Special" tile selected — special products aren't a real backend
+    // category, so just show this customer's own catalog, filtered
+    // client-side, no pagination (the list is always small).
+    if (activeCategory === SPECIAL_FILTER) {
+      const filtered = specialProducts.filter((sp) =>
+        matchesSpecialFilters(sp, debouncedSearch, activeForm)
+      );
+      setProducts(filtered);
+      setTotal(filtered.length);
+      setTotalPages(1);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
@@ -124,13 +177,27 @@ function ProductsPageInner() {
 
     apiFetch(`/products?${params}`)
       .then((data) => {
-        setProducts(data.products || []);
-        setTotal(data.total || 0);
+        let list = data.products || [];
+        let combinedTotal = data.total || 0;
+
+        // "All" (no category picked): fold this customer's own special
+        // products in alongside the regular Moulins catalog — only on page
+        // 1, so the merged extras don't duplicate across pages.
+        if (!activeCategory && isSpecialCustomer && page === 1) {
+          const extras = specialProducts.filter((sp) =>
+            matchesSpecialFilters(sp, debouncedSearch, activeForm)
+          );
+          list = [...extras, ...list];
+          combinedTotal += extras.length;
+        }
+
+        setProducts(list);
+        setTotal(combinedTotal);
         setTotalPages(data.total_pages || 0);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, debouncedSearch, activeCategory, activeForm]);
+  }, [page, debouncedSearch, activeCategory, activeForm, specialProducts, isSpecialCustomer]);
 
   return (
     <div className="max-w-[96rem] mx-auto px-10 py-10">
@@ -141,7 +208,11 @@ function ProductsPageInner() {
           {!loading && (
             <p className="text-sm text-gray-400 mt-1">
               {total} product{total !== 1 ? "s" : ""}
-              {activeCategory ? ` in ${activeCategory}` : ""}
+              {activeCategory === SPECIAL_FILTER
+                ? " in your 13 Alpha Unit catalog"
+                : activeCategory
+                ? ` in ${activeCategory}`
+                : ""}
               {activeForm ? ` (${activeForm})` : ""}
               {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
             </p>
@@ -219,7 +290,7 @@ function ProductsPageInner() {
         <div
           className="grid grid-flow-col grid-rows-2 justify-between gap-3 mb-10 w-full p-3 border border-gray-200 rounded-xl bg-gray-200"
           style={{
-            gridTemplateColumns: `repeat(${Math.ceil((categories.length + 1) / 2)}, 1fr)`,
+            gridTemplateColumns: `repeat(${Math.ceil((categories.length + 1 + (isSpecialCustomer ? 1 : 0)) / 2)}, 1fr)`,
           }}
         >
           <button
@@ -278,26 +349,90 @@ function ProductsPageInner() {
               </button>
             );
           })}
+          {isSpecialCustomer && (user?.special_tile_image_url ? (
+            <button
+              onClick={() => setActiveCategory(activeCategory === SPECIAL_FILTER ? "" : SPECIAL_FILTER)}
+              title="Your private product catalog"
+              className={`group/icon relative rounded-md overflow-hidden transition-all duration-200 w-full h-full min-w-0 bg-gray-50 hover:scale-[1.02] border-4 ${
+                activeCategory === SPECIAL_FILTER ? "border-[#00A6A4]" : "border-transparent hover:border-[#00A6A4]"
+              }`}
+              style={{ padding: 2 }}
+            >
+              <img
+                src={user.special_tile_image_url}
+                alt="13 Alpha Unit"
+                className="w-full h-full rounded-md object-contain transition-transform duration-200 group-hover/icon:scale-105"
+              />
+              <span className="absolute inset-x-0 bottom-0 bg-black/50 text-white text-[11px] font-medium py-0.5">
+                13 Alpha Unit
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setActiveCategory(activeCategory === SPECIAL_FILTER ? "" : SPECIAL_FILTER)}
+              title="Your private product catalog"
+              className={`px-4 py-1.5 text-sm font-medium transition-all duration-200 min-w-0 border-4 rounded-md ${
+                activeCategory === SPECIAL_FILTER ? "border-transparent" : "border-transparent hover:border-[#00A6A4]"
+              }`}
+              style={{ backgroundColor: "#00A6A4", color: "white", opacity: activeCategory === SPECIAL_FILTER ? 1 : 0.85 }}
+            >
+              13 Alpha Unit
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Type (product form) filter */}
+      {/* Type (product form) filter — small pills on larger screens, a
+          dropdown only below sm where pills would wrap/overflow awkwardly */}
       {forms.length > 0 && (
-        <div className="flex items-center gap-2 mb-8">
-          <label htmlFor="type-filter" className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-            Type
-          </label>
-          <select
-            id="type-filter"
-            value={activeForm}
-            onChange={(e) => setActiveForm(e.target.value)}
-            className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-gray-400 transition-colors"
-          >
-            <option value="">All</option>
+        <div className="mb-8">
+          {/* Mobile: dropdown */}
+          <div className="flex sm:hidden items-center gap-2">
+            <label htmlFor="type-filter" className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Type
+            </label>
+            <select
+              id="type-filter"
+              value={activeForm}
+              onChange={(e) => setActiveForm(e.target.value)}
+              className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-gray-400 transition-colors"
+            >
+              <option value="">All</option>
+              {forms.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Desktop/tablet: pills */}
+          <div className="hidden sm:flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide mr-1">
+              Type
+            </span>
+            <button
+              onClick={() => setActiveForm("")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                activeForm === ""
+                  ? "bg-gray-900 text-white border-gray-900"
+                  : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+              }`}
+            >
+              All
+            </button>
             {forms.map((f) => (
-              <option key={f} value={f}>{f}</option>
+              <button
+                key={f}
+                onClick={() => setActiveForm(activeForm === f ? "" : f)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                  activeForm === f
+                    ? "bg-gray-900 text-white border-gray-900"
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                {f}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       )}
 

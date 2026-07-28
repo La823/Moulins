@@ -175,6 +175,42 @@ func AdminUpdateSpecialProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// PUT /admin/special-products/{id}/audio — set (or, with an empty file_key,
+// clear) the special product's single audio clip. Mirrors the regular
+// products' SetProductAudioHandler.
+func AdminSetSpecialProductAudioHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid special product id", http.StatusBadRequest)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			FileKey string `json:"file_key"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		var audioKey *string
+		if req.FileKey != "" {
+			audioKey = &req.FileKey
+		}
+
+		if err := models.SetSpecialProductAudio(r.Context(), db, id, audioKey); err != nil {
+			log.Printf("set special product audio error: %v", err)
+			http.Error(w, "could not set audio", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+	}
+}
+
 // DELETE /admin/special-products/{id}
 func AdminDeleteSpecialProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -378,18 +414,26 @@ func ListMySpecialProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		user, err := models.GetUserByID(r.Context(), db, userID)
+		// A team member sees their partner's special catalog too — resolve
+		// to the owning partner before checking customer_type/scoping.
+		ownerID, err := models.ResolveOwnerID(r.Context(), db, userID)
 		if err != nil {
 			log.Printf("list my special products lookup error: %v", err)
 			http.Error(w, "user not found", http.StatusNotFound)
 			return
 		}
-		if user.CustomerType != "special" {
+		owner, err := models.GetUserByID(r.Context(), db, ownerID)
+		if err != nil {
+			log.Printf("list my special products lookup error: %v", err)
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		if owner.CustomerType != "special" {
 			http.Error(w, "special products are not available for this account", http.StatusForbidden)
 			return
 		}
 
-		products, err := models.GetSpecialProductsByCustomer(r.Context(), db, userID, true)
+		products, err := models.GetSpecialProductsByCustomer(r.Context(), db, ownerID, true)
 		if err != nil {
 			log.Printf("list my special products error: %v", err)
 			http.Error(w, "could not fetch special products", http.StatusInternalServerError)
@@ -412,13 +456,21 @@ func GetMySpecialProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		user, err := models.GetUserByID(r.Context(), db, userID)
+		// A team member sees their partner's special catalog too — resolve
+		// to the owning partner before checking customer_type/scoping.
+		ownerID, err := models.ResolveOwnerID(r.Context(), db, userID)
 		if err != nil {
 			log.Printf("get my special product lookup error: %v", err)
 			http.Error(w, "user not found", http.StatusNotFound)
 			return
 		}
-		if user.CustomerType != "special" {
+		owner, err := models.GetUserByID(r.Context(), db, ownerID)
+		if err != nil {
+			log.Printf("get my special product lookup error: %v", err)
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		if owner.CustomerType != "special" {
 			http.Error(w, "special products are not available for this account", http.StatusForbidden)
 			return
 		}
@@ -436,7 +488,7 @@ func GetMySpecialProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		// Never leak existence of another customer's product — 404, not 403.
-		if p.CustomerID != userID {
+		if p.CustomerID != ownerID {
 			http.Error(w, "special product not found", http.StatusNotFound)
 			return
 		}

@@ -12,9 +12,18 @@ import (
 	"github.com/lavanyaarora/server/internal/models"
 )
 
-func getUserID(r *http.Request) uuid.UUID {
+// getUserID returns the requesting user's effective partner id — for a
+// team member this resolves to their owning partner's id, so every
+// doctor list/create/edit/delete below is automatically shared with the
+// partner (and the rest of the partner's team) instead of being scoped to
+// the team member's own account.
+func getUserID(r *http.Request, db *pgxpool.Pool) uuid.UUID {
 	id, _ := uuid.Parse(r.Context().Value("user_id").(string))
-	return id
+	owner, err := models.ResolveOwnerID(r.Context(), db, id)
+	if err != nil {
+		return id
+	}
+	return owner
 }
 
 // nextBirthdayOccurrence returns the next upcoming date (this year, or next
@@ -96,7 +105,7 @@ func AdminListDoctorsHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 func ListDoctorsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		doctors, err := models.GetDoctorsByPartner(r.Context(), db, getUserID(r))
+		doctors, err := models.GetDoctorsByPartner(r.Context(), db, getUserID(r, db))
 		if err != nil {
 			log.Printf("list doctors error: %v", err)
 			http.Error(w, "could not fetch doctors", http.StatusInternalServerError)
@@ -119,7 +128,7 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		userID := getUserID(r)
+		userID := getUserID(r, db)
 		id, err := models.CreateDoctor(r.Context(), db, userID, req)
 		if err != nil {
 			log.Printf("create doctor error: %v", err)
@@ -149,7 +158,7 @@ func GetDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -172,7 +181,7 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -212,7 +221,7 @@ func DeleteDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -244,7 +253,7 @@ func UpdateDoctorLastMeetingHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -279,7 +288,7 @@ func ListDoctorProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -309,7 +318,7 @@ func AddDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -345,7 +354,7 @@ func RemoveDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "doctor not found", http.StatusNotFound)
 			return
 		}
-		if doctor.PartnerID != getUserID(r) {
+		if doctor.PartnerID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}

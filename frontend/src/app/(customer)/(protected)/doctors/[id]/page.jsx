@@ -126,9 +126,9 @@ export default function DoctorDetailPage() {
     return (
       <div className="max-w-4xl mx-auto px-8 py-10 text-center">
         <p className="text-gray-400">Doctor not found</p>
-        <Link href="/doctors" className="text-sm text-red-600 mt-4 inline-block">
+        <button onClick={() => router.back()} className="text-sm text-red-600 mt-4 inline-block">
           Back to doctors
-        </Link>
+        </button>
       </div>
     );
   }
@@ -137,9 +137,9 @@ export default function DoctorDetailPage() {
     <div className="max-w-4xl mx-auto px-8 py-10">
       {/* Header */}
       <div className="mb-8">
-        <Link href="/doctors" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+        <button onClick={() => router.back()} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
           &larr; Back to doctors
-        </Link>
+        </button>
         <div className="flex items-start justify-between gap-4 mt-3">
           <div>
             <h1 className="text-2xl font-light text-gray-900">{doctor.name}</h1>

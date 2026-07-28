@@ -94,9 +94,14 @@ func GetLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /ledger — the current user's own ledger (self-service, partners)
+// GET /ledger — the current user's own ledger (self-service, partners only —
+// team members never have a ledger of their own, only their partner does).
 func GetMyLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if role, _ := r.Context().Value("role").(string); role != "partner" {
+			http.Error(w, "ledger is only available to partners", http.StatusForbidden)
+			return
+		}
 		respondLedger(w, r, db, getUserID(r))
 	}
 }

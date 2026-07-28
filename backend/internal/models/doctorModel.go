@@ -13,6 +13,8 @@ type Doctor struct {
 	PartnerID        uuid.UUID  `json:"partner_id"`
 	Name             string     `json:"name"`
 	Phone            *string    `json:"phone,omitempty"`
+	Email            *string    `json:"email,omitempty"`
+	Speciality       *string    `json:"speciality,omitempty"`
 	ClinicName       *string    `json:"clinic_name,omitempty"`
 	ClinicAddress    *string    `json:"clinic_address,omitempty"`
 	Latitude         *float64   `json:"latitude,omitempty"`
@@ -49,6 +51,8 @@ type DoctorProduct struct {
 type CreateDoctorRequest struct {
 	Name          string     `json:"name"`
 	Phone         *string    `json:"phone,omitempty"`
+	Email         *string    `json:"email,omitempty"`
+	Speciality    *string    `json:"speciality,omitempty"`
 	ClinicName    *string    `json:"clinic_name,omitempty"`
 	ClinicAddress *string    `json:"clinic_address,omitempty"`
 	Latitude      *float64   `json:"latitude,omitempty"`
@@ -60,26 +64,34 @@ type AddDoctorProductRequest struct {
 	ProductID uuid.UUID `json:"product_id"`
 }
 
-const doctorColumns = `id, partner_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
+const doctorColumns = `id, partner_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
 
 func scanDoctor(row interface{ Scan(...any) error }, d *Doctor) error {
-	return row.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+	return row.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
 		&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
 }
 
 func CreateDoctor(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, req CreateDoctorRequest) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO doctors (partner_id, name, phone, clinic_name, clinic_address, latitude, longitude, dob)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-		partnerID, req.Name, req.Phone, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
+		`INSERT INTO doctors (partner_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+		partnerID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
 	).Scan(&id)
 	return id, err
 }
 
-func GetDoctorsByPartner(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID) ([]Doctor, error) {
+// DoctorListItem is a Doctor plus its assigned-product count, for the
+// partner's own doctor list card (avoids an N+1 query per doctor).
+type DoctorListItem struct {
+	Doctor
+	ProductCount int `json:"product_count"`
+}
+
+func GetDoctorsByPartner(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID) ([]DoctorListItem, error) {
 	rows, err := db.Query(ctx,
-		`SELECT `+doctorColumns+` FROM doctors WHERE partner_id = $1 AND is_deleted = FALSE ORDER BY created_at DESC`,
+		`SELECT `+doctorColumns+`, (SELECT COUNT(*) FROM doctor_products dp WHERE dp.doctor_id = d.id) AS product_count
+		 FROM doctors d WHERE d.partner_id = $1 AND d.is_deleted = FALSE ORDER BY d.created_at DESC`,
 		partnerID,
 	)
 	if err != nil {
@@ -87,10 +99,11 @@ func GetDoctorsByPartner(ctx context.Context, db *pgxpool.Pool, partnerID uuid.U
 	}
 	defer rows.Close()
 
-	doctors := []Doctor{}
+	doctors := []DoctorListItem{}
 	for rows.Next() {
-		var d Doctor
-		if err := scanDoctor(rows, &d); err != nil {
+		var d DoctorListItem
+		if err := rows.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.ProductCount); err != nil {
 			return nil, err
 		}
 		doctors = append(doctors, d)
@@ -220,8 +233,8 @@ func SyncDoctorLastMeetingFromCompletedMeeting(ctx context.Context, db *pgxpool.
 
 func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req CreateDoctorRequest) error {
 	_, err := db.Exec(ctx,
-		`UPDATE doctors SET name = $1, phone = $2, clinic_name = $3, clinic_address = $4, latitude = $5, longitude = $6, dob = $7 WHERE id = $8`,
-		req.Name, req.Phone, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, doctorID,
+		`UPDATE doctors SET name = $1, phone = $2, email = $3, speciality = $4, clinic_name = $5, clinic_address = $6, latitude = $7, longitude = $8, dob = $9 WHERE id = $10`,
+		req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, doctorID,
 	)
 	return err
 }

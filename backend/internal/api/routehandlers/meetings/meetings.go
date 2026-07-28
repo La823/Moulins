@@ -12,9 +12,17 @@ import (
 	"github.com/lavanyaarora/server/internal/models"
 )
 
-func getUserID(r *http.Request) uuid.UUID {
+// getUserID returns the requesting user's effective partner id — for a
+// team member this resolves to their owning partner's id, so meetings are
+// automatically shared across the partner and their whole team instead of
+// being scoped to the team member's own account.
+func getUserID(r *http.Request, db *pgxpool.Pool) uuid.UUID {
 	id, _ := uuid.Parse(r.Context().Value("user_id").(string))
-	return id
+	owner, err := models.ResolveOwnerID(r.Context(), db, id)
+	if err != nil {
+		return id
+	}
+	return owner
 }
 
 // POST /meetings
@@ -40,13 +48,13 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "doctor not found", http.StatusNotFound)
 				return
 			}
-			if doctor.PartnerID != getUserID(r) {
+			if doctor.PartnerID != getUserID(r, db) {
 				http.Error(w, "not authorized", http.StatusForbidden)
 				return
 			}
 		}
 
-		id, err := models.CreateMeeting(r.Context(), db, getUserID(r), req)
+		id, err := models.CreateMeeting(r.Context(), db, getUserID(r, db), req)
 		if err != nil {
 			log.Printf("create meeting error: %v", err)
 			http.Error(w, "could not create meeting", http.StatusInternalServerError)
@@ -68,7 +76,7 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 				doctorID = &parsed
 			}
 		}
-		meetings, err := models.GetMeetingsForUser(r.Context(), db, getUserID(r), doctorID,
+		meetings, err := models.GetMeetingsForUser(r.Context(), db, getUserID(r, db), doctorID,
 			r.URL.Query().Get("status"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
 		if err != nil {
 			log.Printf("list meetings error: %v", err)
@@ -94,7 +102,7 @@ func GetHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r) {
+		if meeting.UserID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -118,7 +126,7 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r) {
+		if meeting.UserID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -143,7 +151,7 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "doctor not found", http.StatusNotFound)
 				return
 			}
-			if doctor.PartnerID != getUserID(r) {
+			if doctor.PartnerID != getUserID(r, db) {
 				http.Error(w, "not authorized", http.StatusForbidden)
 				return
 			}
@@ -174,7 +182,7 @@ func UpdateMomHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r) {
+		if meeting.UserID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -212,7 +220,7 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r) {
+		if meeting.UserID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -264,7 +272,7 @@ func DeleteHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r) {
+		if meeting.UserID != getUserID(r, db) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}

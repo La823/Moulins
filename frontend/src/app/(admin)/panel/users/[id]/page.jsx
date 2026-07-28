@@ -8,6 +8,7 @@ import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
+import SpecialProductsPanel from "@/components/admin/SpecialProductsPanel";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -33,6 +34,8 @@ export default function PartnerDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [changingType, setChangingType] = useState(false);
   const [typeError, setTypeError] = useState("");
+  const [uploadingTileImage, setUploadingTileImage] = useState(false);
+  const [tileImageError, setTileImageError] = useState("");
   const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -111,6 +114,49 @@ export default function PartnerDetailPage() {
       setTypeError(err.message);
     } finally {
       setChangingType(false);
+    }
+  };
+
+  const handleTileImageUpload = async (file) => {
+    if (!file) return;
+    setUploadingTileImage(true);
+    setTileImageError("");
+    try {
+      const { upload_url, key } = await apiFetch("/admin/partners/special-tile-upload-url", {
+        method: "POST",
+        body: JSON.stringify({ customer_id: id, filename: file.name }),
+      });
+      await fetch(upload_url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      await apiFetch(`/admin/partners/${id}/special-tile-image`, {
+        method: "PUT",
+        body: JSON.stringify({ image_key: key }),
+      });
+      const updated = await apiFetch(`/admin/partners/${id}`);
+      setPartner(updated);
+    } catch (err) {
+      setTileImageError(err.message);
+    } finally {
+      setUploadingTileImage(false);
+    }
+  };
+
+  const handleTileImageRemove = async () => {
+    setUploadingTileImage(true);
+    setTileImageError("");
+    try {
+      await apiFetch(`/admin/partners/${id}/special-tile-image`, {
+        method: "PUT",
+        body: JSON.stringify({ image_key: "" }),
+      });
+      setPartner((prev) => ({ ...prev, special_tile_image_url: "" }));
+    } catch (err) {
+      setTileImageError(err.message);
+    } finally {
+      setUploadingTileImage(false);
     }
   };
 
@@ -214,6 +260,61 @@ export default function PartnerDetailPage() {
                 Special partners get their own private product catalog.
               </p>
             </div>
+
+            {/* Tile image — shown on this customer's "Special" filter tile
+                on the products page instead of the plain teal fallback. */}
+            {(partner.customer_type || "normal") === "special" && (
+              <div className="mb-5">
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                  Special Tile Image
+                </p>
+                {partner.special_tile_image_url ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={partner.special_tile_image_url}
+                      alt="Special tile"
+                      className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                    />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-blue-600 hover:underline cursor-pointer">
+                        Replace
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingTileImage}
+                          onChange={(e) => handleTileImageUpload(e.target.files?.[0])}
+                        />
+                      </label>
+                      <button
+                        onClick={handleTileImageRemove}
+                        disabled={uploadingTileImage}
+                        className="text-xs text-red-500 hover:text-red-700 text-left disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="inline-block text-sm text-blue-600 hover:underline cursor-pointer">
+                    {uploadingTileImage ? "Uploading..." : "Upload an image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploadingTileImage}
+                      onChange={(e) => handleTileImageUpload(e.target.files?.[0])}
+                    />
+                  </label>
+                )}
+                {tileImageError && (
+                  <p className="text-xs text-red-600 mt-1">{tileImageError}</p>
+                )}
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Shown on their &quot;Special&quot; filter tile on the products page.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div>
@@ -416,6 +517,11 @@ export default function PartnerDetailPage() {
 
         {/* Right column — documents + orders */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Special product catalog — only for special-type customers */}
+          {partner.customer_type === "special" && (
+            <SpecialProductsPanel customerId={partner.id} />
+          )}
 
           {/* Documents */}
           {documents.length > 0 && (

@@ -12,6 +12,8 @@ class DoctorService {
   Future<Doctor> createDoctor({
     required String name,
     String? phone,
+    String? email,
+    String? speciality,
     String? clinicName,
     String? clinicAddress,
     double? latitude,
@@ -21,6 +23,8 @@ class DoctorService {
     final res = await _dio.post('/doctors', data: {
       'name': name,
       if (phone != null) 'phone': phone,
+      if (email != null) 'email': email,
+      if (speciality != null) 'speciality': speciality,
       if (clinicName != null) 'clinic_name': clinicName,
       if (clinicAddress != null) 'clinic_address': clinicAddress,
       if (latitude != null) 'latitude': latitude,

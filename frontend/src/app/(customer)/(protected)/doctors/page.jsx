@@ -5,11 +5,20 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import LocationPicker from "@/components/LocationPicker";
 
+const emptyForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "" };
+
+function initials(name) {
+  if (!name) return "?";
+  const parts = name.replace(/^Dr\.?\s*/i, "").trim().split(/\s+/);
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("") || "?";
+}
+
 export default function DoctorsPage() {
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", clinic_name: "", dob: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
   const [location, setLocation] = useState(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -24,27 +33,62 @@ export default function DoctorsPage() {
 
   useEffect(() => { fetchDoctors(); }, []);
 
+  const startAdd = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setLocation(null);
+    setShowForm(true);
+  };
+
+  const startEdit = (doctor) => {
+    setEditingId(doctor.id);
+    setForm({
+      name: doctor.name || "",
+      phone: doctor.phone || "",
+      email: doctor.email || "",
+      speciality: doctor.speciality || "",
+      clinic_name: doctor.clinic_name || "",
+      dob: doctor.dob ? doctor.dob.slice(0, 10) : "",
+    });
+    setLocation(
+      doctor.latitude != null && doctor.longitude != null
+        ? { lat: doctor.latitude, lng: doctor.longitude, address: doctor.clinic_address }
+        : null
+    );
+    setShowForm(true);
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setLocation(null);
+    setError("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     setSubmitting(true);
     setError("");
+    const body = {
+      name: form.name.trim(),
+      phone: form.phone.trim() || null,
+      email: form.email.trim() || null,
+      speciality: form.speciality.trim() || null,
+      clinic_name: form.clinic_name.trim() || null,
+      dob: form.dob || null,
+      clinic_address: location?.address || null,
+      latitude: location?.lat ?? null,
+      longitude: location?.lng ?? null,
+    };
     try {
-      await apiFetch("/doctors", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          phone: form.phone.trim() || null,
-          clinic_name: form.clinic_name.trim() || null,
-          dob: form.dob || null,
-          clinic_address: location?.address || null,
-          latitude: location?.lat ?? null,
-          longitude: location?.lng ?? null,
-        }),
-      });
-      setForm({ name: "", phone: "", clinic_name: "", dob: "" });
-      setLocation(null);
-      setShowForm(false);
+      if (editingId) {
+        await apiFetch(`/doctors/${editingId}`, { method: "PUT", body: JSON.stringify(body) });
+      } else {
+        await apiFetch("/doctors", { method: "POST", body: JSON.stringify(body) });
+      }
+      cancelForm();
       setLoading(true);
       fetchDoctors();
     } catch (err) {
@@ -69,7 +113,7 @@ export default function DoctorsPage() {
       <div className="flex items-center justify-between mb-10">
         <h1 className="text-2xl font-light text-gray-900">My Doctors</h1>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => (showForm ? cancelForm() : startAdd())}
           className="text-sm px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
         >
           {showForm ? "Cancel" : "Add Doctor"}
@@ -78,6 +122,7 @@ export default function DoctorsPage() {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-8 border border-gray-200 rounded-lg p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">{editingId ? "Edit Doctor" : "Add Doctor"}</h2>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
             <input
@@ -89,14 +134,36 @@ export default function DoctorsPage() {
               required
             />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <input
+                type="text"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                placeholder="Phone number"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                placeholder="doctor@email.com"
+              />
+            </div>
+          </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Speciality</label>
             <input
               type="text"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              value={form.speciality}
+              onChange={(e) => setForm({ ...form, speciality: e.target.value })}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
-              placeholder="Phone number"
+              placeholder="e.g. Dermatologist"
             />
           </div>
           <div>
@@ -137,7 +204,7 @@ export default function DoctorsPage() {
             disabled={submitting}
             className="px-5 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
           >
-            {submitting ? "Adding..." : "Add Doctor"}
+            {submitting ? "Saving..." : editingId ? "Save Changes" : "Add Doctor"}
           </button>
         </form>
       )}
@@ -155,63 +222,75 @@ export default function DoctorsPage() {
         <div className="text-center py-20">
           <p className="text-sm text-gray-400">No doctors added yet</p>
           <button
-            onClick={() => setShowForm(true)}
+            onClick={startAdd}
             className="inline-block mt-4 text-sm text-red-600 hover:text-red-700 transition-colors"
           >
             Add your first doctor
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {doctors.map((doctor) => (
             <div
               key={doctor.id}
-              className="border border-gray-200 rounded-lg p-5 hover:border-gray-300 transition-colors"
+              className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors"
             >
-              <div className="flex items-start justify-between">
-                <Link href={`/doctors/${doctor.id}`} className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-900">{doctor.name}</h3>
-                  {doctor.clinic_name && (
-                    <p className="text-xs text-gray-500 mt-1">{doctor.clinic_name}</p>
-                  )}
-                  {doctor.phone && (
-                    <p className="text-xs text-gray-400 mt-1">{doctor.phone}</p>
-                  )}
-                  {doctor.dob && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      🎂 {new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
-                    </p>
-                  )}
-                  {doctor.clinic_address && (
-                    <p className="text-xs text-gray-400 mt-1">📍 {doctor.clinic_address}</p>
-                  )}
-                  <p className="text-xs text-gray-400 mt-2">
-                    Added {new Date(doctor.created_at).toLocaleDateString("en-IN", {
-                      day: "numeric", month: "short", year: "numeric",
-                    })}
-                  </p>
-                  {doctor.last_meeting_at && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Last met {new Date(doctor.last_meeting_at).toLocaleDateString("en-IN", {
-                        day: "numeric", month: "short", year: "numeric",
-                      })}
-                    </p>
-                  )}
-                </Link>
-                <div className="flex items-center gap-2 ml-4">
-                  <Link
-                    href={`/doctors/${doctor.id}`}
-                    className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:border-gray-300 transition-colors"
-                  >
-                    Manage Products
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(doctor.id)}
-                    className="text-xs px-3 py-1.5 text-red-500 hover:text-red-700 transition-colors"
-                  >
-                    Delete
-                  </button>
+              {/* Header: avatar, name, speciality, status */}
+              <div className="flex items-center gap-3 px-5 py-4">
+                <div className="w-11 h-11 rounded-full bg-gray-900 text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                  {initials(doctor.name)}
                 </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-medium text-gray-900 truncate">{doctor.name}</h3>
+                  {doctor.speciality && (
+                    <p className="text-xs text-gray-500 mt-0.5">{doctor.speciality}</p>
+                  )}
+                </div>
+                <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-green-50 text-green-700 flex-shrink-0">
+                  Active
+                </span>
+              </div>
+
+              <div className="border-t border-gray-100" />
+
+              {/* Fields */}
+              <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
+                <Field label="Phone" value={doctor.phone} />
+                <Field label="Email" value={doctor.email} />
+                <Field
+                  label="Birthday"
+                  value={doctor.dob ? new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" }) : null}
+                />
+                <Field label="Clinic" value={doctor.clinic_name || doctor.clinic_address} />
+                <Field
+                  label="Joined"
+                  value={new Date(doctor.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                />
+                <Field label="Products" value={String(doctor.product_count ?? 0)} />
+              </div>
+
+              <div className="border-t border-gray-100" />
+
+              {/* Actions */}
+              <div className="flex items-center gap-5 px-5 py-3">
+                <Link
+                  href={`/doctors/${doctor.id}`}
+                  className="text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                >
+                  Manage Products
+                </Link>
+                <button
+                  onClick={() => startEdit(doctor)}
+                  className="text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                >
+                  Edit Profile
+                </button>
+                <button
+                  onClick={() => handleDelete(doctor.id)}
+                  className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-auto"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
@@ -228,6 +307,15 @@ export default function DoctorsPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function Field({ label, value }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-xs text-gray-400 flex-shrink-0">{label}</span>
+      <span className="text-gray-800 text-right truncate">{value || "—"}</span>
     </div>
   );
 }

@@ -1,0 +1,274 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
+import { apiFetch } from "@/lib/api";
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+export default function TeamMemberPage() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const router = useRouter();
+
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [attendance, setAttendance] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [form, setForm] = useState({ check_in_time: "09:00", status: "present", description: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (user && user.role !== "partner") router.push("/dashboard");
+  }, [user, router]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [att, dailyLogs] = await Promise.all([
+        apiFetch(`/team/${id}/attendance/month?year=${year}&month=${month}`),
+        apiFetch(`/team/${id}/daily-logs?year=${year}&month=${month}`),
+      ]);
+      setAttendance(Array.isArray(att) ? att : []);
+      setLogs(Array.isArray(dailyLogs) ? dailyLogs : []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [id, year, month]);
+
+  useEffect(() => {
+    if (user?.role === "partner") fetchData();
+  }, [fetchData, user]);
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDayOfWeek = new Date(year, month - 1, 1).getDay();
+  const calendarDays = [];
+  for (let i = 0; i < firstDayOfWeek; i++) calendarDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
+
+  const attendanceByDay = {};
+  attendance.forEach((a) => { attendanceByDay[parseInt(a.date.split("-")[2], 10)] = a; });
+
+  const dateStr = (day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  const prevMonth = () => {
+    if (month === 1) { setMonth(12); setYear(year - 1); } else setMonth(month - 1);
+    setSelectedDate(null);
+  };
+  const nextMonth = () => {
+    if (month === 12) { setMonth(1); setYear(year + 1); } else setMonth(month + 1);
+    setSelectedDate(null);
+  };
+
+  const isToday = (day) => day === today.getDate() && month === today.getMonth() + 1 && year === today.getFullYear();
+
+  const selectDate = (day) => {
+    const selected = selectedDate === day;
+    setSelectedDate(selected ? null : day);
+    setError("");
+    const rec = attendanceByDay[day];
+    setForm(rec
+      ? { check_in_time: rec.check_in_time.slice(0, 5), status: rec.status, description: rec.description || "" }
+      : { check_in_time: "09:00", status: "present", description: "" });
+  };
+
+  const handleMark = async (e) => {
+    e.preventDefault();
+    if (!selectedDate) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await apiFetch("/team/attendance", {
+        method: "POST",
+        body: JSON.stringify({
+          employee_id: id,
+          date: dateStr(selectedDate),
+          check_in_time: form.check_in_time,
+          status: form.status,
+          description: form.description.trim() || null,
+        }),
+      });
+      fetchData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteAttendance = async (attId) => {
+    if (!confirm("Delete this attendance record?")) return;
+    try {
+      await apiFetch(`/team/attendance/${attId}`, { method: "DELETE" });
+      fetchData();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const selectedRecord = selectedDate ? attendanceByDay[selectedDate] : null;
+
+  if (user && user.role !== "partner") return null;
+
+  return (
+    <div className="max-w-5xl">
+      <Link href="/partner-panel/team" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 mb-5">
+        &larr; My Team
+      </Link>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Calendar */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-5">
+            <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+            </button>
+            <h3 className="text-sm font-semibold text-gray-800">{MONTHS[month - 1]} {year}</h3>
+            <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {DAYS.map((d) => (
+              <div key={d} className="text-center text-[11px] font-medium text-gray-400 py-2">{d}</div>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="h-64 flex items-center justify-center">
+              <p className="text-sm text-gray-400">Loading...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((day, i) => {
+                if (day === null) return <div key={`empty-${i}`} />;
+                const rec = attendanceByDay[day];
+                const selected = selectedDate === day;
+                return (
+                  <button
+                    key={day}
+                    onClick={() => selectDate(day)}
+                    className={`relative aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-colors ${
+                      selected
+                        ? "bg-gray-900 text-white"
+                        : rec
+                        ? rec.status === "present" ? "bg-green-50 text-green-800"
+                          : rec.status === "late" ? "bg-yellow-50 text-yellow-800"
+                          : rec.status === "half-day" ? "bg-orange-50 text-orange-800"
+                          : "bg-red-50 text-red-800"
+                        : isToday(day)
+                        ? "bg-blue-50 text-blue-700 font-medium"
+                        : "hover:bg-gray-50 text-gray-700"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Mark attendance for selected day */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          {!selectedDate ? (
+            <div className="h-full flex items-center justify-center min-h-[200px]">
+              <p className="text-sm text-gray-400 text-center">Click a day to mark attendance</p>
+            </div>
+          ) : (
+            <form onSubmit={handleMark} className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-800">{selectedDate} {MONTHS[month - 1]}</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Check-in</label>
+                  <input
+                    type="time"
+                    value={form.check_in_time}
+                    onChange={(e) => setForm({ ...form, check_in_time: e.target.value })}
+                    required
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Status</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                  >
+                    <option value="present">Present</option>
+                    <option value="late">Late</option>
+                    <option value="half-day">Half Day</option>
+                    <option value="absent">Absent</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                />
+              </div>
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {submitting ? "Saving..." : selectedRecord ? "Update" : "Mark"}
+                </button>
+                {selectedRecord && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAttendance(selectedRecord.id)}
+                    className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+
+      {/* Daily logs */}
+      <div className="mt-8">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Daily Logs</h3>
+        {logs.length === 0 ? (
+          <p className="text-sm text-gray-400">No logs submitted for {MONTHS[month - 1]} {year}.</p>
+        ) : (
+          <div className="space-y-3">
+            {logs.map((l) => (
+              <div key={l.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                <p className="text-xs text-gray-400 mb-1">{l.date}</p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{l.notes}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

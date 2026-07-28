@@ -10,9 +10,11 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
   const router = useRouter();
   const { addToCart } = useCart();
 
+  const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
+
   return (
     <div
-      onClick={() => router.push(`${basePath}/${p.id}`)}
+      onClick={() => router.push(href)}
       className="group cursor-pointer transition-all duration-300 hover:-translate-y-1"
     >
       {p.categories && p.categories.length > 0 && (

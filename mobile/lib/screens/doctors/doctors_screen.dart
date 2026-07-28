@@ -66,6 +66,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   void _showAddDialog() {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final specialityCtrl = TextEditingController();
     final clinicCtrl = TextEditingController();
     DateTime? dob;
     PickedLocation? location;
@@ -127,6 +129,9 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                           if (contact.phones.isNotEmpty) {
                             phoneCtrl.text = contact.phones.first.number;
                           }
+                          if (contact.emails.isNotEmpty) {
+                            emailCtrl.text = contact.emails.first.address;
+                          }
                           if (nameCtrl.text.trim().isEmpty && contact.displayName.isNotEmpty) {
                             nameCtrl.text = contact.displayName;
                           }
@@ -142,6 +147,10 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              _field(emailCtrl, 'Email', type: TextInputType.emailAddress),
+              const SizedBox(height: 12),
+              _field(specialityCtrl, 'Speciality'),
               const SizedBox(height: 12),
               _field(clinicCtrl, 'Clinic Name'),
               const SizedBox(height: 12),
@@ -219,6 +228,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                             await _service.createDoctor(
                               name: nameCtrl.text.trim(),
                               phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                              email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                              speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
                               clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
                               clinicAddress: location?.address,
                               latitude: location?.lat,

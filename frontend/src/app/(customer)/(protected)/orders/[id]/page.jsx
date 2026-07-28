@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
@@ -19,6 +19,7 @@ const STATUS_STEPS = ["pending", "confirmed", "transferred", "shipped", "deliver
 
 export default function OrderDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,9 +48,9 @@ export default function OrderDetailPage() {
     return (
       <div className="max-w-2xl mx-auto px-8 py-20 text-center">
         <p className="text-sm text-gray-400">Order not found</p>
-        <Link href="/orders" className="inline-block mt-4 text-sm text-red-600 hover:text-red-700">
+        <button onClick={() => router.back()} className="inline-block mt-4 text-sm text-red-600 hover:text-red-700">
           Back to orders
-        </Link>
+        </button>
       </div>
     );
   }
@@ -76,9 +77,9 @@ export default function OrderDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-8 py-10">
-      <Link href="/orders" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
+      <button onClick={() => router.back()} className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
         &larr; All orders
-      </Link>
+      </button>
 
       <div className="mt-6 mb-8">
         <div className="flex items-center justify-between">

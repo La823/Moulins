@@ -8,6 +8,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/dailylogs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
@@ -25,6 +26,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/team"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
@@ -84,6 +86,23 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// employee: view own attendance
 	protected.HandleFunc("/my-attendance", attendance.GetMyAttendanceHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/attendance-visibility", attendance.GetAttendanceVisibilityHandler(db, rdb)).Methods("GET")
+
+	// Partner teams — sub-accounts, attendance, and daily logs. Role checks
+	// (requester must be "partner" to manage a team, "team_member" for the
+	// self-scoped daily-log endpoints) happen inside each handler rather
+	// than via a permission subrouter, since this is partner-self-service,
+	// not an admin/staff permission.
+	protected.HandleFunc("/team", team.CreateTeamMemberHandler(db)).Methods("POST")
+	protected.HandleFunc("/team", team.ListTeamMembersHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}", team.UpdateTeamMemberHandler(db)).Methods("PUT")
+	protected.HandleFunc("/team/{id}", team.DeleteTeamMemberHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/team/attendance", attendance.PartnerMarkAttendanceHandler(db)).Methods("POST")
+	protected.HandleFunc("/team/attendance", attendance.PartnerAttendanceByDateHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/attendance/{id}", attendance.PartnerDeleteAttendanceHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/team/{id}/attendance/month", attendance.PartnerAttendanceByMonthHandler(db)).Methods("GET")
+	protected.HandleFunc("/my-daily-log", dailylogs.SubmitMyDailyLogHandler(db)).Methods("POST")
+	protected.HandleFunc("/my-daily-log", dailylogs.GetMyDailyLogsHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}/daily-logs", dailylogs.GetTeamMemberDailyLogsHandler(db)).Methods("GET")
 
 	// notification inbox routes (any authenticated user)
 	protected.HandleFunc("/notifications", notifications.ListMyNotificationsHandler(db)).Methods("GET")
@@ -253,6 +272,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
+	partnerStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — order management
@@ -292,6 +313,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/special-products/upload-url", specialproducts.AdminUploadURLHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/document-upload-url", specialproducts.AdminDocUploadURLHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/{id}", specialproducts.AdminUpdateSpecialProductHandler(db)).Methods("PUT")
+	productStaff.HandleFunc("/special-products/{id}/audio", specialproducts.AdminSetSpecialProductAudioHandler(db)).Methods("PUT")
 	productStaff.HandleFunc("/special-products/{id}", specialproducts.AdminDeleteSpecialProductHandler(db)).Methods("DELETE")
 	productStaff.HandleFunc("/special-products/{id}/images", specialproducts.AdminAddImageHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/images/{imgId}", specialproducts.AdminDeleteImageHandler(db)).Methods("DELETE")

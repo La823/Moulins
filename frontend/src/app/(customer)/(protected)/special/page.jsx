@@ -26,7 +26,7 @@ export default function SpecialProductsPage() {
   return (
     <div className="max-w-[96rem] mx-auto px-10 py-10">
       <div className="mb-8">
-        <h1 className="text-2xl font-light text-gray-900">Special</h1>
+        <h1 className="text-2xl font-light text-gray-900">13 Alpha Unit</h1>
         {!loading && (
           <p className="text-sm text-gray-400 mt-1">
             {products.length} product{products.length !== 1 ? "s" : ""}

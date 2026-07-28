@@ -285,12 +285,23 @@ export default function CustomerNavbar() {
     setMobileMenuOpen(false);
   };
 
-  // Special-type customers get an extra top-level tile leading to their own
-  // private product division. Hidden from everyone else.
-  const navItems =
-    user?.customer_type === "special"
-      ? [...NAV_ITEMS, { id: "special", label: "Special", href: "/special" }]
-      : NAV_ITEMS;
+  // Special-type customers browse their private catalog via the "Special"
+  // filter tile on the products page itself (not a separate navbar link —
+  // partners and team members already have their own dedicated nav entries
+  // below). Partners get a "My Team" tile; team members (their sub-accounts)
+  // get "My Attendance"/"My Log" instead. All hidden from everyone else.
+  let navItems = NAV_ITEMS;
+  if (user?.role === "partner") {
+    navItems = [...navItems, { id: "team", label: "Partner Panel", href: "/partner-panel" }];
+  } else if (user?.role === "team_member") {
+    navItems = [
+      ...navItems,
+      { id: "my-attendance", label: "My Attendance", href: "/my-attendance" },
+      { id: "my-daily-log", label: "My Log", href: "/my-daily-log" },
+    ];
+  }
+  // Team members are sub-accounts for field work, not billing — no cart.
+  const showCart = !!user && user.role !== "team_member";
 
   const isDropdownOpen =
     activeMenu && activeMenu !== "search" && dropdownContent[activeMenu];
@@ -314,7 +325,7 @@ export default function CustomerNavbar() {
 
           {/* Mobile utilities: cart (logged in only) + hamburger */}
           <div className="flex lg:hidden items-center gap-4">
-            {user && (
+            {showCart && (
               <button
                 onClick={() => { close(); openCart(); }}
                 className="relative text-gray-700"
@@ -457,7 +468,7 @@ export default function CustomerNavbar() {
             </a>
 
             {/* Cart icon — only shown to logged-in users, nothing to cart otherwise */}
-            {user && (
+            {showCart && (
               <button
                 onClick={() => { close(); openCart(); }}
                 className="relative text-gray-700 hover:text-red-600 transition-colors duration-200"
@@ -611,11 +622,6 @@ export default function CustomerNavbar() {
                 <Link href="/products" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
                   Products
                 </Link>
-                {navItems.some((i) => i.id === "special") && (
-                  <Link href="/special" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
-                    Special
-                  </Link>
-                )}
                 <Link href="/about" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
                   About
                 </Link>

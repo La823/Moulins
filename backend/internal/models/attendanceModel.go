@@ -93,6 +93,35 @@ func GetAttendanceByMonth(ctx context.Context, db *pgxpool.Pool, year, month int
 	return records, rows.Err()
 }
 
+// GetTeamAttendanceByDate returns every one of a partner's own team
+// members' attendance for a single date — the partner-scoped equivalent of
+// GetAttendanceByDate, which spans every employee across the whole system.
+func GetTeamAttendanceByDate(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID, date string) ([]Attendance, error) {
+	rows, err := db.Query(ctx,
+		`SELECT a.id, a.employee_id, COALESCE(u.username, u.phone_number) as employee_name,
+		        a.date::text, a.check_in_time::text, a.status, a.description, a.marked_by, a.created_at
+		 FROM attendance a
+		 JOIN users u ON u.id = a.employee_id
+		 WHERE u.team_owner_id = $1 AND a.date = $2
+		 ORDER BY a.check_in_time`,
+		ownerID, date,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := []Attendance{}
+	for rows.Next() {
+		var a Attendance
+		if err := rows.Scan(&a.ID, &a.EmployeeID, &a.EmployeeName, &a.Date, &a.CheckInTime, &a.Status, &a.Description, &a.MarkedBy, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		records = append(records, a)
+	}
+	return records, rows.Err()
+}
+
 func GetEmployeeAttendanceByMonth(ctx context.Context, db *pgxpool.Pool, employeeID uuid.UUID, year, month int) ([]Attendance, error) {
 	rows, err := db.Query(ctx,
 		`SELECT a.id, a.employee_id, COALESCE(u.username, u.phone_number) as employee_name,
@@ -122,6 +151,14 @@ func GetEmployeeAttendanceByMonth(ctx context.Context, db *pgxpool.Pool, employe
 func DeleteAttendance(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) error {
 	_, err := db.Exec(ctx, `DELETE FROM attendance WHERE id = $1`, id)
 	return err
+}
+
+// GetAttendanceEmployeeID looks up which employee an attendance record
+// belongs to — used by ownership checks before allowing a delete.
+func GetAttendanceEmployeeID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (uuid.UUID, error) {
+	var employeeID uuid.UUID
+	err := db.QueryRow(ctx, `SELECT employee_id FROM attendance WHERE id = $1`, id).Scan(&employeeID)
+	return employeeID, err
 }
 
 // Settings helpers

@@ -10,25 +10,28 @@ import (
 )
 
 type User struct {
-	ID               uuid.UUID  `json:"id"`
-	PhoneNumber      string     `json:"phone_number"`
-	Username         *string    `json:"username,omitempty"`
-	Email            *string    `json:"email,omitempty"`
-	PasswordHash     string     `json:"-"`
-	PlainPassword    *string    `json:"plain_password,omitempty"`
-	Role             string     `json:"role"`
-	CustomerType     string     `json:"customer_type"`
-	IsPhoneVerified  bool       `json:"is_phone_verified"`
-	OnboardingStep   int        `json:"onboarding_step"`
-	Pincode          *string    `json:"pincode,omitempty"`
-	City             *string    `json:"city,omitempty"`
-	State            *string    `json:"state,omitempty"`
-	Latitude         *float64   `json:"latitude,omitempty"`
-	Longitude        *float64   `json:"longitude,omitempty"`
-	LastLoginAt      *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	Permissions      []string   `json:"permissions,omitempty"`
+	ID                  uuid.UUID  `json:"id"`
+	PhoneNumber         string     `json:"phone_number"`
+	Username            *string    `json:"username,omitempty"`
+	Email               *string    `json:"email,omitempty"`
+	PasswordHash        string     `json:"-"`
+	PlainPassword       *string    `json:"plain_password,omitempty"`
+	Role                string     `json:"role"`
+	CustomerType        string     `json:"customer_type"`
+	SpecialTileImageKey *string    `json:"-"`
+	SpecialTileImageURL string     `json:"special_tile_image_url,omitempty"`
+	TeamOwnerID         *uuid.UUID `json:"team_owner_id,omitempty"`
+	IsPhoneVerified     bool       `json:"is_phone_verified"`
+	OnboardingStep      int        `json:"onboarding_step"`
+	Pincode             *string    `json:"pincode,omitempty"`
+	City                *string    `json:"city,omitempty"`
+	State               *string    `json:"state,omitempty"`
+	Latitude            *float64   `json:"latitude,omitempty"`
+	Longitude           *float64   `json:"longitude,omitempty"`
+	LastLoginAt         *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	Permissions         []string   `json:"permissions,omitempty"`
 }
 
 type CreateUserRequest struct {
@@ -130,7 +133,7 @@ func GetUserByPhone(
 	query := `
 		SELECT
 			id, phone_number, password_hash, username, email,
-			role, customer_type, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE phone_number = $1;
 	`
@@ -138,12 +141,34 @@ func GetUserByPhone(
 	var u User
 	err := db.QueryRow(ctx, query, phoneNumber).Scan(
 		&u.ID, &u.PhoneNumber, &u.PasswordHash, &u.Username, &u.Email,
-		&u.Role, &u.CustomerType, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+	if u.SpecialTileImageKey != nil {
+		u.SpecialTileImageURL = utils.GetPublicURL(*u.SpecialTileImageKey)
+	}
+	applyEffectiveCustomerType(ctx, db, &u)
 	return &u, nil
+}
+
+// applyEffectiveCustomerType lets a team member inherit their partner's
+// customer_type/special tile image on their own user object — so the
+// existing "Special" division nav/page/products-page logic, which all key
+// off user.customer_type, works for team members without any frontend
+// changes. Only ever overlays for role == team_member, so it can't recurse
+// (the owner's own role is never team_member).
+func applyEffectiveCustomerType(ctx context.Context, db *pgxpool.Pool, u *User) {
+	if u.Role != "team_member" || u.TeamOwnerID == nil {
+		return
+	}
+	owner, err := GetUserByID(ctx, db, *u.TeamOwnerID)
+	if err != nil {
+		return
+	}
+	u.CustomerType = owner.CustomerType
+	u.SpecialTileImageURL = owner.SpecialTileImageURL
 }
 
 func GetUserByID(
@@ -154,7 +179,7 @@ func GetUserByID(
 	query := `
 		SELECT
 			id, phone_number, username, email,
-			role, customer_type, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1;
 	`
@@ -162,11 +187,15 @@ func GetUserByID(
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email,
-		&u.Role, &u.CustomerType, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+	if u.SpecialTileImageKey != nil {
+		u.SpecialTileImageURL = utils.GetPublicURL(*u.SpecialTileImageKey)
+	}
+	applyEffectiveCustomerType(ctx, db, &u)
 	return &u, nil
 }
 
@@ -236,17 +265,20 @@ func GetLastUsers(
 func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password,
-			role, customer_type, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
-		&u.Role, &u.CustomerType, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if u.SpecialTileImageKey != nil {
+		u.SpecialTileImageURL = utils.GetPublicURL(*u.SpecialTileImageKey)
 	}
 	return &u, nil
 }
@@ -287,9 +319,73 @@ func UpdateCustomerType(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 	return err
 }
 
+// UpdateSpecialTileImage sets (or, with a nil key, clears) the image shown
+// on this customer's "Special" filter tile on the products page.
+func UpdateSpecialTileImage(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, imageKey *string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE users SET special_tile_image_key = $1, updated_at = NOW() WHERE id = $2`,
+		imageKey, userID,
+	)
+	return err
+}
+
+// ResolveOwnerID returns userID unchanged unless that user is a team_member
+// with a team_owner_id set, in which case it returns the owning partner's
+// id instead. Every doctor/meeting scoping call funnels through this so a
+// team member automatically shares their partner's doctors/meetings.
+func ResolveOwnerID(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (uuid.UUID, error) {
+	u, err := GetUserByID(ctx, db, userID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if u.Role == "team_member" && u.TeamOwnerID != nil {
+		return *u.TeamOwnerID, nil
+	}
+	return userID, nil
+}
+
+// CreateTeamMember creates a login for a partner's team member — same
+// account shape as any other user, just forced to role="team_member" and
+// linked back to the owning partner.
+func CreateTeamMember(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID, phone, password string, username *string) (uuid.UUID, error) {
+	id, err := CreateUser(ctx, db, phone, password, username, nil, "team_member", nil, nil, nil)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := db.Exec(ctx, `UPDATE users SET team_owner_id = $1 WHERE id = $2`, ownerID, id); err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
+// GetTeamMembers returns every team_member belonging to the given partner.
+func GetTeamMembers(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID) ([]User, error) {
+	rows, err := db.Query(ctx,
+		`SELECT id, phone_number, username, email, plain_password, role, customer_type, special_tile_image_key, team_owner_id,
+			is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+		 FROM users WHERE team_owner_id = $1 ORDER BY created_at DESC`,
+		ownerID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	members := make([]User, 0)
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID,
+			&u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		members = append(members, u)
+	}
+	return members, rows.Err()
+}
+
 func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User, error) {
 	query := `
-		SELECT id, phone_number, username, email, plain_password, role, customer_type,
+		SELECT id, phone_number, username, email, plain_password, role, customer_type, special_tile_image_key,
 			is_phone_verified, onboarding_step, pincode, city, state, latitude, longitude,
 			last_login_at, created_at, updated_at
 		FROM users
@@ -305,10 +401,13 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	users := make([]User, 0)
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role, &u.CustomerType,
+		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role, &u.CustomerType, &u.SpecialTileImageKey,
 			&u.IsPhoneVerified, &u.OnboardingStep, &u.Pincode, &u.City, &u.State, &u.Latitude, &u.Longitude,
 			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if u.SpecialTileImageKey != nil {
+			u.SpecialTileImageURL = utils.GetPublicURL(*u.SpecialTileImageKey)
 		}
 		users = append(users, u)
 	}
