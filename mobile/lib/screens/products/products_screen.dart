@@ -11,6 +11,7 @@ import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
 import '../../data/divisions.dart';
+import '../../providers/auth_provider.dart';
 
 const _filterRed = Color(0xFFAC2528);
 
@@ -114,6 +115,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Widget build(BuildContext context) {
     final categories = ref.watch(categoriesProvider);
     final cart = ref.watch(cartProvider);
+    final isSpecial = ref.watch(authProvider).user?.isSpecial ?? false;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -217,6 +219,25 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         ),
                       ),
                     ),
+                    if (isSpecial) ...[
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () => context.push('/special'),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A6A4),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            '13 Alpha Unit',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     GridView.builder(
                       shrinkWrap: true,
