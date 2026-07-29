@@ -39,7 +39,7 @@ class AppDrawer extends ConsumerWidget {
             if (user?.isSpecial ?? false)
               ListTile(
                 leading: const Icon(Icons.star_outline, color: _teal),
-                title: const Text('Special'),
+                title: const Text('13 Alpha Unit'),
                 onTap: () {
                   Navigator.of(context).pop();
                   context.push('/special');
@@ -53,6 +53,42 @@ class AppDrawer extends ConsumerWidget {
                 context.push('/doctors');
               },
             ),
+            if (user?.role == 'partner') ...[
+              ListTile(
+                leading: const Icon(Icons.groups_outlined, color: _teal),
+                title: const Text('My Team'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/team');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.event_available_outlined, color: _teal),
+                title: const Text('Team Attendance'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/team-attendance');
+                },
+              ),
+            ],
+            if (user?.role == 'team_member') ...[
+              ListTile(
+                leading: const Icon(Icons.event_available_outlined, color: _teal),
+                title: const Text('My Attendance'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/my-attendance');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_note_outlined, color: _teal),
+                title: const Text('My Daily Log'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/my-daily-log');
+                },
+              ),
+            ],
             ListTile(
               leading: const Icon(Icons.play_circle_outline, color: _teal),
               title: const Text('Learning'),

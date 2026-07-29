@@ -27,6 +27,12 @@ import 'screens/products/favorites_screen.dart';
 import 'screens/learning/learning_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/divisions/division_landing_screen.dart';
+import 'screens/team/team_screen.dart';
+import 'screens/team/team_member_detail_screen.dart';
+import 'screens/team/team_attendance_screen.dart';
+import 'screens/team/my_attendance_screen.dart';
+import 'screens/team/my_daily_log_screen.dart';
+import 'models/team_member.dart';
 import 'data/divisions.dart';
 import 'widgets/fullscreen_image_gallery.dart';
 
@@ -131,6 +137,14 @@ class MoulinsApp extends ConsumerWidget {
               ],
             ),
             GoRoute(path: '/doctors', builder: (_, __) => const DoctorsScreen()),
+            GoRoute(path: '/team', builder: (_, __) => const TeamScreen()),
+            GoRoute(
+              path: '/team/:id',
+              builder: (_, state) => TeamMemberDetailScreen(member: state.extra as TeamMember),
+            ),
+            GoRoute(path: '/team-attendance', builder: (_, __) => const TeamAttendanceScreen()),
+            GoRoute(path: '/my-attendance', builder: (_, __) => const MyAttendanceScreen()),
+            GoRoute(path: '/my-daily-log', builder: (_, __) => const MyDailyLogScreen()),
             GoRoute(
               path: '/meetings',
               builder: (_, state) => MeetingsScreen(

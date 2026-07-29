@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-const String baseUrl = 'http://13.203.21.62/api';
+const String baseUrl = 'https://moulinspharma.com/api';
 
 FlutterSecureStorage get _storage => const FlutterSecureStorage(
       aOptions: AndroidOptions(

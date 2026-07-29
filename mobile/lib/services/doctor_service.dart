@@ -34,6 +34,31 @@ class DoctorService {
     return Doctor.fromJson(res.data);
   }
 
+  Future<void> updateDoctor(
+    String id, {
+    required String name,
+    String? phone,
+    String? email,
+    String? speciality,
+    String? clinicName,
+    String? clinicAddress,
+    double? latitude,
+    double? longitude,
+    DateTime? dob,
+  }) async {
+    await _dio.put('/doctors/$id', data: {
+      'name': name,
+      'phone': phone,
+      'email': email,
+      'speciality': speciality,
+      'clinic_name': clinicName,
+      'clinic_address': clinicAddress,
+      'latitude': latitude,
+      'longitude': longitude,
+      if (dob != null) 'dob': dob.toUtc().toIso8601String(),
+    });
+  }
+
   Future<List<Doctor>> getAllDoctorsWithLocation() async {
     final res = await _dio.get('/admin/doctors');
     return (res.data as List<dynamic>).map((e) => Doctor.fromJson(e)).toList();

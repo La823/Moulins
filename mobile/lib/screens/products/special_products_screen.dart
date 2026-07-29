@@ -50,7 +50,7 @@ class _SpecialProductsScreenState extends ConsumerState<SpecialProductsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Special', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        title: const Text('13 Alpha Unit', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: [
           Stack(
             children: [
