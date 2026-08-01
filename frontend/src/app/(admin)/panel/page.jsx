@@ -42,6 +42,15 @@ export default function AdminDashboard() {
   const [catManagerError, setCatManagerError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
+  const [tags, setTags] = useState([]); // [{id, name, color}]
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#6B7280");
+  const [editingTag, setEditingTag] = useState(null);
+  const [editingTagName, setEditingTagName] = useState("");
+  const [editingTagColor, setEditingTagColor] = useState("#6B7280");
+  const [tagManagerError, setTagManagerError] = useState("");
+  const [confirmDeleteTagId, setConfirmDeleteTagId] = useState(null);
+
   const fetchCategories = async () => {
     try {
       const data = await apiFetch("/products/categories");
@@ -57,6 +66,75 @@ export default function AdminDashboard() {
       .then((data) => setCategories(Array.isArray(data) ? data : []))
       .catch(console.error);
   }, [isAdmin]);
+
+  const fetchTags = async () => {
+    try {
+      const data = await apiFetch("/products/tags");
+      setTags(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetchTags();
+  }, [isAdmin]);
+
+  const handleAddTag = async (e) => {
+    e.preventDefault();
+    const name = newTagName.trim();
+    if (!name) return;
+    setTagManagerError("");
+    try {
+      await apiFetch("/admin/tags", {
+        method: "POST",
+        body: JSON.stringify({ name, color: newTagColor }),
+      });
+      setNewTagName("");
+      setNewTagColor("#6B7280");
+      fetchTags();
+    } catch (err) {
+      setTagManagerError(err.message);
+    }
+  };
+
+  const startEditTag = (tag) => {
+    setEditingTag(tag.name);
+    setEditingTagName(tag.name);
+    setEditingTagColor(tag.color || "#6B7280");
+    setTagManagerError("");
+  };
+
+  const handleRenameTag = async (id) => {
+    const name = editingTagName.trim();
+    if (!name) return;
+    setTagManagerError("");
+    try {
+      await apiFetch(`/admin/tags/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, color: editingTagColor }),
+      });
+      setEditingTag(null);
+      fetchTags();
+    } catch (err) {
+      setTagManagerError(err.message);
+    }
+  };
+
+  const handleDeleteTag = async (id) => {
+    if (confirmDeleteTagId !== id) {
+      setConfirmDeleteTagId(id);
+      return;
+    }
+    setConfirmDeleteTagId(null);
+    try {
+      await apiFetch(`/admin/tags/${id}`, { method: "DELETE" });
+      fetchTags();
+    } catch (err) {
+      setTagManagerError(err.message);
+    }
+  };
 
   const handleAddCategory = async (e) => {
     e.preventDefault();
@@ -301,6 +379,128 @@ export default function AdminDashboard() {
                           }`}
                         >
                           {confirmDeleteId === c.id ? "Confirm delete?" : "Delete"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tag Manager - admin only */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8 w-full">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Tags</h3>
+
+          <form onSubmit={handleAddTag} className="flex gap-2 mb-3">
+            <input
+              type="color"
+              value={newTagColor}
+              onChange={(e) => setNewTagColor(e.target.value)}
+              title="Tag color"
+              className="w-10 h-10 p-0.5 border border-gray-300 rounded-lg cursor-pointer flex-shrink-0"
+            />
+            <input
+              type="text"
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              placeholder="New tag name"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+            <button
+              type="submit"
+              className="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+            >
+              Add
+            </button>
+          </form>
+
+          {tagManagerError && (
+            <p className="text-sm text-red-600 mb-2">{tagManagerError}</p>
+          )}
+
+          {tags.length === 0 ? (
+            <p className="text-sm text-gray-400">No tags yet</p>
+          ) : (
+            <div className="space-y-1.5">
+              {tags.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 rounded-lg"
+                >
+                  {editingTag === t.name ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="color"
+                        value={editingTagColor}
+                        onChange={(e) => setEditingTagColor(e.target.value)}
+                        title="Tag color"
+                        className="w-7 h-7 p-0.5 border border-gray-300 rounded cursor-pointer flex-shrink-0"
+                      />
+                      <input
+                        type="text"
+                        value={editingTagName}
+                        onChange={(e) => setEditingTagName(e.target.value)}
+                        autoFocus
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+                      />
+                    </div>
+                  ) : (
+                    <span className="flex items-center gap-2 text-sm text-gray-800">
+                      <span
+                        className="w-3 h-3 rounded-full flex-shrink-0 border border-black/10"
+                        style={{ backgroundColor: t.color || "#6B7280" }}
+                      />
+                      {t.name}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {editingTag === t.name ? (
+                      <>
+                        <button
+                          onClick={() => handleRenameTag(t.id)}
+                          className="text-xs font-medium text-gray-900 hover:underline"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingTag(null)}
+                          className="text-xs text-gray-500 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => {
+                            setConfirmDeleteTagId(null);
+                            startEditTag(t);
+                          }}
+                          className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                        >
+                          Rename
+                        </button>
+                        {confirmDeleteTagId === t.id && (
+                          <button
+                            onClick={() => setConfirmDeleteTagId(null)}
+                            className="text-xs text-gray-500 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteTag(t.id)}
+                          className={`text-xs font-medium ${
+                            confirmDeleteTagId === t.id
+                              ? "text-red-700 underline"
+                              : "text-red-500 hover:text-red-700"
+                          }`}
+                        >
+                          {confirmDeleteTagId === t.id ? "Confirm delete?" : "Delete"}
                         </button>
                       </>
                     )}

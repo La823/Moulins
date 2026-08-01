@@ -2,6 +2,7 @@ package products
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -12,11 +13,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
+
+// isProductIDConflict reports whether err is a unique-constraint violation
+// on products.product_id — the admin-supplied "actual product id" colliding
+// with one already in use.
+func isProductIDConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "products_product_id_unique"
+}
 
 func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) {
 	images, _ := models.GetProductImages(r.Context(), db, p.ID)
@@ -46,6 +56,12 @@ func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) 
 		cats = []string{}
 	}
 	p.Categories = cats
+
+	tags, _ := models.GetProductTags(r.Context(), db, p.ID)
+	if tags == nil {
+		tags = []string{}
+	}
+	p.Tags = tags
 }
 
 func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []models.Product) {
@@ -61,6 +77,7 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 	imagesMap, _ := models.GetProductImagesBatch(r.Context(), db, ids)
 	docsMap, _ := models.GetProductDocumentsBatch(r.Context(), db, ids)
 	catsMap, _ := models.GetProductCategoriesBatch(r.Context(), db, ids)
+	tagsMap, _ := models.GetProductTagsBatch(r.Context(), db, ids)
 
 	for i := range products {
 		images := imagesMap[products[i].ID]
@@ -90,6 +107,12 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 			cats = []string{}
 		}
 		products[i].Categories = cats
+
+		tags := tagsMap[products[i].ID]
+		if tags == nil {
+			tags = []string{}
+		}
+		products[i].Tags = tags
 	}
 }
 
@@ -120,8 +143,12 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 
 		id, err := models.CreateProduct(r.Context(), db, req)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "unknown categories:") {
+			if strings.HasPrefix(err.Error(), "unknown categories:") || strings.HasPrefix(err.Error(), "unknown tags:") {
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if isProductIDConflict(err) {
+				http.Error(w, "that product id is already in use", http.StatusBadRequest)
 				return
 			}
 			log.Printf("create product error: %v", err)
@@ -191,10 +218,11 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		search := r.URL.Query().Get("search")
 		category := r.URL.Query().Get("category")
 		form := r.URL.Query().Get("form")
+		tag := r.URL.Query().Get("tag")
 		nameOnly := r.URL.Query().Get("name_only") == "true"
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:no=%v", activeOnly, page, limit, search, category, form, nameOnly)
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:no=%v", activeOnly, page, limit, search, category, form, tag, nameOnly)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -202,7 +230,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, form, limit, offset, nameOnly)
+		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, form, tag, limit, offset, nameOnly)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)
@@ -280,8 +308,12 @@ func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		}
 
 		if err := models.UpdateProduct(r.Context(), db, id, req); err != nil {
-			if strings.HasPrefix(err.Error(), "unknown categories:") {
+			if strings.HasPrefix(err.Error(), "unknown categories:") || strings.HasPrefix(err.Error(), "unknown tags:") {
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if isProductIDConflict(err) {
+				http.Error(w, "that product id is already in use", http.StatusBadRequest)
 				return
 			}
 			log.Printf("update product error: %v", err)

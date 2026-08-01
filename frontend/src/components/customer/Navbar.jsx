@@ -36,16 +36,33 @@ const dropdownContent = {
           <br />
           product range
         </h3>
-        <Link
-          href="/products"
-          onClick={onClose}
-          className="group inline-flex items-center gap-2 text-sm text-red-600 font-medium"
-        >
-          Browse all products
-          <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
-            &rarr;
-          </span>
-        </Link>
+        <div className="flex flex-col items-start gap-3">
+          <Link
+            href="/products"
+            onClick={onClose}
+            className="group inline-flex items-center gap-4 text-4xl font-bold text-red-600"
+          >
+            Browse all products
+            <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
+              &rarr;
+            </span>
+          </Link>
+          <Link
+            href="/products?tag=Upcoming"
+            onClick={onClose}
+            className="group inline-flex items-center gap-2 text-xl text-gray-500 font-medium"
+          >
+            Upcoming products
+            <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
+              <span
+                className="inline-block"
+                style={{ transform: "scaleX(5)", transformOrigin: "left" }}
+              >
+                &#10230;
+              </span>
+            </span>
+          </Link>
+        </div>
       </div>
 
       <div className="border-l border-gray-200 pl-10 flex gap-28">
@@ -63,7 +80,7 @@ const dropdownContent = {
                   {division.name}
                 </span>
                 {division.desc && (
-                  <span className="text-gray-400 group-hover:text-red-600 transition-colors">
+                  <span className="text-xs text-gray-400 group-hover:text-red-600 transition-colors">
                     {" "}
                     &middot; {division.desc}
                   </span>
@@ -88,7 +105,7 @@ const dropdownContent = {
                   {division.name}
                 </span>
                 {division.desc && (
-                  <span className="text-gray-400 group-hover:text-red-600 transition-colors">
+                  <span className="text-xs text-gray-400 group-hover:text-red-600 transition-colors">
                     {" "}
                     &middot; {division.desc}
                   </span>

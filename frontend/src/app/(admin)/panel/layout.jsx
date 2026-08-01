@@ -27,6 +27,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    label: "Graphics Design",
+    href: "/panel/graphics-design",
+    permission: "products",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+      </svg>
+    ),
+  },
+  {
     label: "Orders",
     href: "/panel/orders",
     permission: "orders",

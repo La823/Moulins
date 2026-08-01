@@ -70,6 +70,7 @@ function ProductsPageInner() {
   const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "");
   const [forms, setForms] = useState([]);
   const [activeForm, setActiveForm] = useState(searchParams.get("form") || "");
+  const activeTag = searchParams.get("tag") || "";
 
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -174,6 +175,7 @@ function ProductsPageInner() {
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (activeCategory) params.set("category", activeCategory);
     if (activeForm) params.set("form", activeForm);
+    if (activeTag) params.set("tag", activeTag);
 
     apiFetch(`/products?${params}`)
       .then((data) => {
@@ -197,7 +199,7 @@ function ProductsPageInner() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, debouncedSearch, activeCategory, activeForm, specialProducts, isSpecialCustomer]);
+  }, [page, debouncedSearch, activeCategory, activeForm, activeTag, specialProducts, isSpecialCustomer]);
 
   return (
     <div className="max-w-[96rem] mx-auto px-10 py-10">

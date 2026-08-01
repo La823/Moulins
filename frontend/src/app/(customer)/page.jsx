@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import HomeCarousel from "@/components/customer/HomeCarousel";
+import SmallProductCard from "@/components/products/SmallProductCard";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
 // All 12 divisions, using the same banner images used as filters on the Products page.
@@ -60,9 +61,13 @@ const rise = (delay = 0) => ({
 
 export default function HomePage() {
   const [highlights, setHighlights] = useState(null);
+  const [upcomingProducts, setUpcomingProducts] = useState([]);
 
   useEffect(() => {
     apiFetch("/home-highlights").then(setHighlights).catch(() => {});
+    apiFetch("/products?tag=Upcoming&limit=20")
+      .then((res) => setUpcomingProducts(res.products || []))
+      .catch(() => {});
   }, []);
 
   return (
@@ -217,6 +222,33 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* Upcoming Products — any product tagged "Upcoming" in admin */}
+      {upcomingProducts.length > 0 && (
+        <section className="max-w-7xl mx-auto px-8 pb-20">
+          <div className="mb-10 flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-light text-gray-900">Upcoming Products</h2>
+              <p className="text-sm text-gray-400 mt-3 max-w-lg">
+                A first look at what&apos;s launching soon from Moulins Pharmaceuticals.
+              </p>
+            </div>
+            <Link
+              href="/products"
+              className="hidden sm:inline-block text-sm font-medium text-gray-900 hover:text-red-600 transition-colors whitespace-nowrap"
+            >
+              View All &rarr;
+            </Link>
+          </div>
+          <div className="no-scrollbar flex gap-4 overflow-x-auto pb-2">
+            {upcomingProducts.map((p) => (
+              <div key={p.id} className="flex-shrink-0 w-64">
+                <SmallProductCard product={p} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Curated collection highlights — admin-editable via /admin */}
       {highlights && (

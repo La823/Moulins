@@ -23,8 +23,28 @@ export default function EditProduct() {
       .catch(console.error);
   }, []);
 
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const tagRef = useRef(null);
+  const [tagOptions, setTagOptions] = useState([]);
+  const [selectedTags, setSelectedTags] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/products/tags")
+      .then((data) => setTagOptions(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
+
+  const toggleTag = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const tagColor = (name) => tagOptions.find((t) => t.name === name)?.color || "#6B7280";
+
   // Form state
   const [form, setForm] = useState({
+    product_id: "",
     name: "",
     description: "",
     price: "",
@@ -44,6 +64,7 @@ export default function EditProduct() {
     key_benefits: "",
     direction_for_use: "",
     safety_information: "",
+    edetailing: "",
   });
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [images, setImages] = useState([]);
@@ -66,6 +87,7 @@ export default function EditProduct() {
     apiFetch(`/products/${id}`)
       .then((p) => {
         setForm({
+          product_id: p.product_id != null ? String(p.product_id) : "",
           name: p.name || "",
           description: p.description || "",
           price: p.price != null ? String(p.price) : "",
@@ -85,8 +107,10 @@ export default function EditProduct() {
           key_benefits: p.key_benefits || "",
           direction_for_use: p.direction_for_use || "",
           safety_information: p.safety_information || "",
+          edetailing: p.edetailing || "",
         });
         setSelectedCategories(p.categories || []);
+        setSelectedTags(p.tags || []);
         setImages(p.images || []);
         setDocuments(p.documents || []);
         setAudioUrl(p.audio_url || null);
@@ -95,11 +119,14 @@ export default function EditProduct() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Close category dropdown on outside click
+  // Close category/tag dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (catRef.current && !catRef.current.contains(e.target)) {
         setCatDropdownOpen(false);
+      }
+      if (tagRef.current && !tagRef.current.contains(e.target)) {
+        setTagDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -138,10 +165,12 @@ export default function EditProduct() {
 
     try {
       const body = {
+        product_id: form.product_id ? parseInt(form.product_id) : null,
         name: form.name,
         description: form.description,
         price: parseFloat(form.price) || 0,
         categories: selectedCategories,
+        tags: selectedTags,
         stock: parseInt(form.stock) || 0,
         is_active: form.is_active,
         brand_name: form.brand_name || null,
@@ -158,6 +187,7 @@ export default function EditProduct() {
         key_benefits: form.key_benefits || null,
         direction_for_use: form.direction_for_use || null,
         safety_information: form.safety_information || null,
+        edetailing: form.edetailing || null,
       };
 
       await apiFetch(`/admin/products/${id}`, {
@@ -353,6 +383,17 @@ export default function EditProduct() {
           </h3>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Product ID
+            </label>
+            <input
+              type="number"
+              value={form.product_id}
+              onChange={(e) => setForm({ ...form, product_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Name
             </label>
             <input
@@ -463,6 +504,72 @@ export default function EditProduct() {
                         }`}
                       >
                         {cat}
+                        {selected && (
+                          <span className="text-gray-900 text-xs">
+                            &#10003;
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tags
+            </label>
+            <div ref={tagRef} className="relative">
+              <div
+                onClick={() => setTagDropdownOpen(!tagDropdownOpen)}
+                className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-lg text-sm cursor-pointer flex flex-wrap items-center gap-1.5"
+              >
+                {selectedTags.length === 0 && (
+                  <span className="text-gray-400">Select tags...</span>
+                )}
+                {selectedTags.map((tag) => (
+                  <span
+                    key={tag}
+                    style={{ backgroundColor: tagColor(tag) }}
+                    className="inline-flex items-center gap-1 text-white text-xs font-medium px-2.5 py-1 rounded-full"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleTag(tag);
+                      }}
+                      className="hover:opacity-70 text-[10px] leading-none"
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+              {tagDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-48 overflow-y-auto">
+                  {tagOptions.map((tag) => {
+                    const selected = selectedTags.includes(tag.name);
+                    return (
+                      <button
+                        key={tag.name}
+                        type="button"
+                        onClick={() => toggleTag(tag.name)}
+                        className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 ${
+                          selected
+                            ? "text-gray-900 font-medium"
+                            : "text-gray-600"
+                        }`}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
+                          style={{ backgroundColor: tag.color || "#6B7280" }}
+                        />
+                        <span className="flex-1">{tag.name}</span>
                         {selected && (
                           <span className="text-gray-900 text-xs">
                             &#10003;
@@ -663,6 +770,20 @@ export default function EditProduct() {
                 setForm({ ...form, safety_information: e.target.value })
               }
               rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Edetailing
+            </label>
+            <textarea
+              value={form.edetailing}
+              onChange={(e) =>
+                setForm({ ...form, edetailing: e.target.value })
+              }
+              rows={4}
+              placeholder="Detailing script / talking points for reps..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
           </div>

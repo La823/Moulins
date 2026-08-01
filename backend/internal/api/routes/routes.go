@@ -9,6 +9,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/dailylogs"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/designfiles"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
@@ -26,6 +27,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/tags"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/team"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
@@ -61,6 +63,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// public product routes
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
 	router.HandleFunc("/products/categories", categories.ListHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/products/tags", tags.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/forms", products.ProductFormsHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/{id}", products.GetProductHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
@@ -307,6 +310,12 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
 
+	productStaff.HandleFunc("/design-files/counts", designfiles.CountsHandler(db)).Methods("GET")
+	productStaff.HandleFunc("/design-files/upload-url", designfiles.UploadURLHandler()).Methods("POST")
+	productStaff.HandleFunc("/products/{id}/design-files", designfiles.ListHandler(db)).Methods("GET")
+	productStaff.HandleFunc("/products/{id}/design-files", designfiles.AddHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/products/design-files/{fileId}", designfiles.DeleteHandler(db)).Methods("DELETE")
+
 	// special product management (admin only, same product permission)
 	productStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
 	productStaff.HandleFunc("/special-products", specialproducts.AdminCreateSpecialProductHandler(db)).Methods("POST")
@@ -324,6 +333,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/categories", categories.CreateHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/categories/{id}", categories.UpdateHandler(db, rdb)).Methods("PUT")
 	productStaff.HandleFunc("/categories/{id}", categories.DeleteHandler(db, rdb)).Methods("DELETE")
+	productStaff.HandleFunc("/tags", tags.CreateHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/tags/{id}", tags.UpdateHandler(db, rdb)).Methods("PUT")
+	productStaff.HandleFunc("/tags/{id}", tags.DeleteHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — meeting oversight
 	meetingsStaff := protected.PathPrefix("/admin").Subrouter()

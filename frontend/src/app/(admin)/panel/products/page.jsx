@@ -26,10 +26,12 @@ function AdminProductsInner() {
   const limit = 20;
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
+    product_id: "",
     name: "",
     description: "",
     price: "",
     stock: "",
+    edetailing: "",
   });
   const [selectedCategories, setSelectedCategories] = useState(
     categoryFilter ? [categoryFilter] : []
@@ -51,6 +53,25 @@ function AdminProductsInner() {
       .then((data) => setCategoryOptions(Array.isArray(data) ? data.map((c) => c.name) : []))
       .catch(console.error);
   }, []);
+
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const [tagOptions, setTagOptions] = useState([]);
+  const tagRef = useRef(null);
+
+  useEffect(() => {
+    apiFetch("/products/tags")
+      .then((data) => setTagOptions(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
+
+  const toggleTag = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const tagColor = (name) => tagOptions.find((t) => t.name === name)?.color || "#6B7280";
 
   const fetchProducts = async (p = page, q = search) => {
     try {
@@ -87,11 +108,14 @@ function AdminProductsInner() {
     }, 300);
   };
 
-  // Close category dropdown on outside click
+  // Close category/tag dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (catRef.current && !catRef.current.contains(e.target)) {
         setCatDropdownOpen(false);
+      }
+      if (tagRef.current && !tagRef.current.contains(e.target)) {
+        setTagDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -127,11 +151,14 @@ function AdminProductsInner() {
       const { id: productId } = await apiFetch("/admin/products", {
         method: "POST",
         body: JSON.stringify({
+          product_id: form.product_id ? parseInt(form.product_id) : null,
           name: form.name,
           description: form.description,
           price: parseFloat(form.price),
           categories: selectedCategories,
+          tags: selectedTags,
           stock: parseInt(form.stock) || 0,
+          edetailing: form.edetailing || null,
         }),
       });
 
@@ -160,8 +187,9 @@ function AdminProductsInner() {
       }
 
       // Reset form
-      setForm({ name: "", description: "", price: "", stock: "" });
+      setForm({ product_id: "", name: "", description: "", price: "", stock: "", edetailing: "" });
       setSelectedCategories([]);
+      setSelectedTags([]);
       setImageFiles([]);
       setPdfFiles([]);
       setShowForm(false);
@@ -322,6 +350,19 @@ function AdminProductsInner() {
         >
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Product ID
+            </label>
+            <input
+              type="number"
+              value={form.product_id}
+              onChange={(e) => setForm({ ...form, product_id: e.target.value })}
+              placeholder="Leave blank to auto-assign"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Name *
             </label>
             <input
@@ -343,6 +384,21 @@ function AdminProductsInner() {
                 setForm({ ...form, description: e.target.value })
               }
               rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Edetailing
+            </label>
+            <textarea
+              value={form.edetailing}
+              onChange={(e) =>
+                setForm({ ...form, edetailing: e.target.value })
+              }
+              rows={4}
+              placeholder="Detailing script / talking points for reps..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
           </div>
@@ -423,6 +479,69 @@ function AdminProductsInner() {
                         }`}
                       >
                         {cat}
+                        {selected && (
+                          <span className="text-gray-900 text-xs">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tags - dropdown tag selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tags
+            </label>
+            <div ref={tagRef} className="relative">
+              <div
+                onClick={() => setTagDropdownOpen(!tagDropdownOpen)}
+                className="w-full min-h-[42px] px-3 py-2 border border-gray-300 rounded-lg text-sm cursor-pointer flex flex-wrap items-center gap-1.5"
+              >
+                {selectedTags.length === 0 && (
+                  <span className="text-gray-400">Select tags...</span>
+                )}
+                {selectedTags.map((tag) => (
+                  <span
+                    key={tag}
+                    style={{ backgroundColor: tagColor(tag) }}
+                    className="inline-flex items-center gap-1 text-white text-xs font-medium px-2.5 py-1 rounded-full"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleTag(tag);
+                      }}
+                      className="hover:opacity-70 text-[10px] leading-none"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {tagDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-48 overflow-y-auto">
+                  {tagOptions.map((tag) => {
+                    const selected = selectedTags.includes(tag.name);
+                    return (
+                      <button
+                        key={tag.name}
+                        type="button"
+                        onClick={() => toggleTag(tag.name)}
+                        className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 ${
+                          selected ? "text-gray-900 font-medium" : "text-gray-600"
+                        }`}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
+                          style={{ backgroundColor: tag.color || "#6B7280" }}
+                        />
+                        <span className="flex-1">{tag.name}</span>
                         {selected && (
                           <span className="text-gray-900 text-xs">✓</span>
                         )}
@@ -564,7 +683,10 @@ function AdminProductsInner() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between">
                     <div>
-                      <Link href={`/panel/products/${p.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">{p.name}</Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/panel/products/${p.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">{p.name}</Link>
+                        <span className="text-xs text-gray-400 font-mono">#{p.product_id}</span>
+                      </div>
                       <p className="text-sm text-gray-500 mt-0.5">
                         ₹{p.price} &middot; {p.stock} in stock
                       </p>
