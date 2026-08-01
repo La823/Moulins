@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import HomeCarousel from "@/components/customer/HomeCarousel";
 import SmallProductCard from "@/components/products/SmallProductCard";
+import { useAuth } from "@/context/AuthContext";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
 // All 12 divisions, using the same banner images used as filters on the Products page.
@@ -60,15 +61,23 @@ const rise = (delay = 0) => ({
 });
 
 export default function HomePage() {
+  const { user } = useAuth();
   const [highlights, setHighlights] = useState(null);
   const [upcomingProducts, setUpcomingProducts] = useState([]);
 
   useEffect(() => {
     apiFetch("/home-highlights").then(setHighlights).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setUpcomingProducts([]);
+      return;
+    }
     apiFetch("/products?tag=Upcoming&limit=20")
       .then((res) => setUpcomingProducts(res.products || []))
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   return (
     <>

@@ -182,7 +182,41 @@ func getUserID(r *http.Request) uuid.UUID {
 	return id
 }
 
-// POST /admin/orders/{id}/photos — attach a bill photo (staff)
+// POST /admin/orders/{id}/tracking-upload-url — get a presigned S3 URL for a
+// courier tracking screenshot/image, namespaced under this order in S3.
+func TrackingUploadURLHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		orderID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			Filename string `json:"filename"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Filename == "" {
+			http.Error(w, "filename is required", http.StatusBadRequest)
+			return
+		}
+
+		uploadURL, key, err := utils.GeneratePresignedOrderTrackingUploadURL(orderID.String(), req.Filename)
+		if err != nil {
+			log.Printf("presign tracking image error: %v", err)
+			http.Error(w, "could not generate upload url", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"upload_url": uploadURL,
+			"key":        key,
+		})
+	}
+}
+
+// POST /admin/orders/{id}/photos — attach a bill photo or tracking image (staff)
 func AddPhotoHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		orderID, err := uuid.Parse(mux.Vars(r)["id"])
@@ -193,21 +227,30 @@ func AddPhotoHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
-			ImageKey string `json:"image_key"`
+			ImageKey  string `json:"image_key"`
+			PhotoType string `json:"photo_type"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ImageKey == "" {
 			http.Error(w, "image_key is required", http.StatusBadRequest)
 			return
 		}
+		if req.PhotoType != "" && req.PhotoType != "bill" && req.PhotoType != "tracking" {
+			http.Error(w, "photo_type must be 'bill' or 'tracking'", http.StatusBadRequest)
+			return
+		}
 
-		photoID, err := models.AddOrderPhoto(r.Context(), db, orderID, req.ImageKey, getUserID(r))
+		photoID, err := models.AddOrderPhoto(r.Context(), db, orderID, req.ImageKey, getUserID(r), req.PhotoType)
 		if err != nil {
 			log.Printf("add order photo error: %v", err)
 			http.Error(w, "could not add photo", http.StatusInternalServerError)
 			return
 		}
 
-		_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.added", "A bill photo was attached to the order")
+		eventDesc := "A bill photo was attached to the order"
+		if req.PhotoType == "tracking" {
+			eventDesc = "A tracking image was attached to the order"
+		}
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.added", eventDesc)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)

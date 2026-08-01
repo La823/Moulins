@@ -281,6 +281,20 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         child: Text(cat, style: const TextStyle(fontSize: 11, color: Color(0xFF00A6A4), fontWeight: FontWeight.w500)),
                       )).toList(),
                     ),
+                  if (p.tags.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      children: p.tags.map((tag) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(tag, style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w500)),
+                      )).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 12),
 
                   Text(p.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),

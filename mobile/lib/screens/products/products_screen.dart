@@ -27,7 +27,8 @@ final formsProvider = FutureProvider<List<String>>((ref) async {
 
 class ProductsScreen extends ConsumerStatefulWidget {
   final String? initialCategory;
-  const ProductsScreen({super.key, this.initialCategory});
+  final String? initialTag;
+  const ProductsScreen({super.key, this.initialCategory, this.initialTag});
 
   @override
   ConsumerState<ProductsScreen> createState() => _ProductsScreenState();
@@ -38,6 +39,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   String _search = '';
   String _category = '';
   String _form = '';
+  String _tag = '';
   int _page = 1;
   bool _loading = false;
   bool _hasMore = true;
@@ -49,6 +51,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   void initState() {
     super.initState();
     _category = widget.initialCategory ?? '';
+    _tag = widget.initialTag ?? '';
     _load();
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
@@ -78,6 +81,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         search: _search,
         category: _category,
         form: _form,
+        tag: _tag,
       );
       setState(() {
         _products.addAll(res.products);
@@ -329,6 +333,35 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               },
             ),
           ),
+
+          if (_tag.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _tag = '');
+                    _load(reset: true);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00A6A4).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Tag: ', style: TextStyle(fontSize: 12, color: Color(0xFF00A6A4))),
+                        Text(_tag, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF00A6A4))),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.close, size: 14, color: Color(0xFF00A6A4)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
           if (_offline)
             SliverToBoxAdapter(

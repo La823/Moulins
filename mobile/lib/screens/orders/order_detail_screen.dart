@@ -22,6 +22,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   Order? _order;
   bool _loading = true;
   bool _uploadingPhoto = false;
+  bool _uploadingTracking = false;
 
   @override
   void initState() {
@@ -39,9 +40,34 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     }
   }
 
+  Future<ImageSource?> _pickSource() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined, color: teal),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: teal),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _uploadPhoto() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    final source = await _pickSource();
+    if (source == null) return;
+    final file = await ImagePicker().pickImage(source: source, imageQuality: 80);
     if (file == null) return;
 
     setState(() => _uploadingPhoto = true);
@@ -67,12 +93,41 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     }
   }
 
-  Future<void> _deletePhoto(String photoId) async {
+  Future<void> _uploadTrackingImage() async {
+    final source = await _pickSource();
+    if (source == null) return;
+    final file = await ImagePicker().pickImage(source: source, imageQuality: 80);
+    if (file == null) return;
+
+    setState(() => _uploadingTracking = true);
+    try {
+      final urls = await OrderService().getTrackingUploadUrl(widget.orderId, file.name);
+      final bytes = await File(file.path).readAsBytes();
+      await http.put(Uri.parse(urls['upload_url']!), body: bytes, headers: {'Content-Type': 'image/jpeg'});
+      await OrderService().addOrderPhoto(widget.orderId, urls['key']!, photoType: 'tracking');
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tracking image attached'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload tracking image: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingTracking = false);
+    }
+  }
+
+  Future<void> _deletePhoto(String photoId, {String label = 'bill photo'}) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remove photo?'),
-        content: const Text('This bill photo will be permanently removed.'),
+        content: Text('This $label will be permanently removed.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
@@ -110,6 +165,8 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final o = _order!;
     final role = ref.watch(authProvider).user?.role;
     final canAttachPhotos = role == 'employee' || role == 'admin';
+    final billPhotos = o.photos.where((p) => p.photoType == 'bill').toList();
+    final trackingPhotos = o.photos.where((p) => p.photoType == 'tracking').toList();
 
     String dateStr = '';
     try {
@@ -221,7 +278,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Bill Photos (${o.photos.length})',
+              Text('Bill Photos (${billPhotos.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               if (canAttachPhotos)
                 TextButton.icon(
@@ -235,7 +292,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           ),
           const SizedBox(height: 10),
 
-          if (o.photos.isEmpty)
+          if (billPhotos.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
@@ -250,9 +307,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
               ),
-              itemCount: o.photos.length,
+              itemCount: billPhotos.length,
               itemBuilder: (context, i) {
-                final photo = o.photos[i];
+                final photo = billPhotos[i];
                 return GestureDetector(
                   onTap: () => showDialog(
                     context: context,
@@ -261,6 +318,60 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                     ),
                   ),
                   onLongPress: canAttachPhotos ? () => _deletePhoto(photo.id) : null,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(photo.imageUrl, fit: BoxFit.cover),
+                  ),
+                );
+              },
+            ),
+
+          const SizedBox(height: 20),
+
+          // Tracking image
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Tracking Image (${trackingPhotos.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              if (canAttachPhotos)
+                TextButton.icon(
+                  onPressed: _uploadingTracking ? null : _uploadTrackingImage,
+                  icon: _uploadingTracking
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: teal))
+                      : const Icon(Icons.add_a_photo_outlined, size: 18, color: teal),
+                  label: Text(_uploadingTracking ? 'Uploading...' : 'Add Image', style: const TextStyle(color: teal)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          if (trackingPhotos.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: Text('No tracking image attached yet', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: trackingPhotos.length,
+              itemBuilder: (context, i) {
+                final photo = trackingPhotos[i];
+                return GestureDetector(
+                  onTap: () => showDialog(
+                    context: context,
+                    builder: (_) => Dialog(
+                      child: InteractiveViewer(child: Image.network(photo.imageUrl)),
+                    ),
+                  ),
+                  onLongPress: canAttachPhotos ? () => _deletePhoto(photo.id, label: 'tracking image') : null,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(photo.imageUrl, fit: BoxFit.cover),

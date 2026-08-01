@@ -5,6 +5,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../widgets/home_highlights_section.dart';
 import '../../widgets/home_carousel_section.dart';
+import '../../widgets/upcoming_products_section.dart';
 // import '../../widgets/areas_of_focus_section.dart'; // temporarily unused — see below
 import '../../widgets/partnership_section.dart';
 import '../../widgets/app_drawer.dart';
@@ -31,6 +32,7 @@ class HomeScreen extends StatelessWidget {
           _Hero(),
           _TrustBar(),
           _CategorySection(),
+          const UpcomingProductsSection(),
           const HomeHighlightsSection(),
           const HomeCarouselSection(),
           // Areas of Focus — temporarily hidden, not removed; may be needed again later.

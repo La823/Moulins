@@ -1,0 +1,1 @@
+ALTER TABLE order_photos ADD COLUMN IF NOT EXISTS photo_type VARCHAR(20) NOT NULL DEFAULT 'bill';

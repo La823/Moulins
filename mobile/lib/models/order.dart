@@ -22,12 +22,14 @@ class OrderItem {
 class OrderPhoto {
   final String id;
   final String imageUrl;
+  final String photoType;
 
-  OrderPhoto({required this.id, required this.imageUrl});
+  OrderPhoto({required this.id, required this.imageUrl, this.photoType = 'bill'});
 
   factory OrderPhoto.fromJson(Map<String, dynamic> json) => OrderPhoto(
         id: json['id'] ?? '',
         imageUrl: json['image_url'] ?? '',
+        photoType: json['photo_type'] ?? 'bill',
       );
 }
 

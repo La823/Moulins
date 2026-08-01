@@ -32,10 +32,12 @@ class ProductDocument {
 
 class Product {
   final String id;
+  final int? productId;
   final String name;
   final String description;
   final double price;
   final List<String> categories;
+  final List<String> tags;
   final int stock;
   final bool isActive;
   final double? mrp;
@@ -49,10 +51,12 @@ class Product {
 
   Product({
     required this.id,
+    this.productId,
     required this.name,
     required this.description,
     required this.price,
     required this.categories,
+    this.tags = const [],
     required this.stock,
     required this.isActive,
     this.mrp,
@@ -67,10 +71,12 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
         id: json['id'] ?? '',
+        productId: json['product_id'],
         name: json['name'] ?? '',
         description: json['description'] ?? '',
         price: (json['price'] ?? 0).toDouble(),
         categories: List<String>.from(json['categories'] ?? []),
+        tags: List<String>.from(json['tags'] ?? []),
         stock: json['stock'] ?? 0,
         isActive: json['is_active'] ?? true,
         mrp: json['mrp']?.toDouble(),
@@ -92,10 +98,12 @@ class Product {
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        'product_id': productId,
         'name': name,
         'description': description,
         'price': price,
         'categories': categories,
+        'tags': tags,
         'stock': stock,
         'is_active': isActive,
         'mrp': mrp,

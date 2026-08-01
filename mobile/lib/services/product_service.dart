@@ -11,6 +11,7 @@ class ProductService {
     String search = '',
     String category = '',
     String form = '',
+    String tag = '',
   }) async {
     try {
       final res = await _dio.get('/products', queryParameters: {
@@ -19,6 +20,7 @@ class ProductService {
         if (search.isNotEmpty) 'search': search,
         if (category.isNotEmpty) 'category': category,
         if (form.isNotEmpty) 'form': form,
+        if (tag.isNotEmpty) 'tag': tag,
       });
       final result = ProductListResponse.fromJson(res.data);
       // Only the default unfiltered first page is cached as the offline
@@ -26,7 +28,7 @@ class ProductService {
       // Caching each product individually here (not just on detail-view)
       // means any product seen in the list opens offline too, not just
       // ones the user happened to tap into while still online.
-      if (page == 1 && search.isEmpty && category.isEmpty) {
+      if (page == 1 && search.isEmpty && category.isEmpty && tag.isEmpty) {
         OfflineCache.saveProductList(result.products);
         for (final p in result.products) {
           OfflineCache.saveProduct(p);
@@ -34,7 +36,7 @@ class ProductService {
       }
       return result;
     } catch (e) {
-      if (page == 1 && search.isEmpty && category.isEmpty) {
+      if (page == 1 && search.isEmpty && category.isEmpty && tag.isEmpty) {
         final cached = await OfflineCache.loadProductList();
         if (cached.isNotEmpty) {
           return ProductListResponse(products: cached, total: cached.length, page: 1, totalPages: 1, isFromCache: true);

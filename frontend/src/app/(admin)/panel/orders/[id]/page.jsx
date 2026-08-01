@@ -46,6 +46,7 @@ export default function AdminOrderDetail() {
   });
   const [savingDelivery, setSavingDelivery] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingTracking, setUploadingTracking] = useState(false);
 
   const loadOrder = () =>
     apiFetch(`/orders/${id}`).then((data) => {
@@ -177,14 +178,44 @@ export default function AdminOrderDetail() {
     }
   };
 
-  const handleDeletePhoto = async (photoId) => {
-    if (!confirm("Remove this bill photo?")) return;
+  const handleDeletePhoto = async (photoId, label = "Bill photo") => {
+    if (!confirm(`Remove this ${label.toLowerCase()}?`)) return;
     try {
       await apiFetch(`/admin/orders/photos/${photoId}`, { method: "DELETE" });
       loadOrder().catch(() => {});
-      setSuccess("Bill photo removed");
+      setSuccess(`${label} removed`);
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const handleTrackingUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setUploadingTracking(true);
+    setError("");
+    try {
+      const { upload_url, key } = await apiFetch(`/admin/orders/${id}/tracking-upload-url`, {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name }),
+      });
+      await fetch(upload_url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      await apiFetch(`/admin/orders/${id}/photos`, {
+        method: "POST",
+        body: JSON.stringify({ image_key: key, photo_type: "tracking" }),
+      });
+      loadOrder().catch(() => {});
+      setSuccess("Tracking image attached");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploadingTracking(false);
     }
   };
 
@@ -212,6 +243,9 @@ export default function AdminOrderDetail() {
       </div>
     );
   }
+
+  const billPhotos = (order.photos || []).filter((p) => (p.photo_type || "bill") === "bill");
+  const trackingPhotos = (order.photos || []).filter((p) => p.photo_type === "tracking");
 
   return (
     <div className="max-w-4xl">
@@ -410,7 +444,7 @@ export default function AdminOrderDetail() {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-700">
-              Bill Photos ({order.photos?.length || 0})
+              Bill Photos ({billPhotos.length})
             </h3>
             <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
               {uploadingPhoto ? "Uploading..." : "+ Add Photo"}
@@ -424,13 +458,13 @@ export default function AdminOrderDetail() {
             </label>
           </div>
 
-          {!order.photos || order.photos.length === 0 ? (
+          {billPhotos.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">
               No bill photos attached yet
             </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {order.photos.map((photo) => (
+              {billPhotos.map((photo) => (
                 <div key={photo.id} className="relative group">
                   <a href={photo.image_url} target="_blank" rel="noopener noreferrer">
                     <img
@@ -565,6 +599,51 @@ export default function AdminOrderDetail() {
               className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors resize-none"
             />
           </div>
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs text-gray-500">
+                Tracking Image
+              </label>
+              <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
+                {uploadingTracking ? "Uploading..." : "+ Add Tracking Image"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleTrackingUpload}
+                  disabled={uploadingTracking}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            {trackingPhotos.length === 0 ? (
+              <p className="text-sm text-gray-400 py-2 text-center border border-dashed border-gray-200 rounded-lg">
+                No tracking image attached yet
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {trackingPhotos.map((photo) => (
+                  <div key={photo.id} className="relative group">
+                    <a href={photo.image_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={photo.image_url}
+                        alt="Tracking"
+                        className="w-full h-28 object-cover rounded-lg border border-gray-200"
+                      />
+                    </a>
+                    <button
+                      onClick={() => handleDeletePhoto(photo.id, "Tracking image")}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remove tracking image"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="mt-4 flex justify-end">
             <button
               onClick={handleSaveDelivery}

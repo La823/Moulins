@@ -55,6 +55,8 @@ export default function OrderDetailPage() {
     );
   }
 
+  const trackingPhotos = (order.photos || []).filter((p) => p.photo_type === "tracking");
+
   const currentStep = STATUS_STEPS.indexOf(order.status);
 
   // Build a map of status -> timestamp from events
@@ -198,7 +200,7 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Delivery Details */}
-      {(order.delivery_person || order.tracking_number || order.expected_delivery) && (
+      {(order.delivery_person || order.tracking_number || order.expected_delivery || trackingPhotos.length > 0) && (
         <div className="border-t border-gray-200 pt-6 mt-6">
           <h2 className="text-sm font-medium text-gray-700 mb-3">Delivery Details</h2>
           <div className="grid grid-cols-2 gap-4 text-sm">
@@ -230,6 +232,22 @@ export default function OrderDetailPage() {
               <div className="col-span-2">
                 <span className="text-xs text-gray-400">Delivery Notes</span>
                 <p className="text-gray-700">{order.delivery_notes}</p>
+              </div>
+            )}
+            {trackingPhotos.length > 0 && (
+              <div className="col-span-2">
+                <span className="text-xs text-gray-400">Tracking Image</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
+                  {trackingPhotos.map((photo) => (
+                    <a key={photo.id} href={photo.image_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={photo.image_url}
+                        alt="Tracking"
+                        className="w-full h-28 object-cover rounded-lg border border-gray-200"
+                      />
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </div>

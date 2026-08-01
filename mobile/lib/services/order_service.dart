@@ -46,8 +46,13 @@ class OrderService {
     return {'upload_url': res.data['upload_url'], 'key': res.data['key']};
   }
 
-  Future<void> addOrderPhoto(String orderId, String imageKey) async {
-    await _dio.post('/admin/orders/$orderId/photos', data: {'image_key': imageKey});
+  Future<Map<String, String>> getTrackingUploadUrl(String orderId, String filename) async {
+    final res = await _dio.post('/admin/orders/$orderId/tracking-upload-url', data: {'filename': filename});
+    return {'upload_url': res.data['upload_url'], 'key': res.data['key']};
+  }
+
+  Future<void> addOrderPhoto(String orderId, String imageKey, {String photoType = 'bill'}) async {
+    await _dio.post('/admin/orders/$orderId/photos', data: {'image_key': imageKey, 'photo_type': photoType});
   }
 
   Future<void> deleteOrderPhoto(String photoId) async {

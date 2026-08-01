@@ -105,7 +105,10 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
             GoRoute(
               path: '/products',
-              builder: (_, state) => ProductsScreen(initialCategory: state.uri.queryParameters['category']),
+              builder: (_, state) => ProductsScreen(
+                initialCategory: state.uri.queryParameters['category'],
+                initialTag: state.uri.queryParameters['tag'],
+              ),
               routes: [
                 GoRoute(
                   path: ':id',

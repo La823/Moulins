@@ -272,22 +272,26 @@ type OrderPhoto struct {
 	OrderID    uuid.UUID  `json:"order_id"`
 	ImageKey   string     `json:"image_key"`
 	ImageURL   string     `json:"image_url,omitempty"`
+	PhotoType  string     `json:"photo_type"`
 	UploadedBy *uuid.UUID `json:"uploaded_by,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-func AddOrderPhoto(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, imageKey string, uploadedBy uuid.UUID) (uuid.UUID, error) {
+func AddOrderPhoto(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, imageKey string, uploadedBy uuid.UUID, photoType string) (uuid.UUID, error) {
+	if photoType == "" {
+		photoType = "bill"
+	}
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO order_photos (order_id, image_key, uploaded_by) VALUES ($1, $2, $3) RETURNING id`,
-		orderID, imageKey, uploadedBy,
+		`INSERT INTO order_photos (order_id, image_key, uploaded_by, photo_type) VALUES ($1, $2, $3, $4) RETURNING id`,
+		orderID, imageKey, uploadedBy, photoType,
 	).Scan(&id)
 	return id, err
 }
 
 func GetOrderPhotos(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]OrderPhoto, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, order_id, image_key, uploaded_by, created_at FROM order_photos WHERE order_id = $1 ORDER BY created_at DESC`,
+		`SELECT id, order_id, image_key, uploaded_by, photo_type, created_at FROM order_photos WHERE order_id = $1 ORDER BY created_at DESC`,
 		orderID,
 	)
 	if err != nil {
@@ -298,7 +302,7 @@ func GetOrderPhotos(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([
 	photos := []OrderPhoto{}
 	for rows.Next() {
 		var p OrderPhoto
-		if err := rows.Scan(&p.ID, &p.OrderID, &p.ImageKey, &p.UploadedBy, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.OrderID, &p.ImageKey, &p.UploadedBy, &p.PhotoType, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		photos = append(photos, p)
