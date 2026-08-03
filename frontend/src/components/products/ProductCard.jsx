@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
+import { useFavorites } from "@/context/FavoritesContext";
 
 // Shared product card — used on the products listing page and the
 // Recently Viewed / Explore More sections on the product detail page, so
@@ -9,6 +10,8 @@ import { useCart } from "@/context/CartContext";
 export default function ProductCard({ product: p, basePath = "/products" }) {
   const router = useRouter();
   const { addToCart } = useCart();
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const favorite = isFavorite(p.id);
 
   const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
 
@@ -28,6 +31,30 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
 
       {/* Image */}
       <div className="relative h-96 bg-white overflow-hidden mb-0 flex items-center justify-center pb-6">
+        {!p.is_special && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFavorite(p.id);
+            }}
+            className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-sm"
+            title={favorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill={favorite ? "#F5A623" : "none"}
+              stroke={favorite ? "#F5A623" : "#9CA3AF"}
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 21.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+              />
+            </svg>
+          </button>
+        )}
         {p.images && p.images.length > 0 ? (
           <img
             src={p.images[0].image_url}

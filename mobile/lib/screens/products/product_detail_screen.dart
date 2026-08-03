@@ -332,6 +332,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                         if (p.packSize != null) _detailRow('Pack Size', p.packSize!),
                         if (p.productForm != null) _detailRow('Form', p.productForm!),
                         _detailRow('Stock', 'In Stock', valueColor: Colors.green.shade600),
+                        if (p.moq > 1) _detailRow('Minimum Quantity', '${p.moq}'),
                       ],
                     ),
                   ),

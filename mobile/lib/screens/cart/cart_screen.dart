@@ -44,7 +44,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   Widget build(BuildContext context) {
     final items = ref.watch(cartProvider);
     final cart = ref.read(cartProvider.notifier);
-    final total = items.fold(0.0, (sum, e) => sum + e.total);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -103,12 +102,18 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                             // Qty controls
                             Row(
                               children: [
-                                _qtyBtn(Icons.remove, () => cart.updateQty(item.product.id, item.quantity - 1)),
+                                _qtyBtn(Icons.remove, () {
+                                  final step = item.product.moq > 0 ? item.product.moq : 1;
+                                  cart.updateQty(item.product.id, item.quantity - step);
+                                }),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 12),
                                   child: Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
                                 ),
-                                _qtyBtn(Icons.add, () => cart.updateQty(item.product.id, item.quantity + 1)),
+                                _qtyBtn(Icons.add, () {
+                                  final step = item.product.moq > 0 ? item.product.moq : 1;
+                                  cart.updateQty(item.product.id, item.quantity + step);
+                                }),
                               ],
                             ),
                           ],
@@ -127,14 +132,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   ),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                          Text('Rs. ${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF00A6A4))),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         height: 52,

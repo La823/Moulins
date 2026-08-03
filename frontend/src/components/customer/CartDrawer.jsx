@@ -161,14 +161,15 @@ export default function CartDrawer() {
                             </button>
                           </div>
 
-                          {/* Quantity controls */}
+                          {/* Quantity controls — steps by the product's MOQ (default 1) */}
                           <div className="flex items-center gap-0 mt-3 w-fit border border-gray-200 rounded-md">
                             <button
-                              onClick={() =>
-                                quantity > 1
-                                  ? updateQuantity(product.id, quantity - 1)
-                                  : removeFromCart(product.id)
-                              }
+                              onClick={() => {
+                                const step = product.moq && product.moq > 0 ? product.moq : 1;
+                                quantity > step
+                                  ? updateQuantity(product.id, quantity - step)
+                                  : removeFromCart(product.id);
+                              }}
                               className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 transition-colors"
                             >
                               &minus;
@@ -177,9 +178,10 @@ export default function CartDrawer() {
                               {quantity}
                             </span>
                             <button
-                              onClick={() =>
-                                updateQuantity(product.id, quantity + 1)
-                              }
+                              onClick={() => {
+                                const step = product.moq && product.moq > 0 ? product.moq : 1;
+                                updateQuantity(product.id, quantity + step);
+                              }}
                               className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 transition-colors"
                             >
                               +

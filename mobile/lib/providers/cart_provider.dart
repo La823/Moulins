@@ -6,10 +6,11 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super([]);
 
   void add(Product product) {
+    final step = product.moq > 0 ? product.moq : 1;
     final idx = state.indexWhere((e) => e.product.id == product.id);
     if (idx >= 0) {
       final updated = [...state];
-      updated[idx].quantity++;
+      updated[idx].quantity += step;
       state = updated;
     } else {
       state = [...state, CartItem(product: product)];

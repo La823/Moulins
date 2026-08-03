@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
+import { FavoritesProvider } from "@/context/FavoritesContext";
 
 const albertSans = Albert_Sans({
   variable: "--font-albert-sans",
@@ -106,7 +107,9 @@ export default function RootLayout({ children }) {
         className={`${albertSans.variable} ${erode.variable} antialiased`}
       >
         <AuthProvider>
-          <CartProvider>{children}</CartProvider>
+          <FavoritesProvider>
+            <CartProvider>{children}</CartProvider>
+          </FavoritesProvider>
         </AuthProvider>
       </body>
     </html>

@@ -39,6 +39,7 @@ class Product {
   final List<String> categories;
   final List<String> tags;
   final int stock;
+  final int moq;
   final bool isActive;
   final double? mrp;
   final String? packSize;
@@ -58,6 +59,7 @@ class Product {
     required this.categories,
     this.tags = const [],
     required this.stock,
+    this.moq = 1,
     required this.isActive,
     this.mrp,
     this.packSize,
@@ -78,6 +80,7 @@ class Product {
         categories: List<String>.from(json['categories'] ?? []),
         tags: List<String>.from(json['tags'] ?? []),
         stock: json['stock'] ?? 0,
+        moq: json['moq'] ?? 1,
         isActive: json['is_active'] ?? true,
         mrp: json['mrp']?.toDouble(),
         packSize: json['pack_size'],
@@ -105,6 +108,7 @@ class Product {
         'categories': categories,
         'tags': tags,
         'stock': stock,
+        'moq': moq,
         'is_active': isActive,
         'mrp': mrp,
         'pack_size': packSize,

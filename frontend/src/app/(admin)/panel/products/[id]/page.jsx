@@ -48,7 +48,7 @@ export default function EditProduct() {
     name: "",
     description: "",
     price: "",
-    stock: "",
+    moq: "",
     is_active: true,
     brand_name: "",
     hsn_code: "",
@@ -91,7 +91,7 @@ export default function EditProduct() {
           name: p.name || "",
           description: p.description || "",
           price: p.price != null ? String(p.price) : "",
-          stock: p.stock != null ? String(p.stock) : "",
+          moq: p.moq != null ? String(p.moq) : "",
           is_active: p.is_active ?? true,
           brand_name: p.brand_name || "",
           hsn_code: p.hsn_code || "",
@@ -171,7 +171,7 @@ export default function EditProduct() {
         price: parseFloat(form.price) || 0,
         categories: selectedCategories,
         tags: selectedTags,
-        stock: parseInt(form.stock) || 0,
+        moq: form.moq ? parseInt(form.moq) : null,
         is_active: form.is_active,
         brand_name: form.brand_name || null,
         hsn_code: form.hsn_code || null,
@@ -445,12 +445,14 @@ export default function EditProduct() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Stock
+                MOQ
               </label>
               <input
                 type="number"
-                value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                min="1"
+                placeholder="1"
+                value={form.moq}
+                onChange={(e) => setForm({ ...form, moq: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
             </div>

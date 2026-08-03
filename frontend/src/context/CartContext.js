@@ -37,16 +37,17 @@ export function CartProvider({ children }) {
   }, [items]);
 
   const addToCart = useCallback((product) => {
+    const step = product.moq && product.moq > 0 ? product.moq : 1;
     setItems((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
       if (existing) {
         return prev.map((i) =>
           i.product.id === product.id
-            ? { ...i, quantity: i.quantity + 1 }
+            ? { ...i, quantity: i.quantity + step }
             : i
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product, quantity: step }];
     });
   }, []);
 

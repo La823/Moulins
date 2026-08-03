@@ -21,6 +21,7 @@ type Product struct {
 	Categories       []string          `json:"categories"`
 	Tags             []string          `json:"tags"`
 	Stock            int               `json:"stock"`
+	Moq              int               `json:"moq"`
 	IsActive         bool              `json:"is_active"`
 	BrandName        *string           `json:"brand_name,omitempty"`
 	HsnCode          *string           `json:"hsn_code,omitempty"`
@@ -71,6 +72,7 @@ type CreateProductRequest struct {
 	Categories      []string `json:"categories"`
 	Tags            []string `json:"tags"`
 	Stock           int      `json:"stock"`
+	Moq             *int     `json:"moq"`
 	BrandName       *string  `json:"brand_name"`
 	HsnCode         *string  `json:"hsn_code"`
 	GstRate         *float64 `json:"gst_rate"`
@@ -96,6 +98,7 @@ type UpdateProductRequest struct {
 	Categories      *[]string `json:"categories"`
 	Tags            *[]string `json:"tags"`
 	Stock           *int      `json:"stock"`
+	Moq             *int      `json:"moq"`
 	IsActive        *bool     `json:"is_active"`
 	BrandName       *string   `json:"brand_name"`
 	HsnCode         *string   `json:"hsn_code"`
@@ -120,20 +123,25 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 	var id uuid.UUID
 	var err error
 
+	moq := 1
+	if req.Moq != nil && *req.Moq > 0 {
+		moq = *req.Moq
+	}
+
 	// product_id is a SERIAL with a default — only override it when the
 	// admin explicitly supplied one (their "actual product id"); otherwise
 	// leave the column out of the INSERT entirely so the sequence default applies.
 	if req.ProductID != nil {
 		query := `
-			INSERT INTO products (product_id, name, description, price, stock,
+			INSERT INTO products (product_id, name, description, price, stock, moq,
 				brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 				pack_size, pack_form, key_ingredients, strength, product_weight,
 				key_benefits, direction_for_use, safety_information, edetailing)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
 			RETURNING id;
 		`
 		err = db.QueryRow(ctx, query,
-			*req.ProductID, req.Name, req.Description, req.Price, req.Stock,
+			*req.ProductID, req.Name, req.Description, req.Price, req.Stock, moq,
 			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
 			req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 			req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
@@ -141,15 +149,15 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 		).Scan(&id)
 	} else {
 		query := `
-			INSERT INTO products (name, description, price, stock,
+			INSERT INTO products (name, description, price, stock, moq,
 				brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 				pack_size, pack_form, key_ingredients, strength, product_weight,
 				key_benefits, direction_for_use, safety_information, edetailing)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
 			RETURNING id;
 		`
 		err = db.QueryRow(ctx, query,
-			req.Name, req.Description, req.Price, req.Stock,
+			req.Name, req.Description, req.Price, req.Stock, moq,
 			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
 			req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 			req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
@@ -504,7 +512,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 	}
 
 	baseQuery := `
-		SELECT id, product_id, name, description, price, stock, is_active,
+		SELECT id, product_id, name, description, price, stock, moq, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
@@ -533,7 +541,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		var p Product
 		err := rows.Scan(
 			&p.ID, &p.ProductID, &p.Name, &p.Description, &p.Price,
-			&p.Stock, &p.IsActive,
+			&p.Stock, &p.Moq, &p.IsActive,
 			&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 			&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 			&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
@@ -550,7 +558,7 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 
 func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Product, error) {
 	query := `
-		SELECT id, product_id, name, description, price, stock, is_active,
+		SELECT id, product_id, name, description, price, stock, moq, is_active,
 			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
@@ -560,7 +568,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 	var p Product
 	err := db.QueryRow(ctx, query, id).Scan(
 		&p.ID, &p.ProductID, &p.Name, &p.Description, &p.Price,
-		&p.Stock, &p.IsActive,
+		&p.Stock, &p.Moq, &p.IsActive,
 		&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 		&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 		&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
@@ -596,7 +604,8 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 			key_benefits       = COALESCE($19, key_benefits),
 			direction_for_use  = COALESCE($20, direction_for_use),
 			safety_information = COALESCE($21, safety_information),
-			edetailing         = COALESCE($22, edetailing)
+			edetailing         = COALESCE($22, edetailing),
+			moq                = COALESCE($23, moq)
 		WHERE id = $1
 	`
 	_, err := db.Exec(ctx, query, id,
@@ -604,7 +613,7 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 		req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
 		req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 		req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
-		req.SafetyInfo, req.Edetailing,
+		req.SafetyInfo, req.Edetailing, req.Moq,
 	)
 	if err != nil {
 		return err

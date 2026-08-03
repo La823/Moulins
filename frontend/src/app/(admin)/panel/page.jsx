@@ -555,7 +555,7 @@ export default function AdminDashboard() {
                       {p.name}
                     </p>
                     <p className="text-xs text-gray-500">
-                      Rs. {p.price} &middot; {p.stock} in stock
+                      Rs. {p.price}
                     </p>
                   </div>
                   <span

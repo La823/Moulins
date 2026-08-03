@@ -207,6 +207,12 @@ export default function ProductDetailPage() {
               <span className="text-gray-400">Stock</span>
               <span className="font-medium text-green-600">In Stock</span>
             </div>
+            {product.moq > 1 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Minimum Quantity</span>
+                <span className="text-gray-900 font-medium">{product.moq}</span>
+              </div>
+            )}
           </div>
 
           <p className="text-2xl font-light text-gray-900 mb-4">

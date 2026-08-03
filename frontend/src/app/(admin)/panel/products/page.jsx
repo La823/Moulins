@@ -30,7 +30,7 @@ function AdminProductsInner() {
     name: "",
     description: "",
     price: "",
-    stock: "",
+    moq: "",
     edetailing: "",
   });
   const [selectedCategories, setSelectedCategories] = useState(
@@ -157,7 +157,7 @@ function AdminProductsInner() {
           price: parseFloat(form.price),
           categories: selectedCategories,
           tags: selectedTags,
-          stock: parseInt(form.stock) || 0,
+          moq: form.moq ? parseInt(form.moq) : null,
           edetailing: form.edetailing || null,
         }),
       });
@@ -187,7 +187,7 @@ function AdminProductsInner() {
       }
 
       // Reset form
-      setForm({ product_id: "", name: "", description: "", price: "", stock: "", edetailing: "" });
+      setForm({ product_id: "", name: "", description: "", price: "", moq: "", edetailing: "" });
       setSelectedCategories([]);
       setSelectedTags([]);
       setImageFiles([]);
@@ -419,12 +419,14 @@ function AdminProductsInner() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Stock
+                MOQ
               </label>
               <input
                 type="number"
-                value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                min="1"
+                placeholder="1"
+                value={form.moq}
+                onChange={(e) => setForm({ ...form, moq: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
             </div>
@@ -688,7 +690,7 @@ function AdminProductsInner() {
                         <span className="text-xs text-gray-400 font-mono">#{p.product_id}</span>
                       </div>
                       <p className="text-sm text-gray-500 mt-0.5">
-                        ₹{p.price} &middot; {p.stock} in stock
+                        ₹{p.price}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
