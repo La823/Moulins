@@ -6,7 +6,6 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import HomeCarousel from "@/components/customer/HomeCarousel";
-import SmallProductCard from "@/components/products/SmallProductCard";
 import { useAuth } from "@/context/AuthContext";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
@@ -243,17 +242,58 @@ export default function HomePage() {
               </p>
             </div>
             <Link
-              href="/products"
+              href="/products?tag=Upcoming"
               className="hidden sm:inline-block text-sm font-medium text-gray-900 hover:text-red-600 transition-colors whitespace-nowrap"
             >
               View All &rarr;
             </Link>
           </div>
-          <div className="no-scrollbar flex gap-4 overflow-x-auto pb-2">
-            {upcomingProducts.map((p) => (
-              <div key={p.id} className="flex-shrink-0 w-64">
-                <SmallProductCard product={p} />
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+            {upcomingProducts.slice(0, 4).map((p) => (
+              <Link
+                key={p.id}
+                href={`/products/${p.id}`}
+                className="group block"
+              >
+                <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-gray-50">
+                  {p.images && p.images.length > 0 ? (
+                    <img
+                      src={p.images[0].image_url}
+                      alt={p.name}
+                      className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-100" />
+                  )}
+                  <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-white/90 backdrop-blur text-red-600">
+                    Launching Soon
+                  </span>
+                </div>
+                <div className="mt-4">
+                  {p.categories && p.categories.length > 0 && (
+                    <span
+                      className="block text-[10px] font-bold uppercase tracking-widest mb-1.5"
+                      style={{ color: "#2E5B41" }}
+                    >
+                      {p.categories[0]}
+                    </span>
+                  )}
+                  <h3 className="text-xl font-light text-gray-900 group-hover:text-red-600 transition-colors">
+                    {p.name}
+                  </h3>
+                  {p.description && (
+                    <p className="text-sm text-gray-400 mt-1.5 line-clamp-2">
+                      {p.description}
+                    </p>
+                  )}
+                  <span className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-gray-900 group-hover:text-red-600 transition-colors">
+                    View Details
+                    <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
+                      &rarr;
+                    </span>
+                  </span>
+                </div>
+              </Link>
             ))}
           </div>
         </section>
