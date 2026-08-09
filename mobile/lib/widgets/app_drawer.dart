@@ -63,6 +63,14 @@ class AppDrawer extends ConsumerWidget {
                 },
               ),
               ListTile(
+                leading: const Icon(Icons.payments_outlined, color: _teal),
+                title: const Text('My Payments'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/payments');
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.event_available_outlined, color: _teal),
                 title: const Text('Team Attendance'),
                 onTap: () {

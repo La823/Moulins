@@ -106,6 +106,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<bool> updateDefaultTransportMode(String mode) async {
+    final current = state.user;
+    if (current == null) return false;
+    try {
+      await _service.updateDefaultTransportMode(mode);
+      final user = User(
+        id: current.id,
+        phoneNumber: current.phoneNumber,
+        username: current.username,
+        role: current.role,
+        customerType: current.customerType,
+        permissions: current.permissions,
+        defaultTransportMode: mode,
+      );
+      await saveCachedUser(jsonEncode(user.toJson()));
+      state = state.copyWith(user: user);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     await clearToken();
     state = const AuthState(checked: true);

@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,28 +11,29 @@ import (
 )
 
 type User struct {
-	ID                  uuid.UUID  `json:"id"`
-	PhoneNumber         string     `json:"phone_number"`
-	Username            *string    `json:"username,omitempty"`
-	Email               *string    `json:"email,omitempty"`
-	PasswordHash        string     `json:"-"`
-	PlainPassword       *string    `json:"plain_password,omitempty"`
-	Role                string     `json:"role"`
-	CustomerType        string     `json:"customer_type"`
-	SpecialTileImageKey *string    `json:"-"`
-	SpecialTileImageURL string     `json:"special_tile_image_url,omitempty"`
-	TeamOwnerID         *uuid.UUID `json:"team_owner_id,omitempty"`
-	IsPhoneVerified     bool       `json:"is_phone_verified"`
-	OnboardingStep      int        `json:"onboarding_step"`
-	Pincode             *string    `json:"pincode,omitempty"`
-	City                *string    `json:"city,omitempty"`
-	State               *string    `json:"state,omitempty"`
-	Latitude            *float64   `json:"latitude,omitempty"`
-	Longitude           *float64   `json:"longitude,omitempty"`
-	LastLoginAt         *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	Permissions         []string   `json:"permissions,omitempty"`
+	ID                   uuid.UUID  `json:"id"`
+	PhoneNumber          string     `json:"phone_number"`
+	Username             *string    `json:"username,omitempty"`
+	Email                *string    `json:"email,omitempty"`
+	PasswordHash         string     `json:"-"`
+	PlainPassword        *string    `json:"plain_password,omitempty"`
+	Role                 string     `json:"role"`
+	CustomerType         string     `json:"customer_type"`
+	SpecialTileImageKey  *string    `json:"-"`
+	SpecialTileImageURL  string     `json:"special_tile_image_url,omitempty"`
+	TeamOwnerID          *uuid.UUID `json:"team_owner_id,omitempty"`
+	IsPhoneVerified      bool       `json:"is_phone_verified"`
+	OnboardingStep       int        `json:"onboarding_step"`
+	Pincode              *string    `json:"pincode,omitempty"`
+	City                 *string    `json:"city,omitempty"`
+	State                *string    `json:"state,omitempty"`
+	DefaultTransportMode string     `json:"default_transport_mode"`
+	Latitude             *float64   `json:"latitude,omitempty"`
+	Longitude            *float64   `json:"longitude,omitempty"`
+	LastLoginAt          *time.Time `json:"last_login_at,omitempty"` // Pointer because it can be NULL
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	Permissions          []string   `json:"permissions,omitempty"`
 }
 
 type CreateUserRequest struct {
@@ -133,7 +135,8 @@ func GetUserByPhone(
 	query := `
 		SELECT
 			id, phone_number, password_hash, username, email,
-			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
+			default_transport_mode, last_login_at, created_at, updated_at
 		FROM users
 		WHERE phone_number = $1;
 	`
@@ -141,7 +144,8 @@ func GetUserByPhone(
 	var u User
 	err := db.QueryRow(ctx, query, phoneNumber).Scan(
 		&u.ID, &u.PhoneNumber, &u.PasswordHash, &u.Username, &u.Email,
-		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -179,7 +183,8 @@ func GetUserByID(
 	query := `
 		SELECT
 			id, phone_number, username, email,
-			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
+			default_transport_mode, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1;
 	`
@@ -187,7 +192,8 @@ func GetUserByID(
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email,
-		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -265,14 +271,16 @@ func GetLastUsers(
 func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*User, error) {
 	query := `
 		SELECT id, phone_number, username, email, plain_password,
-			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
+			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
+			default_transport_mode, last_login_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
 	var u User
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
-		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -315,6 +323,20 @@ func UpdateCustomerType(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 	_, err := db.Exec(ctx,
 		`UPDATE users SET customer_type = $1, updated_at = NOW() WHERE id = $2`,
 		customerType, userID,
+	)
+	return err
+}
+
+// UpdateDefaultTransportMode sets a partner's default order transport mode
+// ("courier" or "transport") — pre-fills the picker at checkout, but can
+// still be overridden per order.
+func UpdateDefaultTransportMode(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, mode string) error {
+	if mode != "courier" && mode != "transport" {
+		return fmt.Errorf("invalid transport mode: %s", mode)
+	}
+	_, err := db.Exec(ctx,
+		`UPDATE users SET default_transport_mode = $1, updated_at = NOW() WHERE id = $2`,
+		mode, userID,
 	)
 	return err
 }
@@ -381,6 +403,37 @@ func GetTeamMembers(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID) ([
 		members = append(members, u)
 	}
 	return members, rows.Err()
+}
+
+// GetUsersByIDs batch-loads users for a set of IDs in one round trip —
+// callers that need to look up several users (e.g. conversation
+// participants) should use this instead of looping GetUserByID.
+func GetUsersByIDs(ctx context.Context, db *pgxpool.Pool, ids []uuid.UUID) (map[uuid.UUID]*User, error) {
+	result := make(map[uuid.UUID]*User, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+	rows, err := db.Query(ctx,
+		`SELECT id, phone_number, username, email, role, customer_type, special_tile_image_key, team_owner_id
+		 FROM users WHERE id = ANY($1::uuid[])`,
+		uuidStrings(ids),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID); err != nil {
+			return nil, err
+		}
+		if u.SpecialTileImageKey != nil {
+			u.SpecialTileImageURL = utils.GetPublicURL(*u.SpecialTileImageKey)
+		}
+		result[u.ID] = &u
+	}
+	return result, rows.Err()
 }
 
 func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User, error) {

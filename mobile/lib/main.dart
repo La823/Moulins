@@ -32,6 +32,7 @@ import 'screens/team/team_member_detail_screen.dart';
 import 'screens/team/team_attendance_screen.dart';
 import 'screens/team/my_attendance_screen.dart';
 import 'screens/team/my_daily_log_screen.dart';
+import 'screens/payments/payments_screen.dart';
 import 'models/team_member.dart';
 import 'data/divisions.dart';
 import 'widgets/fullscreen_image_gallery.dart';
@@ -157,6 +158,7 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/requests', builder: (_, __) => const RequestsScreen()),
             GoRoute(path: '/chat', builder: (_, __) => const ChatListScreen()),
             GoRoute(path: '/favorites', builder: (_, __) => const FavoritesScreen()),
+            GoRoute(path: '/payments', builder: (_, __) => const PaymentsScreen()),
             GoRoute(path: '/learning', builder: (_, __) => const LearningScreen()),
             GoRoute(path: '/admin', builder: (_, __) => const AdminDashboardScreen()),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),

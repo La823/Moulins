@@ -42,6 +42,14 @@ export default function EditProduct() {
 
   const tagColor = (name) => tagOptions.find((t) => t.name === name)?.color || "#6B7280";
 
+  const [unitOptions, setUnitOptions] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/products/units")
+      .then((data) => setUnitOptions(Array.isArray(data) ? data.map((u) => u.name) : []))
+      .catch(console.error);
+  }, []);
+
   // Form state
   const [form, setForm] = useState({
     product_id: "",
@@ -54,6 +62,7 @@ export default function EditProduct() {
     hsn_code: "",
     gst_rate: "",
     mrp: "",
+    mrp_unit: "",
     product_form: "",
     consume_type: "",
     pack_size: "",
@@ -61,6 +70,9 @@ export default function EditProduct() {
     key_ingredients: "",
     strength: "",
     product_weight: "",
+    length_cm: "",
+    width_cm: "",
+    height_cm: "",
     key_benefits: "",
     direction_for_use: "",
     safety_information: "",
@@ -97,6 +109,7 @@ export default function EditProduct() {
           hsn_code: p.hsn_code || "",
           gst_rate: p.gst_rate != null ? String(p.gst_rate) : "",
           mrp: p.mrp != null ? String(p.mrp) : "",
+          mrp_unit: p.mrp_unit || "",
           product_form: p.product_form || "",
           consume_type: p.consume_type || "",
           pack_size: p.pack_size || "",
@@ -104,6 +117,9 @@ export default function EditProduct() {
           key_ingredients: p.key_ingredients || "",
           strength: p.strength || "",
           product_weight: p.product_weight || "",
+          length_cm: p.length_cm != null ? String(p.length_cm) : "",
+          width_cm: p.width_cm != null ? String(p.width_cm) : "",
+          height_cm: p.height_cm != null ? String(p.height_cm) : "",
           key_benefits: p.key_benefits || "",
           direction_for_use: p.direction_for_use || "",
           safety_information: p.safety_information || "",
@@ -177,6 +193,7 @@ export default function EditProduct() {
         hsn_code: form.hsn_code || null,
         gst_rate: form.gst_rate ? parseFloat(form.gst_rate) : null,
         mrp: form.mrp ? parseFloat(form.mrp) : null,
+        mrp_unit: form.mrp_unit || null,
         product_form: form.product_form || null,
         consume_type: form.consume_type || null,
         pack_size: form.pack_size || null,
@@ -184,6 +201,9 @@ export default function EditProduct() {
         key_ingredients: form.key_ingredients || null,
         strength: form.strength || null,
         product_weight: form.product_weight || null,
+        length_cm: form.length_cm ? parseFloat(form.length_cm) : null,
+        width_cm: form.width_cm ? parseFloat(form.width_cm) : null,
+        height_cm: form.height_cm ? parseFloat(form.height_cm) : null,
         key_benefits: form.key_benefits || null,
         direction_for_use: form.direction_for_use || null,
         safety_information: form.safety_information || null,
@@ -417,7 +437,7 @@ export default function EditProduct() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Selling Price
@@ -442,6 +462,23 @@ export default function EditProduct() {
                 onChange={(e) => setForm({ ...form, mrp: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                MRP Unit
+              </label>
+              <select
+                value={form.mrp_unit}
+                onChange={(e) => setForm({ ...form, mrp_unit: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              >
+                <option value="">Select unit</option>
+                {unitOptions.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -696,6 +733,48 @@ export default function EditProduct() {
                 value={form.product_weight}
                 onChange={(e) =>
                   setForm({ ...form, product_weight: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Length (cm)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.length_cm}
+                onChange={(e) =>
+                  setForm({ ...form, length_cm: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Width (cm)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.width_cm}
+                onChange={(e) =>
+                  setForm({ ...form, width_cm: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Height (cm)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.height_cm}
+                onChange={(e) =>
+                  setForm({ ...form, height_cm: e.target.value })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />

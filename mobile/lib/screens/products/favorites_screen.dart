@@ -81,6 +81,28 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Favorites', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        actions: [
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
+                onPressed: () => context.push('/cart'),
+              ),
+              if (ref.watch(cartProvider).isNotEmpty)
+                Positioned(
+                  right: 8, top: 8,
+                  child: Container(
+                    width: 16, height: 16,
+                    decoration: const BoxDecoration(color: teal, shape: BoxShape.circle),
+                    child: Center(
+                      child: Text('${ref.watch(cartProvider).length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: Column(
         children: [

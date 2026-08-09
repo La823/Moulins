@@ -16,4 +16,8 @@ class AuthService {
     final res = await _dio.get('/auth/me');
     return User.fromJson(res.data);
   }
+
+  Future<void> updateDefaultTransportMode(String mode) async {
+    await _dio.put('/profile/transport-mode', data: {'default_transport_mode': mode});
+  }
 }

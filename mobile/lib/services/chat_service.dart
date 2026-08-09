@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config/api.dart';
 import '../models/chat_message.dart';
@@ -89,11 +90,29 @@ class ChatSocket {
 
   Future<void> connect() async {
     final token = await getToken();
-    if (token == null || _closed) return;
+    if (token == null) {
+      // No session yet (e.g. called before login finishes) — the token
+      // will exist soon, so keep retrying instead of giving up silently.
+      _scheduleReconnect();
+      return;
+    }
+    if (_closed) return;
 
     final wsUrl = baseUrl.replaceFirst('http', 'ws');
+    final channel = WebSocketChannel.connect(Uri.parse('$wsUrl/ws?token=$token'));
     try {
-      _channel = WebSocketChannel.connect(Uri.parse('$wsUrl/ws?token=$token'));
+      // WebSocketChannel.connect() returns immediately without waiting for
+      // the handshake — await `ready` so we only report "connected" (and
+      // only start listening) once the socket is actually open. `ready`
+      // itself isn't guaranteed to ever complete on a stalled/rejected
+      // handshake, so bound it with a timeout — otherwise a bad connection
+      // hangs here forever instead of falling through to a retry.
+      await channel.ready.timeout(const Duration(seconds: 8));
+      if (_closed) {
+        channel.sink.close();
+        return;
+      }
+      _channel = channel;
       onConnectionChanged?.call(true);
       _sub = _channel!.stream.listen(
         (event) {
@@ -109,7 +128,9 @@ class ChatSocket {
         onDone: _scheduleReconnect,
         onError: (_) => _scheduleReconnect(),
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Chat socket connect failed: $e');
+      unawaited(channel.sink.close());
       _scheduleReconnect();
     }
   }

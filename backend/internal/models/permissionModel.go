@@ -23,6 +23,7 @@ var ValidPermissions = []PermissionDef{
 	{Key: "meetings", Label: "Meetings", Desc: "View and analyze partner/employee doctor meetings"},
 	{Key: "requests", Label: "Requests", Desc: "View and resolve partner/employee requests"},
 	{Key: "ledger", Label: "Ledger", Desc: "Upload and update partner account ledgers"},
+	{Key: "payments", Label: "Payments", Desc: "Review and verify partner payment submissions"},
 	{Key: "learning", Label: "Learning", Desc: "Manage learning videos and playlists"},
 }
 

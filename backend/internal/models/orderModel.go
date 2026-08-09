@@ -10,20 +10,22 @@ import (
 )
 
 type Order struct {
-	ID        uuid.UUID   `json:"id"`
-	UserID    uuid.UUID   `json:"user_id"`
-	Status    string      `json:"status"`
-	Notes     *string     `json:"notes,omitempty"`
-	Items     []OrderItem  `json:"items,omitempty"`
-	Events    []OrderEvent `json:"events,omitempty"`
-	Photos    []OrderPhoto `json:"photos,omitempty"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	ID            uuid.UUID    `json:"id"`
+	UserID        uuid.UUID    `json:"user_id"`
+	Status        string       `json:"status"`
+	Notes         *string      `json:"notes,omitempty"`
+	TransportMode string       `json:"transport_mode"`
+	Items         []OrderItem  `json:"items,omitempty"`
+	Events        []OrderEvent `json:"events,omitempty"`
+	Photos        []OrderPhoto `json:"photos,omitempty"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
 	// Delivery details
 	DeliveryPerson   *string `json:"delivery_person,omitempty"`
 	TrackingNumber   *string `json:"tracking_number,omitempty"`
 	ExpectedDelivery *string `json:"expected_delivery,omitempty"`
 	DeliveryNotes    *string `json:"delivery_notes,omitempty"`
+	EwayBillNumber   *string `json:"eway_bill_number,omitempty"`
 	// Joined fields for admin view
 	UserName  string `json:"user_name,omitempty"`
 	UserPhone string `json:"user_phone,omitempty"`
@@ -35,6 +37,7 @@ type UpdateOrderDetailsRequest struct {
 	TrackingNumber   *string `json:"tracking_number"`
 	ExpectedDelivery *string `json:"expected_delivery"`
 	DeliveryNotes    *string `json:"delivery_notes"`
+	EwayBillNumber   *string `json:"eway_bill_number"`
 }
 
 type OrderItem struct {
@@ -55,8 +58,9 @@ type OrderEvent struct {
 }
 
 type CreateOrderRequest struct {
-	Items []CreateOrderItemRequest `json:"items"`
-	Notes *string                  `json:"notes,omitempty"`
+	Items         []CreateOrderItemRequest `json:"items"`
+	Notes         *string                  `json:"notes,omitempty"`
+	TransportMode *string                  `json:"transport_mode,omitempty"`
 }
 
 type CreateOrderItemRequest struct {
@@ -66,6 +70,20 @@ type CreateOrderItemRequest struct {
 }
 
 func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
+	transportMode := ""
+	if req.TransportMode != nil {
+		transportMode = *req.TransportMode
+	}
+	if transportMode != "courier" && transportMode != "transport" {
+		// No (valid) mode supplied on the order — fall back to the
+		// partner's saved default rather than rejecting the order.
+		var def string
+		if err := db.QueryRow(ctx, `SELECT default_transport_mode FROM users WHERE id = $1`, userID).Scan(&def); err != nil {
+			return uuid.Nil, err
+		}
+		transportMode = def
+	}
+
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return uuid.Nil, err
@@ -74,8 +92,8 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 
 	var orderID uuid.UUID
 	err = tx.QueryRow(ctx,
-		`INSERT INTO orders (user_id, notes) VALUES ($1, $2) RETURNING id`,
-		userID, req.Notes,
+		`INSERT INTO orders (user_id, notes, transport_mode) VALUES ($1, $2, $3) RETURNING id`,
+		userID, req.Notes, transportMode,
 	).Scan(&orderID)
 	if err != nil {
 		return uuid.Nil, err
@@ -109,7 +127,7 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 
 func GetOrdersByUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]Order, error) {
 	query := `
-		SELECT o.id, o.user_id, o.status, o.notes, o.created_at, o.updated_at,
+		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.created_at, o.updated_at,
 			COUNT(oi.id) AS item_count
 		FROM orders o
 		LEFT JOIN order_items oi ON oi.order_id = o.id
@@ -126,7 +144,7 @@ func GetOrdersByUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([
 	orders := []Order{}
 	for rows.Next() {
 		var o Order
-		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Notes, &o.CreatedAt, &o.UpdatedAt, &o.ItemCount); err != nil {
+		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.CreatedAt, &o.UpdatedAt, &o.ItemCount); err != nil {
 			return nil, err
 		}
 		orders = append(orders, o)
@@ -169,7 +187,7 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 	}
 
 	query := fmt.Sprintf(`
-		SELECT o.id, o.user_id, o.status, o.notes, o.created_at, o.updated_at,
+		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.created_at, o.updated_at,
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone,
 			COUNT(oi.id) AS item_count
@@ -192,7 +210,7 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 	orders := []Order{}
 	for rows.Next() {
 		var o Order
-		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Notes, &o.CreatedAt, &o.UpdatedAt,
+		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.CreatedAt, &o.UpdatedAt,
 			&o.UserName, &o.UserPhone, &o.ItemCount); err != nil {
 			return nil, 0, err
 		}
@@ -203,9 +221,9 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 
 func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Order, error) {
 	query := `
-		SELECT o.id, o.user_id, o.status, o.notes, o.created_at, o.updated_at,
+		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.created_at, o.updated_at,
 			o.delivery_person, o.tracking_number,
-			CAST(o.expected_delivery AS TEXT), o.delivery_notes,
+			CAST(o.expected_delivery AS TEXT), o.delivery_notes, o.eway_bill_number,
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone
 		FROM orders o
@@ -214,9 +232,9 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	`
 	var o Order
 	err := db.QueryRow(ctx, query, orderID).Scan(
-		&o.ID, &o.UserID, &o.Status, &o.Notes, &o.CreatedAt, &o.UpdatedAt,
+		&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.CreatedAt, &o.UpdatedAt,
 		&o.DeliveryPerson, &o.TrackingNumber,
-		&o.ExpectedDelivery, &o.DeliveryNotes,
+		&o.ExpectedDelivery, &o.DeliveryNotes, &o.EwayBillNumber,
 		&o.UserName, &o.UserPhone,
 	)
 	if err != nil {
@@ -357,8 +375,8 @@ func UpdateOrderStatus(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID,
 
 func UpdateOrderDetails(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, req UpdateOrderDetailsRequest) error {
 	_, err := db.Exec(ctx,
-		`UPDATE orders SET delivery_person = $1, tracking_number = $2, expected_delivery = $3, delivery_notes = $4, updated_at = NOW() WHERE id = $5`,
-		req.DeliveryPerson, req.TrackingNumber, req.ExpectedDelivery, req.DeliveryNotes, orderID,
+		`UPDATE orders SET delivery_person = $1, tracking_number = $2, expected_delivery = $3, delivery_notes = $4, eway_bill_number = $5, updated_at = NOW() WHERE id = $6`,
+		req.DeliveryPerson, req.TrackingNumber, req.ExpectedDelivery, req.DeliveryNotes, req.EwayBillNumber, orderID,
 	)
 	return err
 }

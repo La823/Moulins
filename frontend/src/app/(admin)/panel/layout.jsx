@@ -47,6 +47,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    label: "Payments",
+    href: "/panel/payments",
+    permission: "payments",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+  {
     label: "Employees",
     href: "/panel/employees",
     adminOnly: true,

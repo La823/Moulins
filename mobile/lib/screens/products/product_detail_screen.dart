@@ -272,6 +272,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   if (p.categories.isNotEmpty)
                     Wrap(
                       spacing: 6,
+                      runSpacing: 6,
                       children: p.categories.map((cat) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
@@ -285,6 +286,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
+                      runSpacing: 6,
                       children: p.tags.map((tag) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(

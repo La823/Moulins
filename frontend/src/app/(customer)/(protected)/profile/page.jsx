@@ -13,13 +13,41 @@ async function uploadFileToS3(file) {
   return public_url;
 }
 
+const TRANSPORT_MODES = [
+  { value: "courier", label: "By Courier" },
+  { value: "transport", label: "By Transport" },
+];
+
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  const [transportMode, setTransportMode] = useState(user?.default_transport_mode || "courier");
+  const [savingTransport, setSavingTransport] = useState(false);
+
+  useEffect(() => {
+    if (user?.default_transport_mode) setTransportMode(user.default_transport_mode);
+  }, [user?.default_transport_mode]);
+
+  const saveTransportMode = async (mode) => {
+    setTransportMode(mode);
+    setSavingTransport(true);
+    try {
+      await apiFetch("/profile/transport-mode", {
+        method: "PUT",
+        body: JSON.stringify({ default_transport_mode: mode }),
+      });
+      await refreshUser();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingTransport(false);
+    }
+  };
 
   const [licenseNumber, setLicenseNumber] = useState("");
   const [licenseExpiry, setLicenseExpiry] = useState("");
@@ -96,6 +124,29 @@ export default function ProfilePage() {
           <p className="text-gray-500 text-sm mt-1">{user?.username || user?.phone_number}</p>
         </div>
         <button onClick={logout} className="text-sm text-gray-500 hover:text-red-600 transition">Logout</button>
+      </div>
+
+      {/* Default Transport Mode */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="font-semibold text-gray-900 mb-1">Default Transport Mode</h2>
+        <p className="text-xs text-gray-500 mb-4">Used to pre-fill your order&apos;s shipping method at checkout — you can still change it per order.</p>
+        <div className="flex gap-3">
+          {TRANSPORT_MODES.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              disabled={savingTransport}
+              onClick={() => saveTransportMode(m.value)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg border transition disabled:opacity-50 ${
+                transportMode === m.value
+                  ? "border-[#00A6A4] bg-[#00A6A4]/10 text-[#00A6A4]"
+                  : "border-gray-300 text-gray-600 hover:border-gray-400"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Journey Progress */}

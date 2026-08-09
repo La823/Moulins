@@ -11,6 +11,9 @@ build/
 .idea/
 android/local.properties
 android/.gradle/
+android/key.properties
+android/*.jks
+android/*.keystore
 ios/.symlinks/
 ios/Pods/
 ios/Flutter/Flutter.framework

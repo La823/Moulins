@@ -1,4 +1,4 @@
-package com.moulinspharma.moulins
+package com.moulins.app
 
 import io.flutter.embedding.android.FlutterActivity
 

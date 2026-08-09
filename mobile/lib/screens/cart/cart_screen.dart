@@ -2,8 +2,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/order_service.dart';
 import '../../utils/responsive.dart';
+
+const _transportModes = [
+  ('courier', 'By Courier'),
+  ('transport', 'By Transport'),
+];
 
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
@@ -14,6 +20,13 @@ class CartScreen extends ConsumerStatefulWidget {
 
 class _CartScreenState extends ConsumerState<CartScreen> {
   bool _placing = false;
+  String? _transportMode;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _transportMode ??= ref.read(authProvider).user?.defaultTransportMode ?? 'courier';
+  }
 
   Future<void> _placeOrder() async {
     final items = ref.read(cartProvider);
@@ -21,7 +34,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     setState(() => _placing = true);
     try {
-      final orderId = await OrderService().placeOrder(items);
+      final orderId = await OrderService().placeOrder(items, transportMode: _transportMode);
       ref.read(cartProvider.notifier).clear();
       if (mounted) {
         context.go('/orders/$orderId');
@@ -132,6 +145,35 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   ),
                   child: Column(
                     children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Mode of Transportation', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: _transportModes.map((mode) {
+                          final (value, label) = mode;
+                          final selected = _transportMode == value;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: GestureDetector(
+                              onTap: () => setState(() => _transportMode = value),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: selected ? const Color(0xFF00A6A4) : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  label,
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         height: 52,

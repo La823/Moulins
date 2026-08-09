@@ -233,68 +233,75 @@ export default function HomePage() {
 
       {/* Upcoming Products — any product tagged "Upcoming" in admin */}
       {upcomingProducts.length > 0 && (
-        <section className="max-w-7xl mx-auto px-8 pb-20">
-          <div className="mb-10 flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-light text-gray-900">Upcoming Products</h2>
-              <p className="text-sm text-gray-400 mt-3 max-w-lg">
+        <section className="relative overflow-hidden py-16" style={{ backgroundColor: "#AC2528" }}>
+          <div className="max-w-7xl mx-auto px-8 flex items-center">
+            {/* Heading — sits underneath the cards, which overlap it */}
+            <div className="relative z-0 w-full md:w-72 flex-shrink-0 pr-6">
+              <h2 className="text-3xl md:text-4xl font-light text-white leading-tight">
+                Upcoming
+                <br />
+                Products
+              </h2>
+              <p className="text-sm text-white/70 mt-3 max-w-xs">
                 A first look at what&apos;s launching soon from Moulins Pharmaceuticals.
               </p>
-            </div>
-            <Link
-              href="/products?tag=Upcoming"
-              className="hidden sm:inline-block text-sm font-medium text-gray-900 hover:text-red-600 transition-colors whitespace-nowrap"
-            >
-              View All &rarr;
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-            {upcomingProducts.slice(0, 4).map((p) => (
               <Link
-                key={p.id}
-                href={`/products/${p.id}`}
-                className="group block"
+                href="/products?tag=Upcoming"
+                className="inline-block mt-4 text-sm font-medium text-white hover:text-white/80 transition-colors whitespace-nowrap"
               >
-                <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-gray-50">
-                  {p.images && p.images.length > 0 ? (
-                    <img
-                      src={p.images[0].image_url}
-                      alt={p.name}
-                      className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-100" />
-                  )}
-                  <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-white/90 backdrop-blur text-red-600">
-                    Launching Soon
-                  </span>
-                </div>
-                <div className="mt-4">
-                  {p.categories && p.categories.length > 0 && (
-                    <span
-                      className="block text-[10px] font-bold uppercase tracking-widest mb-1.5"
-                      style={{ color: "#2E5B41" }}
-                    >
-                      {p.categories[0]}
-                    </span>
-                  )}
-                  <h3 className="text-xl font-light text-gray-900 group-hover:text-red-600 transition-colors">
-                    {p.name}
-                  </h3>
-                  {p.description && (
-                    <p className="text-sm text-gray-400 mt-1.5 line-clamp-2">
-                      {p.description}
-                    </p>
-                  )}
-                  <span className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-gray-900 group-hover:text-red-600 transition-colors">
-                    View Details
-                    <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
-                      &rarr;
-                    </span>
-                  </span>
-                </div>
+                View All &rarr;
               </Link>
-            ))}
+            </div>
+
+            {/* Cards — plain horizontal scroll, overlapping the heading */}
+            <div className="no-scrollbar relative z-10 flex-1 -ml-16 md:-ml-28 flex gap-5 overflow-x-auto pb-2">
+              {upcomingProducts.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/products/${p.id}`}
+                  className="group block flex-shrink-0 w-[22rem]"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-gray-50">
+                    {p.images && p.images.length > 0 ? (
+                      <img
+                        src={p.images[0].image_url}
+                        alt={p.name}
+                        className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-100" />
+                    )}
+                    <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-white/90 backdrop-blur text-red-600">
+                      Launching Soon
+                    </span>
+                  </div>
+                  <div className="mt-4 bg-white rounded-lg px-4 py-3">
+                    {p.categories && p.categories.length > 0 && (
+                      <span
+                        className="block text-[10px] font-bold uppercase tracking-widest mb-1.5"
+                        style={{ color: "#2E5B41" }}
+                      >
+                        {p.categories[0]}
+                      </span>
+                    )}
+                    <h3 className="text-xl font-light text-gray-900 group-hover:text-red-600 transition-colors">
+                      {p.name}
+                    </h3>
+                    {p.description && (
+                      <p className="text-sm text-gray-400 mt-1.5 line-clamp-2">
+                        {p.description}
+                      </p>
+                    )}
+                    <span className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-gray-900 group-hover:text-red-600 transition-colors">
+                      View Details
+                      <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
+                        &rarr;
+                      </span>
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         </section>
       )}

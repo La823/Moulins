@@ -48,6 +48,11 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
+		if req.TransportMode != nil && *req.TransportMode != "courier" && *req.TransportMode != "transport" {
+			http.Error(w, "transport_mode must be 'courier' or 'transport'", http.StatusBadRequest)
+			return
+		}
+
 		orderID, err := models.CreateOrder(r.Context(), db, userID, req)
 		if err != nil {
 			log.Printf("create order error: %v", err)

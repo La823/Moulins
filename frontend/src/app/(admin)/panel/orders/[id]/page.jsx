@@ -43,6 +43,7 @@ export default function AdminOrderDetail() {
     tracking_number: "",
     expected_delivery: "",
     delivery_notes: "",
+    eway_bill_number: "",
   });
   const [savingDelivery, setSavingDelivery] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -57,6 +58,7 @@ export default function AdminOrderDetail() {
         tracking_number: data.tracking_number || "",
         expected_delivery: data.expected_delivery || "",
         delivery_notes: data.delivery_notes || "",
+        eway_bill_number: data.eway_bill_number || "",
       });
       return data;
     });
@@ -103,6 +105,7 @@ export default function AdminOrderDetail() {
           tracking_number: delivery.tracking_number || null,
           expected_delivery: delivery.expected_delivery || null,
           delivery_notes: delivery.delivery_notes || null,
+          eway_bill_number: delivery.eway_bill_number || null,
         }),
       });
       loadOrder().catch(() => {});
@@ -313,6 +316,12 @@ export default function AdminOrderDetail() {
               <span className="text-gray-400">Phone</span>
               <p className="text-gray-900 font-medium">
                 {order.user_phone || "—"}
+              </p>
+            </div>
+            <div>
+              <span className="text-gray-400">Transport Mode</span>
+              <p className="text-gray-900 font-medium">
+                {order.transport_mode === "transport" ? "By Transport" : "By Courier"}
               </p>
             </div>
             <div>
@@ -578,6 +587,23 @@ export default function AdminOrderDetail() {
                     expected_delivery: e.target.value,
                   }))
                 }
+                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                E-Way Bill Number <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={delivery.eway_bill_number}
+                onChange={(e) =>
+                  setDelivery((d) => ({
+                    ...d,
+                    eway_bill_number: e.target.value,
+                  }))
+                }
+                placeholder="Only if an e-way bill was generated"
                 className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
               />
             </div>

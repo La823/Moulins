@@ -27,6 +27,7 @@ type Product struct {
 	HsnCode          *string           `json:"hsn_code,omitempty"`
 	GstRate          *float64          `json:"gst_rate,omitempty"`
 	Mrp              *float64          `json:"mrp,omitempty"`
+	MrpUnit          *string           `json:"mrp_unit,omitempty"`
 	ProductForm      *string           `json:"product_form,omitempty"`
 	ConsumeType      *string           `json:"consume_type,omitempty"`
 	PackSize         *string           `json:"pack_size,omitempty"`
@@ -34,6 +35,9 @@ type Product struct {
 	KeyIngredients   *string           `json:"key_ingredients,omitempty"`
 	Strength         *string           `json:"strength,omitempty"`
 	ProductWeight    *string           `json:"product_weight,omitempty"`
+	LengthCm         *float64          `json:"length_cm,omitempty"`
+	WidthCm          *float64          `json:"width_cm,omitempty"`
+	HeightCm         *float64          `json:"height_cm,omitempty"`
 	KeyBenefits      *string           `json:"key_benefits,omitempty"`
 	DirectionForUse  *string           `json:"direction_for_use,omitempty"`
 	SafetyInfo       *string           `json:"safety_information,omitempty"`
@@ -77,6 +81,7 @@ type CreateProductRequest struct {
 	HsnCode         *string  `json:"hsn_code"`
 	GstRate         *float64 `json:"gst_rate"`
 	Mrp             *float64 `json:"mrp"`
+	MrpUnit         *string  `json:"mrp_unit"`
 	ProductForm     *string  `json:"product_form"`
 	ConsumeType     *string  `json:"consume_type"`
 	PackSize        *string  `json:"pack_size"`
@@ -84,6 +89,9 @@ type CreateProductRequest struct {
 	KeyIngredients  *string  `json:"key_ingredients"`
 	Strength        *string  `json:"strength"`
 	ProductWeight   *string  `json:"product_weight"`
+	LengthCm        *float64 `json:"length_cm"`
+	WidthCm         *float64 `json:"width_cm"`
+	HeightCm        *float64 `json:"height_cm"`
 	KeyBenefits     *string  `json:"key_benefits"`
 	DirectionForUse *string  `json:"direction_for_use"`
 	SafetyInfo      *string  `json:"safety_information"`
@@ -104,6 +112,7 @@ type UpdateProductRequest struct {
 	HsnCode         *string   `json:"hsn_code"`
 	GstRate         *float64  `json:"gst_rate"`
 	Mrp             *float64  `json:"mrp"`
+	MrpUnit         *string   `json:"mrp_unit"`
 	ProductForm     *string   `json:"product_form"`
 	ConsumeType     *string   `json:"consume_type"`
 	PackSize        *string   `json:"pack_size"`
@@ -111,6 +120,9 @@ type UpdateProductRequest struct {
 	KeyIngredients  *string   `json:"key_ingredients"`
 	Strength        *string   `json:"strength"`
 	ProductWeight   *string   `json:"product_weight"`
+	LengthCm        *float64  `json:"length_cm"`
+	WidthCm         *float64  `json:"width_cm"`
+	HeightCm        *float64  `json:"height_cm"`
 	KeyBenefits     *string   `json:"key_benefits"`
 	DirectionForUse *string   `json:"direction_for_use"`
 	SafetyInfo      *string   `json:"safety_information"`
@@ -134,34 +146,36 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 	if req.ProductID != nil {
 		query := `
 			INSERT INTO products (product_id, name, description, price, stock, moq,
-				brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
+				brand_name, hsn_code, gst_rate, mrp, mrp_unit, product_form, consume_type,
 				pack_size, pack_form, key_ingredients, strength, product_weight,
+				length_cm, width_cm, height_cm,
 				key_benefits, direction_for_use, safety_information, edetailing)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
 			RETURNING id;
 		`
 		err = db.QueryRow(ctx, query,
 			*req.ProductID, req.Name, req.Description, req.Price, req.Stock, moq,
-			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
+			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.MrpUnit, req.ProductForm,
 			req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
-			req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
-			req.SafetyInfo, req.Edetailing,
+			req.Strength, req.ProductWeight, req.LengthCm, req.WidthCm, req.HeightCm,
+			req.KeyBenefits, req.DirectionForUse, req.SafetyInfo, req.Edetailing,
 		).Scan(&id)
 	} else {
 		query := `
 			INSERT INTO products (name, description, price, stock, moq,
-				brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
+				brand_name, hsn_code, gst_rate, mrp, mrp_unit, product_form, consume_type,
 				pack_size, pack_form, key_ingredients, strength, product_weight,
+				length_cm, width_cm, height_cm,
 				key_benefits, direction_for_use, safety_information, edetailing)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
 			RETURNING id;
 		`
 		err = db.QueryRow(ctx, query,
 			req.Name, req.Description, req.Price, req.Stock, moq,
-			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
+			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.MrpUnit, req.ProductForm,
 			req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
-			req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
-			req.SafetyInfo, req.Edetailing,
+			req.Strength, req.ProductWeight, req.LengthCm, req.WidthCm, req.HeightCm,
+			req.KeyBenefits, req.DirectionForUse, req.SafetyInfo, req.Edetailing,
 		).Scan(&id)
 	}
 	if err != nil {
@@ -513,8 +527,9 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 
 	baseQuery := `
 		SELECT id, product_id, name, description, price, stock, moq, is_active,
-			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
+			brand_name, hsn_code, gst_rate, mrp, mrp_unit, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
+			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
 			created_at, updated_at
 		FROM products
@@ -542,9 +557,10 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		err := rows.Scan(
 			&p.ID, &p.ProductID, &p.Name, &p.Description, &p.Price,
 			&p.Stock, &p.Moq, &p.IsActive,
-			&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
+			&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.MrpUnit, &p.ProductForm,
 			&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
-			&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
+			&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
+			&p.KeyBenefits, &p.DirectionForUse,
 			&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
@@ -559,8 +575,9 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Product, error) {
 	query := `
 		SELECT id, product_id, name, description, price, stock, moq, is_active,
-			brand_name, hsn_code, gst_rate, mrp, product_form, consume_type,
+			brand_name, hsn_code, gst_rate, mrp, mrp_unit, product_form, consume_type,
 			pack_size, pack_form, key_ingredients, strength, product_weight,
+			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
 			created_at, updated_at
 		FROM products WHERE id = $1
@@ -569,9 +586,10 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 	err := db.QueryRow(ctx, query, id).Scan(
 		&p.ID, &p.ProductID, &p.Name, &p.Description, &p.Price,
 		&p.Stock, &p.Moq, &p.IsActive,
-		&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
+		&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.MrpUnit, &p.ProductForm,
 		&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
-		&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
+		&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
+		&p.KeyBenefits, &p.DirectionForUse,
 		&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
@@ -594,25 +612,30 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 			hsn_code           = COALESCE($9, hsn_code),
 			gst_rate           = COALESCE($10, gst_rate),
 			mrp                = COALESCE($11, mrp),
-			product_form       = COALESCE($12, product_form),
-			consume_type       = COALESCE($13, consume_type),
-			pack_size          = COALESCE($14, pack_size),
-			pack_form          = COALESCE($15, pack_form),
-			key_ingredients    = COALESCE($16, key_ingredients),
-			strength           = COALESCE($17, strength),
-			product_weight     = COALESCE($18, product_weight),
-			key_benefits       = COALESCE($19, key_benefits),
-			direction_for_use  = COALESCE($20, direction_for_use),
-			safety_information = COALESCE($21, safety_information),
-			edetailing         = COALESCE($22, edetailing),
-			moq                = COALESCE($23, moq)
+			mrp_unit           = COALESCE($12, mrp_unit),
+			product_form       = COALESCE($13, product_form),
+			consume_type       = COALESCE($14, consume_type),
+			pack_size          = COALESCE($15, pack_size),
+			pack_form          = COALESCE($16, pack_form),
+			key_ingredients    = COALESCE($17, key_ingredients),
+			strength           = COALESCE($18, strength),
+			product_weight     = COALESCE($19, product_weight),
+			length_cm          = COALESCE($20, length_cm),
+			width_cm           = COALESCE($21, width_cm),
+			height_cm          = COALESCE($22, height_cm),
+			key_benefits       = COALESCE($23, key_benefits),
+			direction_for_use  = COALESCE($24, direction_for_use),
+			safety_information = COALESCE($25, safety_information),
+			edetailing         = COALESCE($26, edetailing),
+			moq                = COALESCE($27, moq)
 		WHERE id = $1
 	`
 	_, err := db.Exec(ctx, query, id,
 		req.ProductID, req.Name, req.Description, req.Price, req.Stock, req.IsActive,
-		req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.ProductForm,
+		req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.MrpUnit, req.ProductForm,
 		req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
-		req.Strength, req.ProductWeight, req.KeyBenefits, req.DirectionForUse,
+		req.Strength, req.ProductWeight, req.LengthCm, req.WidthCm, req.HeightCm,
+		req.KeyBenefits, req.DirectionForUse,
 		req.SafetyInfo, req.Edetailing, req.Moq,
 	)
 	if err != nil {

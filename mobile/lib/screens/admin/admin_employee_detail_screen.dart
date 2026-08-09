@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/admin_user.dart';
 import '../../services/admin_service.dart';
+import '../../utils/validators.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -22,6 +23,7 @@ class _AdminEmployeeDetailScreenState extends State<AdminEmployeeDetailScreen> {
   bool _editingPassword = false;
   final _passwordCtrl = TextEditingController();
   bool _savingPassword = false;
+  String? _passwordError;
   bool _savingPerms = false;
   bool _deleting = false;
   String? _permSuccess;
@@ -61,8 +63,12 @@ class _AdminEmployeeDetailScreenState extends State<AdminEmployeeDetailScreen> {
   }
 
   Future<void> _savePassword() async {
-    if (_passwordCtrl.text.length < 4) return;
-    setState(() => _savingPassword = true);
+    final issue = Validators.passwordError(_passwordCtrl.text);
+    if (issue != null) {
+      setState(() => _passwordError = issue);
+      return;
+    }
+    setState(() { _savingPassword = true; _passwordError = null; });
     try {
       await _service.updateEmployeePassword(widget.employeeId, _passwordCtrl.text);
       setState(() { _editingPassword = false; _savingPassword = false; });
@@ -185,17 +191,22 @@ class _AdminEmployeeDetailScreenState extends State<AdminEmployeeDetailScreen> {
                   if (_editingPassword) ...[
                     TextField(
                       controller: _passwordCtrl,
+                      onChanged: (_) => setState(() => _passwordError = null),
                       decoration: InputDecoration(
-                        hintText: 'New password',
+                        hintText: 'New password (min 8, upper/lower/number/special)',
                         isDense: true,
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
+                    if (_passwordError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(_passwordError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         TextButton(onPressed: _savingPassword ? null : _savePassword, child: Text(_savingPassword ? 'Saving...' : 'Save')),
-                        TextButton(onPressed: () => setState(() => _editingPassword = false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => setState(() { _editingPassword = false; _passwordError = null; }), child: const Text('Cancel')),
                       ],
                     ),
                   ] else

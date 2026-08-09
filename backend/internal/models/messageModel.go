@@ -28,15 +28,15 @@ type Message struct {
 // legacy direct 1:1 (Type "direct", ID = the other user's id) or a group
 // thread (Type "thread", ID = conversations.id).
 type Conversation struct {
-	Type          string          `json:"type"`
-	ID            uuid.UUID       `json:"id"`
-	Username      *string         `json:"username,omitempty"`
-	PhoneNumber   string          `json:"phone_number,omitempty"`
-	Role          string          `json:"role,omitempty"`
-	Participants  []AssignedUser  `json:"participants,omitempty"`
-	LastMessage   string          `json:"last_message"`
-	LastMessageAt time.Time       `json:"last_message_at"`
-	UnreadCount   int             `json:"unread_count"`
+	Type          string         `json:"type"`
+	ID            uuid.UUID      `json:"id"`
+	Username      *string        `json:"username,omitempty"`
+	PhoneNumber   string         `json:"phone_number,omitempty"`
+	Role          string         `json:"role,omitempty"`
+	Participants  []AssignedUser `json:"participants,omitempty"`
+	LastMessage   string         `json:"last_message"`
+	LastMessageAt time.Time      `json:"last_message_at"`
+	UnreadCount   int            `json:"unread_count"`
 }
 
 // --- Legacy direct 1:1 path (admin<->employee, admin<->admin) — unchanged ---
@@ -347,51 +347,104 @@ func GetConversations(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (
 		return nil, err
 	}
 
-	for _, ref := range refs {
-		var last Message
-		err := db.QueryRow(ctx,
-			`SELECT body, image_url, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1`,
-			ref.ID,
-		).Scan(&last.Body, &last.ImageURL, &last.CreatedAt)
-		if err != nil {
-			// No messages in this thread yet — still show it so the user can
-			// start the conversation, just with no preview.
-			last.Body = ""
-		} else if last.Body == "" && last.ImageURL != nil {
-			last.Body = "📷 Photo"
-		}
-
-		var unread int
-		_ = db.QueryRow(ctx,
-			`SELECT COUNT(*) FROM messages m
-			 WHERE m.conversation_id = $1 AND m.sender_id != $2
-			   AND m.created_at > COALESCE(
-			       (SELECT last_read_at FROM conversation_reads WHERE conversation_id = $1 AND user_id = $2),
-			       'epoch'::timestamptz
-			   )`,
-			ref.ID, userID,
-		).Scan(&unread)
-
-		participants := []AssignedUser{}
-		client, err := GetUserByID(ctx, db, ref.ClientID)
-		if err == nil {
-			participants = append(participants, toAssignedUser(client))
-		}
-		if ref.EmployeeID != nil {
-			employee, err := GetUserByID(ctx, db, *ref.EmployeeID)
-			if err == nil {
-				participants = append(participants, toAssignedUser(employee))
+	if len(refs) > 0 {
+		threadIDs := make([]uuid.UUID, len(refs))
+		participantIDSet := make(map[uuid.UUID]bool, len(refs)*2)
+		for i, ref := range refs {
+			threadIDs[i] = ref.ID
+			participantIDSet[ref.ClientID] = true
+			if ref.EmployeeID != nil {
+				participantIDSet[*ref.EmployeeID] = true
 			}
 		}
 
-		conversations = append(conversations, Conversation{
-			Type:          "thread",
-			ID:            ref.ID,
-			Participants:  participants,
-			LastMessage:   last.Body,
-			LastMessageAt: last.CreatedAt,
-			UnreadCount:   unread,
-		})
+		// One query for every thread's last message, instead of one query
+		// per thread — same for unread counts and participant users below.
+		lastByThread := make(map[uuid.UUID]Message, len(refs))
+		lmRows, err := db.Query(ctx,
+			`SELECT DISTINCT ON (conversation_id) conversation_id, body, image_url, created_at
+			 FROM messages WHERE conversation_id = ANY($1::uuid[])
+			 ORDER BY conversation_id, created_at DESC`,
+			uuidStrings(threadIDs),
+		)
+		if err != nil {
+			return nil, err
+		}
+		for lmRows.Next() {
+			var convID uuid.UUID
+			var m Message
+			if err := lmRows.Scan(&convID, &m.Body, &m.ImageURL, &m.CreatedAt); err != nil {
+				lmRows.Close()
+				return nil, err
+			}
+			if m.Body == "" && m.ImageURL != nil {
+				m.Body = "📷 Photo"
+			}
+			lastByThread[convID] = m
+		}
+		lmRows.Close()
+		if err := lmRows.Err(); err != nil {
+			return nil, err
+		}
+
+		unreadByThread := make(map[uuid.UUID]int, len(refs))
+		urRows, err := db.Query(ctx,
+			`SELECT m.conversation_id, COUNT(*)
+			 FROM messages m
+			 LEFT JOIN conversation_reads cr ON cr.conversation_id = m.conversation_id AND cr.user_id = $2
+			 WHERE m.conversation_id = ANY($1::uuid[]) AND m.sender_id != $2
+			   AND m.created_at > COALESCE(cr.last_read_at, 'epoch'::timestamptz)
+			 GROUP BY m.conversation_id`,
+			uuidStrings(threadIDs), userID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		for urRows.Next() {
+			var convID uuid.UUID
+			var count int
+			if err := urRows.Scan(&convID, &count); err != nil {
+				urRows.Close()
+				return nil, err
+			}
+			unreadByThread[convID] = count
+		}
+		urRows.Close()
+		if err := urRows.Err(); err != nil {
+			return nil, err
+		}
+
+		participantIDs := make([]uuid.UUID, 0, len(participantIDSet))
+		for id := range participantIDSet {
+			participantIDs = append(participantIDs, id)
+		}
+		usersByID, err := GetUsersByIDs(ctx, db, participantIDs)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, ref := range refs {
+			last := lastByThread[ref.ID]
+
+			participants := []AssignedUser{}
+			if client, ok := usersByID[ref.ClientID]; ok {
+				participants = append(participants, toAssignedUser(client))
+			}
+			if ref.EmployeeID != nil {
+				if employee, ok := usersByID[*ref.EmployeeID]; ok {
+					participants = append(participants, toAssignedUser(employee))
+				}
+			}
+
+			conversations = append(conversations, Conversation{
+				Type:          "thread",
+				ID:            ref.ID,
+				Participants:  participants,
+				LastMessage:   last.Body,
+				LastMessageAt: last.CreatedAt,
+				UnreadCount:   unreadByThread[ref.ID],
+			})
+		}
 	}
 
 	// Direct rows and thread rows come from separate queries, each

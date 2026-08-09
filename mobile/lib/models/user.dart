@@ -5,6 +5,7 @@ class User {
   final String role;
   final String customerType;
   final List<String> permissions;
+  final String defaultTransportMode;
 
   User({
     required this.id,
@@ -13,6 +14,7 @@ class User {
     required this.role,
     this.customerType = 'normal',
     this.permissions = const [],
+    this.defaultTransportMode = 'courier',
   });
 
   factory User.fromJson(Map<String, dynamic> json) => User(
@@ -22,6 +24,7 @@ class User {
         role: json['role'] ?? 'partner',
         customerType: json['customer_type'] ?? 'normal',
         permissions: List<String>.from(json['permissions'] ?? []),
+        defaultTransportMode: json['default_transport_mode'] ?? 'courier',
       );
 
   String get displayName => username ?? phoneNumber;
@@ -35,5 +38,6 @@ class User {
         'role': role,
         'customer_type': customerType,
         'permissions': permissions,
+        'default_transport_mode': defaultTransportMode,
       };
 }

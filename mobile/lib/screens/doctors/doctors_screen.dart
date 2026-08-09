@@ -10,6 +10,7 @@ import '../../widgets/location_picker_screen.dart';
 import 'doctor_detail_screen.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../utils/validators.dart';
 
 class DoctorsScreen extends StatefulWidget {
   const DoctorsScreen({super.key});
@@ -227,12 +228,20 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                       ? null
                       : () async {
                           if (nameCtrl.text.trim().isEmpty) return;
+                          String? phone;
+                          if (phoneCtrl.text.trim().isNotEmpty) {
+                            phone = Validators.normalizePhone(phoneCtrl.text);
+                            if (phone == null) {
+                              setSheetState(() => submitError = Validators.phoneError(phoneCtrl.text));
+                              return;
+                            }
+                          }
                           setSheetState(() { submitting = true; submitError = null; });
                           try {
                             if (existing == null) {
                               await _service.createDoctor(
                                 name: nameCtrl.text.trim(),
-                                phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                                phone: phone,
                                 email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                                 speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
                                 clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
@@ -245,7 +254,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                               await _service.updateDoctor(
                                 existing.id,
                                 name: nameCtrl.text.trim(),
-                                phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                                phone: phone,
                                 email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                                 speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
                                 clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),

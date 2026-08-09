@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
 import '../../widgets/app_drawer.dart';
+import '../../utils/validators.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -94,11 +95,20 @@ class _TeamScreenState extends State<TeamScreen> {
                   onPressed: submitting
                       ? null
                       : () async {
-                          if (phoneCtrl.text.trim().isEmpty || passwordCtrl.text.trim().isEmpty) return;
+                          final phone = Validators.normalizePhone(phoneCtrl.text);
+                          final passwordIssue = Validators.passwordError(passwordCtrl.text);
+                          if (phone == null) {
+                            setSheetState(() => error = Validators.phoneError(phoneCtrl.text));
+                            return;
+                          }
+                          if (passwordIssue != null) {
+                            setSheetState(() => error = passwordIssue);
+                            return;
+                          }
                           setSheetState(() { submitting = true; error = null; });
                           try {
                             await _service.createTeamMember(
-                              phoneNumber: phoneCtrl.text.trim(),
+                              phoneNumber: phone,
                               password: passwordCtrl.text.trim(),
                               username: nameCtrl.text.trim(),
                             );

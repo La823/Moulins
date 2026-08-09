@@ -23,12 +23,14 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/tags"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/team"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
@@ -64,6 +66,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
 	router.HandleFunc("/products/categories", categories.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/tags", tags.ListHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/products/units", units.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/forms", products.ProductFormsHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/{id}", products.GetProductHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
@@ -80,6 +83,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.Use(middleware.Auth)
 
 	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
+	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
 
 	// order routes (any authenticated user)
 	protected.HandleFunc("/orders", orders.CreateOrderHandler(db)).Methods("POST")
@@ -143,6 +147,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// self-service ledger lookup (partner's own current ledger)
 	protected.HandleFunc("/ledger", ledger.GetMyLedgerHandler(db)).Methods("GET")
+
+	// self-service payments (any authenticated user submits/views their own)
+	protected.HandleFunc("/payments/upload-url", payments.UploadURLHandler()).Methods("POST")
+	protected.HandleFunc("/payments", payments.CreateHandler(db)).Methods("POST")
+	protected.HandleFunc("/payments", payments.ListMineHandler(db)).Methods("GET")
 
 	// learning platform — browsing (any authenticated user)
 	protected.HandleFunc("/learning/videos", learning.ListVideosHandler(db)).Methods("GET")
@@ -337,6 +346,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/tags", tags.CreateHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/tags/{id}", tags.UpdateHandler(db, rdb)).Methods("PUT")
 	productStaff.HandleFunc("/tags/{id}", tags.DeleteHandler(db, rdb)).Methods("DELETE")
+	productStaff.HandleFunc("/units", units.CreateHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/units/{id}", units.DeleteHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — meeting oversight
 	meetingsStaff := protected.PathPrefix("/admin").Subrouter()
@@ -361,6 +372,15 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	ledgerStaff.HandleFunc("/ledger/upload-url", ledger.UploadURLHandler()).Methods("POST")
 	ledgerStaff.HandleFunc("/partners/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
 	ledgerStaff.HandleFunc("/partners/{id}/ledger", ledger.GetLedgerHandler(db)).Methods("GET")
+
+	// staff routes — payment verification
+	paymentsStaff := protected.PathPrefix("/admin").Subrouter()
+	paymentsStaff.Use(middleware.StaffOnly)
+	paymentsStaff.Use(middleware.RequirePermission(db, "payments", rdb))
+
+	paymentsStaff.HandleFunc("/payments", payments.ListAllHandler(db)).Methods("GET")
+	paymentsStaff.HandleFunc("/payments/{id}", payments.GetHandler(db)).Methods("GET")
+	paymentsStaff.HandleFunc("/payments/{id}/verify", payments.VerifyHandler(db)).Methods("PUT")
 
 	// staff routes — learning platform management
 	learningStaff := protected.PathPrefix("/admin").Subrouter()

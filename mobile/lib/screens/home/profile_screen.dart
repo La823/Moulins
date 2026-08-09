@@ -127,6 +127,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
 
+          // Default Transport Mode (partners only)
+          if (user?.role == 'partner')
+            Container(
+              color: Colors.white,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Default Transport Mode', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text('Pre-fills your order\'s shipping method at checkout', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      ('courier', 'By Courier'),
+                      ('transport', 'By Transport'),
+                    ].map((mode) {
+                      final (value, label) = mode;
+                      final selected = user?.defaultTransportMode == value;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: GestureDetector(
+                          onTap: () => ref.read(authProvider.notifier).updateDefaultTransportMode(value),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: selected ? teal : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+
           // Menu items
           Container(
             color: Colors.white,
