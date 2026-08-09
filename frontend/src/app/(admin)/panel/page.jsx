@@ -211,20 +211,23 @@ export default function AdminDashboard() {
       })),
       apiFetch("/products?page=1&limit=1").catch(() => ({ total: 0 })),
     ];
-    // Only admins can fetch users
+    // Only admins can fetch partners. Was previously /admin/users, which
+    // returns the 20 most-recently-created users of ANY role (admins,
+    // employees, team members included) — badly mismatched with the
+    // "Partners" label on this card and the "Recent Partners" list below.
     if (isAdmin) {
-      fetches.push(apiFetch("/admin/users").catch(() => []));
+      fetches.push(apiFetch("/admin/partners").catch(() => []));
     }
 
     Promise.all(fetches)
-      .then(([adminProducts, publicProducts, users]) => {
+      .then(([adminProducts, publicProducts, partners]) => {
         setStats({
           totalProducts: adminProducts.total || 0,
           activeProducts: publicProducts.total || 0,
-          totalUsers: Array.isArray(users) ? users.length : 0,
+          totalUsers: Array.isArray(partners) ? partners.length : 0,
         });
         setRecentProducts(adminProducts.products || []);
-        setRecentUsers(Array.isArray(users) ? users.slice(0, 5) : []);
+        setRecentUsers(Array.isArray(partners) ? partners.slice(0, 5) : []);
       })
       .finally(() => setLoading(false));
   }, [isAdmin]);
