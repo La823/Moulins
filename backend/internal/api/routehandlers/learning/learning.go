@@ -142,7 +142,7 @@ func broadcastNewVideo(db *pgxpool.Pool, title string) {
 		log.Printf("learning broadcast fetch error: %v", err)
 		return
 	}
-	if err := services.DispatchBroadcast(context.Background(), db, full, []uuid.UUID{}); err != nil {
+	if err := services.DispatchBroadcast(context.Background(), db, full, nil, []uuid.UUID{}); err != nil {
 		log.Printf("learning broadcast dispatch error: %v", err)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/assignments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/broadcastlists"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/dailylogs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/designfiles"
@@ -246,12 +247,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
 	admin.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
 
-	// notification routes (admin only)
-	admin.HandleFunc("/notifications", notifications.ListHandler(db)).Methods("GET")
-	admin.HandleFunc("/notifications", notifications.CreateHandler(db)).Methods("POST")
-	admin.HandleFunc("/notifications/upload-url", notifications.UploadURLHandler()).Methods("POST")
-	admin.HandleFunc("/users/search", notifications.SearchUsersHandler(db)).Methods("GET")
-
 	// home highlights (admin only)
 	admin.HandleFunc("/home-highlights", homehighlights.UpdateHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/home-highlights/upload-url", homehighlights.UploadURLHandler()).Methods("POST")
@@ -329,11 +324,17 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
 
-	productStaff.HandleFunc("/design-files/counts", designfiles.CountsHandler(db)).Methods("GET")
-	productStaff.HandleFunc("/design-files/upload-url", designfiles.UploadURLHandler()).Methods("POST")
-	productStaff.HandleFunc("/products/{id}/design-files", designfiles.ListHandler(db)).Methods("GET")
-	productStaff.HandleFunc("/products/{id}/design-files", designfiles.AddHandler(db)).Methods("POST")
-	productStaff.HandleFunc("/products/design-files/{fileId}", designfiles.DeleteHandler(db)).Methods("DELETE")
+	// staff routes — graphics design files (split from product management
+	// so it can be granted to employees independently)
+	graphicsDesignStaff := protected.PathPrefix("/admin").Subrouter()
+	graphicsDesignStaff.Use(middleware.StaffOnly)
+	graphicsDesignStaff.Use(middleware.RequirePermission(db, "graphics_design", rdb))
+
+	graphicsDesignStaff.HandleFunc("/design-files/counts", designfiles.CountsHandler(db)).Methods("GET")
+	graphicsDesignStaff.HandleFunc("/design-files/upload-url", designfiles.UploadURLHandler()).Methods("POST")
+	graphicsDesignStaff.HandleFunc("/products/{id}/design-files", designfiles.ListHandler(db)).Methods("GET")
+	graphicsDesignStaff.HandleFunc("/products/{id}/design-files", designfiles.AddHandler(db)).Methods("POST")
+	graphicsDesignStaff.HandleFunc("/products/design-files/{fileId}", designfiles.DeleteHandler(db)).Methods("DELETE")
 
 	// special product management (admin only, same product permission)
 	productStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
@@ -402,4 +403,33 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	learningStaff.HandleFunc("/learning/playlists/{id}", learning.DeletePlaylistHandler(db)).Methods("DELETE")
 	learningStaff.HandleFunc("/learning/playlists/{id}/videos", learning.AddVideoToPlaylistHandler(db)).Methods("POST")
 	learningStaff.HandleFunc("/learning/playlists/{id}/videos/{videoId}", learning.RemoveVideoFromPlaylistHandler(db)).Methods("DELETE")
+
+	// staff routes — broadcast notifications
+	notificationsStaff := protected.PathPrefix("/admin").Subrouter()
+	notificationsStaff.Use(middleware.StaffOnly)
+	notificationsStaff.Use(middleware.RequirePermission(db, "notifications", rdb))
+
+	notificationsStaff.HandleFunc("/notifications", notifications.ListHandler(db)).Methods("GET")
+	notificationsStaff.HandleFunc("/notifications", notifications.CreateHandler(db)).Methods("POST")
+	notificationsStaff.HandleFunc("/notifications/upload-url", notifications.UploadURLHandler()).Methods("POST")
+
+	// staff routes — per-employee broadcast lists (independent from the
+	// "notifications" permission, so it can be granted separately)
+	broadcastListsStaff := protected.PathPrefix("/admin").Subrouter()
+	broadcastListsStaff.Use(middleware.StaffOnly)
+	broadcastListsStaff.Use(middleware.RequirePermission(db, "broadcast_lists", rdb))
+
+	broadcastListsStaff.HandleFunc("/broadcast-lists", broadcastlists.ListHandler(db)).Methods("GET")
+	broadcastListsStaff.HandleFunc("/broadcast-lists", broadcastlists.CreateHandler(db)).Methods("POST")
+	broadcastListsStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.GetHandler(db)).Methods("GET")
+	broadcastListsStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.UpdateHandler(db)).Methods("PUT")
+	broadcastListsStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.DeleteHandler(db)).Methods("DELETE")
+
+	// shared partner search picker — used by both the notification composer
+	// and the broadcast-list editor, reachable with either permission
+	partnerSearchStaff := protected.PathPrefix("/admin").Subrouter()
+	partnerSearchStaff.Use(middleware.StaffOnly)
+	partnerSearchStaff.Use(middleware.RequireAnyPermission(db, []string{"notifications", "broadcast_lists"}, rdb))
+
+	partnerSearchStaff.HandleFunc("/users/search", notifications.SearchUsersHandler(db)).Methods("GET")
 }

@@ -45,6 +45,18 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			req.ExcludeUserIDs = []uuid.UUID{}
 		}
 
+		if req.BroadcastListID != nil {
+			if _, err := models.GetBroadcastListOwned(r.Context(), db, *req.BroadcastListID, adminID); err != nil {
+				if err == models.ErrBroadcastListNotFound {
+					http.Error(w, "broadcast list not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("lookup broadcast list error: %v", err)
+				http.Error(w, "could not verify broadcast list", http.StatusInternalServerError)
+				return
+			}
+		}
+
 		id, err := models.CreateNotification(r.Context(), db, req)
 		if err != nil {
 			log.Printf("create notification error: %v", err)
@@ -65,7 +77,7 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := services.DispatchBroadcast(r.Context(), db, notification, req.ExcludeUserIDs); err != nil {
+		if err := services.DispatchBroadcast(r.Context(), db, notification, req.BroadcastListID, req.ExcludeUserIDs); err != nil {
 			log.Printf("dispatch broadcast error: %v", err)
 			http.Error(w, "notification created but dispatch failed", http.StatusInternalServerError)
 			return
@@ -149,17 +161,17 @@ func UploadURLHandler() http.HandlerFunc {
 	}
 }
 
-// GET /admin/users/search?q=
+// GET /admin/users/search?q= — q may be omitted/blank to list partners for
+// a dropdown (capped higher than a live-typed search would need).
 func SearchUsersHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		limit := 20
 		if q == "" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]models.User{})
-			return
+			limit = 300
 		}
 
-		users, err := models.SearchUsers(r.Context(), db, q, 20)
+		users, err := models.SearchUsers(r.Context(), db, q, limit)
 		if err != nil {
 			log.Printf("search users error: %v", err)
 			http.Error(w, "could not search users", http.StatusInternalServerError)

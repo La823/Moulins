@@ -524,7 +524,7 @@ export default function AdminOrderDetail() {
                     }`} />
                     <div className="min-w-0">
                       <p className="text-sm text-gray-900">{event.description}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[10px] text-gray-400 font-mono">{event.event_type}</span>
                         <span className="text-[10px] text-gray-300">&middot;</span>
                         <span className="text-[10px] text-gray-400">
@@ -536,6 +536,15 @@ export default function AdminOrderDetail() {
                             minute: "2-digit",
                           })}
                         </span>
+                        {event.actor_name && (
+                          <>
+                            <span className="text-[10px] text-gray-300">&middot;</span>
+                            <span className="text-[10px] font-medium text-teal-700">
+                              by {event.actor_name}
+                              {event.actor_role ? ` (${event.actor_role})` : ""}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -7,11 +7,11 @@ export default function NotificationsPage() {
   const [form, setForm] = useState({ title: "", body: "", deep_link: "" });
   const [imageFile, setImageFile] = useState(null);
   const [excluded, setExcluded] = useState([]); // [{id, username, phone_number}]
+  const [lists, setLists] = useState([]);
+  const [listId, setListId] = useState("");
+  const [allPartners, setAllPartners] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
-  const searchTimer = useRef(null);
   const searchRef = useRef(null);
 
   const [sending, setSending] = useState(false);
@@ -30,6 +30,12 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     fetchHistory();
+    apiFetch("/admin/broadcast-lists")
+      .then((data) => setLists(data.lists || []))
+      .catch(console.error);
+    apiFetch("/admin/users/search")
+      .then((data) => setAllPartners(Array.isArray(data) ? data : []))
+      .catch(console.error);
   }, []);
 
   // Close search dropdown on outside click
@@ -43,34 +49,23 @@ export default function NotificationsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setSearchQuery(val);
-    clearTimeout(searchTimer.current);
-    if (!val.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    searchTimer.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const data = await apiFetch(`/admin/users/search?q=${encodeURIComponent(val)}`);
-        setSearchResults(Array.isArray(data) ? data : []);
-        setShowResults(true);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-  };
+  const excludedQ = searchQuery.trim().toLowerCase();
+  const excludedIds = new Set(excluded.map((u) => u.id));
+  const searchResults = allPartners
+    .filter((u) => !excludedIds.has(u.id))
+    .filter(
+      (u) =>
+        !excludedQ ||
+        (u.username || "").toLowerCase().includes(excludedQ) ||
+        (u.phone_number || "").includes(excludedQ)
+    )
+    .slice(0, 50);
 
   const addExcluded = (user) => {
     if (!excluded.some((u) => u.id === user.id)) {
       setExcluded([...excluded, user]);
     }
     setSearchQuery("");
-    setSearchResults([]);
     setShowResults(false);
   };
 
@@ -112,6 +107,7 @@ export default function NotificationsPage() {
           body: form.body.trim(),
           deep_link: form.deep_link.trim() || null,
           image_key: imageKey,
+          broadcast_list_id: listId || null,
           exclude_user_ids: excluded.map((u) => u.id),
         }),
       });
@@ -120,6 +116,7 @@ export default function NotificationsPage() {
       setForm({ title: "", body: "", deep_link: "" });
       setImageFile(null);
       setExcluded([]);
+      setListId("");
       fetchHistory();
     } catch (err) {
       setError(err.message);
@@ -178,6 +175,29 @@ export default function NotificationsPage() {
         </div>
 
         <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Audience</label>
+          <select
+            value={listId}
+            onChange={(e) => setListId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+          >
+            <option value="">All partners</option>
+            {lists.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name} ({l.member_count})
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-400 mt-1">
+            Manage your lists on the{" "}
+            <a href="/panel/broadcast-lists" className="text-red-600 hover:text-red-700">
+              Broadcast Lists
+            </a>{" "}
+            page.
+          </p>
+        </div>
+
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Deep Link (optional)</label>
           <input
             type="text"
@@ -197,28 +217,29 @@ export default function NotificationsPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={handleSearchChange}
-              onFocus={() => searchResults.length > 0 && setShowResults(true)}
-              placeholder="Search partners by name or phone..."
+              onChange={(e) => { setSearchQuery(e.target.value); setShowResults(true); }}
+              onFocus={() => setShowResults(true)}
+              placeholder="Search or click to browse all partners..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
-            {showResults && searchResults.length > 0 && (
+            {showResults && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 max-h-48 overflow-y-auto">
-                {searchResults.map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => addExcluded(u)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 text-gray-700"
-                  >
-                    {u.username || "No name"}{" "}
-                    <span className="text-gray-400">{u.phone_number}</span>
-                  </button>
-                ))}
+                {searchResults.length > 0 ? (
+                  searchResults.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => addExcluded(u)}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 text-gray-700"
+                    >
+                      {u.username || "No name"}{" "}
+                      <span className="text-gray-400">{u.phone_number}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3 py-2 text-sm text-gray-400">No matching partners</p>
+                )}
               </div>
-            )}
-            {searching && (
-              <p className="text-xs text-gray-400 mt-1">Searching...</p>
             )}
           </div>
 
@@ -245,7 +266,10 @@ export default function NotificationsPage() {
 
         {/* Review summary */}
         <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-          Sending to <strong>all partners</strong>
+          Sending to{" "}
+          <strong>
+            {listId ? lists.find((l) => l.id === listId)?.name || "selected list" : "all partners"}
+          </strong>
           {excluded.length > 0 && (
             <> except <strong>{excluded.length}</strong> excluded user{excluded.length !== 1 ? "s" : ""}</>
           )}
@@ -300,7 +324,12 @@ export default function NotificationsPage() {
                 </span>
               </div>
               <p className="text-xs text-gray-400 mt-2">
-                {n.recipient_count} recipients &middot; {n.push_success_count} push delivered &middot;{" "}
+                Sent by{" "}
+                <span className="font-medium text-gray-500">
+                  {n.created_by_name || "System"}
+                  {n.created_by_role ? ` (${n.created_by_role})` : ""}
+                </span>{" "}
+                &middot; {n.recipient_count} recipients &middot; {n.push_success_count} push delivered &middot;{" "}
                 {n.push_failure_count} failed &middot;{" "}
                 {n.sent_at ? new Date(n.sent_at).toLocaleString() : ""}
               </p>

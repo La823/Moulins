@@ -14,8 +14,9 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-// DispatchBroadcast resolves the eligible audience (all partners minus
-// excludedUserIDs), creates their in-app inbox rows, and pushes via FCM to
+// DispatchBroadcast resolves the eligible audience — either all partners or,
+// when listID is set, just that broadcast list's members — minus
+// excludedUserIDs, creates their in-app inbox rows, and pushes via FCM to
 // their registered device tokens. It always leaves the in-app inbox
 // populated, even if Firebase isn't configured or a push send partially
 // fails — push is a best-effort addition, not a precondition for the
@@ -23,8 +24,14 @@ import (
 //
 // This is the single funnel later individual/group send paths should reuse:
 // they just need to supply a different eligible-user-ID list.
-func DispatchBroadcast(ctx context.Context, db *pgxpool.Pool, notification *models.Notification, excludedUserIDs []uuid.UUID) error {
-	eligibleUserIDs, err := models.GetEligibleUserIDs(ctx, db, excludedUserIDs)
+func DispatchBroadcast(ctx context.Context, db *pgxpool.Pool, notification *models.Notification, listID *uuid.UUID, excludedUserIDs []uuid.UUID) error {
+	var eligibleUserIDs []uuid.UUID
+	var err error
+	if listID != nil {
+		eligibleUserIDs, err = models.GetEligibleUserIDsFromList(ctx, db, *listID, excludedUserIDs)
+	} else {
+		eligibleUserIDs, err = models.GetEligibleUserIDs(ctx, db, excludedUserIDs)
+	}
 	if err != nil {
 		return err
 	}

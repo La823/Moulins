@@ -53,11 +53,14 @@ type OrderItem struct {
 }
 
 type OrderEvent struct {
-	ID          uuid.UUID `json:"id"`
-	OrderID     uuid.UUID `json:"order_id"`
-	EventType   string    `json:"event_type"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	OrderID     uuid.UUID  `json:"order_id"`
+	EventType   string     `json:"event_type"`
+	Description string     `json:"description"`
+	ActorID     *uuid.UUID `json:"actor_id,omitempty"`
+	ActorName   string     `json:"actor_name,omitempty"`
+	ActorRole   string     `json:"actor_role,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type CreateOrderRequest struct {
@@ -119,8 +122,8 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 
 	// Log order.created event
 	_, err = tx.Exec(ctx,
-		`INSERT INTO order_events (order_id, event_type, description) VALUES ($1, $2, $3)`,
-		orderID, "order.created", "Order was placed",
+		`INSERT INTO order_events (order_id, event_type, description, actor_id) VALUES ($1, $2, $3, $4)`,
+		orderID, "order.created", "Order was placed", userID,
 	)
 	if err != nil {
 		return uuid.Nil, err
@@ -350,17 +353,24 @@ func DeleteOrderPhoto(ctx context.Context, db *pgxpool.Pool, photoID uuid.UUID) 
 	return err
 }
 
-func InsertOrderEvent(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, eventType, description string) error {
+// InsertOrderEvent logs an order history entry. actorID is whoever performed
+// the action (nil for system/automated events) — the actor's name and role
+// are resolved at read time via a join, so renames stay reflected.
+func InsertOrderEvent(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, eventType, description string, actorID *uuid.UUID) error {
 	_, err := db.Exec(ctx,
-		`INSERT INTO order_events (order_id, event_type, description) VALUES ($1, $2, $3)`,
-		orderID, eventType, description,
+		`INSERT INTO order_events (order_id, event_type, description, actor_id) VALUES ($1, $2, $3, $4)`,
+		orderID, eventType, description, actorID,
 	)
 	return err
 }
 
 func GetOrderEvents(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]OrderEvent, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, order_id, event_type, description, created_at FROM order_events WHERE order_id = $1 ORDER BY created_at ASC`,
+		`SELECT e.id, e.order_id, e.event_type, e.description, e.actor_id,
+			COALESCE(u.username, ''), COALESCE(u.role, ''), e.created_at
+		FROM order_events e
+		LEFT JOIN users u ON u.id = e.actor_id
+		WHERE e.order_id = $1 ORDER BY e.created_at ASC`,
 		orderID,
 	)
 	if err != nil {
@@ -371,7 +381,8 @@ func GetOrderEvents(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([
 	events := []OrderEvent{}
 	for rows.Next() {
 		var e OrderEvent
-		if err := rows.Scan(&e.ID, &e.OrderID, &e.EventType, &e.Description, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.OrderID, &e.EventType, &e.Description, &e.ActorID,
+			&e.ActorName, &e.ActorRole, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		events = append(events, e)

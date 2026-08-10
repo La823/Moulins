@@ -109,6 +109,56 @@ func RequirePermission(db *pgxpool.Pool, permission string, rdb *cache.Client) f
 	}
 }
 
+// RequireAnyPermission passes if the employee has at least one of the given
+// permissions — used where a route is shared by two independently-gated
+// features (e.g. the partner search picker used by both the notifications
+// composer and the broadcast-list editor).
+func RequireAnyPermission(db *pgxpool.Pool, permissions []string, rdb *cache.Client) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role, _ := r.Context().Value("role").(string)
+
+			if role == "admin" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			userIDStr, _ := r.Context().Value("user_id").(string)
+			userID, err := uuid.Parse(userIDStr)
+			if err != nil {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			for _, permission := range permissions {
+				cacheKey := fmt.Sprintf("perm:%s:%s", userID, permission)
+				var has bool
+				if rdb.GetJSON(r.Context(), cacheKey, &has) {
+					if has {
+						next.ServeHTTP(w, r)
+						return
+					}
+					continue
+				}
+
+				has, err = models.HasPermission(r.Context(), db, userID, permission)
+				if err != nil {
+					http.Error(w, "could not verify permissions", http.StatusInternalServerError)
+					return
+				}
+				rdb.SetJSON(r.Context(), cacheKey, has, 5*time.Minute)
+
+				if has {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			http.Error(w, "you don't have permission to access this", http.StatusForbidden)
+		})
+	}
+}
+
 // InvalidatePermissions removes cached permission checks for a user.
 func InvalidatePermissions(ctx context.Context, rdb *cache.Client, userID uuid.UUID) {
 	keys := make([]string, len(models.ValidPermissions))

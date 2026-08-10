@@ -200,6 +200,15 @@ func getUserID(r *http.Request) uuid.UUID {
 	return id
 }
 
+// actorID returns the acting staff user's ID for order-history logging.
+func actorID(r *http.Request) *uuid.UUID {
+	id := getUserID(r)
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
+}
+
 // POST /admin/orders/{id}/tracking-upload-url — get a presigned S3 URL for a
 // courier tracking screenshot/image, namespaced under this order in S3.
 func TrackingUploadURLHandler() http.HandlerFunc {
@@ -268,7 +277,7 @@ func AddPhotoHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if req.PhotoType == "tracking" {
 			eventDesc = "A tracking image was attached to the order"
 		}
-		_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.added", eventDesc)
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.added", eventDesc, actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -294,7 +303,7 @@ func DeletePhotoHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		if orderID != uuid.Nil {
-			_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.removed", "A bill photo was removed from the order")
+			_ = models.InsertOrderEvent(r.Context(), db, orderID, "photo.removed", "A bill photo was removed from the order", actorID(r))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -336,7 +345,7 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		_ = models.InsertOrderEvent(r.Context(), db, id, "status."+body.Status,
-			fmt.Sprintf("Order status changed to %s", body.Status))
+			fmt.Sprintf("Order status changed to %s", body.Status), actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": body.Status})
@@ -364,7 +373,7 @@ func UpdateOrderDetailsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		_ = models.InsertOrderEvent(r.Context(), db, id, "delivery.updated", "Delivery details were updated")
+		_ = models.InsertOrderEvent(r.Context(), db, id, "delivery.updated", "Delivery details were updated", actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
@@ -401,7 +410,7 @@ func UpdateOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		orderID, _ := uuid.Parse(vars["id"])
 		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.updated",
-			fmt.Sprintf("Item quantity changed to %d", body.Quantity))
+			fmt.Sprintf("Item quantity changed to %d", body.Quantity), actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
@@ -425,7 +434,7 @@ func DeleteOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		orderID, _ := uuid.Parse(vars["id"])
-		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.removed", "An item was removed from the order")
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.removed", "An item was removed from the order", actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "deleted"})

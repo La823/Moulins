@@ -27,7 +27,34 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
     if (n.deepLink != null && n.deepLink!.isNotEmpty) {
       context.push(n.deepLink!);
+    } else if (n.imageUrl != null && n.imageUrl!.isNotEmpty) {
+      _openImage(n.imageUrl!);
     }
+  }
+
+  void _openImage(String url) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+            elevation: 0,
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -83,20 +110,28 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                               if (hasImage)
                                 // Full width, whole photo visible (no cropping) — the
                                 // container sizes to whatever the image's aspect ratio is.
-                                ColoredBox(
-                                  color: Colors.grey.shade100,
-                                  child: Image.network(
-                                    n.imageUrl!,
-                                    width: double.infinity,
-                                    fit: BoxFit.fitWidth,
-                                    loadingBuilder: (ctx, child, progress) {
-                                      if (progress == null) return child;
-                                      return const SizedBox(
-                                        height: 160,
-                                        child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
-                                      );
-                                    },
-                                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                GestureDetector(
+                                  onTap: () {
+                                    if (!n.isRead) {
+                                      ref.read(notificationsProvider.notifier).markAsRead(n.recipientId);
+                                    }
+                                    _openImage(n.imageUrl!);
+                                  },
+                                  child: ColoredBox(
+                                    color: Colors.grey.shade100,
+                                    child: Image.network(
+                                      n.imageUrl!,
+                                      width: double.infinity,
+                                      fit: BoxFit.fitWidth,
+                                      loadingBuilder: (ctx, child, progress) {
+                                        if (progress == null) return child;
+                                        return const SizedBox(
+                                          height: 160,
+                                          child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+                                        );
+                                      },
+                                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                                    ),
                                   ),
                                 ),
                               Padding(

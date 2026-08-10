@@ -218,6 +218,9 @@ export default function CustomerNavbar() {
   const { user, logout } = useAuth();
   const { itemCount, openCart } = useCart();
   const [activeMenu, setActiveMenu] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notifViewerUrl, setNotifViewerUrl] = useState(null);
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState([]);
@@ -295,6 +298,34 @@ export default function CustomerNavbar() {
       document.body.style.overflow = "";
     };
   }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!user) return;
+    apiFetch("/notifications?limit=5")
+      .then((data) => setNotifications(data.notifications || []))
+      .catch(() => {});
+  }, [user]);
+
+  const markNotifRead = async (recipientId) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.recipient_id === recipientId ? { ...n, is_read: true } : n))
+    );
+    try {
+      await apiFetch(`/notifications/${recipientId}/read`, { method: "PUT" });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleNotifClick = (n) => {
+    if (!n.is_read) markNotifRead(n.recipient_id);
+    if (n.deep_link) {
+      router.push(n.deep_link);
+      close();
+    } else if (n.image_url) {
+      setNotifViewerUrl(n.image_url);
+    }
+  };
 
   const toggle = (id) => setActiveMenu((prev) => (prev === id ? null : id));
   const close = () => {
@@ -484,6 +515,69 @@ export default function CustomerNavbar() {
               </svg>
             </a>
 
+            {/* Notifications bell — only shown to logged-in users */}
+            {!!user && (
+              <div className="relative">
+                <button
+                  onClick={() => toggle("notifications")}
+                  className="relative text-gray-700 hover:text-red-600 transition-colors duration-200"
+                  aria-label="Notifications"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {activeMenu === "notifications" && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 6 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50"
+                    >
+                      <div className="px-4 py-3 border-b border-gray-100">
+                        <p className="text-sm font-medium text-gray-900">Notifications</p>
+                      </div>
+                      {notifications.length === 0 ? (
+                        <p className="px-4 py-6 text-sm text-gray-400 text-center">No notifications yet</p>
+                      ) : (
+                        <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+                          {notifications.map((n) => (
+                            <button
+                              key={n.recipient_id}
+                              onClick={() => handleNotifClick(n)}
+                              className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${
+                                n.is_read ? "" : "bg-teal-50/60"
+                              }`}
+                            >
+                              <p className={`text-sm ${n.is_read ? "font-medium text-gray-800" : "font-semibold text-gray-900"}`}>
+                                {n.title}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <Link
+                        href="/notifications"
+                        onClick={close}
+                        className="block px-4 py-2.5 text-center text-xs font-medium text-red-600 hover:text-red-700 border-t border-gray-100"
+                      >
+                        See all notifications
+                      </Link>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
             {/* Favorites icon — only shown to logged-in users */}
             {!!user && (
               <Link
@@ -663,6 +757,16 @@ export default function CustomerNavbar() {
                 <Link href="/products" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
                   Products
                 </Link>
+                {!!user && (
+                  <Link href="/notifications" onClick={close} className="py-3.5 text-base font-medium text-gray-900 flex items-center gap-2">
+                    Notifications
+                    {unreadCount > 0 && (
+                      <span className="w-5 h-5 bg-red-600 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                )}
                 {!!user && (
                   <Link href="/favorites" onClick={close} className="py-3.5 text-base font-medium text-gray-900">
                     Favorites
@@ -855,6 +959,32 @@ export default function CustomerNavbar() {
             className="fixed inset-0 top-[72px] bg-black/5 z-40"
             onClick={close}
           />
+        )}
+      </AnimatePresence>
+      {/* Notification image viewer */}
+      <AnimatePresence>
+        {notifViewerUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+            onClick={() => setNotifViewerUrl(null)}
+          >
+            <button
+              onClick={() => setNotifViewerUrl(null)}
+              className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl leading-none"
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <img
+              src={notifViewerUrl}
+              alt=""
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
         )}
       </AnimatePresence>
     </header>
