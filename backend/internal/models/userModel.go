@@ -331,10 +331,14 @@ func UpdateCustomerType(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 // ("courier" or "transport") — pre-fills the picker at checkout, but can
 // still be overridden per order.
 func UpdateDefaultTransportMode(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, mode string) error {
-	if mode != "courier" && mode != "transport" {
+	valid, err := IsValidTransportMode(ctx, db, mode)
+	if err != nil {
+		return err
+	}
+	if !valid {
 		return fmt.Errorf("invalid transport mode: %s", mode)
 	}
-	_, err := db.Exec(ctx,
+	_, err = db.Exec(ctx,
 		`UPDATE users SET default_transport_mode = $1, updated_at = NOW() WHERE id = $2`,
 		mode, userID,
 	)

@@ -191,16 +191,20 @@ func VerifyHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var req struct {
-			IsVerified      bool    `json:"is_verified"`
+			Status          string  `json:"status"`
 			RejectionReason *string `json:"rejection_reason"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
+		if req.Status != "pending" && req.Status != "verified" && req.Status != "rejected" {
+			http.Error(w, "status must be 'pending', 'verified', or 'rejected'", http.StatusBadRequest)
+			return
+		}
 
-		if err := models.VerifyPayment(r.Context(), db, id, req.IsVerified, req.RejectionReason, adminID); err != nil {
-			log.Printf("verify payment error: %v", err)
+		if err := models.SetPaymentStatus(r.Context(), db, id, req.Status, req.RejectionReason, adminID); err != nil {
+			log.Printf("set payment status error: %v", err)
 			http.Error(w, "could not update payment", http.StatusInternalServerError)
 			return
 		}

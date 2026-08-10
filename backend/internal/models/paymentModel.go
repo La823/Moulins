@@ -133,20 +133,33 @@ func GetPaymentByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Payme
 	return &p, nil
 }
 
-// VerifyPayment marks a payment verified or rejected by staff. verified_by
-// and verified_at record who reviewed it and when, regardless of outcome —
-// only rejection_reason is outcome-specific, cleared on approval.
-func VerifyPayment(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, verified bool, rejectionReason *string, adminID uuid.UUID) error {
-	if verified {
+// SetPaymentStatus moves a payment to pending, verified, or rejected —
+// staff can move between any of the three (e.g. undo an accidental verify
+// back to pending, or straight to rejected). verified_by/verified_at record
+// who reviewed it and when; both are cleared when reverting to pending,
+// since at that point it's unreviewed again. rejection_reason only applies
+// to "rejected" and is cleared for the other two statuses.
+func SetPaymentStatus(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, status string, rejectionReason *string, adminID uuid.UUID) error {
+	switch status {
+	case "verified":
 		_, err := db.Exec(ctx,
 			`UPDATE payments SET status = 'verified', verified_by = $1, verified_at = NOW(), rejection_reason = NULL, updated_at = NOW() WHERE id = $2`,
 			adminID, id,
 		)
 		return err
+	case "rejected":
+		_, err := db.Exec(ctx,
+			`UPDATE payments SET status = 'rejected', rejection_reason = $1, verified_by = $2, verified_at = NOW(), updated_at = NOW() WHERE id = $3`,
+			rejectionReason, adminID, id,
+		)
+		return err
+	case "pending":
+		_, err := db.Exec(ctx,
+			`UPDATE payments SET status = 'pending', rejection_reason = NULL, verified_by = NULL, verified_at = NULL, updated_at = NOW() WHERE id = $1`,
+			id,
+		)
+		return err
+	default:
+		return fmt.Errorf("invalid payment status: %s", status)
 	}
-	_, err := db.Exec(ctx,
-		`UPDATE payments SET status = 'rejected', rejection_reason = $1, verified_by = $2, verified_at = NOW(), updated_at = NOW() WHERE id = $3`,
-		rejectionReason, adminID, id,
-	)
-	return err
 }

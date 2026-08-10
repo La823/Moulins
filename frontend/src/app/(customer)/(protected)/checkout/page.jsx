@@ -7,23 +7,36 @@ import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 
-const TRANSPORT_MODES = [
-  { value: "courier", label: "By Courier" },
-  { value: "transport", label: "By Transport" },
-];
+const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, itemCount, clearCart } = useCart();
   const { user } = useAuth();
   const [notes, setNotes] = useState("");
+  const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState("courier");
+  const [transportOptions, setTransportOptions] = useState([]);
+  const [transportId, setTransportId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    apiFetch("/transport-modes")
+      .then((data) => setTransportModes(Array.isArray(data) ? data : []))
+      .catch(() => setTransportModes([]));
+  }, []);
+
+  useEffect(() => {
     if (user?.default_transport_mode) setTransportMode(user.default_transport_mode);
   }, [user?.default_transport_mode]);
+
+  useEffect(() => {
+    setTransportId("");
+    apiFetch(`/transports?mode=${transportMode}`)
+      .then((data) => setTransportOptions(Array.isArray(data) ? data : []))
+      .catch(() => setTransportOptions([]));
+  }, [transportMode]);
 
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
@@ -41,6 +54,7 @@ export default function CheckoutPage() {
           })),
           notes: notes.trim() || undefined,
           transport_mode: transportMode,
+          transport_id: transportId || undefined,
         }),
       });
       clearCart();
@@ -113,21 +127,41 @@ export default function CheckoutPage() {
           Mode of Transportation
         </label>
         <div className="flex gap-3">
-          {TRANSPORT_MODES.map((m) => (
+          {transportModes.map((m) => (
             <button
-              key={m.value}
+              key={m.id}
               type="button"
-              onClick={() => setTransportMode(m.value)}
+              onClick={() => setTransportMode(m.name)}
               className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                transportMode === m.value
+                transportMode === m.name
                   ? "border-gray-900 bg-gray-900 text-white"
                   : "border-gray-300 text-gray-600 hover:border-gray-400"
               }`}
             >
-              {m.label}
+              {modeLabel(m.name)}
             </button>
           ))}
         </div>
+        {transportOptions.length > 0 && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {transportMode.charAt(0).toUpperCase() + transportMode.slice(1)}{" "}
+              <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <select
+              value={transportId}
+              onChange={(e) => setTransportId(e.target.value)}
+              className="w-full sm:w-72 px-4 py-2.5 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
+            >
+              <option value="">Select an option...</option>
+              {transportOptions.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Notes */}

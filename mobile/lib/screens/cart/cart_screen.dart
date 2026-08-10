@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../models/transport.dart';
+import '../../models/transport_mode.dart';
 import '../../services/order_service.dart';
+import '../../services/transport_service.dart';
 import '../../utils/responsive.dart';
 
-const _transportModes = [
-  ('courier', 'By Courier'),
-  ('transport', 'By Transport'),
-];
+String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
 
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
@@ -21,11 +21,38 @@ class CartScreen extends ConsumerStatefulWidget {
 class _CartScreenState extends ConsumerState<CartScreen> {
   bool _placing = false;
   String? _transportMode;
+  List<TransportMode> _modes = [];
+  List<Transport> _transportOptions = [];
+  String? _transportId;
+  bool _loadingTransports = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _transportMode ??= ref.read(authProvider).user?.defaultTransportMode ?? 'courier';
+    if (_transportMode == null) {
+      _transportMode = ref.read(authProvider).user?.defaultTransportMode ?? 'courier';
+      _loadModes();
+      _loadTransportOptions(_transportMode!);
+    }
+  }
+
+  Future<void> _loadModes() async {
+    try {
+      final list = await TransportService().getModes();
+      if (mounted) setState(() => _modes = list);
+    } catch (_) {
+      // keep whatever we had (or the empty list) — non-fatal
+    }
+  }
+
+  Future<void> _loadTransportOptions(String mode) async {
+    setState(() { _loadingTransports = true; _transportId = null; });
+    try {
+      final list = await TransportService().getTransports(mode: mode);
+      if (mounted) setState(() { _transportOptions = list; _loadingTransports = false; });
+    } catch (_) {
+      if (mounted) setState(() { _transportOptions = []; _loadingTransports = false; });
+    }
   }
 
   Future<void> _placeOrder() async {
@@ -34,7 +61,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     setState(() => _placing = true);
     try {
-      final orderId = await OrderService().placeOrder(items, transportMode: _transportMode);
+      final orderId = await OrderService().placeOrder(items, transportMode: _transportMode, transportId: _transportId);
       ref.read(cartProvider.notifier).clear();
       if (mounted) {
         context.go('/orders/$orderId');
@@ -150,29 +177,62 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         child: Text('Mode of Transportation', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        children: _transportModes.map((mode) {
-                          final (value, label) = mode;
-                          final selected = _transportMode == value;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: GestureDetector(
-                              onTap: () => setState(() => _transportMode = value),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: selected ? const Color(0xFF00A6A4) : Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  label,
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
-                                ),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        children: _modes.map((mode) {
+                          final selected = _transportMode == mode.name;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() => _transportMode = mode.name);
+                              _loadTransportOptions(mode.name);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: selected ? const Color(0xFF00A6A4) : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _modeLabel(mode.name),
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
                               ),
                             ),
                           );
                         }).toList(),
                       ),
+                      if (_loadingTransports) ...[
+                        const SizedBox(height: 12),
+                        const Align(alignment: Alignment.centerLeft, child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+                      ] else if (_transportOptions.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('${_transportMode![0].toUpperCase()}${_transportMode!.substring(1)} (optional)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String?>(
+                              isExpanded: true,
+                              value: _transportId,
+                              hint: Text('Select an option...', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+                              items: [
+                                DropdownMenuItem<String?>(value: null, child: Text('None', style: TextStyle(fontSize: 13, color: Colors.grey.shade600))),
+                                ..._transportOptions.map((t) => DropdownMenuItem<String?>(value: t.id, child: Text(t.name, style: const TextStyle(fontSize: 13)))),
+                              ],
+                              onChanged: (v) => setState(() => _transportId = v),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,

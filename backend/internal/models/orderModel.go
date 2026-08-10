@@ -15,6 +15,7 @@ type Order struct {
 	Status        string       `json:"status"`
 	Notes         *string      `json:"notes,omitempty"`
 	TransportMode string       `json:"transport_mode"`
+	TransportID   *uuid.UUID   `json:"transport_id,omitempty"`
 	Items         []OrderItem  `json:"items,omitempty"`
 	Events        []OrderEvent `json:"events,omitempty"`
 	Photos        []OrderPhoto `json:"photos,omitempty"`
@@ -27,9 +28,11 @@ type Order struct {
 	DeliveryNotes    *string `json:"delivery_notes,omitempty"`
 	EwayBillNumber   *string `json:"eway_bill_number,omitempty"`
 	// Joined fields for admin view
-	UserName  string `json:"user_name,omitempty"`
-	UserPhone string `json:"user_phone,omitempty"`
-	ItemCount int    `json:"item_count,omitempty"`
+	UserName           string  `json:"user_name,omitempty"`
+	UserPhone          string  `json:"user_phone,omitempty"`
+	ItemCount          int     `json:"item_count,omitempty"`
+	TransportName      *string `json:"transport_name,omitempty"`
+	TransportGstNumber *string `json:"transport_gst_number,omitempty"`
 }
 
 type UpdateOrderDetailsRequest struct {
@@ -61,6 +64,7 @@ type CreateOrderRequest struct {
 	Items         []CreateOrderItemRequest `json:"items"`
 	Notes         *string                  `json:"notes,omitempty"`
 	TransportMode *string                  `json:"transport_mode,omitempty"`
+	TransportID   *uuid.UUID               `json:"transport_id,omitempty"`
 }
 
 type CreateOrderItemRequest struct {
@@ -74,7 +78,11 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 	if req.TransportMode != nil {
 		transportMode = *req.TransportMode
 	}
-	if transportMode != "courier" && transportMode != "transport" {
+	valid, err := IsValidTransportMode(ctx, db, transportMode)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if !valid {
 		// No (valid) mode supplied on the order — fall back to the
 		// partner's saved default rather than rejecting the order.
 		var def string
@@ -92,8 +100,8 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 
 	var orderID uuid.UUID
 	err = tx.QueryRow(ctx,
-		`INSERT INTO orders (user_id, notes, transport_mode) VALUES ($1, $2, $3) RETURNING id`,
-		userID, req.Notes, transportMode,
+		`INSERT INTO orders (user_id, notes, transport_mode, transport_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+		userID, req.Notes, transportMode, req.TransportID,
 	).Scan(&orderID)
 	if err != nil {
 		return uuid.Nil, err
@@ -221,21 +229,24 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 
 func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Order, error) {
 	query := `
-		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.created_at, o.updated_at,
+		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.transport_id, o.created_at, o.updated_at,
 			o.delivery_person, o.tracking_number,
 			CAST(o.expected_delivery AS TEXT), o.delivery_notes, o.eway_bill_number,
 			COALESCE(u.username, '') AS user_name,
-			COALESCE(u.phone_number, '') AS user_phone
+			COALESCE(u.phone_number, '') AS user_phone,
+			t.name, t.gst_number
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
+		LEFT JOIN transports t ON t.id = o.transport_id
 		WHERE o.id = $1
 	`
 	var o Order
 	err := db.QueryRow(ctx, query, orderID).Scan(
-		&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.CreatedAt, &o.UpdatedAt,
+		&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.TransportID, &o.CreatedAt, &o.UpdatedAt,
 		&o.DeliveryPerson, &o.TrackingNumber,
 		&o.ExpectedDelivery, &o.DeliveryNotes, &o.EwayBillNumber,
 		&o.UserName, &o.UserPhone,
+		&o.TransportName, &o.TransportGstNumber,
 	)
 	if err != nil {
 		return nil, err

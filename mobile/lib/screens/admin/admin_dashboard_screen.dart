@@ -11,6 +11,7 @@ import 'admin_doctors_map_screen.dart';
 import 'admin_employees_screen.dart';
 import 'admin_products_screen.dart';
 import 'admin_payments_screen.dart';
+import 'admin_transports_screen.dart';
 import '../../widgets/app_drawer.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -58,6 +59,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final canSeePartners = isAdmin || user.permissions.contains('partners');
     final canSeeEmployees = isAdmin;
     final canSeePayments = isAdmin || user.permissions.contains('payments');
+    final canSeeTransports = isAdmin || user.permissions.contains('orders');
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -135,14 +137,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                   const SizedBox(height: 10),
                 ],
-                if (canSeePayments)
+                if (canSeePayments) ...[
                   _ManageTile(
                     icon: Icons.payments_outlined,
                     label: 'Payments',
                     subtitle: 'Review and verify partner payment submissions',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminPaymentsScreen())),
                   ),
-                if (!canSeeProducts && !canSeePartners && !canSeeEmployees && !canSeePayments)
+                  const SizedBox(height: 10),
+                ],
+                if (canSeeTransports)
+                  _ManageTile(
+                    icon: Icons.local_shipping_outlined,
+                    label: 'Transports',
+                    subtitle: 'Manage courier & transport types and GST numbers',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminTransportsScreen())),
+                  ),
+                if (!canSeeProducts && !canSeePartners && !canSeeEmployees && !canSeePayments && !canSeeTransports)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(

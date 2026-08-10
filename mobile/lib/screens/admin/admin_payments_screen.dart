@@ -45,10 +45,10 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
     }
   }
 
-  Future<void> _verify(Payment p, bool isVerified, {String? reason}) async {
+  Future<void> _setStatus(Payment p, String status, {String? reason}) async {
     setState(() => _updatingId = p.id);
     try {
-      await _service.verifyPayment(p.id, isVerified, rejectionReason: reason);
+      await _service.setPaymentStatus(p.id, status, rejectionReason: reason);
       _load();
     } catch (_) {
       if (mounted) {
@@ -77,7 +77,7 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
         ],
       ),
     );
-    if (reason != null) _verify(p, false, reason: reason.isEmpty ? null : reason);
+    if (reason != null) _setStatus(p, 'rejected', reason: reason.isEmpty ? null : reason);
   }
 
   Color _statusColor(String status) {
@@ -206,10 +206,20 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
                                     const SizedBox(height: 6),
                                     Text('Reason: ${p.rejectionReason}', style: const TextStyle(fontSize: 12, color: Colors.red)),
                                   ],
-                                  if (p.status == 'pending') ...[
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      if (p.status != 'pending') ...[
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            onPressed: _updatingId == p.id ? null : () => _setStatus(p, 'pending'),
+                                            style: OutlinedButton.styleFrom(foregroundColor: Colors.grey.shade700, side: BorderSide(color: Colors.grey.shade400)),
+                                            child: const Text('Revert to Pending'),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                      ],
+                                      if (p.status != 'rejected') ...[
                                         Expanded(
                                           child: OutlinedButton(
                                             onPressed: _updatingId == p.id ? null : () => _confirmReject(p),
@@ -218,18 +228,19 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 10),
+                                      ],
+                                      if (p.status != 'verified')
                                         Expanded(
                                           child: ElevatedButton(
-                                            onPressed: _updatingId == p.id ? null : () => _verify(p, true),
+                                            onPressed: _updatingId == p.id ? null : () => _setStatus(p, 'verified'),
                                             style: ElevatedButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white),
                                             child: _updatingId == p.id
                                                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                                                 : const Text('Verify'),
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ],
                               ),
                             );

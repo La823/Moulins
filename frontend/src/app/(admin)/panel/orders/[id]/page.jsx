@@ -324,6 +324,17 @@ export default function AdminOrderDetail() {
                 {order.transport_mode === "transport" ? "By Transport" : "By Courier"}
               </p>
             </div>
+            {order.transport_name && (
+              <div>
+                <span className="text-gray-400">Transport</span>
+                <p className="text-gray-900 font-medium">
+                  {order.transport_name}
+                  {order.transport_gst_number && (
+                    <span className="text-xs text-gray-400 font-normal"> · GST {order.transport_gst_number}</span>
+                  )}
+                </p>
+              </div>
+            )}
             <div>
               <span className="text-gray-400">Placed on</span>
               <p className="text-gray-900">

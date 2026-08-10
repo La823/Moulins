@@ -32,9 +32,11 @@ class PaymentService {
     return list.map((e) => Payment.fromJson(e)).toList();
   }
 
-  Future<void> verifyPayment(String id, bool isVerified, {String? rejectionReason}) async {
+  // status is 'pending', 'verified', or 'rejected' — staff can move a
+  // payment between any of the three, e.g. undo an accidental verify.
+  Future<void> setPaymentStatus(String id, String status, {String? rejectionReason}) async {
     await _dio.put('/admin/payments/$id/verify', data: {
-      'is_verified': isVerified,
+      'status': status,
       'rejection_reason': rejectionReason,
     });
   }

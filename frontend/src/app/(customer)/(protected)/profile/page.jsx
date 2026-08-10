@@ -13,10 +13,7 @@ async function uploadFileToS3(file) {
   return public_url;
 }
 
-const TRANSPORT_MODES = [
-  { value: "courier", label: "By Courier" },
-  { value: "transport", label: "By Transport" },
-];
+const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 
 export default function ProfilePage() {
   const { user, logout, refreshUser } = useAuth();
@@ -26,8 +23,15 @@ export default function ProfilePage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
+  const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState(user?.default_transport_mode || "courier");
   const [savingTransport, setSavingTransport] = useState(false);
+
+  useEffect(() => {
+    apiFetch("/transport-modes")
+      .then((data) => setTransportModes(Array.isArray(data) ? data : []))
+      .catch(() => setTransportModes([]));
+  }, []);
 
   useEffect(() => {
     if (user?.default_transport_mode) setTransportMode(user.default_transport_mode);
@@ -131,19 +135,19 @@ export default function ProfilePage() {
         <h2 className="font-semibold text-gray-900 mb-1">Default Transport Mode</h2>
         <p className="text-xs text-gray-500 mb-4">Used to pre-fill your order&apos;s shipping method at checkout — you can still change it per order.</p>
         <div className="flex gap-3">
-          {TRANSPORT_MODES.map((m) => (
+          {transportModes.map((m) => (
             <button
-              key={m.value}
+              key={m.id}
               type="button"
               disabled={savingTransport}
-              onClick={() => saveTransportMode(m.value)}
+              onClick={() => saveTransportMode(m.name)}
               className={`px-4 py-2 text-sm font-medium rounded-lg border transition disabled:opacity-50 ${
-                transportMode === m.value
+                transportMode === m.name
                   ? "border-[#00A6A4] bg-[#00A6A4]/10 text-[#00A6A4]"
                   : "border-gray-300 text-gray-600 hover:border-gray-400"
               }`}
             >
-              {m.label}
+              {modeLabel(m.name)}
             </button>
           ))}
         </div>

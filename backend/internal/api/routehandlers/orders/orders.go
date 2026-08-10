@@ -48,9 +48,22 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
-		if req.TransportMode != nil && *req.TransportMode != "courier" && *req.TransportMode != "transport" {
-			http.Error(w, "transport_mode must be 'courier' or 'transport'", http.StatusBadRequest)
-			return
+		// An invalid/omitted transport_mode isn't rejected here — CreateOrder
+		// validates it against the admin-managed transport_modes list and
+		// falls back to the partner's saved default if it doesn't check out.
+		if req.TransportID != nil {
+			transport, err := models.GetTransportByID(r.Context(), db, *req.TransportID)
+			if err != nil {
+				http.Error(w, "invalid transport_id", http.StatusBadRequest)
+				return
+			}
+			if req.TransportMode != nil && *req.TransportMode != transport.Mode {
+				http.Error(w, "transport_id does not belong to the given transport_mode", http.StatusBadRequest)
+				return
+			}
+			// The chosen transport implies its mode — no need to also
+			// require the caller to pass a matching transport_mode.
+			req.TransportMode = &transport.Mode
 		}
 
 		orderID, err := models.CreateOrder(r.Context(), db, userID, req)

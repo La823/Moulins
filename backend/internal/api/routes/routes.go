@@ -30,6 +30,8 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/tags"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/team"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/transportmodes"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/transports"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	"github.com/lavanyaarora/server/internal/cache"
@@ -67,6 +69,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	router.HandleFunc("/products/categories", categories.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/tags", tags.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/units", units.ListHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/transports", transports.ListHandler(db, rdb)).Methods("GET")
+	router.HandleFunc("/transport-modes", transportmodes.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/forms", products.ProductFormsHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/products/{id}", products.GetProductHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
@@ -302,6 +306,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderStaff.HandleFunc("/orders/{id}/tracking-upload-url", orders.TrackingUploadURLHandler()).Methods("POST")
 	orderStaff.HandleFunc("/orders/{id}/photos", orders.AddPhotoHandler(db)).Methods("POST")
 	orderStaff.HandleFunc("/orders/photos/{photoId}", orders.DeletePhotoHandler(db)).Methods("DELETE")
+	orderStaff.HandleFunc("/transports", transports.CreateHandler(db, rdb)).Methods("POST")
+	orderStaff.HandleFunc("/transports/{id}", transports.UpdateHandler(db, rdb)).Methods("PUT")
+	orderStaff.HandleFunc("/transports/{id}", transports.DeleteHandler(db, rdb)).Methods("DELETE")
+	orderStaff.HandleFunc("/transport-modes", transportmodes.CreateHandler(db, rdb)).Methods("POST")
+	orderStaff.HandleFunc("/transport-modes/{id}", transportmodes.DeleteHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — product management
 	productStaff := protected.PathPrefix("/admin").Subrouter()

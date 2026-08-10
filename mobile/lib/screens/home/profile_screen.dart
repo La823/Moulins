@@ -10,8 +10,12 @@ import '../../providers/onboarding_provider.dart';
 import '../../models/onboarding.dart';
 import '../../config/api.dart';
 import '../../services/ledger_service.dart';
+import '../../services/transport_service.dart';
+import '../../models/transport_mode.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+
+String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -25,6 +29,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   String? _ledgerUrl;
   bool _ledgerLoading = true;
+  List<TransportMode> _transportModes = [];
 
   @override
   void initState() {
@@ -37,6 +42,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }).catchError((_) {
       if (mounted) setState(() => _ledgerLoading = false);
     });
+    TransportService().getModes().then((list) {
+      if (mounted) setState(() => _transportModes = list);
+    }).catchError((_) {});
   }
 
   @override
@@ -140,27 +148,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const SizedBox(height: 2),
                   Text('Pre-fills your order\'s shipping method at checkout', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      ('courier', 'By Courier'),
-                      ('transport', 'By Transport'),
-                    ].map((mode) {
-                      final (value, label) = mode;
-                      final selected = user?.defaultTransportMode == value;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: GestureDetector(
-                          onTap: () => ref.read(authProvider.notifier).updateDefaultTransportMode(value),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: selected ? teal : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
-                            ),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: _transportModes.map((mode) {
+                      final selected = user?.defaultTransportMode == mode.name;
+                      return GestureDetector(
+                        onTap: () => ref.read(authProvider.notifier).updateDefaultTransportMode(mode.name),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: selected ? teal : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _modeLabel(mode.name),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
                           ),
                         ),
                       );

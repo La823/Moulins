@@ -19,7 +19,7 @@ class OrderService {
     return Order.fromJson(res.data);
   }
 
-  Future<String> placeOrder(List<CartItem> items, {String? transportMode}) async {
+  Future<String> placeOrder(List<CartItem> items, {String? transportMode, String? transportId}) async {
     final res = await _dio.post('/orders', data: {
       'items': items
           .map((e) => {
@@ -29,6 +29,7 @@ class OrderService {
               })
           .toList(),
       if (transportMode != null) 'transport_mode': transportMode,
+      if (transportId != null) 'transport_id': transportId,
     });
     // backend returns { "order_id": "uuid" }
     return res.data['order_id'] ?? res.data['id'] ?? '';

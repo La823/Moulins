@@ -69,23 +69,17 @@ export default function AdminPaymentsPage() {
     setSearch(searchInput.trim());
   };
 
-  const verify = async (payment, isVerified, rejectionReason) => {
+  const setStatus = async (payment, status, rejectionReason) => {
     setUpdating(true);
     try {
       await apiFetch(`/admin/payments/${payment.id}/verify`, {
         method: "PUT",
         body: JSON.stringify({
-          is_verified: isVerified,
+          status,
           rejection_reason: rejectionReason || null,
         }),
       });
-      setPayments((prev) =>
-        prev.map((p) =>
-          p.id === payment.id
-            ? { ...p, status: isVerified ? "verified" : "rejected", rejection_reason: rejectionReason || null }
-            : p
-        )
-      );
+      fetchPayments();
       setActive(null);
       setShowRejectFor(null);
       setRejectReason("");
@@ -196,15 +190,17 @@ export default function AdminPaymentsPage() {
                     {p.verified_at ? formatDateTime(p.verified_at) : "—"}
                   </td>
                   <td className="px-5 py-3">
-                    {p.status === "pending" ? (
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {p.status !== "verified" && (
                         <button
-                          onClick={() => verify(p, true)}
+                          onClick={() => setStatus(p, "verified")}
                           disabled={updating}
                           className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 disabled:opacity-50"
                         >
                           Verify
                         </button>
+                      )}
+                      {p.status !== "rejected" && (
                         <button
                           onClick={() => setShowRejectFor(p.id)}
                           disabled={updating}
@@ -212,11 +208,20 @@ export default function AdminPaymentsPage() {
                         >
                           Reject
                         </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">
-                        {p.status === "rejected" && p.rejection_reason ? p.rejection_reason : "—"}
-                      </span>
+                      )}
+                      {p.status !== "pending" && (
+                        <button
+                          onClick={() => setStatus(p, "pending")}
+                          disabled={updating}
+                          title="Undo — send this back to pending review"
+                          className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                        >
+                          Revert to Pending
+                        </button>
+                      )}
+                    </div>
+                    {p.status === "rejected" && p.rejection_reason && (
+                      <p className="text-xs text-gray-400 mt-1">{p.rejection_reason}</p>
                     )}
                   </td>
                 </tr>
@@ -276,7 +281,7 @@ export default function AdminPaymentsPage() {
                 Cancel
               </button>
               <button
-                onClick={() => verify(payments.find((p) => p.id === showRejectFor), false, rejectReason.trim())}
+                onClick={() => setStatus(payments.find((p) => p.id === showRejectFor), "rejected", rejectReason.trim())}
                 disabled={updating}
                 className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
