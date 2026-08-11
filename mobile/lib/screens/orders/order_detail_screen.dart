@@ -30,6 +30,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     _load();
   }
 
+  bool _updatingStatus = false;
+  String? _busyItemId;
+
   Future<void> _load() async {
     try {
       final o = await OrderService().getOrder(widget.orderId);
@@ -38,6 +41,135 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
       debugPrint('Order load error: $e');
       setState(() => _loading = false);
     }
+  }
+
+  Future<bool> _confirm(String title, String message, {String confirmLabel = 'Confirm', bool danger = false}) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(confirmLabel, style: TextStyle(color: danger ? Colors.red : teal)),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Future<void> _changeStatus(String newStatus) async {
+    if (_order == null || newStatus == _order!.status) return;
+    final ok = await _confirm(
+      'Change order status?',
+      'Status will change from "${_order!.statusLabel}" to "${_statusLabel(newStatus)}". The partner will see this update immediately.',
+      confirmLabel: 'Change Status',
+    );
+    if (!ok) return;
+
+    setState(() => _updatingStatus = true);
+    try {
+      await OrderService().updateStatus(widget.orderId, newStatus);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Status updated'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update status: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingStatus = false);
+    }
+  }
+
+  Future<void> _changeQuantity(OrderItem item, int newQty) async {
+    if (newQty < 1) return;
+    final ok = await _confirm(
+      'Change quantity?',
+      'Quantity of "${item.productName}" will change from ${item.quantity} to $newQty.',
+      confirmLabel: 'Update Quantity',
+    );
+    if (!ok) return;
+
+    setState(() => _busyItemId = item.id);
+    try {
+      await OrderService().updateItemQuantity(widget.orderId, item.id, newQty);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update quantity: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyItemId = null);
+    }
+  }
+
+  Future<void> _removeItem(OrderItem item) async {
+    final ok = await _confirm(
+      'Remove item?',
+      '"${item.productName}" will be permanently removed from this order.',
+      confirmLabel: 'Remove',
+      danger: true,
+    );
+    if (!ok) return;
+
+    setState(() => _busyItemId = item.id);
+    try {
+      await OrderService().deleteItem(widget.orderId, item.id);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not remove item: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyItemId = null);
+    }
+  }
+
+  static const _statusOptions = ['pending', 'confirmed', 'transferred', 'shipped', 'delivered', 'cancelled', 'refunded'];
+
+  String _statusLabel(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  Future<void> _pickStatus(String current) async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Change Order Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            ..._statusOptions.map((s) => RadioListTile<String>(
+                  value: s,
+                  groupValue: current,
+                  activeColor: teal,
+                  title: Text(_statusLabel(s)),
+                  onChanged: (v) => Navigator.pop(ctx, v),
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (chosen != null) _changeStatus(chosen);
   }
 
   Future<ImageSource?> _pickSource() {
@@ -163,8 +295,10 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     if (_order == null) return Scaffold(appBar: AppBar(), body: const Center(child: Text('Order not found')));
 
     final o = _order!;
-    final role = ref.watch(authProvider).user?.role;
+    final user = ref.watch(authProvider).user;
+    final role = user?.role;
     final canAttachPhotos = role == 'employee' || role == 'admin';
+    final canEditOrder = role == 'admin' || (user?.permissions.contains('orders_edit') ?? false);
     final billPhotos = o.photos.where((p) => p.photoType == 'bill').toList();
     final trackingPhotos = o.photos.where((p) => p.photoType == 'tracking').toList();
 
@@ -196,18 +330,27 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                   decoration: BoxDecoration(
                       color: _statusColor.withValues(alpha: 0.1),
                       shape: BoxShape.circle),
-                  child: Icon(Icons.local_shipping_outlined, color: _statusColor),
+                  child: _updatingStatus
+                      ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 2, color: teal))
+                      : Icon(Icons.local_shipping_outlined, color: _statusColor),
                 ),
                 const SizedBox(width: 14),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(o.statusLabel,
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _statusColor)),
-                    Text(dateStr,
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(o.statusLabel,
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _statusColor)),
+                      Text(dateStr,
+                          style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                    ],
+                  ),
                 ),
+                if (canEditOrder)
+                  TextButton(
+                    onPressed: _updatingStatus ? null : () => _pickStatus(o.status),
+                    child: const Text('Change', style: TextStyle(color: teal, fontWeight: FontWeight.w600)),
+                  ),
               ],
             ),
           ),
@@ -250,11 +393,31 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                             children: [
                               Text(item.productName,
                                   style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-                              Text('Qty: ${item.quantity}',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                              if (!canEditOrder)
+                                Text('Qty: ${item.quantity}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                             ],
                           ),
                         ),
+                        if (canEditOrder)
+                          _busyItemId == item.id
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: teal))
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _qtyBtn(Icons.remove, item.quantity > 1 ? () => _changeQuantity(item, item.quantity - 1) : null),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      child: Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                                    ),
+                                    _qtyBtn(Icons.add, () => _changeQuantity(item, item.quantity + 1)),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                      onPressed: () => _removeItem(item),
+                                      tooltip: 'Remove item',
+                                    ),
+                                  ],
+                                ),
                       ],
                     ),
                   );
@@ -280,7 +443,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             children: [
               Text('Bill Photos (${billPhotos.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              if (canAttachPhotos)
+              if (canEditOrder)
                 TextButton.icon(
                   onPressed: _uploadingPhoto ? null : _uploadPhoto,
                   icon: _uploadingPhoto
@@ -317,7 +480,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                       child: InteractiveViewer(child: Image.network(photo.imageUrl)),
                     ),
                   ),
-                  onLongPress: canAttachPhotos ? () => _deletePhoto(photo.id) : null,
+                  onLongPress: canEditOrder ? () => _deletePhoto(photo.id) : null,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(photo.imageUrl, fit: BoxFit.cover),
@@ -334,7 +497,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             children: [
               Text('Tracking Image (${trackingPhotos.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              if (canAttachPhotos)
+              if (canEditOrder)
                 TextButton.icon(
                   onPressed: _uploadingTracking ? null : _uploadTrackingImage,
                   icon: _uploadingTracking
@@ -371,7 +534,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                       child: InteractiveViewer(child: Image.network(photo.imageUrl)),
                     ),
                   ),
-                  onLongPress: canAttachPhotos ? () => _deletePhoto(photo.id, label: 'tracking image') : null,
+                  onLongPress: canEditOrder ? () => _deletePhoto(photo.id, label: 'tracking image') : null,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(photo.imageUrl, fit: BoxFit.cover),
@@ -379,10 +542,74 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                 );
               },
             ),
+
+          if (canAttachPhotos && o.events.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: Container(
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                clipBehavior: Clip.antiAlias,
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+                  childrenPadding: const EdgeInsets.only(left: 14, right: 14, bottom: 8),
+                  expandedAlignment: Alignment.centerLeft,
+                  expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                  title: const Text('Activity Log', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                  children: List.generate(o.events.length, (i) {
+                    final events = o.events.reversed.toList();
+                    final event = events[i];
+                    String when = event.createdAt;
+                    try {
+                      when = DateFormat('d MMM, h:mm a').format(DateTime.parse(event.createdAt));
+                    } catch (_) {}
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        border: i < events.length - 1
+                            ? Border(bottom: BorderSide(color: Colors.grey.shade100))
+                            : null,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(event.description, textAlign: TextAlign.left, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 3),
+                          Text(
+                            [
+                              when,
+                              if (event.actorName != null && event.actorName!.isNotEmpty)
+                                'by ${event.actorName}${event.actorRole != null && event.actorRole!.isNotEmpty ? ' (${event.actorRole})' : ''}',
+                            ].join(' · '),
+                            textAlign: TextAlign.left,
+                            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ],
         ],
       )),
     );
   }
+
+  Widget _qtyBtn(IconData icon, VoidCallback? onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 26, height: 26,
+          decoration: BoxDecoration(
+            color: onTap == null ? Colors.grey.shade100 : const Color(0xFFE8F8F8),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Icon(icon, size: 15, color: onTap == null ? Colors.grey.shade400 : teal),
+        ),
+      );
 
   Widget _infoCard(String label, String value) => Container(
         margin: const EdgeInsets.only(bottom: 8),

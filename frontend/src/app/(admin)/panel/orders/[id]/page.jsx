@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const STATUSES = [
   "pending",
@@ -28,6 +29,8 @@ const STATUS_STYLES = {
 export default function AdminOrderDetail() {
   const { id } = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const canEdit = user?.role === "admin" || (user?.permissions || []).includes("orders_edit");
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -80,6 +83,8 @@ export default function AdminOrderDetail() {
 
   // --- Status change ---
   const handleStatusChange = async (newStatus) => {
+    if (newStatus === order.status) return;
+    if (!confirm(`Change order status from "${order.status}" to "${newStatus}"? The partner will see this update.`)) return;
     try {
       await apiFetch(`/admin/orders/${id}/status`, {
         method: "PUT",
@@ -95,6 +100,7 @@ export default function AdminOrderDetail() {
 
   // --- Save delivery details ---
   const handleSaveDelivery = async () => {
+    if (!confirm("Save these delivery detail changes? The partner will see this update.")) return;
     setSavingDelivery(true);
     setError("");
     try {
@@ -118,8 +124,9 @@ export default function AdminOrderDetail() {
   };
 
   // --- Update item quantity ---
-  const handleUpdateItem = async (itemId, newQty) => {
+  const handleUpdateItem = async (itemId, newQty, itemName) => {
     if (newQty < 1) return;
+    if (!confirm(`Change quantity of "${itemName}" to ${newQty}?`)) return;
     try {
       await apiFetch(`/admin/orders/${id}/items/${itemId}`, {
         method: "PUT",
@@ -266,19 +273,29 @@ export default function AdminOrderDetail() {
           <h2 className="text-lg font-semibold text-gray-800">Order Detail</h2>
           <p className="text-xs text-gray-400 font-mono mt-0.5">{order.id}</p>
         </div>
-        <select
-          value={order.status}
-          onChange={(e) => handleStatusChange(e.target.value)}
-          className={`text-sm px-3 py-1.5 rounded-full font-medium capitalize border-0 outline-none cursor-pointer ${
-            STATUS_STYLES[order.status] || "bg-gray-100 text-gray-600"
-          }`}
-        >
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </option>
-          ))}
-        </select>
+        {canEdit ? (
+          <select
+            value={order.status}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            className={`text-sm px-3 py-1.5 rounded-full font-medium capitalize border-0 outline-none cursor-pointer ${
+              STATUS_STYLES[order.status] || "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span
+            className={`text-sm px-3 py-1.5 rounded-full font-medium capitalize ${
+              STATUS_STYLES[order.status] || "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {order.status}
+          </span>
+        )}
       </div>
 
       {/* Alerts */}
@@ -376,9 +393,11 @@ export default function AdminOrderDetail() {
             <h3 className="text-sm font-semibold text-gray-700">
               Order Items ({items.length})
             </h3>
-            <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              Edits visible to partner
-            </span>
+            {canEdit && (
+              <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                Edits visible to partner
+              </span>
+            )}
           </div>
 
           {items.length === 0 ? (
@@ -410,9 +429,9 @@ export default function AdminOrderDetail() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() =>
-                            handleUpdateItem(item.id, item.quantity - 1)
+                            handleUpdateItem(item.id, item.quantity - 1, item.product_name)
                           }
-                          disabled={item.quantity <= 1}
+                          disabled={!canEdit || item.quantity <= 1}
                           className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           &minus;
@@ -422,15 +441,17 @@ export default function AdminOrderDetail() {
                         </span>
                         <button
                           onClick={() =>
-                            handleUpdateItem(item.id, item.quantity + 1)
+                            handleUpdateItem(item.id, item.quantity + 1, item.product_name)
                           }
-                          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 transition-colors"
+                          disabled={!canEdit}
+                          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           +
                         </button>
                       </div>
                     </td>
                     <td className="py-3 text-right">
+                      {canEdit && (
                       <button
                         onClick={() =>
                           handleDeleteItem(item.id, item.product_name)
@@ -452,6 +473,7 @@ export default function AdminOrderDetail() {
                           />
                         </svg>
                       </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -466,16 +488,18 @@ export default function AdminOrderDetail() {
             <h3 className="text-sm font-semibold text-gray-700">
               Bill Photos ({billPhotos.length})
             </h3>
-            <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
-              {uploadingPhoto ? "Uploading..." : "+ Add Photo"}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handlePhotoUpload}
-                disabled={uploadingPhoto}
-                className="hidden"
-              />
-            </label>
+            {canEdit && (
+              <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
+                {uploadingPhoto ? "Uploading..." : "+ Add Photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  disabled={uploadingPhoto}
+                  className="hidden"
+                />
+              </label>
+            )}
           </div>
 
           {billPhotos.length === 0 ? (
@@ -493,13 +517,15 @@ export default function AdminOrderDetail() {
                       className="w-full h-28 object-cover rounded-lg border border-gray-200"
                     />
                   </a>
-                  <button
-                    onClick={() => handleDeletePhoto(photo.id)}
-                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Remove photo"
-                  >
-                    &times;
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => handleDeletePhoto(photo.id)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remove photo"
+                    >
+                      &times;
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -574,7 +600,8 @@ export default function AdminOrderDetail() {
                   }))
                 }
                 placeholder="Name of delivery person"
-                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
+                disabled={!canEdit}
+                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-500"
               />
             </div>
             <div>
@@ -591,7 +618,8 @@ export default function AdminOrderDetail() {
                   }))
                 }
                 placeholder="Tracking or reference number"
-                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
+                disabled={!canEdit}
+                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-500"
               />
             </div>
             <div>
@@ -607,7 +635,8 @@ export default function AdminOrderDetail() {
                     expected_delivery: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
+                disabled={!canEdit}
+                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-500"
               />
             </div>
             <div>
@@ -624,7 +653,8 @@ export default function AdminOrderDetail() {
                   }))
                 }
                 placeholder="Only if an e-way bill was generated"
-                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors"
+                disabled={!canEdit}
+                className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors disabled:bg-gray-50 disabled:text-gray-500"
               />
             </div>
           </div>
@@ -642,7 +672,8 @@ export default function AdminOrderDetail() {
               }
               rows={2}
               placeholder="Any delivery instructions or notes..."
-              className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors resize-none"
+              disabled={!canEdit}
+              className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded-lg focus:border-gray-400 outline-none transition-colors resize-none disabled:bg-gray-50 disabled:text-gray-500"
             />
           </div>
 
@@ -651,16 +682,18 @@ export default function AdminOrderDetail() {
               <label className="block text-xs text-gray-500">
                 Tracking Image
               </label>
-              <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
-                {uploadingTracking ? "Uploading..." : "+ Add Tracking Image"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleTrackingUpload}
-                  disabled={uploadingTracking}
-                  className="hidden"
-                />
-              </label>
+              {canEdit && (
+                <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
+                  {uploadingTracking ? "Uploading..." : "+ Add Tracking Image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleTrackingUpload}
+                    disabled={uploadingTracking}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
             {trackingPhotos.length === 0 ? (
               <p className="text-sm text-gray-400 py-2 text-center border border-dashed border-gray-200 rounded-lg">
@@ -677,28 +710,32 @@ export default function AdminOrderDetail() {
                         className="w-full h-28 object-cover rounded-lg border border-gray-200"
                       />
                     </a>
-                    <button
-                      onClick={() => handleDeletePhoto(photo.id, "Tracking image")}
-                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Remove tracking image"
-                    >
-                      &times;
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => handleDeletePhoto(photo.id, "Tracking image")}
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove tracking image"
+                      >
+                        &times;
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={handleSaveDelivery}
-              disabled={savingDelivery}
-              className="px-5 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
-            >
-              {savingDelivery ? "Saving..." : "Save Delivery Details"}
-            </button>
-          </div>
+          {canEdit && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSaveDelivery}
+                disabled={savingDelivery}
+                className="px-5 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {savingDelivery ? "Saving..." : "Save Delivery Details"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

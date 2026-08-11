@@ -12,6 +12,8 @@ import 'admin_employees_screen.dart';
 import 'admin_products_screen.dart';
 import 'admin_payments_screen.dart';
 import 'admin_transports_screen.dart';
+import 'admin_notifications_screen.dart';
+import 'admin_broadcast_lists_screen.dart';
 import '../../widgets/app_drawer.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -59,7 +61,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final canSeePartners = isAdmin || user.permissions.contains('partners');
     final canSeeEmployees = isAdmin;
     final canSeePayments = isAdmin || user.permissions.contains('payments');
-    final canSeeTransports = isAdmin || user.permissions.contains('orders');
+    final canSeeTransports = isAdmin || user.permissions.contains('orders_edit');
+    final canSeeNotifications = isAdmin || user.permissions.contains('notifications');
+    final canSeeBroadcastLists = isAdmin || user.permissions.contains('broadcast_lists');
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -146,14 +150,32 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                   const SizedBox(height: 10),
                 ],
-                if (canSeeTransports)
+                if (canSeeTransports) ...[
                   _ManageTile(
                     icon: Icons.local_shipping_outlined,
                     label: 'Transports',
                     subtitle: 'Manage courier & transport types and GST numbers',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminTransportsScreen())),
                   ),
-                if (!canSeeProducts && !canSeePartners && !canSeeEmployees && !canSeePayments && !canSeeTransports)
+                  const SizedBox(height: 10),
+                ],
+                if (canSeeNotifications) ...[
+                  _ManageTile(
+                    icon: Icons.campaign_outlined,
+                    label: 'Notifications',
+                    subtitle: 'Compose and send broadcast notifications',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminNotificationsScreen())),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (canSeeBroadcastLists)
+                  _ManageTile(
+                    icon: Icons.groups_outlined,
+                    label: 'Broadcast Lists',
+                    subtitle: 'Create and manage your personal broadcast lists',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminBroadcastListsScreen())),
+                  ),
+                if (!canSeeProducts && !canSeePartners && !canSeeEmployees && !canSeePayments && !canSeeTransports && !canSeeNotifications && !canSeeBroadcastLists)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(

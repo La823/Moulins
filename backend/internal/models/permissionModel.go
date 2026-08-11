@@ -19,7 +19,8 @@ type PermissionDef struct {
 var ValidPermissions = []PermissionDef{
 	{Key: "products", Label: "Products", Desc: "Manage products, images, documents"},
 	{Key: "graphics_design", Label: "Graphics Design", Desc: "Manage product graphics design files"},
-	{Key: "orders", Label: "Orders", Desc: "View and manage partner orders"},
+	{Key: "orders", Label: "Orders (View)", Desc: "View partner orders and their details"},
+	{Key: "orders_edit", Label: "Orders (Edit)", Desc: "Edit order status, item quantities, delivery details, and transports"},
 	{Key: "partners", Label: "Partners", Desc: "View and manage partners"},
 	{Key: "meetings", Label: "Meetings", Desc: "View and analyze partner/employee doctor meetings"},
 	{Key: "requests", Label: "Requests", Desc: "View and resolve partner/employee requests"},

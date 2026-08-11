@@ -2,8 +2,9 @@ class TeamMember {
   final String id;
   final String phoneNumber;
   final String? username;
+  final String? plainPassword;
 
-  TeamMember({required this.id, required this.phoneNumber, this.username});
+  TeamMember({required this.id, required this.phoneNumber, this.username, this.plainPassword});
 
   String get displayName => username ?? phoneNumber;
 
@@ -11,6 +12,7 @@ class TeamMember {
         id: json['id'] ?? '',
         phoneNumber: json['phone_number'] ?? '',
         username: json['username'],
+        plainPassword: json['plain_password'],
       );
 }
 

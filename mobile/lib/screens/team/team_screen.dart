@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
@@ -80,7 +81,57 @@ class _TeamScreenState extends State<TeamScreen> {
               const SizedBox(height: 20),
               _field(nameCtrl, 'Name'),
               const SizedBox(height: 12),
-              _field(phoneCtrl, 'Phone Number *', type: TextInputType.phone),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _field(phoneCtrl, 'Phone Number *', type: TextInputType.phone)),
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.contacts_outlined, color: _teal),
+                      tooltip: 'Pick from contacts',
+                      onPressed: () async {
+                        try {
+                          // readonly: true — we only read a picked contact's
+                          // name/number, never write. Requesting WRITE_CONTACTS
+                          // too (the default) would fail permanently since
+                          // that permission isn't declared in the manifest.
+                          final granted = await FlutterContacts.requestPermission(readonly: true);
+                          if (!granted) {
+                            if (sheetCtx.mounted) {
+                              ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                                const SnackBar(content: Text('Contacts permission is required to pick a number')),
+                              );
+                            }
+                            return;
+                          }
+                          final contact = await FlutterContacts.openExternalPick();
+                          if (contact == null) return;
+                          if (contact.phones.isNotEmpty) {
+                            phoneCtrl.text = contact.phones.first.number;
+                          }
+                          if (nameCtrl.text.trim().isEmpty && contact.displayName.isNotEmpty) {
+                            nameCtrl.text = contact.displayName;
+                          }
+                        } catch (_) {
+                          if (sheetCtx.mounted) {
+                            ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                              const SnackBar(content: Text('Could not open contacts')),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               _field(passwordCtrl, 'Password *'),
               if (error != null) ...[

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
 
@@ -23,6 +24,7 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
   List<AttendanceRecord> _attendance = [];
   List<DailyLog> _logs = [];
   bool _loading = true;
+  bool _showPassword = false;
 
   @override
   void initState() {
@@ -159,6 +161,42 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade200),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Login Details', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        const SizedBox(height: 12),
+                        _detailRow('Name', widget.member.username?.isNotEmpty == true ? widget.member.username! : '—'),
+                        const SizedBox(height: 8),
+                        _detailRow('Phone', widget.member.phoneNumber, copyable: true),
+                        const SizedBox(height: 8),
+                        _detailRow(
+                          'Password',
+                          widget.member.plainPassword?.isNotEmpty == true
+                              ? (_showPassword ? widget.member.plainPassword! : '••••••••')
+                              : 'Not available',
+                          copyable: widget.member.plainPassword?.isNotEmpty == true,
+                          trailing: widget.member.plainPassword?.isNotEmpty == true
+                              ? IconButton(
+                                  icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18, color: Colors.grey.shade600),
+                                  onPressed: () => setState(() => _showPassword = !_showPassword),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  tooltip: _showPassword ? 'Hide password' : 'Show password',
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -221,6 +259,31 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _detailRow(String label, String value, {bool copyable = false, Widget? trailing}) {
+    return Row(
+      children: [
+        SizedBox(width: 70, child: Text(label, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500))),
+        Expanded(
+          child: Text(value, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+        ),
+        if (trailing != null) trailing,
+        if (copyable)
+          IconButton(
+            icon: Icon(Icons.copy_outlined, size: 16, color: Colors.grey.shade500),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$label copied'), duration: const Duration(seconds: 1)),
+              );
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Copy',
+          ),
+      ],
     );
   }
 }

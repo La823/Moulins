@@ -102,6 +102,28 @@ func requireOwnedMember(w http.ResponseWriter, r *http.Request, db *pgxpool.Pool
 	return id, true
 }
 
+// GET /team/{id} — a partner views one of their own team member's details,
+// including their login credentials (plain_password is stored precisely so
+// a partner who forgets what they set can look it up).
+func GetTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := requireOwnedMember(w, r, db)
+		if !ok {
+			return
+		}
+
+		member, err := models.GetUserByIDFull(r.Context(), db, id)
+		if err != nil {
+			log.Printf("get team member error: %v", err)
+			http.Error(w, "could not fetch team member", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(member)
+	}
+}
+
 // PUT /team/{id} — update a team member's password/username.
 func UpdateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

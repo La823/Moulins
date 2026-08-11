@@ -33,6 +33,35 @@ class OrderPhoto {
       );
 }
 
+class OrderEvent {
+  final String id;
+  final String eventType;
+  final String description;
+  final String? actorName;
+  final String? actorRole;
+  final String createdAt;
+
+  OrderEvent({
+    required this.id,
+    required this.eventType,
+    required this.description,
+    this.actorName,
+    this.actorRole,
+    required this.createdAt,
+  });
+
+  factory OrderEvent.fromJson(Map<String, dynamic> json) => OrderEvent(
+        id: json['id'] ?? '',
+        eventType: json['event_type'] ?? '',
+        description: json['description'] ?? '',
+        actorName: json['actor_name'],
+        actorRole: json['actor_role'],
+        createdAt: json['created_at'] is String
+            ? json['created_at']
+            : json['created_at']?.toString() ?? '',
+      );
+}
+
 class Order {
   final String id;
   final String status;
@@ -40,6 +69,7 @@ class Order {
   final int itemCount;
   final List<OrderItem> items;
   final List<OrderPhoto> photos;
+  final List<OrderEvent> events;
   final String? trackingNumber;
   final String? expectedDelivery;
   final String? notes;
@@ -51,6 +81,7 @@ class Order {
     required this.itemCount,
     this.items = const [],
     this.photos = const [],
+    this.events = const [],
     this.trackingNumber,
     this.expectedDelivery,
     this.notes,
@@ -70,6 +101,9 @@ class Order {
             .toList(),
         photos: (json['photos'] as List<dynamic>? ?? [])
             .map((e) => OrderPhoto.fromJson(e))
+            .toList(),
+        events: (json['events'] as List<dynamic>? ?? [])
+            .map((e) => OrderEvent.fromJson(e))
             .toList(),
         trackingNumber: json['tracking_number'],
         expectedDelivery: json['expected_delivery'],

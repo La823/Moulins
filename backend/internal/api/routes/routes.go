@@ -106,6 +106,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// not an admin/staff permission.
 	protected.HandleFunc("/team", team.CreateTeamMemberHandler(db)).Methods("POST")
 	protected.HandleFunc("/team", team.ListTeamMembersHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}", team.GetTeamMemberHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}", team.UpdateTeamMemberHandler(db)).Methods("PUT")
 	protected.HandleFunc("/team/{id}", team.DeleteTeamMemberHandler(db)).Methods("DELETE")
 	protected.HandleFunc("/team/attendance", attendance.PartnerMarkAttendanceHandler(db)).Methods("POST")
@@ -287,25 +288,33 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
 
-	// staff routes — order management
+	// staff routes — order management (view-only: seeing the all-orders list)
 	orderStaff := protected.PathPrefix("/admin").Subrouter()
 	orderStaff.Use(middleware.StaffOnly)
 	orderStaff.Use(middleware.RequirePermission(db, "orders", rdb))
 
 	orderStaff.HandleFunc("/orders", orders.ListAllOrdersHandler(db)).Methods("GET")
-	orderStaff.HandleFunc("/orders/{id}/details", orders.UpdateOrderDetailsHandler(db)).Methods("PUT")
-	orderStaff.HandleFunc("/orders/{id}/status", orders.UpdateOrderStatusHandler(db)).Methods("PUT")
-	orderStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.UpdateOrderItemHandler(db)).Methods("PUT")
-	orderStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.DeleteOrderItemHandler(db)).Methods("DELETE")
-	orderStaff.HandleFunc("/orders/upload-url", orders.UploadURLHandler()).Methods("POST")
-	orderStaff.HandleFunc("/orders/{id}/tracking-upload-url", orders.TrackingUploadURLHandler()).Methods("POST")
-	orderStaff.HandleFunc("/orders/{id}/photos", orders.AddPhotoHandler(db)).Methods("POST")
-	orderStaff.HandleFunc("/orders/photos/{photoId}", orders.DeletePhotoHandler(db)).Methods("DELETE")
-	orderStaff.HandleFunc("/transports", transports.CreateHandler(db, rdb)).Methods("POST")
-	orderStaff.HandleFunc("/transports/{id}", transports.UpdateHandler(db, rdb)).Methods("PUT")
-	orderStaff.HandleFunc("/transports/{id}", transports.DeleteHandler(db, rdb)).Methods("DELETE")
-	orderStaff.HandleFunc("/transport-modes", transportmodes.CreateHandler(db, rdb)).Methods("POST")
-	orderStaff.HandleFunc("/transport-modes/{id}", transportmodes.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — order management (edit: status, quantities, delivery
+	// details, photos, and the transports/modes master data), gated
+	// separately so "view only" staff can't mutate anything
+	orderEditStaff := protected.PathPrefix("/admin").Subrouter()
+	orderEditStaff.Use(middleware.StaffOnly)
+	orderEditStaff.Use(middleware.RequirePermission(db, "orders_edit", rdb))
+
+	orderEditStaff.HandleFunc("/orders/{id}/details", orders.UpdateOrderDetailsHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/orders/{id}/status", orders.UpdateOrderStatusHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.UpdateOrderItemHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.DeleteOrderItemHandler(db)).Methods("DELETE")
+	orderEditStaff.HandleFunc("/orders/upload-url", orders.UploadURLHandler()).Methods("POST")
+	orderEditStaff.HandleFunc("/orders/{id}/tracking-upload-url", orders.TrackingUploadURLHandler()).Methods("POST")
+	orderEditStaff.HandleFunc("/orders/{id}/photos", orders.AddPhotoHandler(db)).Methods("POST")
+	orderEditStaff.HandleFunc("/orders/photos/{photoId}", orders.DeletePhotoHandler(db)).Methods("DELETE")
+	orderEditStaff.HandleFunc("/transports", transports.CreateHandler(db, rdb)).Methods("POST")
+	orderEditStaff.HandleFunc("/transports/{id}", transports.UpdateHandler(db, rdb)).Methods("PUT")
+	orderEditStaff.HandleFunc("/transports/{id}", transports.DeleteHandler(db, rdb)).Methods("DELETE")
+	orderEditStaff.HandleFunc("/transport-modes", transportmodes.CreateHandler(db, rdb)).Methods("POST")
+	orderEditStaff.HandleFunc("/transport-modes/{id}", transportmodes.DeleteHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — product management
 	productStaff := protected.PathPrefix("/admin").Subrouter()

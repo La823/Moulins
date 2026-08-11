@@ -60,4 +60,16 @@ class OrderService {
   Future<void> deleteOrderPhoto(String photoId) async {
     await _dio.delete('/admin/orders/photos/$photoId');
   }
+
+  Future<void> updateStatus(String orderId, String status) async {
+    await _dio.put('/admin/orders/$orderId/status', data: {'status': status});
+  }
+
+  Future<void> updateItemQuantity(String orderId, String itemId, int quantity) async {
+    await _dio.put('/admin/orders/$orderId/items/$itemId', data: {'quantity': quantity});
+  }
+
+  Future<void> deleteItem(String orderId, String itemId) async {
+    await _dio.delete('/admin/orders/$orderId/items/$itemId');
+  }
 }

@@ -59,7 +59,7 @@ const NAV_ITEMS = [
   {
     label: "Transports",
     href: "/panel/transports",
-    permission: "orders",
+    permission: "orders_edit",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.75m0 0v-4.5m0 4.5H2.25m2.25 0v-4.5m0-3.75V6a2.25 2.25 0 012.25-2.25h3a2.25 2.25 0 012.25 2.25v4.5m0 0h3.75m-3.75 0h-3.75M18 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.5m-1.5 0v-4.5m1.5 4.5H21m-1.5 0v-4.5m0 0h-4.5m4.5 0v-4.5a2.25 2.25 0 00-2.25-2.25H15" />
