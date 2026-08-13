@@ -14,6 +14,7 @@ import '../../services/transport_service.dart';
 import '../../models/transport_mode.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import 'account_deletion_screen.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
 
@@ -198,10 +199,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           Container(
             color: Colors.white,
-            child: _menuItem(Icons.logout, 'Logout', () async {
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) context.go('/login');
-            }, color: Colors.red),
+            child: Column(
+              children: [
+                _menuItem(Icons.logout, 'Logout', () async {
+                  await ref.read(authProvider.notifier).logout();
+                  if (context.mounted) context.go('/login');
+                }, color: Colors.red),
+                _divider(),
+                _menuItem(
+                  Icons.delete_outline,
+                  'Delete Account',
+                  () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountDeletionScreen())),
+                  color: Colors.red,
+                ),
+              ],
+            ),
           ),
 
           const SizedBox(height: 32),

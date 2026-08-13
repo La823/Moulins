@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import LocationPicker from "@/components/LocationPicker";
 
 const emptyForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "" };
@@ -14,6 +15,8 @@ function initials(name) {
 }
 
 export default function DoctorsPage() {
+  const { user } = useAuth();
+  const canDelete = user?.role !== "team_member";
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -285,12 +288,14 @@ export default function DoctorsPage() {
                 >
                   Edit Profile
                 </button>
-                <button
-                  onClick={() => handleDelete(doctor.id)}
-                  className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-auto"
-                >
-                  Delete
-                </button>
+                {canDelete && (
+                  <button
+                    onClick={() => handleDelete(doctor.id)}
+                    className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-auto"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           ))}

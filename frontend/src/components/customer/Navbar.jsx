@@ -327,6 +327,11 @@ export default function CustomerNavbar() {
     }
   };
 
+  const dashboardHref = (u) =>
+    u.role === "admin" || u.role === "employee" ? "/panel" : u.role === "team_member" ? "/team-panel" : "/dashboard";
+  const dashboardLabel = (u) =>
+    u.role === "admin" || u.role === "employee" ? "Panel" : u.role === "team_member" ? "Team Panel" : "Dashboard";
+
   const toggle = (id) => setActiveMenu((prev) => (prev === id ? null : id));
   const close = () => {
     setActiveMenu(null);
@@ -336,17 +341,14 @@ export default function CustomerNavbar() {
   // Special-type customers browse their private catalog via the "Special"
   // filter tile on the products page itself (not a separate navbar link —
   // partners and team members already have their own dedicated nav entries
-  // below). Partners get a "My Team" tile; team members (their sub-accounts)
-  // get "My Attendance"/"My Log" instead. All hidden from everyone else.
+  // below). Partners get a "Partner Panel" tile; team members (their
+  // sub-accounts) get a "Team Panel" tile of their own. All hidden from
+  // everyone else.
   let navItems = NAV_ITEMS;
   if (user?.role === "partner") {
     navItems = [...navItems, { id: "team", label: "Partner Panel", href: "/partner-panel" }];
   } else if (user?.role === "team_member") {
-    navItems = [
-      ...navItems,
-      { id: "my-attendance", label: "My Attendance", href: "/my-attendance" },
-      { id: "my-daily-log", label: "My Log", href: "/my-daily-log" },
-    ];
+    navItems = [...navItems, { id: "team-panel", label: "Team Panel", href: "/team-panel" }];
   }
   // Team members are sub-accounts for field work, not billing — no cart.
   const showCart = !!user && user.role !== "team_member";
@@ -680,14 +682,14 @@ export default function CustomerNavbar() {
                           My Profile
                         </Link>
                         <Link
-                          href={user.role === "admin" || user.role === "employee" ? "/panel" : "/dashboard"}
+                          href={dashboardHref(user)}
                           onClick={close}
                           className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
                           </svg>
-                          {user.role === "admin" || user.role === "employee" ? "Panel" : "Dashboard"}
+                          {dashboardLabel(user)}
                         </Link>
                         <Link
                           href="/chat"
@@ -834,11 +836,11 @@ export default function CustomerNavbar() {
                     <p className="text-sm font-medium text-gray-900 mb-2">{user.username || user.phone_number}</p>
                     <Link href="/profile" onClick={close} className="py-2 text-sm text-gray-700">My Profile</Link>
                     <Link
-                      href={user.role === "admin" || user.role === "employee" ? "/panel" : "/dashboard"}
+                      href={dashboardHref(user)}
                       onClick={close}
                       className="py-2 text-sm text-gray-700"
                     >
-                      {user.role === "admin" || user.role === "employee" ? "Panel" : "Dashboard"}
+                      {dashboardLabel(user)}
                     </Link>
                     <Link href="/chat" onClick={close} className="py-2 text-sm text-gray-700">Messages</Link>
                     <Link href="/learning" onClick={close} className="py-2 text-sm text-gray-700">Learning</Link>

@@ -6,10 +6,11 @@ import Footer from "@/components/customer/Footer";
 import CartDrawer from "@/components/customer/CartDrawer";
 
 export default function CustomerLayout({ children }) {
-  // The partner panel is its own full-screen app shell (persistent sidebar,
-  // own nav) — the storefront chrome doesn't belong around it.
+  // The partner panel and team-member panel are each their own full-screen
+  // app shell (persistent sidebar, own nav) — the storefront chrome
+  // doesn't belong around either of them.
   const pathname = usePathname();
-  const isPanel = pathname?.startsWith("/partner-panel");
+  const isPanel = pathname?.startsWith("/partner-panel") || pathname?.startsWith("/team-panel");
 
   if (isPanel) {
     return (

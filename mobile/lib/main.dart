@@ -245,9 +245,10 @@ class _AppShellState extends ConsumerState<_AppShell> {
     }
 
     // "My Doctors" is a personal doctor-tracking list, which only makes
-    // sense for partners (medical reps track meetings differently) — not
-    // shown to admin/employee logins at all.
-    final isPartner = user.role == 'partner';
+    // sense for partners and their team members (medical reps track
+    // meetings differently) — team members see their owning partner's
+    // doctors, resolved server-side. Not shown to admin/employee logins.
+    final isPartner = user.role == 'partner' || user.role == 'team_member';
     final destinations = <_NavItem>[
       const _NavItem(route: '/home', icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
       const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),

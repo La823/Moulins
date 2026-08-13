@@ -14,6 +14,7 @@ import 'admin_payments_screen.dart';
 import 'admin_transports_screen.dart';
 import 'admin_notifications_screen.dart';
 import 'admin_broadcast_lists_screen.dart';
+import 'admin_deletion_requests_screen.dart';
 import '../../widgets/app_drawer.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -129,6 +130,13 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     label: 'Doctors Map',
                     subtitle: "See every partner's doctors by clinic location",
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminDoctorsMapScreen())),
+                  ),
+                  const SizedBox(height: 10),
+                  _ManageTile(
+                    icon: Icons.person_remove_outlined,
+                    label: 'Deletion Requests',
+                    subtitle: 'Review partner and team member account deletion requests',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminDeletionRequestsScreen())),
                   ),
                   const SizedBox(height: 10),
                 ],

@@ -26,6 +26,11 @@ func getUserID(r *http.Request, db *pgxpool.Pool) uuid.UUID {
 	return owner
 }
 
+func getRole(r *http.Request) string {
+	role, _ := r.Context().Value("role").(string)
+	return role
+}
+
 // nextBirthdayOccurrence returns the next upcoming date (this year, or next
 // year if this year's has already passed) that shares dob's month/day, at
 // noon local time to stay clear of any midnight DST edge cases.
@@ -210,6 +215,16 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 func DeleteDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Team members share their owning partner's doctor list (list,
+		// create, edit) but can't remove a doctor the partner relies on —
+		// only the partner themselves (or Moulins staff, who reach this
+		// same handler) can delete.
+		role := getRole(r)
+		if role == "team_member" {
+			http.Error(w, "only the partner can delete a doctor", http.StatusForbidden)
+			return
+		}
+
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)

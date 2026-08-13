@@ -111,6 +111,52 @@ export default function ProfilePage() {
   const licenseDoc = status?.documents?.find((d) => d.doc_type === "LICENSE");
   const gstDoc = status?.documents?.find((d) => d.doc_type === "GST");
 
+  const [deletionRequest, setDeletionRequest] = useState(null);
+  const [loadingDeletion, setLoadingDeletion] = useState(true);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [showDeleteForm, setShowDeleteForm] = useState(false);
+  const [submittingDeletion, setSubmittingDeletion] = useState(false);
+  const [deletionError, setDeletionError] = useState(null);
+
+  const fetchDeletionRequest = () => {
+    apiFetch("/account/deletion-request")
+      .then((data) => setDeletionRequest(data))
+      .catch(() => setDeletionRequest(null))
+      .finally(() => setLoadingDeletion(false));
+  };
+
+  useEffect(() => { fetchDeletionRequest(); }, []);
+
+  const submitDeletionRequest = async (e) => {
+    e.preventDefault();
+    if (!confirm("Submit a request to delete your account? Our team will review it before your account and data are removed.")) return;
+    setSubmittingDeletion(true);
+    setDeletionError(null);
+    try {
+      await apiFetch("/account/deletion-request", {
+        method: "POST",
+        body: JSON.stringify({ reason: deleteReason.trim() || undefined }),
+      });
+      setDeleteReason("");
+      setShowDeleteForm(false);
+      fetchDeletionRequest();
+    } catch (err) {
+      setDeletionError(err.message);
+    } finally {
+      setSubmittingDeletion(false);
+    }
+  };
+
+  const cancelDeletionRequest = async () => {
+    if (!confirm("Cancel your account deletion request?")) return;
+    try {
+      await apiFetch("/account/deletion-request", { method: "DELETE" });
+      fetchDeletionRequest();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const STEPS = [
     { n: 1, label: "Account Created" },
     { n: 2, label: "License Verified" },
@@ -296,6 +342,79 @@ export default function ProfilePage() {
               {uploading === "GST" ? "Uploading..." : "Submit GST Certificate"}
             </button>
           </form>
+        )}
+      </div>
+
+      {/* Delete Account */}
+      <div className="bg-white rounded-xl border border-red-200 p-6">
+        <h2 className="font-semibold text-red-700 mb-1">Delete Account</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Submit a request to permanently delete your account and all associated data. Our team
+          reviews every request before anything is removed — this is not instant.
+        </p>
+
+        {loadingDeletion ? null : deletionRequest?.status === "pending" ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <p className="text-sm text-amber-800 font-medium">Deletion request pending review</p>
+            <p className="text-xs text-amber-700 mt-1">
+              Submitted {new Date(deletionRequest.requested_at).toLocaleDateString()}
+              {deletionRequest.reason && <> &middot; &ldquo;{deletionRequest.reason}&rdquo;</>}
+            </p>
+            <button
+              onClick={cancelDeletionRequest}
+              className="mt-3 text-xs font-medium text-amber-800 underline hover:text-amber-900"
+            >
+              Cancel request
+            </button>
+          </div>
+        ) : deletionRequest?.status === "rejected" ? (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+            <p className="text-sm text-gray-700 font-medium">Your last request was declined</p>
+            {deletionRequest.admin_notes && (
+              <p className="text-xs text-gray-500 mt-1">&ldquo;{deletionRequest.admin_notes}&rdquo;</p>
+            )}
+          </div>
+        ) : null}
+
+        {!loadingDeletion && deletionRequest?.status !== "pending" && (
+          showDeleteForm ? (
+            <form onSubmit={submitDeletionRequest} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                <textarea
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  rows={3}
+                  placeholder="Let us know why you're leaving..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                />
+              </div>
+              {deletionError && <p className="text-sm text-red-600">{deletionError}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={submittingDeletion}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {submittingDeletion ? "Submitting..." : "Submit Request"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteForm(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowDeleteForm(true)}
+              className="px-4 py-2 text-sm font-medium text-red-700 border border-red-300 rounded-lg hover:bg-red-50"
+            >
+              Request Account Deletion
+            </button>
+          )
         )}
       </div>
     </div>

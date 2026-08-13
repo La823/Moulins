@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../models/doctor.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/doctor_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
@@ -12,14 +14,14 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
 import '../../utils/validators.dart';
 
-class DoctorsScreen extends StatefulWidget {
+class DoctorsScreen extends ConsumerStatefulWidget {
   const DoctorsScreen({super.key});
 
   @override
-  State<DoctorsScreen> createState() => _DoctorsScreenState();
+  ConsumerState<DoctorsScreen> createState() => _DoctorsScreenState();
 }
 
-class _DoctorsScreenState extends State<DoctorsScreen> {
+class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
   List<Doctor>? _doctors;
   bool _loading = true;
   final _service = DoctorService();
@@ -329,6 +331,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canDelete = ref.watch(authProvider).user?.role != 'team_member';
     return Scaffold(
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
@@ -442,11 +445,12 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                   child: const Text('Edit Profile', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
                                 ),
                                 const Spacer(),
-                                TextButton(
-                                  onPressed: () => _deleteDoctor(d),
-                                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                                  child: const Text('Delete', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red)),
-                                ),
+                                if (canDelete)
+                                  TextButton(
+                                    onPressed: () => _deleteDoctor(d),
+                                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                                    child: const Text('Delete', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red)),
+                                  ),
                               ],
                             ),
                           ],

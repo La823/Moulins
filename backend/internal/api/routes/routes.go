@@ -4,6 +4,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/api/handlers"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/accountdeletion"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/assignments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
@@ -121,6 +122,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/notifications", notifications.ListMyNotificationsHandler(db)).Methods("GET")
 	protected.HandleFunc("/notifications/{id}/read", notifications.MarkReadHandler(db)).Methods("PUT")
 	protected.HandleFunc("/device-tokens", notifications.RegisterDeviceTokenHandler(db)).Methods("POST")
+
+	// account deletion request routes (any authenticated user manages their own)
+	protected.HandleFunc("/account/deletion-request", accountdeletion.CreateHandler(db)).Methods("POST")
+	protected.HandleFunc("/account/deletion-request", accountdeletion.GetMyHandler(db)).Methods("GET")
+	protected.HandleFunc("/account/deletion-request", accountdeletion.CancelHandler(db)).Methods("DELETE")
 
 	// doctor routes (any authenticated user)
 	protected.HandleFunc("/doctors", doctors.ListDoctorsHandler(db)).Methods("GET")
@@ -287,6 +293,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
+
+	// account deletion request review queue
+	partnerStaff.HandleFunc("/deletion-requests", accountdeletion.ListPendingHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/deletion-requests/{id}/approve", accountdeletion.ApproveHandler(db)).Methods("PUT")
+	partnerStaff.HandleFunc("/deletion-requests/{id}/reject", accountdeletion.RejectHandler(db)).Methods("PUT")
 
 	// staff routes — order management (view-only: seeing the all-orders list)
 	orderStaff := protected.PathPrefix("/admin").Subrouter()
