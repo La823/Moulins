@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/favorite_service.dart';
 import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
@@ -73,6 +74,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   Widget build(BuildContext context) {
     final favoriteIds = ref.watch(favoritesProvider);
     final isSearching = _searchCtrl.text.trim().isNotEmpty;
+    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -82,25 +84,26 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
         elevation: 0,
         title: const Text('My Favorites', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
-                onPressed: () => context.push('/cart'),
-              ),
-              if (ref.watch(cartProvider).isNotEmpty)
-                Positioned(
-                  right: 8, top: 8,
-                  child: Container(
-                    width: 16, height: 16,
-                    decoration: const BoxDecoration(color: teal, shape: BoxShape.circle),
-                    child: Center(
-                      child: Text('${ref.watch(cartProvider).length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+          if (canOrder)
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
+                  onPressed: () => context.push('/cart'),
+                ),
+                if (ref.watch(cartProvider).isNotEmpty)
+                  Positioned(
+                    right: 8, top: 8,
+                    child: Container(
+                      width: 16, height: 16,
+                      decoration: const BoxDecoration(color: teal, shape: BoxShape.circle),
+                      child: Center(
+                        child: Text('${ref.watch(cartProvider).length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
           const SizedBox(width: 4),
         ],
       ),

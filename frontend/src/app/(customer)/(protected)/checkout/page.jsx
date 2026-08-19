@@ -66,6 +66,20 @@ export default function CheckoutPage() {
     }
   };
 
+  if (user?.role === "doctor") {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-20 text-center">
+        <p className="text-gray-400 text-sm">Ordering isn&apos;t available on this account.</p>
+        <Link
+          href="/products"
+          className="inline-block mt-4 text-sm text-red-600 hover:text-red-700 transition-colors"
+        >
+          Browse products
+        </Link>
+      </div>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-8 py-20 text-center">

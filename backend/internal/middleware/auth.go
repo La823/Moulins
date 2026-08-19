@@ -51,6 +51,22 @@ func AdminOnly(next http.Handler) http.Handler {
 	})
 }
 
+// DenyRole blocks a single role from a route while leaving every other
+// role untouched — used to keep doctor-role users to catalog/profile
+// browsing only, by blocking them from order/cart creation without having
+// to enumerate every other role that's allowed.
+func DenyRole(role string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if reqRole, _ := r.Context().Value("role").(string); reqRole == role {
+				http.Error(w, "not available for this account type", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func StaffOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		role, ok := r.Context().Value("role").(string)

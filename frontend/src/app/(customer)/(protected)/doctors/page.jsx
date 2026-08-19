@@ -71,12 +71,12 @@ export default function DoctorsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || !form.phone.trim()) return;
     setSubmitting(true);
     setError("");
     const body = {
       name: form.name.trim(),
-      phone: form.phone.trim() || null,
+      phone: form.phone.trim(),
       email: form.email.trim() || null,
       speciality: form.speciality.trim() || null,
       clinic_name: form.clinic_name.trim() || null,
@@ -139,14 +139,18 @@ export default function DoctorsPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
               <input
                 type="text"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
                 placeholder="Phone number"
+                required
               />
+              <p className="text-[11px] text-gray-400 mt-1">
+                Used as the doctor&apos;s login — they can sign in with this phone number as both username and default password.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>

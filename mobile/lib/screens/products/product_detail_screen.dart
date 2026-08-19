@@ -8,6 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/product_service.dart';
 import '../../services/learning_service.dart';
 import '../../models/learning.dart';
@@ -141,6 +142,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     final p = _product!;
     final cart = ref.watch(cartProvider);
     final inCart = cart.any((e) => e.product.id == p.id);
+    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -434,7 +436,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
       )),
 
       // Add to cart button
-      bottomNavigationBar: Container(
+      bottomNavigationBar: !canOrder ? null : Container(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
         decoration: BoxDecoration(
           color: Colors.white,

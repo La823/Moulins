@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 import SmallProductCard from "@/components/products/SmallProductCard";
 import { divisionRouteForCategory } from "@/lib/divisionRoutes";
 import { DIVISIONS } from "@/lib/divisions";
@@ -13,6 +14,8 @@ export default function ProductDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const { addToCart, itemCount } = useCart();
+  const { user } = useAuth();
+  const canOrder = user?.role !== "doctor";
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
@@ -219,13 +222,15 @@ export default function ProductDetailPage() {
             MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
           </p>
 
-          <button
-            onClick={handleAddToCart}
-            className="w-full py-4 text-sm font-medium transition-all duration-200"
-            style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
-          >
-            {added ? "Added to Cart ✓" : "Add to Cart"}
-          </button>
+          {canOrder && (
+            <button
+              onClick={handleAddToCart}
+              className="w-full py-4 text-sm font-medium transition-all duration-200"
+              style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
+            >
+              {added ? "Added to Cart ✓" : "Add to Cart"}
+            </button>
+          )}
 
           {/* Documents */}
           {product.documents && product.documents.length > 0 && (

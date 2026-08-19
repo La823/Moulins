@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 
 // Same visual style as ProductCard, sized down for horizontal-scroll rows
 // (Recently Viewed / Explore More on the product detail page) — the
@@ -9,6 +10,8 @@ import { useCart } from "@/context/CartContext";
 export default function SmallProductCard({ product: p }) {
   const router = useRouter();
   const { addToCart } = useCart();
+  const { user } = useAuth();
+  const canOrder = user?.role !== "doctor";
 
   return (
     <div
@@ -57,29 +60,31 @@ export default function SmallProductCard({ product: p }) {
         )}
 
         {/* Add to cart bar — slides up from the bottom edge of the image on hover */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            addToCart(p);
-          }}
-          style={{ backgroundColor: "#AC2528" }}
-          className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 py-2 text-[10px] font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
-        >
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            viewBox="0 0 24 24"
+        {canOrder && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              addToCart(p);
+            }}
+            style={{ backgroundColor: "#AC2528" }}
+            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 py-2 text-[10px] font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
-          </svg>
-          Add to Cart
-        </button>
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 4.5v15m7.5-7.5h-15"
+              />
+            </svg>
+            Add to Cart
+          </button>
+        )}
       </div>
 
       {/* Info */}

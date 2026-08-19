@@ -120,6 +120,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final categories = ref.watch(categoriesProvider);
     final cart = ref.watch(cartProvider);
     final isSpecial = ref.watch(authProvider).user?.isSpecial ?? false;
+    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -134,25 +135,26 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             onPressed: () => context.push('/favorites'),
             tooltip: 'Favorites',
           ),
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
-                onPressed: () => context.push('/cart'),
-              ),
-              if (cart.isNotEmpty)
-                Positioned(
-                  right: 8, top: 8,
-                  child: Container(
-                    width: 16, height: 16,
-                    decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
-                    child: Center(
-                      child: Text('${cart.length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+          if (canOrder)
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
+                  onPressed: () => context.push('/cart'),
+                ),
+                if (cart.isNotEmpty)
+                  Positioned(
+                    right: 8, top: 8,
+                    child: Container(
+                      width: 16, height: 16,
+                      decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
+                      child: Center(
+                        child: Text('${cart.length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
           const ChatButton(),
           const NotificationBellButton(),
           const ProfileButton(),

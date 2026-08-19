@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useFavorites } from "@/context/FavoritesContext";
+import { useAuth } from "@/context/AuthContext";
 
 // Shared product card — used on the products listing page and the
 // Recently Viewed / Explore More sections on the product detail page, so
@@ -11,6 +12,8 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
   const router = useRouter();
   const { addToCart } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { user } = useAuth();
+  const canOrder = user?.role !== "doctor";
   const favorite = isFavorite(p.id);
 
   const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
@@ -80,29 +83,31 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
         )}
 
         {/* Add to cart bar — slides up from the bottom edge of the image on hover */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            addToCart(p);
-          }}
-          style={{ backgroundColor: "#AC2528" }}
-          className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3 text-xs font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            viewBox="0 0 24 24"
+        {canOrder && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              addToCart(p);
+            }}
+            style={{ backgroundColor: "#AC2528" }}
+            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3 text-xs font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 4.5v15m7.5-7.5h-15"
-            />
-          </svg>
-          Add to Cart
-        </button>
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 4.5v15m7.5-7.5h-15"
+              />
+            </svg>
+            Add to Cart
+          </button>
+        )}
       </div>
 
       {/* Info */}

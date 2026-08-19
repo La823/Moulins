@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 
 export default function CategoryLandingPage({ categoryName, heroImage, heroLabel, heroTitle }) {
   const [products, setProducts] = useState([]);
@@ -11,6 +12,8 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
   const [forms, setForms] = useState([]);
   const [activeForm, setActiveForm] = useState("");
   const { addToCart } = useCart();
+  const { user } = useAuth();
+  const canOrder = user?.role !== "doctor";
   const router = useRouter();
 
   useEffect(() => {
@@ -138,29 +141,31 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
                   )}
 
                   {/* Add to cart bar — slides up from the bottom edge of the image on hover */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addToCart(p);
-                    }}
-                    style={{ backgroundColor: "#AC2528" }}
-                    className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3 text-xs font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                      viewBox="0 0 24 24"
+                  {canOrder && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addToCart(p);
+                      }}
+                      style={{ backgroundColor: "#AC2528" }}
+                      className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3 text-xs font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 4.5v15m7.5-7.5h-15"
-                      />
-                    </svg>
-                    Add to Cart
-                  </button>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 4.5v15m7.5-7.5h-15"
+                        />
+                      </svg>
+                      Add to Cart
+                    </button>
+                  )}
                 </div>
 
                 {/* Info */}

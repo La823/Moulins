@@ -22,6 +22,8 @@ export default function LoginPage() {
       const user = await login(phoneNumber, password);
       if (user.role === "admin" || user.role === "employee") {
         router.push("/panel");
+      } else if (user.role === "doctor") {
+        router.push("/doctor-panel");
       } else {
         router.push("/");
       }

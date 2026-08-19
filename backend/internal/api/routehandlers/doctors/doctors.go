@@ -136,6 +136,10 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 		userID := getUserID(r, db)
 		id, err := models.CreateDoctor(r.Context(), db, userID, req)
 		if err != nil {
+			if err == models.ErrDoctorPhoneRequired || err == models.ErrDoctorPhoneTaken {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			log.Printf("create doctor error: %v", err)
 			http.Error(w, "could not create doctor", http.StatusInternalServerError)
 			return
@@ -202,6 +206,10 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		if err := models.UpdateDoctor(r.Context(), db, doctorID, req); err != nil {
+			if err == models.ErrDoctorPhoneRequired || err == models.ErrDoctorPhoneTaken {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			log.Printf("update doctor error: %v", err)
 			http.Error(w, "could not update doctor", http.StatusInternalServerError)
 			return
@@ -353,6 +361,29 @@ func AddDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]string{"message": "product added"})
+	}
+}
+
+// GET /doctor/me — a doctor-role user's own linked doctor record. Doesn't
+// use getUserID/ResolveOwnerID (that resolves team_member → partner, not
+// applicable to a doctor login), so it looks up the doctors row directly by
+// user_id.
+func GetMyDoctorProfileHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(r.Context().Value("user_id").(string))
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		doctor, err := models.GetDoctorByUserID(r.Context(), db, userID)
+		if err != nil {
+			http.Error(w, "doctor profile not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(doctor)
 	}
 }
 

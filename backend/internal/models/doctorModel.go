@@ -2,15 +2,26 @@ package models
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// ErrDoctorPhoneRequired and ErrDoctorPhoneTaken are returned by
+// CreateDoctor/UpdateDoctor when the doctor's phone can't be used as their
+// login identity — every doctor now needs a unique phone since it doubles
+// as their doctor-role login.
+var (
+	ErrDoctorPhoneRequired = errors.New("phone is required")
+	ErrDoctorPhoneTaken    = errors.New("phone number is already registered")
+)
+
 type Doctor struct {
 	ID               uuid.UUID  `json:"id"`
 	PartnerID        uuid.UUID  `json:"partner_id"`
+	UserID           *uuid.UUID `json:"user_id,omitempty"`
 	Name             string     `json:"name"`
 	Phone            *string    `json:"phone,omitempty"`
 	Email            *string    `json:"email,omitempty"`
@@ -64,21 +75,40 @@ type AddDoctorProductRequest struct {
 	ProductID uuid.UUID `json:"product_id"`
 }
 
-const doctorColumns = `id, partner_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
+const doctorColumns = `id, partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
 
 func scanDoctor(row interface{ Scan(...any) error }, d *Doctor) error {
-	return row.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+	return row.Scan(&d.ID, &d.PartnerID, &d.UserID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
 		&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
 }
 
+// CreateDoctor creates the doctor record and, since a doctor's phone
+// doubles as their doctor-role login identity, provisions a linked login
+// account for them in the same call. The phone must be present and not
+// already registered to another user.
 func CreateDoctor(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, req CreateDoctorRequest) (uuid.UUID, error) {
+	if req.Phone == nil || *req.Phone == "" {
+		return uuid.Nil, ErrDoctorPhoneRequired
+	}
+	if _, err := GetUserByPhone(ctx, db, *req.Phone); err == nil {
+		return uuid.Nil, ErrDoctorPhoneTaken
+	}
+
+	userID, err := CreateDoctorUser(ctx, db, *req.Phone)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
 	var id uuid.UUID
-	err := db.QueryRow(ctx,
-		`INSERT INTO doctors (partner_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-		partnerID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
+	err = db.QueryRow(ctx,
+		`INSERT INTO doctors (partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+		partnerID, userID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
 	).Scan(&id)
-	return id, err
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
 }
 
 // DoctorListItem is a Doctor plus its assigned-product count, for the
@@ -102,7 +132,7 @@ func GetDoctorsByPartner(ctx context.Context, db *pgxpool.Pool, partnerID uuid.U
 	doctors := []DoctorListItem{}
 	for rows.Next() {
 		var d DoctorListItem
-		if err := rows.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
+		if err := rows.Scan(&d.ID, &d.PartnerID, &d.UserID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
 			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.ProductCount); err != nil {
 			return nil, err
 		}
@@ -231,12 +261,48 @@ func SyncDoctorLastMeetingFromCompletedMeeting(ctx context.Context, db *pgxpool.
 	return err
 }
 
+// UpdateDoctor updates the doctor record and, if the phone changed, keeps
+// the linked login account's phone_number (their login identity) in sync —
+// rejecting the change if the new phone is already registered to someone
+// else.
 func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req CreateDoctorRequest) error {
-	_, err := db.Exec(ctx,
+	if req.Phone == nil || *req.Phone == "" {
+		return ErrDoctorPhoneRequired
+	}
+
+	existing, err := GetDoctorByID(ctx, db, doctorID)
+	if err != nil {
+		return err
+	}
+
+	if existing.Phone == nil || *existing.Phone != *req.Phone {
+		if other, err := GetUserByPhone(ctx, db, *req.Phone); err == nil && (existing.UserID == nil || other.ID != *existing.UserID) {
+			return ErrDoctorPhoneTaken
+		}
+		if existing.UserID != nil {
+			if _, err := db.Exec(ctx, `UPDATE users SET phone_number = $1, updated_at = NOW() WHERE id = $2`, *req.Phone, *existing.UserID); err != nil {
+				return err
+			}
+		}
+	}
+
+	_, err = db.Exec(ctx,
 		`UPDATE doctors SET name = $1, phone = $2, email = $3, speciality = $4, clinic_name = $5, clinic_address = $6, latitude = $7, longitude = $8, dob = $9 WHERE id = $10`,
 		req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, doctorID,
 	)
 	return err
+}
+
+// GetDoctorByUserID looks up the doctor record linked to a doctor-role
+// login — used by GET /doctor/me so a logged-in doctor can see their own
+// profile.
+func GetDoctorByUserID(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*Doctor, error) {
+	var d Doctor
+	err := scanDoctor(db.QueryRow(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE user_id = $1 AND is_deleted = FALSE`, userID), &d)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 // DeleteDoctor soft-deletes — the row (and its meeting/product history)

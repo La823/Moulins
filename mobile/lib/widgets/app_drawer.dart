@@ -45,14 +45,17 @@ class AppDrawer extends ConsumerWidget {
                   context.push('/special');
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.people_outline, color: _teal),
-              title: const Text('Doctors'),
-              onTap: () {
-                Navigator.of(context).pop();
-                context.push('/doctors');
-              },
-            ),
+            // Doctors' CRM/contact tracking isn't relevant to a doctor's
+            // own login — they're the record being tracked, not the tracker.
+            if (user?.role != 'doctor')
+              ListTile(
+                leading: const Icon(Icons.people_outline, color: _teal),
+                title: const Text('Doctors'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/doctors');
+                },
+              ),
             if (user?.role == 'partner') ...[
               ListTile(
                 leading: const Icon(Icons.groups_outlined, color: _teal),

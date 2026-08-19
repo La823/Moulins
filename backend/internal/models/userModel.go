@@ -384,6 +384,16 @@ func CreateTeamMember(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID, 
 	return id, nil
 }
 
+// CreateDoctorUser creates a login for a doctor — role="doctor", with the
+// doctor's phone number used as both the login identity and the default
+// password (this app has no email/SMS invite flow, so the doctor logs in
+// with their own phone number both places and can change the password
+// after). Doctors have no team_owner_id; access scoping instead goes
+// through doctors.user_id (see GetMyDoctorProfile).
+func CreateDoctorUser(ctx context.Context, db *pgxpool.Pool, phone string) (uuid.UUID, error) {
+	return CreateUser(ctx, db, phone, phone, nil, nil, "doctor", nil, nil, nil)
+}
+
 // GetTeamMembers returns every team_member belonging to the given partner.
 func GetTeamMembers(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID) ([]User, error) {
 	rows, err := db.Query(ctx,

@@ -328,9 +328,21 @@ export default function CustomerNavbar() {
   };
 
   const dashboardHref = (u) =>
-    u.role === "admin" || u.role === "employee" ? "/panel" : u.role === "team_member" ? "/team-panel" : "/dashboard";
+    u.role === "admin" || u.role === "employee"
+      ? "/panel"
+      : u.role === "team_member"
+      ? "/team-panel"
+      : u.role === "doctor"
+      ? "/doctor-panel"
+      : "/dashboard";
   const dashboardLabel = (u) =>
-    u.role === "admin" || u.role === "employee" ? "Panel" : u.role === "team_member" ? "Team Panel" : "Dashboard";
+    u.role === "admin" || u.role === "employee"
+      ? "Panel"
+      : u.role === "team_member"
+      ? "Team Panel"
+      : u.role === "doctor"
+      ? "Doctor Panel"
+      : "Dashboard";
 
   const toggle = (id) => setActiveMenu((prev) => (prev === id ? null : id));
   const close = () => {
@@ -349,9 +361,12 @@ export default function CustomerNavbar() {
     navItems = [...navItems, { id: "team", label: "Partner Panel", href: "/partner-panel" }];
   } else if (user?.role === "team_member") {
     navItems = [...navItems, { id: "team-panel", label: "Team Panel", href: "/team-panel" }];
+  } else if (user?.role === "doctor") {
+    navItems = [...navItems, { id: "doctor-panel", label: "Doctor Panel", href: "/doctor-panel" }];
   }
   // Team members are sub-accounts for field work, not billing — no cart.
-  const showCart = !!user && user.role !== "team_member";
+  // Doctors can browse the catalog but never order — no cart either.
+  const showCart = !!user && user.role !== "team_member" && user.role !== "doctor";
 
   const isDropdownOpen =
     activeMenu && activeMenu !== "search" && dropdownContent[activeMenu];

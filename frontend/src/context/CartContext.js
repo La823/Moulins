@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 const CartContext = createContext(null);
 
@@ -21,6 +22,7 @@ function saveCart(items) {
 }
 
 export function CartProvider({ children }) {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -36,7 +38,11 @@ export function CartProvider({ children }) {
     else setMounted(true);
   }, [items]);
 
+  // Doctors can browse the catalog but never order — block at the source
+  // so every "Add to cart" entry point across the app is covered without
+  // having to gate each one individually.
   const addToCart = useCallback((product) => {
+    if (user?.role === "doctor") return;
     const step = product.moq && product.moq > 0 ? product.moq : 1;
     setItems((prev) => {
       const existing = prev.find((i) => i.product.id === product.id);
@@ -49,7 +55,7 @@ export function CartProvider({ children }) {
       }
       return [...prev, { product, quantity: step }];
     });
-  }, []);
+  }, [user?.role]);
 
   const removeFromCart = useCallback((productId) => {
     setItems((prev) => prev.filter((i) => i.product.id !== productId));

@@ -249,13 +249,18 @@ class _AppShellState extends ConsumerState<_AppShell> {
     // meetings differently) — team members see their owning partner's
     // doctors, resolved server-side. Not shown to admin/employee logins.
     final isPartner = user.role == 'partner' || user.role == 'team_member';
+    // Doctor logins are catalog-browsing only — no meetings/doctor-CRM
+    // tracking, no order placement.
+    final isDoctor = user.role == 'doctor';
     final destinations = <_NavItem>[
       const _NavItem(route: '/home', icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
       const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),
       if (isPartner)
         const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
-      const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
-      const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+      if (!isDoctor)
+        const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
+      if (!isDoctor)
+        const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
       if (user.role == 'admin' || user.role == 'employee')
         const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),
     ];

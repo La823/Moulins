@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
 import '../providers/favorites_provider.dart';
+import '../providers/auth_provider.dart';
 
 class ProductCard extends ConsumerWidget {
   final Product product;
@@ -19,6 +20,7 @@ class ProductCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isFavorite = ref.watch(favoritesProvider).contains(product.id);
+    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
 
     return GestureDetector(
       onTap: onTap,
@@ -95,14 +97,15 @@ class ProductCard extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      GestureDetector(
-                        onTap: onAddToCart,
-                        child: Container(
-                          width: 28, height: 28,
-                          decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
-                          child: const Icon(Icons.add, color: Colors.white, size: 18),
+                      if (canOrder)
+                        GestureDetector(
+                          onTap: onAddToCart,
+                          child: Container(
+                            width: 28, height: 28,
+                            decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
+                            child: const Icon(Icons.add, color: Colors.white, size: 18),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ],
