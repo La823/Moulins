@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
 
 const STATUSES = [
   "pending",
@@ -51,6 +52,7 @@ export default function AdminOrderDetail() {
   const [savingDelivery, setSavingDelivery] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingTracking, setUploadingTracking] = useState(false);
+  const [showMargModal, setShowMargModal] = useState(false);
 
   const loadOrder = () =>
     apiFetch(`/orders/${id}`).then((data) => {
@@ -298,6 +300,31 @@ export default function AdminOrderDetail() {
         )}
       </div>
 
+      {/* Marg ERP push */}
+      <div className="mb-6">
+        {order.marg_order_no ? (
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+            Pushed to Marg — Order No. {order.marg_order_no}
+            {order.marg_pushed_at && (
+              <span className="text-green-500"> on {new Date(order.marg_pushed_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
+            )}
+          </div>
+        ) : (
+          canEdit &&
+          order.status === "confirmed" && (
+            <button
+              onClick={() => setShowMargModal(true)}
+              className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+            >
+              Send to Marg
+            </button>
+          )
+        )}
+      </div>
+
       {/* Alerts */}
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
@@ -338,7 +365,9 @@ export default function AdminOrderDetail() {
             <div>
               <span className="text-gray-400">Transport Mode</span>
               <p className="text-gray-900 font-medium">
-                {order.transport_mode === "transport" ? "By Transport" : "By Courier"}
+                {order.transport_mode
+                  ? `By ${order.transport_mode.charAt(0).toUpperCase()}${order.transport_mode.slice(1)}`
+                  : "—"}
               </p>
             </div>
             {order.transport_name && (
@@ -738,6 +767,19 @@ export default function AdminOrderDetail() {
           )}
         </div>
       </div>
+
+      {showMargModal && (
+        <MargBatchPickerModal
+          orderId={id}
+          onClose={() => setShowMargModal(false)}
+          onPushed={(result) => {
+            setShowMargModal(false);
+            setOrder((prev) => ({ ...prev, marg_order_no: result.marg_order_no, marg_pushed_at: new Date().toISOString() }));
+            loadOrder().catch(() => {});
+            setSuccess(`Order pushed to Marg — Order No. ${result.marg_order_no}`);
+          }}
+        />
+      )}
     </div>
   );
 }

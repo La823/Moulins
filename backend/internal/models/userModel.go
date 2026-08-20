@@ -34,6 +34,9 @@ type User struct {
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 	Permissions          []string   `json:"permissions,omitempty"`
+	Rid                  *string    `json:"rid,omitempty"`
+	BillingAddress       *string    `json:"billing_address,omitempty"`
+	ShippingAddress      *string    `json:"shipping_address,omitempty"`
 }
 
 type CreateUserRequest struct {
@@ -184,7 +187,7 @@ func GetUserByID(
 		SELECT
 			id, phone_number, username, email,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
-			default_transport_mode, last_login_at, created_at, updated_at
+			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address
 		FROM users
 		WHERE id = $1;
 	`
@@ -193,7 +196,7 @@ func GetUserByID(
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
-		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
 	)
 	if err != nil {
 		return nil, err
@@ -272,7 +275,7 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 	query := `
 		SELECT id, phone_number, username, email, plain_password,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
-			default_transport_mode, last_login_at, created_at, updated_at
+			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address
 		FROM users
 		WHERE id = $1
 	`
@@ -280,7 +283,7 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
-		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
 	)
 	if err != nil {
 		return nil, err
@@ -323,6 +326,43 @@ func UpdateCustomerType(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 	_, err := db.Exec(ctx,
 		`UPDATE users SET customer_type = $1, updated_at = NOW() WHERE id = $2`,
 		customerType, userID,
+	)
+	return err
+}
+
+// GetUserByRid looks up the partner already linked to a Marg party RID, if
+// any — used to prevent linking the same Marg party to two accounts.
+func GetUserByRid(ctx context.Context, db *pgxpool.Pool, rid string) (*User, error) {
+	var u User
+	err := db.QueryRow(ctx, `SELECT id, phone_number, role FROM users WHERE rid = $1 LIMIT 1`, rid).
+		Scan(&u.ID, &u.PhoneNumber, &u.Role)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// UpdateRid sets a partner's linked Marg party RID (margmaster_party.rid) —
+// admin-only, set manually since Marg's party list has no direct link back
+// to a Moulins account. Pass nil to clear.
+func UpdateRid(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, rid *string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE users SET rid = $1, updated_at = NOW() WHERE id = $2`,
+		rid, userID,
+	)
+	return err
+}
+
+// UpdateAddresses sets a partner's own billing/shipping address — either
+// pointer may be nil to leave that field unchanged.
+func UpdateAddresses(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, billing, shipping *string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE users SET
+			billing_address = COALESCE($1, billing_address),
+			shipping_address = COALESCE($2, shipping_address),
+			updated_at = NOW()
+		 WHERE id = $3`,
+		billing, shipping, userID,
 	)
 	return err
 }
@@ -454,7 +494,7 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	query := `
 		SELECT id, phone_number, username, email, plain_password, role, customer_type, special_tile_image_key,
 			is_phone_verified, onboarding_step, pincode, city, state, latitude, longitude,
-			last_login_at, created_at, updated_at
+			last_login_at, created_at, updated_at, rid
 		FROM users
 		WHERE role = $1
 		ORDER BY created_at DESC
@@ -470,7 +510,7 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 		var u User
 		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role, &u.CustomerType, &u.SpecialTileImageKey,
 			&u.IsPhoneVerified, &u.OnboardingStep, &u.Pincode, &u.City, &u.State, &u.Latitude, &u.Longitude,
-			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid); err != nil {
 			return nil, err
 		}
 		if u.SpecialTileImageKey != nil {

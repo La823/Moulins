@@ -53,6 +53,33 @@ export default function ProfilePage() {
     }
   };
 
+  const [billingAddress, setBillingAddress] = useState(user?.billing_address || "");
+  const [shippingAddress, setShippingAddress] = useState(user?.shipping_address || "");
+  const [savingAddress, setSavingAddress] = useState(false);
+
+  useEffect(() => {
+    setBillingAddress(user?.billing_address || "");
+    setShippingAddress(user?.shipping_address || "");
+  }, [user?.billing_address, user?.shipping_address]);
+
+  const saveAddress = async (e) => {
+    e.preventDefault();
+    setSavingAddress(true);
+    setError(null);
+    try {
+      await apiFetch("/profile/address", {
+        method: "PUT",
+        body: JSON.stringify({ billing_address: billingAddress, shipping_address: shippingAddress }),
+      });
+      await refreshUser();
+      setSuccess("Address updated");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
   const [licenseNumber, setLicenseNumber] = useState("");
   const [licenseExpiry, setLicenseExpiry] = useState("");
   const [licensePhotoFile, setLicensePhotoFile] = useState(null);
@@ -197,6 +224,41 @@ export default function ProfilePage() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Billing / Shipping Address */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="font-semibold text-gray-900 mb-1">Billing &amp; Shipping Address</h2>
+        <p className="text-xs text-gray-500 mb-4">Used for invoicing and default delivery — you can still override the ship-to address per order.</p>
+        <form onSubmit={saveAddress} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Billing Address</label>
+            <textarea
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
+              placeholder="Billing address"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Shipping Address</label>
+            <textarea
+              value={shippingAddress}
+              onChange={(e) => setShippingAddress(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
+              placeholder="Shipping address"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={savingAddress}
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+          >
+            {savingAddress ? "Saving..." : "Save Address"}
+          </button>
+        </form>
       </div>
 
       {/* Journey Progress */}

@@ -33,6 +33,9 @@ type Order struct {
 	ItemCount          int     `json:"item_count,omitempty"`
 	TransportName      *string `json:"transport_name,omitempty"`
 	TransportGstNumber *string `json:"transport_gst_number,omitempty"`
+	// Marg ERP push tracking
+	MargOrderNo  *string    `json:"marg_order_no,omitempty"`
+	MargPushedAt *time.Time `json:"marg_pushed_at,omitempty"`
 }
 
 type UpdateOrderDetailsRequest struct {
@@ -237,7 +240,8 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 			CAST(o.expected_delivery AS TEXT), o.delivery_notes, o.eway_bill_number,
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone,
-			t.name, t.gst_number
+			t.name, t.gst_number,
+			o.marg_order_no, o.marg_pushed_at
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
 		LEFT JOIN transports t ON t.id = o.transport_id
@@ -250,6 +254,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		&o.ExpectedDelivery, &o.DeliveryNotes, &o.EwayBillNumber,
 		&o.UserName, &o.UserPhone,
 		&o.TransportName, &o.TransportGstNumber,
+		&o.MargOrderNo, &o.MargPushedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -392,6 +397,20 @@ func GetOrderEvents(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([
 
 func UpdateOrderStatus(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, status string) error {
 	_, err := db.Exec(ctx, `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2`, status, orderID)
+	return err
+}
+
+// MarkOrderPushedToMarg records that an order was successfully pushed to
+// Marg ERP via InsertOrderDetail — margOrderNo is Marg's own assigned order
+// number (echoed back from the first line's response; every subsequent
+// line reuses it as that call's OrderID to link the lines together), used
+// later to poll LiveOrderDispatchStatus2017. A non-null marg_order_no is
+// the idempotency guard against double-submission.
+func MarkOrderPushedToMarg(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, margOrderNo string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE orders SET marg_order_no = $1, marg_pushed_at = NOW(), updated_at = NOW() WHERE id = $2`,
+		margOrderNo, orderID,
+	)
 	return err
 }
 

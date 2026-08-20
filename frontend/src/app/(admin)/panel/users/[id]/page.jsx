@@ -34,6 +34,10 @@ export default function PartnerDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [changingType, setChangingType] = useState(false);
   const [typeError, setTypeError] = useState("");
+  const [ridInput, setRidInput] = useState("");
+  const [savingRid, setSavingRid] = useState(false);
+  const [ridError, setRidError] = useState("");
+  const [ridSuccess, setRidSuccess] = useState("");
   const [uploadingTileImage, setUploadingTileImage] = useState(false);
   const [tileImageError, setTileImageError] = useState("");
   const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
@@ -42,7 +46,10 @@ export default function PartnerDetailPage() {
 
   useEffect(() => {
     apiFetch(`/admin/partners/${id}`)
-      .then((data) => setPartner(data))
+      .then((data) => {
+        setPartner(data);
+        setRidInput(data?.rid || "");
+      })
       .catch(() => setPartner(null))
       .finally(() => setLoading(false));
   }, [id]);
@@ -114,6 +121,26 @@ export default function PartnerDetailPage() {
       setTypeError(err.message);
     } finally {
       setChangingType(false);
+    }
+  };
+
+  const handleRidSave = async (e) => {
+    e.preventDefault();
+    setSavingRid(true);
+    setRidError("");
+    setRidSuccess("");
+    try {
+      await apiFetch(`/admin/partners/${id}/rid`, {
+        method: "PUT",
+        body: JSON.stringify({ rid: ridInput.trim() }),
+      });
+      setPartner((prev) => ({ ...prev, rid: ridInput.trim() || null }));
+      setRidSuccess("Saved");
+      setTimeout(() => setRidSuccess(""), 3000);
+    } catch (err) {
+      setRidError(err.message);
+    } finally {
+      setSavingRid(false);
     }
   };
 
@@ -258,6 +285,36 @@ export default function PartnerDetailPage() {
               )}
               <p className="text-[11px] text-gray-400 mt-1">
                 Special partners get their own private product catalog.
+              </p>
+            </div>
+
+            {/* Marg party RID — links this partner to their Marg ERP
+                ledger account (margmaster_party.rid). Set manually since
+                Marg's party list has no link back to a Moulins account. */}
+            <div className="mb-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                Marg Party RID
+              </p>
+              <form onSubmit={handleRidSave} className="flex gap-2">
+                <input
+                  type="text"
+                  value={ridInput}
+                  onChange={(e) => setRidInput(e.target.value)}
+                  placeholder="e.g. 2090504"
+                  className="flex-1 px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                />
+                <button
+                  type="submit"
+                  disabled={savingRid}
+                  className="px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {savingRid ? "Saving..." : "Save"}
+                </button>
+              </form>
+              {ridError && <p className="text-xs text-red-600 mt-1">{ridError}</p>}
+              {ridSuccess && <p className="text-xs text-green-600 mt-1">{ridSuccess}</p>}
+              <p className="text-[11px] text-gray-400 mt-1">
+                Links this partner to their Marg ERP party/ledger record — find the RID on the Marg Parties page.
               </p>
             </div>
 

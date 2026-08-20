@@ -13,41 +13,42 @@ import (
 )
 
 type Product struct {
-	ID               uuid.UUID         `json:"id"`
-	ProductID        int               `json:"product_id"`
-	Name             string            `json:"name"`
-	Description      string            `json:"description,omitempty"`
-	Price            float64           `json:"price"`
-	Categories       []string          `json:"categories"`
-	Tags             []string          `json:"tags"`
-	Stock            int               `json:"stock"`
-	Moq              int               `json:"moq"`
-	IsActive         bool              `json:"is_active"`
-	BrandName        *string           `json:"brand_name,omitempty"`
-	HsnCode          *string           `json:"hsn_code,omitempty"`
-	GstRate          *float64          `json:"gst_rate,omitempty"`
-	Mrp              *float64          `json:"mrp,omitempty"`
-	MrpUnit          *string           `json:"mrp_unit,omitempty"`
-	ProductForm      *string           `json:"product_form,omitempty"`
-	ConsumeType      *string           `json:"consume_type,omitempty"`
-	PackSize         *string           `json:"pack_size,omitempty"`
-	PackForm         *string           `json:"pack_form,omitempty"`
-	KeyIngredients   *string           `json:"key_ingredients,omitempty"`
-	Strength         *string           `json:"strength,omitempty"`
-	ProductWeight    *string           `json:"product_weight,omitempty"`
-	LengthCm         *float64          `json:"length_cm,omitempty"`
-	WidthCm          *float64          `json:"width_cm,omitempty"`
-	HeightCm         *float64          `json:"height_cm,omitempty"`
-	KeyBenefits      *string           `json:"key_benefits,omitempty"`
-	DirectionForUse  *string           `json:"direction_for_use,omitempty"`
-	SafetyInfo       *string           `json:"safety_information,omitempty"`
-	Edetailing       *string           `json:"edetailing,omitempty"`
-	Images           []ProductImage    `json:"images"`
-	Documents        []ProductDocument `json:"documents"`
-	AudioKey         *string           `json:"audio_key,omitempty"`
-	AudioURL         string            `json:"audio_url,omitempty"`
-	CreatedAt        time.Time         `json:"created_at"`
-	UpdatedAt        time.Time         `json:"updated_at"`
+	ID              uuid.UUID         `json:"id"`
+	ProductID       int               `json:"product_id"`
+	Name            string            `json:"name"`
+	Description     string            `json:"description,omitempty"`
+	Price           float64           `json:"price"`
+	Categories      []string          `json:"categories"`
+	Tags            []string          `json:"tags"`
+	Stock           int               `json:"stock"`
+	Moq             int               `json:"moq"`
+	IsActive        bool              `json:"is_active"`
+	BrandName       *string           `json:"brand_name,omitempty"`
+	HsnCode         *string           `json:"hsn_code,omitempty"`
+	GstRate         *float64          `json:"gst_rate,omitempty"`
+	Mrp             *float64          `json:"mrp,omitempty"`
+	MrpUnit         *string           `json:"mrp_unit,omitempty"`
+	ProductForm     *string           `json:"product_form,omitempty"`
+	ConsumeType     *string           `json:"consume_type,omitempty"`
+	PackSize        *string           `json:"pack_size,omitempty"`
+	PackForm        *string           `json:"pack_form,omitempty"`
+	KeyIngredients  *string           `json:"key_ingredients,omitempty"`
+	Strength        *string           `json:"strength,omitempty"`
+	ProductWeight   *string           `json:"product_weight,omitempty"`
+	LengthCm        *float64          `json:"length_cm,omitempty"`
+	WidthCm         *float64          `json:"width_cm,omitempty"`
+	HeightCm        *float64          `json:"height_cm,omitempty"`
+	KeyBenefits     *string           `json:"key_benefits,omitempty"`
+	DirectionForUse *string           `json:"direction_for_use,omitempty"`
+	SafetyInfo      *string           `json:"safety_information,omitempty"`
+	Edetailing      *string           `json:"edetailing,omitempty"`
+	Images          []ProductImage    `json:"images"`
+	Documents       []ProductDocument `json:"documents"`
+	AudioKey        *string           `json:"audio_key,omitempty"`
+	AudioURL        string            `json:"audio_url,omitempty"`
+	MargCode        *string           `json:"marg_code,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
 type ProductImage struct {
@@ -96,6 +97,7 @@ type CreateProductRequest struct {
 	DirectionForUse *string  `json:"direction_for_use"`
 	SafetyInfo      *string  `json:"safety_information"`
 	Edetailing      *string  `json:"edetailing"`
+	MargCode        *string  `json:"marg_code"`
 }
 
 type UpdateProductRequest struct {
@@ -127,6 +129,7 @@ type UpdateProductRequest struct {
 	DirectionForUse *string   `json:"direction_for_use"`
 	SafetyInfo      *string   `json:"safety_information"`
 	Edetailing      *string   `json:"edetailing"`
+	MargCode        *string   `json:"marg_code"`
 }
 
 // --- Product CRUD ---
@@ -149,8 +152,8 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 				brand_name, hsn_code, gst_rate, mrp, mrp_unit, product_form, consume_type,
 				pack_size, pack_form, key_ingredients, strength, product_weight,
 				length_cm, width_cm, height_cm,
-				key_benefits, direction_for_use, safety_information, edetailing)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+				key_benefits, direction_for_use, safety_information, edetailing, marg_code)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
 			RETURNING id;
 		`
 		err = db.QueryRow(ctx, query,
@@ -158,7 +161,7 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.MrpUnit, req.ProductForm,
 			req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 			req.Strength, req.ProductWeight, req.LengthCm, req.WidthCm, req.HeightCm,
-			req.KeyBenefits, req.DirectionForUse, req.SafetyInfo, req.Edetailing,
+			req.KeyBenefits, req.DirectionForUse, req.SafetyInfo, req.Edetailing, req.MargCode,
 		).Scan(&id)
 	} else {
 		query := `
@@ -166,8 +169,8 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 				brand_name, hsn_code, gst_rate, mrp, mrp_unit, product_form, consume_type,
 				pack_size, pack_form, key_ingredients, strength, product_weight,
 				length_cm, width_cm, height_cm,
-				key_benefits, direction_for_use, safety_information, edetailing)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+				key_benefits, direction_for_use, safety_information, edetailing, marg_code)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
 			RETURNING id;
 		`
 		err = db.QueryRow(ctx, query,
@@ -175,7 +178,7 @@ func CreateProduct(ctx context.Context, db *pgxpool.Pool, req CreateProductReque
 			req.BrandName, req.HsnCode, req.GstRate, req.Mrp, req.MrpUnit, req.ProductForm,
 			req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 			req.Strength, req.ProductWeight, req.LengthCm, req.WidthCm, req.HeightCm,
-			req.KeyBenefits, req.DirectionForUse, req.SafetyInfo, req.Edetailing,
+			req.KeyBenefits, req.DirectionForUse, req.SafetyInfo, req.Edetailing, req.MargCode,
 		).Scan(&id)
 	}
 	if err != nil {
@@ -579,7 +582,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
-			created_at, updated_at
+			created_at, updated_at, marg_code
 		FROM products WHERE id = $1
 	`
 	var p Product
@@ -590,7 +593,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 		&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 		&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
 		&p.KeyBenefits, &p.DirectionForUse,
-		&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt,
+		&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt, &p.MargCode,
 	)
 	if err != nil {
 		return nil, err
@@ -627,7 +630,8 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 			direction_for_use  = COALESCE($24, direction_for_use),
 			safety_information = COALESCE($25, safety_information),
 			edetailing         = COALESCE($26, edetailing),
-			moq                = COALESCE($27, moq)
+			moq                = COALESCE($27, moq),
+			marg_code          = COALESCE($28, marg_code)
 		WHERE id = $1
 	`
 	_, err := db.Exec(ctx, query, id,
@@ -636,7 +640,7 @@ func UpdateProduct(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, req Upda
 		req.ConsumeType, req.PackSize, req.PackForm, req.KeyIngredients,
 		req.Strength, req.ProductWeight, req.LengthCm, req.WidthCm, req.HeightCm,
 		req.KeyBenefits, req.DirectionForUse,
-		req.SafetyInfo, req.Edetailing, req.Moq,
+		req.SafetyInfo, req.Edetailing, req.Moq, req.MargCode,
 	)
 	if err != nil {
 		return err

@@ -29,6 +29,7 @@ var ValidPermissions = []PermissionDef{
 	{Key: "learning", Label: "Learning", Desc: "Manage learning videos and playlists"},
 	{Key: "notifications", Label: "Notifications", Desc: "Send broadcast notifications"},
 	{Key: "broadcast_lists", Label: "Broadcast Lists", Desc: "Create and manage personal broadcast lists"},
+	{Key: "marg_master", Label: "Marg Master Data", Desc: "View Marg ERP synced products and party accounts"},
 }
 
 // IsValidPermission checks whether a permission key exists in ValidPermissions.

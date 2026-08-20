@@ -4,15 +4,18 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import ToastStack, { useToasts } from "@/components/admin/Toast";
 
 export default function EditProduct() {
   const { id } = useParams();
   const router = useRouter();
+  const { toasts, pushToast, dismissToast } = useToasts();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [savingMargCode, setSavingMargCode] = useState(false);
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const catRef = useRef(null);
   const [categoryOptions, setCategoryOptions] = useState([]);
@@ -77,6 +80,7 @@ export default function EditProduct() {
     direction_for_use: "",
     safety_information: "",
     edetailing: "",
+    marg_code: "",
   });
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [images, setImages] = useState([]);
@@ -124,6 +128,7 @@ export default function EditProduct() {
           direction_for_use: p.direction_for_use || "",
           safety_information: p.safety_information || "",
           edetailing: p.edetailing || "",
+          marg_code: p.marg_code || "",
         });
         setSelectedCategories(p.categories || []);
         setSelectedTags(p.tags || []);
@@ -208,6 +213,7 @@ export default function EditProduct() {
         direction_for_use: form.direction_for_use || null,
         safety_information: form.safety_information || null,
         edetailing: form.edetailing || null,
+        marg_code: form.marg_code.trim() || null,
       };
 
       await apiFetch(`/admin/products/${id}`, {
@@ -272,6 +278,24 @@ export default function EditProduct() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Saves just the Marg Base Code field, independent of the full-form save
+  // above — lets an admin link/relink a product to Marg without touching
+  // (or re-submitting) everything else on the page.
+  const handleSaveMargCode = async () => {
+    setSavingMargCode(true);
+    try {
+      await apiFetch(`/admin/products/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ marg_code: form.marg_code.trim() || null }),
+      });
+      pushToast("success", "Marg base code saved");
+    } catch (err) {
+      pushToast("error", err.message || "Could not save Marg base code");
+    } finally {
+      setSavingMargCode(false);
     }
   };
 
@@ -628,6 +652,31 @@ export default function EditProduct() {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
             Product Details
           </h3>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Marg Base Code
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.marg_code}
+                onChange={(e) => setForm({ ...form, marg_code: e.target.value })}
+                placeholder="e.g. 1002126 — links this product to its Marg ERP record"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleSaveMargCode}
+                disabled={savingMargCode}
+                className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap"
+              >
+                {savingMargCode ? "Saving..." : "Save"}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Find the base code on the <a href="/panel/marg-products" className="underline hover:text-gray-600">Marg Products</a> page.
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1092,6 +1141,7 @@ export default function EditProduct() {
           </Link>
         </div>
       </form>
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </>
   );
 }

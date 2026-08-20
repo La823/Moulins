@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
@@ -438,5 +439,200 @@ func DeleteOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "deleted"})
+	}
+}
+
+type margBatchOption struct {
+	Code     string  `json:"code"`
+	CurBatch string  `json:"curbatch"`
+	Exp      string  `json:"exp"`
+	Stock    float64 `json:"stock"`
+}
+
+type margBatchOptionsItem struct {
+	OrderItemID string            `json:"order_item_id"`
+	ProductName string            `json:"product_name"`
+	MargLinked  bool              `json:"marg_linked"`
+	Batches     []margBatchOption `json:"batches"`
+	DefaultCode string            `json:"default_code,omitempty"`
+}
+
+// GET /admin/orders/{id}/marg-batch-options — for each order item, every
+// live batch of its Marg-linked product (earliest expiry first, FEFO), so
+// the "Send to Marg" UI can offer a per-line batch picker defaulting to the
+// earliest-expiry batch. Read-only — doesn't touch the order.
+func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		orderID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		order, err := models.GetOrderByID(r.Context(), db, orderID)
+		if err != nil {
+			http.Error(w, "order not found", http.StatusNotFound)
+			return
+		}
+
+		items := make([]margBatchOptionsItem, 0, len(order.Items))
+		for _, oi := range order.Items {
+			out := margBatchOptionsItem{OrderItemID: oi.ID.String(), ProductName: oi.ProductName, Batches: []margBatchOption{}}
+
+			product, err := models.GetProductByID(r.Context(), db, oi.ProductID)
+			if err != nil || product.MargCode == nil {
+				items = append(items, out)
+				continue
+			}
+
+			out.MargLinked = true
+			batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, *product.MargCode)
+			if err != nil {
+				log.Printf("marg batch options error: %v", err)
+				http.Error(w, "could not fetch marg batches", http.StatusInternalServerError)
+				return
+			}
+			for _, b := range batches {
+				out.Batches = append(out.Batches, margBatchOption{Code: b.Code, CurBatch: b.CurBatch, Exp: b.Exp, Stock: b.Stock})
+			}
+			if len(out.Batches) > 0 {
+				out.DefaultCode = out.Batches[0].Code
+			}
+			items = append(items, out)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"items": items})
+	}
+}
+
+// POST /admin/orders/{id}/push-to-marg — pushes a confirmed order's lines to
+// Marg ERP via InsertOrderDetail, one call per line reusing the same
+// Marg-side OrderID. body: {"items": [{"order_item_id": "...", "batch_code": "..."}]},
+// one entry per order item (from the batch-options endpoint above).
+func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		orderID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Items []struct {
+				OrderItemID string `json:"order_item_id"`
+				BatchCode   string `json:"batch_code"`
+			} `json:"items"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		order, err := models.GetOrderByID(r.Context(), db, orderID)
+		if err != nil {
+			http.Error(w, "order not found", http.StatusNotFound)
+			return
+		}
+		if order.Status != "confirmed" {
+			http.Error(w, "only confirmed orders can be pushed to Marg", http.StatusConflict)
+			return
+		}
+		if order.MargOrderNo != nil {
+			http.Error(w, "this order was already pushed to Marg", http.StatusConflict)
+			return
+		}
+
+		user, err := models.GetUserByID(r.Context(), db, order.UserID)
+		if err != nil {
+			http.Error(w, "could not load the order's partner", http.StatusInternalServerError)
+			return
+		}
+		if user.Rid == nil || *user.Rid == "" {
+			http.Error(w, "this partner is not linked to a Marg party — set their RID first", http.StatusBadRequest)
+			return
+		}
+
+		batchByItem := make(map[string]string, len(body.Items))
+		for _, it := range body.Items {
+			batchByItem[it.OrderItemID] = it.BatchCode
+		}
+		missing := []string{}
+		for _, oi := range order.Items {
+			if batchByItem[oi.ID.String()] == "" {
+				missing = append(missing, oi.ProductName)
+			}
+		}
+		if len(missing) > 0 {
+			http.Error(w, "missing a batch selection for: "+fmt.Sprint(missing), http.StatusBadRequest)
+			return
+		}
+
+		creds, err := margsync.CredentialsFromEnv()
+		if err != nil {
+			http.Error(w, "marg sync is not configured: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+
+		// OrderID is Marg-assigned, not something we generate: the first
+		// line is sent with OrderID = "" (present, not omitted — the field
+		// has no `omitempty`), Marg returns the real order number as
+		// OrderNo, and every subsequent line reuses that returned value as
+		// its own OrderID to link all the lines into one Marg order.
+		//
+		// The request's own OrderNo field is documented as always "0" on
+		// insert, but Marg's live server rejects/collides on repeated "0"
+		// submissions (confirmed by hands-on testing) — use a local
+		// incrementing placeholder per line instead.
+		var margOrderNo string
+		for _, oi := range order.Items {
+			var reqOrderNo int
+			if err := db.QueryRow(r.Context(), `SELECT nextval('marg_order_no_seq')`).Scan(&reqOrderNo); err != nil {
+				log.Printf("marg order no sequence error: %v", err)
+				http.Error(w, "could not generate marg order no", http.StatusInternalServerError)
+				return
+			}
+			line := margsync.InsertOrderLineRequest{
+				OrderID:           margOrderNo,
+				OrderNo:           strconv.Itoa(reqOrderNo),
+				CustomerID:        *user.Rid,
+				MargID:            strconv.Itoa(creds.MargID),
+				Type:              "S",
+				Sid:               "323657",
+				ProductCode:       batchByItem[oi.ID.String()],
+				Quantity:          strconv.Itoa(oi.Quantity),
+				Free:              "0",
+				GpsID:             "0",
+				UserType:          "1",
+				Points:            "0.00",
+				Discounts:         "0.00",
+				PaymentMode:       "1",
+				PaymentModeAmount: "0",
+				CompanyCode:       creds.CompanyCode,
+				OrderFrom:         creds.CompanyCode,
+			}
+			result, err := margsync.InsertOrderDetail(creds, line)
+			if err != nil {
+				log.Printf("marg push failed for order %s, item %s: %v", orderID, oi.ProductName, err)
+				http.Error(w, fmt.Sprintf("failed pushing %q to Marg: %v", oi.ProductName, err), http.StatusBadGateway)
+				return
+			}
+			if margOrderNo == "" {
+				margOrderNo = result.OrderNo
+			}
+		}
+
+		if err := models.MarkOrderPushedToMarg(r.Context(), db, orderID, margOrderNo); err != nil {
+			log.Printf("mark order pushed to marg error: %v", err)
+			http.Error(w, "pushed to marg but failed to save the result — check Marg directly", http.StatusInternalServerError)
+			return
+		}
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "marg.pushed",
+			fmt.Sprintf("Order pushed to Marg ERP (Order No. %s)", margOrderNo), actorID(r))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"marg_order_no": margOrderNo,
+		})
 	}
 }

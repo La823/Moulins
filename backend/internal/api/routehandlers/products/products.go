@@ -28,6 +28,69 @@ func isProductIDConflict(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "products_product_id_unique"
 }
 
+// isMargCodeConflict reports whether err is a unique-constraint violation
+// on products.marg_code — this Marg product already has a linked product.
+func isMargCodeConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "products_marg_code_key"
+}
+
+// POST /admin/marg-products/{base_code}/create-product — creates a new
+// product from a Marg product, auto-linking it via marg_code. name and a
+// positive price are required (same rule as CreateProductHandler);
+// everything else is optional and typically prefilled from the Marg
+// product on the frontend, but still editable there before submit.
+func CreateProductFromMargProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		baseCode := mux.Vars(r)["base_code"]
+		if baseCode == "" {
+			http.Error(w, "invalid base_code", http.StatusBadRequest)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req models.CreateProductRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if req.Name == "" || req.Price <= 0 {
+			http.Error(w, "name and a valid price are required", http.StatusBadRequest)
+			return
+		}
+		if req.Categories == nil {
+			req.Categories = []string{}
+		}
+		req.MargCode = &baseCode
+
+		id, err := models.CreateProduct(r.Context(), db, req)
+		if err != nil {
+			if isMargCodeConflict(err) {
+				http.Error(w, "this Marg product is already linked to a product", http.StatusConflict)
+				return
+			}
+			if strings.HasPrefix(err.Error(), "unknown categories:") || strings.HasPrefix(err.Error(), "unknown tags:") {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if isProductIDConflict(err) {
+				http.Error(w, "that product id is already in use", http.StatusBadRequest)
+				return
+			}
+			log.Printf("create product from marg product error: %v", err)
+			http.Error(w, "could not create product", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), "categories")
+		rdb.DelPattern(r.Context(), "products:*")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": id})
+	}
+}
+
 func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) {
 	images, _ := models.GetProductImages(r.Context(), db, p.ID)
 	if images == nil {
@@ -314,6 +377,10 @@ func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 			}
 			if isProductIDConflict(err) {
 				http.Error(w, "that product id is already in use", http.StatusBadRequest)
+				return
+			}
+			if isMargCodeConflict(err) {
+				http.Error(w, "that Marg base code is already linked to another product", http.StatusConflict)
 				return
 			}
 			log.Printf("update product error: %v", err)

@@ -21,6 +21,8 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/learning"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/ledger"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/margmaster"
+	margsyncHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/margsync"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
@@ -90,6 +92,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
 
 	// order routes (any authenticated user, except doctors — catalog
 	// browsing only, no ordering)
@@ -221,6 +224,17 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/employees/{id}/role", userauth.UpdateEmployeeRoleHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/employees/{id}", userauth.DeleteEmployeeHandler(db, rdb)).Methods("DELETE")
 
+	// Marg ERP master-data sync (products + party ledgers) — admin manual trigger
+	admin.HandleFunc("/marg-sync/trigger", margsyncHandlers.TriggerHandler(db)).Methods("POST")
+
+	// staff routes — Marg master data viewer (synced products/party ledgers)
+	margMasterStaff := protected.PathPrefix("/admin").Subrouter()
+	margMasterStaff.Use(middleware.StaffOnly)
+	margMasterStaff.Use(middleware.RequirePermission(db, "marg_master", rdb))
+	margMasterStaff.HandleFunc("/marg-products", margmaster.ListProductsHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-parties", margmaster.ListPartiesHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-sync/status", margsyncHandlers.StatusHandler(db)).Methods("GET")
+
 	// client-employee assignment routes (admin only)
 	admin.HandleFunc("/assignments", assignments.ListAllHandler(db)).Methods("GET")
 	admin.HandleFunc("/clients/{id}/employees", assignments.ListForClientHandler(db)).Methods("GET")
@@ -295,6 +309,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/partners/{id}/rid", userauth.UpdatePartnerRidHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/marg-parties/{rid}/create-partner", userauth.CreatePartnerFromMargPartyHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
@@ -326,6 +342,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.HandleFunc("/orders/{id}/tracking-upload-url", orders.TrackingUploadURLHandler()).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/photos", orders.AddPhotoHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/photos/{photoId}", orders.DeletePhotoHandler(db)).Methods("DELETE")
+	orderEditStaff.HandleFunc("/orders/{id}/marg-batch-options", orders.MargBatchOptionsHandler(db)).Methods("GET")
+	orderEditStaff.HandleFunc("/orders/{id}/push-to-marg", orders.PushToMargHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/transports", transports.CreateHandler(db, rdb)).Methods("POST")
 	orderEditStaff.HandleFunc("/transports/{id}", transports.UpdateHandler(db, rdb)).Methods("PUT")
 	orderEditStaff.HandleFunc("/transports/{id}", transports.DeleteHandler(db, rdb)).Methods("DELETE")
@@ -339,6 +357,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	productStaff.HandleFunc("/products", products.ListProductsHandler(db, false, rdb)).Methods("GET")
 	productStaff.HandleFunc("/products", products.CreateProductHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/marg-products/{base_code}/create-product", products.CreateProductFromMargProductHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/upload-url", products.UploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/document-upload-url", products.DocumentUploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/{id}", products.UpdateProductHandler(db, rdb)).Methods("PUT")

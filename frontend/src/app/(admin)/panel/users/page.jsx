@@ -88,7 +88,8 @@ export default function PartnersPage() {
     return (
       (c.username || "").toLowerCase().includes(q) ||
       c.phone_number.toLowerCase().includes(q) ||
-      (c.email || "").toLowerCase().includes(q)
+      (c.email || "").toLowerCase().includes(q) ||
+      (c.rid || "").toLowerCase().includes(q)
     );
   });
 
@@ -236,7 +237,7 @@ export default function PartnersPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, phone, or email..."
+              placeholder="Search by name, phone, email, or Marg RID..."
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 placeholder:text-gray-400"
             />
           </div>

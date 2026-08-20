@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
@@ -29,8 +30,39 @@ func StartScheduler(db *pgxpool.Pool) {
 		if today != lastBirthdayRunDate {
 			dispatchBirthdayReminders(db)
 			dispatchBirthdayMeetingSync(db)
+			dispatchMargSync(db)
 			lastBirthdayRunDate = today
 		}
+	}
+}
+
+// dispatchMargSync runs the Marg ERP master-data sync once a day (piggy-
+// backing on the same daily gate as the birthday jobs — this data doesn't
+// need finer granularity, and admins can always trigger it on demand via
+// POST /admin/marg-sync/trigger). A no-op if MARG_* env vars aren't set.
+func dispatchMargSync(db *pgxpool.Pool) {
+	ctx := context.Background()
+
+	creds, err := margsync.CredentialsFromEnv()
+	if err != nil {
+		return // Marg integration not configured — nothing to do
+	}
+
+	lastSyncedAt, err := margsync.GetLastSyncedAt(ctx, db)
+	if err != nil {
+		log.Printf("scheduler: failed to read marg sync cursor: %v", err)
+	}
+
+	result, dateTime, err := margsync.RunSync(ctx, db, creds, lastSyncedAt)
+	if err != nil {
+		log.Printf("scheduler: failed to run marg sync: %v", err)
+		return
+	}
+	log.Printf("scheduler: marg sync complete — %d products, %d batches, %d parties",
+		result.ProductsUpserted, result.BatchesUpserted, result.PartiesUpserted)
+
+	if err := margsync.SetLastSyncedAt(ctx, db, dateTime); err != nil {
+		log.Printf("scheduler: failed to persist marg sync cursor: %v", err)
 	}
 }
 
