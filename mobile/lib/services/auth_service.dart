@@ -20,4 +20,11 @@ class AuthService {
   Future<void> updateDefaultTransportMode(String mode) async {
     await _dio.put('/profile/transport-mode', data: {'default_transport_mode': mode});
   }
+
+  Future<void> updateAddress({String? billingAddress, String? shippingAddress}) async {
+    await _dio.put('/profile/address', data: {
+      'billing_address': billingAddress,
+      'shipping_address': shippingAddress,
+    });
+  }
 }

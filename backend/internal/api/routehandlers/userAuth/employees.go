@@ -108,6 +108,37 @@ func UpdateEmployeePasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 	}
 }
 
+// PUT /admin/employees/{id}/email — admin sets/changes an employee's or
+// fellow admin's email. Empty string clears it.
+func UpdateEmployeeEmailHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateEmail(r.Context(), db, userID, body.Email); err != nil {
+			log.Printf("update employee email error: %v", err)
+			http.Error(w, "could not update email", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "email updated"})
+	}
+}
+
 // PUT /admin/employees/{id}/role — promote an employee to admin (or demote an
 // admin back to employee). The caller's own current session token keeps its
 // old role until they log in again, since role lives in the JWT claims.

@@ -22,6 +22,8 @@ export default function AssignmentPanel({ mode, userId }) {
   const [selected, setSelected] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const PAGE_SIZE = 5;
 
   const load = () => {
     setLoading(true);
@@ -143,27 +145,37 @@ export default function AssignmentPanel({ mode, userId }) {
           No {optionLabel}s assigned yet
         </p>
       ) : (
-        <div className="space-y-2">
-          {assigned.map((a) => (
-            <div
-              key={a.id}
-              className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
+        <>
+          <div className="space-y-2">
+            {(showAll ? assigned : assigned.slice(0, PAGE_SIZE)).map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
+              >
+                <Link
+                  href={isClient ? `/panel/employees/${a.id}` : `/panel/users/${a.id}`}
+                  className="text-sm font-medium text-gray-900 hover:underline"
+                >
+                  {a.username || a.phone_number}
+                </Link>
+                <button
+                  onClick={() => handleRemove(a.id)}
+                  className="text-xs text-red-600 hover:text-red-800"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          {assigned.length > PAGE_SIZE && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-900"
             >
-              <Link
-                href={isClient ? `/panel/employees/${a.id}` : `/panel/users/${a.id}`}
-                className="text-sm font-medium text-gray-900 hover:underline"
-              >
-                {a.username || a.phone_number}
-              </Link>
-              <button
-                onClick={() => handleRemove(a.id)}
-                className="text-xs text-red-600 hover:text-red-800"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
+              {showAll ? "Show less" : `Show all ${assigned.length}`}
+            </button>
+          )}
+        </>
       )}
     </div>
   );

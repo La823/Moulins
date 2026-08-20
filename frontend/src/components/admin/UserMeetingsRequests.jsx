@@ -18,9 +18,13 @@ const REQUEST_STATUS_STYLES = {
 
 // Shared "Meetings" + "Requests" panel embedded on both the partner and
 // employee detail pages — same user_id-filtered admin endpoints power both.
+const PAGE_SIZE = 5;
+
 export default function UserMeetingsRequests({ userId }) {
   const [meetings, setMeetings] = useState(null);
   const [requestsList, setRequestsList] = useState(null);
+  const [showAllMeetings, setShowAllMeetings] = useState(false);
+  const [showAllRequests, setShowAllRequests] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -46,29 +50,39 @@ export default function UserMeetingsRequests({ userId }) {
               <p className="text-sm text-gray-400">No meetings scheduled yet</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-              {meetings.map((m) => (
-                <div key={m.id} className="p-4 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-gray-900">{m.doctor_name ? `Dr. ${m.doctor_name}` : m.title || "Meeting"}</p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                    </p>
-                    {m.notes && <p className="text-xs text-gray-400 mt-1">{m.notes}</p>}
-                    {m.mom && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        <span className="font-medium">MOM:</span> {m.mom}
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+                {(showAllMeetings ? meetings : meetings.slice(0, PAGE_SIZE)).map((m) => (
+                  <div key={m.id} className="p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm text-gray-900">{m.doctor_name ? `Dr. ${m.doctor_name}` : m.title || "Meeting"}</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                       </p>
-                    )}
+                      {m.notes && <p className="text-xs text-gray-400 mt-1">{m.notes}</p>}
+                      {m.mom && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          <span className="font-medium">MOM:</span> {m.mom}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${MEETING_STATUS_STYLES[m.status] || "bg-gray-50 text-gray-600"}`}
+                    >
+                      {m.status}
+                    </span>
                   </div>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${MEETING_STATUS_STYLES[m.status] || "bg-gray-50 text-gray-600"}`}
-                  >
-                    {m.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {meetings.length > PAGE_SIZE && (
+                <button
+                  onClick={() => setShowAllMeetings((v) => !v)}
+                  className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-900"
+                >
+                  {showAllMeetings ? "Show less" : `Show all ${meetings.length}`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -83,28 +97,38 @@ export default function UserMeetingsRequests({ userId }) {
               <p className="text-sm text-gray-400">No requests submitted yet</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-              {requestsList.map((r) => (
-                <div key={r.id} className="p-4">
-                  <div className="flex items-center justify-between gap-4 mb-1">
-                    <p className="text-xs text-gray-400">
-                      {new Date(r.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                    </p>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${REQUEST_STATUS_STYLES[r.status] || "bg-gray-50 text-gray-600"}`}
-                    >
-                      {r.status.replace("_", " ")}
-                    </span>
+            <>
+              <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+                {(showAllRequests ? requestsList : requestsList.slice(0, PAGE_SIZE)).map((r) => (
+                  <div key={r.id} className="p-4">
+                    <div className="flex items-center justify-between gap-4 mb-1">
+                      <p className="text-xs text-gray-400">
+                        {new Date(r.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                      </p>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${REQUEST_STATUS_STYLES[r.status] || "bg-gray-50 text-gray-600"}`}
+                      >
+                        {r.status.replace("_", " ")}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-800">{r.description}</p>
+                    {r.admin_notes && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        <span className="font-medium">Admin note:</span> {r.admin_notes}
+                      </p>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-800">{r.description}</p>
-                  {r.admin_notes && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      <span className="font-medium">Admin note:</span> {r.admin_notes}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {requestsList.length > PAGE_SIZE && (
+                <button
+                  onClick={() => setShowAllRequests((v) => !v)}
+                  className="mt-2 text-xs font-medium text-gray-500 hover:text-gray-900"
+                >
+                  {showAllRequests ? "Show less" : `Show all ${requestsList.length}`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

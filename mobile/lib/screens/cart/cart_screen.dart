@@ -234,6 +234,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                         ),
                       ],
                       const SizedBox(height: 16),
+                      _addressSummary(context),
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         height: 52,
@@ -255,6 +257,45 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                 ),
               ],
             ),
+      ),
+    );
+  }
+
+  Widget _addressSummary(BuildContext context) {
+    final user = ref.watch(authProvider).user;
+    final billing = user?.billingAddress;
+    final shipping = user?.shippingAddress;
+    final hasAddress = (billing?.isNotEmpty ?? false) || (shipping?.isNotEmpty ?? false);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Billing & Shipping Address', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+              GestureDetector(
+                onTap: () => context.push('/profile'),
+                child: const Text('Edit', style: TextStyle(fontSize: 12, color: Color(0xFF00A6A4), fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (hasAddress) ...[
+            Text('Billing: ${billing?.isNotEmpty == true ? billing : "Not set"}', style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 4),
+            Text('Shipping: ${shipping?.isNotEmpty == true ? shipping : "Not set"}', style: const TextStyle(fontSize: 13)),
+          ] else
+            Text('No address on file — add one in your profile', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+        ],
       ),
     );
   }

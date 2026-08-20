@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/cache"
+	"github.com/lavanyaarora/server/internal/mailer"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
@@ -206,10 +207,11 @@ func UpdatePartnerCustomerTypeHandler(db *pgxpool.Pool, rdb *cache.Client) http.
 }
 
 // POST /admin/marg-parties/{rid}/create-partner — creates a new partner
-// account from a Marg party record, auto-linking it via rid. phone_number,
-// email, and password are required; username/billing_address/
+// account from a Marg party record, auto-linking it via rid. phone_number
+// and password are required; username/email/billing_address/
 // shipping_address are optional (typically prefilled from the Marg party
-// on the frontend, but still editable there before submit).
+// on the frontend, but still editable there before submit) — the partner
+// can add their email themselves later from their profile.
 func CreatePartnerFromMargPartyHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rid := mux.Vars(r)["rid"]
@@ -230,8 +232,8 @@ func CreatePartnerFromMargPartyHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if body.PhoneNumber == "" || body.Email == "" {
-			http.Error(w, "phone_number and email are required", http.StatusBadRequest)
+		if body.PhoneNumber == "" {
+			http.Error(w, "phone_number is required", http.StatusBadRequest)
 			return
 		}
 		if err := utils.ValidatePasswordStrength(body.Password); err != nil {
@@ -248,7 +250,11 @@ func CreatePartnerFromMargPartyHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		userID, err := models.CreateUser(r.Context(), db, body.PhoneNumber, body.Password, body.Username, &body.Email, "partner", nil, nil, nil)
+		var email *string
+		if body.Email != "" {
+			email = &body.Email
+		}
+		userID, err := models.CreateUser(r.Context(), db, body.PhoneNumber, body.Password, body.Username, email, "partner", nil, nil, nil)
 		if err != nil {
 			log.Printf("create partner from marg party error: %v", err)
 			http.Error(w, "could not create partner", http.StatusInternalServerError)
@@ -303,6 +309,179 @@ func UpdatePartnerRidHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFu
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "rid updated"})
+	}
+}
+
+// PUT /admin/partners/{id}/email — admin sets/changes a partner's email.
+// Empty string clears it. Mirrors what a partner can already do themselves
+// via PUT /profile/email.
+func UpdatePartnerEmailHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateEmail(r.Context(), db, userID, body.Email); err != nil {
+			log.Printf("update partner email error: %v", err)
+			http.Error(w, "could not update email", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "email updated"})
+	}
+}
+
+// PUT /admin/partners/{id}/phone — admin changes a partner's login phone
+// number. Rejects if another user already has it (phone is the login
+// identity, so it must stay unique).
+func UpdatePartnerPhoneHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			PhoneNumber string `json:"phone_number"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if body.PhoneNumber == "" {
+			http.Error(w, "phone_number is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdatePhoneNumber(r.Context(), db, userID, body.PhoneNumber); err != nil {
+			if err == models.ErrPhoneTaken {
+				http.Error(w, "a user with this phone number already exists", http.StatusConflict)
+				return
+			}
+			log.Printf("update partner phone error: %v", err)
+			http.Error(w, "could not update phone number", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "phone number updated"})
+	}
+}
+
+// PUT /admin/partners/{id}/address — admin sets/changes a partner's
+// billing/shipping address. Mirrors what a partner can already do
+// themselves via PUT /profile/address. Either field may be omitted (nil)
+// to leave it unchanged.
+func UpdatePartnerAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			BillingAddress  *string `json:"billing_address"`
+			ShippingAddress *string `json:"shipping_address"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateAddresses(r.Context(), db, userID, body.BillingAddress, body.ShippingAddress); err != nil {
+			log.Printf("update partner address error: %v", err)
+			http.Error(w, "could not update address", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "address updated"})
+	}
+}
+
+// POST /admin/partners/{id}/send-email/{key} — staff manually triggers one
+// of the "manual" trigger_mode email templates for this partner. Each key
+// needs its own data-building + prerequisite check below; add a case here
+// whenever a new manual template is introduced.
+func SendPartnerEmailHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		userID, err := uuid.Parse(vars["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		key := vars["key"]
+
+		user, err := models.GetUserByIDFull(r.Context(), db, userID)
+		if err != nil {
+			http.Error(w, "partner not found", http.StatusNotFound)
+			return
+		}
+		if user.Email == nil || *user.Email == "" {
+			http.Error(w, "this partner has no email on file", http.StatusBadRequest)
+			return
+		}
+
+		name := "there"
+		if user.Username != nil && *user.Username != "" {
+			name = *user.Username
+		}
+
+		var data any
+		switch key {
+		case "partner_welcome_credentials":
+			if user.PlainPassword == nil || *user.PlainPassword == "" {
+				http.Error(w, "no password on file for this account", http.StatusBadRequest)
+				return
+			}
+			data = struct {
+				CustomerName string
+				Phone        string
+				Password     string
+			}{
+				CustomerName: name,
+				Phone:        user.PhoneNumber,
+				Password:     *user.PlainPassword,
+			}
+		default:
+			http.Error(w, "unknown or non-manual email template", http.StatusBadRequest)
+			return
+		}
+
+		subject, body, err := mailer.Render(r.Context(), db, key, data)
+		if err != nil {
+			log.Printf("send partner email: render failed for %s: %v", key, err)
+			http.Error(w, "could not render email", http.StatusInternalServerError)
+			return
+		}
+		if err := mailer.Send(r.Context(), mailer.ConfigFromEnv(), *user.Email, subject, body); err != nil {
+			log.Printf("send partner email: send failed for %s: %v", key, err)
+			http.Error(w, "could not send email", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
 	}
 }
 

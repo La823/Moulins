@@ -33,10 +33,17 @@ export default function EmployeeDetailPage() {
   const [changingRole, setChangingRole] = useState(false);
   const [roleError, setRoleError] = useState("");
 
+  // Email state
+  const [emailInput, setEmailInput] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState("");
+
   useEffect(() => {
     apiFetch(`/admin/employees/${id}`)
       .then((data) => {
         setEmployee(data);
+        setEmailInput(data?.email || "");
         const state = {};
         (data.permissions || []).forEach((p) => {
           state[p] = true;
@@ -86,6 +93,26 @@ export default function EmployeeDetailPage() {
       setPwError(err.message);
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleEmailSave = async (e) => {
+    e.preventDefault();
+    setSavingEmail(true);
+    setEmailError("");
+    setEmailSuccess("");
+    try {
+      await apiFetch(`/admin/employees/${id}/email`, {
+        method: "PUT",
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      setEmployee((prev) => ({ ...prev, email: emailInput.trim() || null }));
+      setEmailSuccess("Saved");
+      setTimeout(() => setEmailSuccess(""), 3000);
+    } catch (err) {
+      setEmailError(err.message);
+    } finally {
+      setSavingEmail(false);
     }
   };
 
@@ -242,14 +269,29 @@ export default function EmployeeDetailPage() {
                 </p>
               </div>
 
-              {employee.email && (
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-                    Email
-                  </p>
-                  <p className="text-sm text-gray-900">{employee.email}</p>
-                </div>
-              )}
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                  Email
+                </p>
+                <form onSubmit={handleEmailSave} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="Email address"
+                    className="flex-1 px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingEmail}
+                    className="px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {savingEmail ? "Saving..." : "Save"}
+                  </button>
+                </form>
+                {emailError && <p className="text-xs text-red-600 mt-1">{emailError}</p>}
+                {emailSuccess && <p className="text-xs text-green-600 mt-1">{emailSuccess}</p>}
+              </div>
 
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">

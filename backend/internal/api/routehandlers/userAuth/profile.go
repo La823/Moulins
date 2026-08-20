@@ -10,7 +10,61 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
+
+// PUT /profile/password — a user changes their own password, given their
+// current one. Every logged-in role can use this (partner, doctor,
+// employee, admin) — it only touches the caller's own account.
+func UpdateMyPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userIDStr, ok := r.Context().Value("user_id").(string)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var req struct {
+			CurrentPassword string `json:"current_password"`
+			NewPassword     string `json:"new_password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		hash, err := models.GetPasswordHash(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("get password hash error: %v", err)
+			http.Error(w, "could not change password", http.StatusInternalServerError)
+			return
+		}
+		if err := utils.CheckPassword(hash, req.CurrentPassword); err != nil {
+			http.Error(w, "current password is incorrect", http.StatusUnauthorized)
+			return
+		}
+		if err := utils.ValidatePasswordStrength(req.NewPassword); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateUserPassword(r.Context(), db, userID, req.NewPassword); err != nil {
+			log.Printf("update own password error: %v", err)
+			http.Error(w, "could not change password", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "password updated"})
+	}
+}
 
 // PUT /profile/transport-mode — a partner sets their own default order
 // transport mode ("courier" or "transport"), pre-filled at checkout.
@@ -75,6 +129,44 @@ func UpdateMyAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFun
 		if err := models.UpdateAddresses(r.Context(), db, userID, req.BillingAddress, req.ShippingAddress); err != nil {
 			log.Printf("update address error: %v", err)
 			http.Error(w, "could not update address", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}
+}
+
+// PUT /profile/email — a user adds/changes their own email address. Not
+// required at signup or when created from a Marg party — this lets them
+// fill it in themselves whenever they're ready (e.g. so order/status mail
+// has somewhere to go).
+func UpdateMyEmailHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userIDStr, ok := r.Context().Value("user_id").(string)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var req struct {
+			Email string `json:"email"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateEmail(r.Context(), db, userID, req.Email); err != nil {
+			log.Printf("update email error: %v", err)
+			http.Error(w, "could not update email", http.StatusInternalServerError)
 			return
 		}
 

@@ -1,20 +1,151 @@
 package orders
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/mailer"
 	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
+
+// orderStatusEmailable is the set of statuses that get a customer-facing
+// email — "pending" (initial state) and "transferred" (internal handoff)
+// aren't meaningful to a customer, so they're skipped.
+var orderStatusEmailable = map[string]bool{
+	"confirmed": true, "shipped": true, "delivered": true,
+	"cancelled": true, "refunded": true,
+}
+
+// notifyOrderStatusEmail looks up the order's customer and, if they have an
+// email on file, sends a best-effort status-change notification. Runs
+// async so a slow/unconfigured mail provider never delays the response.
+func notifyOrderStatusEmail(db *pgxpool.Pool, orderID uuid.UUID, status string) {
+	if !orderStatusEmailable[status] {
+		return
+	}
+	go func() {
+		ctx := context.Background()
+		order, err := models.GetOrderByID(ctx, db, orderID)
+		if err != nil {
+			log.Printf("order status email: failed to load order %s: %v", orderID, err)
+			return
+		}
+		user, err := models.GetUserByID(ctx, db, order.UserID)
+		if err != nil || user.Email == nil || *user.Email == "" {
+			return
+		}
+		name := "there"
+		if user.Username != nil && *user.Username != "" {
+			name = *user.Username
+		}
+		data := buildOrderEmailData(order, user)
+		data.CustomerName = name
+		data.StatusLabel = orderStatusLabels[status]
+		subject, body, err := mailer.Render(ctx, db, "order_status_changed", data)
+		if err != nil {
+			log.Printf("order status email: render failed: %v", err)
+			return
+		}
+		if err := mailer.Send(ctx, mailer.ConfigFromEnv(), *user.Email, subject, body); err != nil {
+			log.Printf("order status email: send failed: %v", err)
+		}
+	}()
+}
+
+var orderStatusLabels = map[string]string{
+	"confirmed": "Confirmed",
+	"shipped":   "Shipped",
+	"delivered": "Delivered",
+	"cancelled": "Cancelled",
+	"refunded":  "Refunded",
+}
+
+// orderEmailItem is one order line as shown in a customer email.
+type orderEmailItem struct {
+	ProductName string
+	Quantity    int
+}
+
+// orderEmailData is the shared set of order fields every order-related
+// email template can reference — built once per send from the loaded
+// order + user, reused by both the "order placed" and "status changed"
+// templates.
+type orderEmailData struct {
+	CustomerName    string
+	OrderCode       string
+	StatusLabel     string
+	Items           []orderEmailItem
+	ItemCount       int
+	TransportMode   string
+	ShippingAddress string
+}
+
+func buildOrderEmailData(order *models.Order, user *models.User) orderEmailData {
+	items := make([]orderEmailItem, 0, len(order.Items))
+	for _, it := range order.Items {
+		items = append(items, orderEmailItem{ProductName: it.ProductName, Quantity: it.Quantity})
+	}
+
+	transportMode := order.TransportMode
+	if transportMode != "" {
+		transportMode = strings.ToUpper(transportMode[:1]) + transportMode[1:]
+	}
+
+	shippingAddress := ""
+	if user.ShippingAddress != nil {
+		shippingAddress = *user.ShippingAddress
+	}
+
+	return orderEmailData{
+		OrderCode:       order.ID.String()[:8],
+		Items:           items,
+		ItemCount:       len(items),
+		TransportMode:   transportMode,
+		ShippingAddress: shippingAddress,
+	}
+}
+
+// notifyOrderPlacedEmail sends the initial order-received confirmation.
+// Same async, best-effort pattern as notifyOrderStatusEmail.
+func notifyOrderPlacedEmail(db *pgxpool.Pool, orderID uuid.UUID) {
+	go func() {
+		ctx := context.Background()
+		order, err := models.GetOrderByID(ctx, db, orderID)
+		if err != nil {
+			log.Printf("order placed email: failed to load order %s: %v", orderID, err)
+			return
+		}
+		user, err := models.GetUserByID(ctx, db, order.UserID)
+		if err != nil || user.Email == nil || *user.Email == "" {
+			return
+		}
+		name := "there"
+		if user.Username != nil && *user.Username != "" {
+			name = *user.Username
+		}
+		data := buildOrderEmailData(order, user)
+		data.CustomerName = name
+		subject, body, err := mailer.Render(ctx, db, "order_placed", data)
+		if err != nil {
+			log.Printf("order placed email: render failed: %v", err)
+			return
+		}
+		if err := mailer.Send(ctx, mailer.ConfigFromEnv(), *user.Email, subject, body); err != nil {
+			log.Printf("order placed email: send failed: %v", err)
+		}
+	}()
+}
 
 // POST /orders — partner places an order from their cart
 func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -73,6 +204,7 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not create order", http.StatusInternalServerError)
 			return
 		}
+		notifyOrderPlacedEmail(db, orderID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -347,6 +479,7 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		_ = models.InsertOrderEvent(r.Context(), db, id, "status."+body.Status,
 			fmt.Sprintf("Order status changed to %s", body.Status), actorID(r))
+		notifyOrderStatusEmail(db, id, body.Status)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": body.Status})

@@ -22,6 +22,7 @@ var ValidPermissions = []PermissionDef{
 	{Key: "orders", Label: "Orders (View)", Desc: "View partner orders and their details"},
 	{Key: "orders_edit", Label: "Orders (Edit)", Desc: "Edit order status, item quantities, delivery details, and transports"},
 	{Key: "partners", Label: "Partners", Desc: "View and manage partners"},
+	{Key: "partners_credentials", Label: "Partners (Credentials)", Desc: "Change a partner's login phone, email, and password"},
 	{Key: "meetings", Label: "Meetings", Desc: "View and analyze partner/employee doctor meetings"},
 	{Key: "requests", Label: "Requests", Desc: "View and resolve partner/employee requests"},
 	{Key: "ledger", Label: "Ledger", Desc: "Upload and update partner account ledgers"},

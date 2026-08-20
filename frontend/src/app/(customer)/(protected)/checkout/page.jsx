@@ -178,6 +178,42 @@ export default function CheckoutPage() {
         )}
       </div>
 
+      {/* Billing / Shipping Address — read-only here, edited from Profile */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Billing &amp; Shipping Address
+          </label>
+          <Link href="/profile" className="text-xs text-red-600 hover:underline">
+            Edit
+          </Link>
+        </div>
+        {user?.billing_address || user?.shipping_address ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="px-4 py-3 border border-gray-200 rounded-lg">
+              <p className="text-xs text-gray-400 mb-1">Billing</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                {user?.billing_address || "Not set"}
+              </p>
+            </div>
+            <div className="px-4 py-3 border border-gray-200 rounded-lg">
+              <p className="text-xs text-gray-400 mb-1">Shipping</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                {user?.shipping_address || "Not set"}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">
+            No address on file —{" "}
+            <Link href="/profile" className="text-red-600 hover:underline">
+              add one in your profile
+            </Link>
+            .
+          </p>
+        )}
+      </div>
+
       {/* Notes */}
       <div className="mb-8">
         <label className="block text-sm font-medium text-gray-700 mb-2">

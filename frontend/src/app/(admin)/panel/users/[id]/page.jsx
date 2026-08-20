@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
@@ -23,6 +24,9 @@ const STATUS_STYLES = {
 export default function PartnerDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const canEditCredentials =
+    user?.role === "admin" || (user?.permissions || []).includes("partners_credentials");
   const [partner, setPartner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -38,17 +42,39 @@ export default function PartnerDetailPage() {
   const [savingRid, setSavingRid] = useState(false);
   const [ridError, setRidError] = useState("");
   const [ridSuccess, setRidSuccess] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneSuccess, setPhoneSuccess] = useState("");
   const [uploadingTileImage, setUploadingTileImage] = useState(false);
   const [tileImageError, setTileImageError] = useState("");
   const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [showAllOrders, setShowAllOrders] = useState(false);
+  const ORDERS_PAGE_SIZE = 5;
+  const [billingInput, setBillingInput] = useState("");
+  const [shippingInput, setShippingInput] = useState("");
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [addressError, setAddressError] = useState("");
+  const [addressSuccess, setAddressSuccess] = useState("");
+  const [sendingWelcomeEmail, setSendingWelcomeEmail] = useState(false);
+  const [welcomeEmailError, setWelcomeEmailError] = useState("");
+  const [welcomeEmailSuccess, setWelcomeEmailSuccess] = useState("");
 
   useEffect(() => {
     apiFetch(`/admin/partners/${id}`)
       .then((data) => {
         setPartner(data);
         setRidInput(data?.rid || "");
+        setEmailInput(data?.email || "");
+        setPhoneInput(data?.phone_number || "");
+        setBillingInput(data?.billing_address || "");
+        setShippingInput(data?.shipping_address || "");
       })
       .catch(() => setPartner(null))
       .finally(() => setLoading(false));
@@ -141,6 +167,94 @@ export default function PartnerDetailPage() {
       setRidError(err.message);
     } finally {
       setSavingRid(false);
+    }
+  };
+
+  const handleEmailSave = async (e) => {
+    e.preventDefault();
+    setSavingEmail(true);
+    setEmailError("");
+    setEmailSuccess("");
+    try {
+      await apiFetch(`/admin/partners/${id}/email`, {
+        method: "PUT",
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      setPartner((prev) => ({ ...prev, email: emailInput.trim() || null }));
+      setEmailSuccess("Saved");
+      setTimeout(() => setEmailSuccess(""), 3000);
+    } catch (err) {
+      setEmailError(err.message);
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const handlePhoneSave = async (e) => {
+    e.preventDefault();
+    if (!phoneInput.trim()) {
+      setPhoneError("Phone number is required");
+      return;
+    }
+    setSavingPhone(true);
+    setPhoneError("");
+    setPhoneSuccess("");
+    try {
+      await apiFetch(`/admin/partners/${id}/phone`, {
+        method: "PUT",
+        body: JSON.stringify({ phone_number: phoneInput.trim() }),
+      });
+      setPartner((prev) => ({ ...prev, phone_number: phoneInput.trim() }));
+      setPhoneSuccess("Saved");
+      setTimeout(() => setPhoneSuccess(""), 3000);
+    } catch (err) {
+      setPhoneError(err.message);
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
+  const handleAddressSave = async (e) => {
+    e.preventDefault();
+    setSavingAddress(true);
+    setAddressError("");
+    setAddressSuccess("");
+    try {
+      await apiFetch(`/admin/partners/${id}/address`, {
+        method: "PUT",
+        body: JSON.stringify({
+          billing_address: billingInput,
+          shipping_address: shippingInput,
+        }),
+      });
+      setPartner((prev) => ({
+        ...prev,
+        billing_address: billingInput || null,
+        shipping_address: shippingInput || null,
+      }));
+      setAddressSuccess("Saved");
+      setTimeout(() => setAddressSuccess(""), 3000);
+    } catch (err) {
+      setAddressError(err.message);
+    } finally {
+      setSavingAddress(false);
+    }
+  };
+
+  const handleSendWelcomeEmail = async () => {
+    setSendingWelcomeEmail(true);
+    setWelcomeEmailError("");
+    setWelcomeEmailSuccess("");
+    try {
+      await apiFetch(`/admin/partners/${id}/send-email/partner_welcome_credentials`, {
+        method: "POST",
+      });
+      setWelcomeEmailSuccess("Email sent");
+      setTimeout(() => setWelcomeEmailSuccess(""), 4000);
+    } catch (err) {
+      setWelcomeEmailError(err.message);
+    } finally {
+      setSendingWelcomeEmail(false);
     }
   };
 
@@ -373,25 +487,113 @@ export default function PartnerDetailPage() {
               </div>
             )}
 
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-                  Phone
-                </p>
-                <p className="text-sm text-gray-900 font-mono">
+            {/* Phone — this is also the partner's login identity, so
+                changing it changes what they log in with. Editing it
+                requires the partners_credentials permission. */}
+            <div className="mb-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                Phone
+              </p>
+              {canEditCredentials ? (
+                <>
+                  <form onSubmit={handlePhoneSave} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={phoneInput}
+                      onChange={(e) => setPhoneInput(e.target.value)}
+                      placeholder="Phone number"
+                      className="flex-1 px-3 py-2 text-sm text-gray-900 font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    />
+                    <button
+                      type="submit"
+                      disabled={savingPhone}
+                      className="px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {savingPhone ? "Saving..." : "Save"}
+                    </button>
+                  </form>
+                  {phoneError && <p className="text-xs text-red-600 mt-1">{phoneError}</p>}
+                  {phoneSuccess && <p className="text-xs text-green-600 mt-1">{phoneSuccess}</p>}
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    This is also their login identity.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-gray-900 font-mono bg-gray-50 px-3 py-2 rounded-lg">
                   {partner.phone_number}
                 </p>
-              </div>
-
-              {partner.email && (
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
-                    Email
-                  </p>
-                  <p className="text-sm text-gray-900">{partner.email}</p>
-                </div>
               )}
+            </div>
 
+            {/* Email — optional, partners can add it themselves too from
+                their own profile. Editing it here requires the
+                partners_credentials permission. */}
+            <div className="mb-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                Email
+              </p>
+              {canEditCredentials ? (
+                <>
+                  <form onSubmit={handleEmailSave} className="flex gap-2">
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="Email address"
+                      className="flex-1 px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    />
+                    <button
+                      type="submit"
+                      disabled={savingEmail}
+                      className="px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {savingEmail ? "Saving..." : "Save"}
+                    </button>
+                  </form>
+                  {emailError && <p className="text-xs text-red-600 mt-1">{emailError}</p>}
+                  {emailSuccess && <p className="text-xs text-green-600 mt-1">{emailSuccess}</p>}
+                </>
+              ) : (
+                <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                  {partner.email || "Not set"}
+                </p>
+              )}
+            </div>
+
+            {/* Billing / Shipping Address — partners can also set this
+                themselves from their own profile. */}
+            <div className="mb-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
+                Billing &amp; Shipping Address
+              </p>
+              <form onSubmit={handleAddressSave} className="space-y-2">
+                <textarea
+                  value={billingInput}
+                  onChange={(e) => setBillingInput(e.target.value)}
+                  rows={2}
+                  placeholder="Billing address"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                />
+                <textarea
+                  value={shippingInput}
+                  onChange={(e) => setShippingInput(e.target.value)}
+                  rows={2}
+                  placeholder="Shipping address"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                />
+                <button
+                  type="submit"
+                  disabled={savingAddress}
+                  className="px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {savingAddress ? "Saving..." : "Save Address"}
+                </button>
+              </form>
+              {addressError && <p className="text-xs text-red-600 mt-1">{addressError}</p>}
+              {addressSuccess && <p className="text-xs text-green-600 mt-1">{addressSuccess}</p>}
+            </div>
+
+            <div className="space-y-3">
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">
                   Joined
@@ -457,7 +659,7 @@ export default function PartnerDetailPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-xs text-gray-400">Password</p>
-                  {!editingPassword && (
+                  {!editingPassword && canEditCredentials && (
                     <button
                       onClick={() => {
                         setEditingPassword(true);
@@ -512,6 +714,21 @@ export default function PartnerDetailPage() {
                   </p>
                 )}
               </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <button
+                onClick={handleSendWelcomeEmail}
+                disabled={sendingWelcomeEmail || !partner.email}
+                className="w-full px-3 py-2 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {sendingWelcomeEmail ? "Sending..." : "Send Welcome Email (login details)"}
+              </button>
+              {!partner.email && (
+                <p className="text-[11px] text-gray-400 mt-1">Set an email above first.</p>
+              )}
+              {welcomeEmailError && <p className="text-xs text-red-600 mt-1">{welcomeEmailError}</p>}
+              {welcomeEmailSuccess && <p className="text-xs text-green-600 mt-1">{welcomeEmailSuccess}</p>}
             </div>
           </div>
 
@@ -689,7 +906,7 @@ export default function PartnerDetailPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => (
+              {(showAllOrders ? orders : orders.slice(0, ORDERS_PAGE_SIZE)).map((order) => (
                 <div
                   key={order.id}
                   onClick={() => router.push(`/panel/orders/${order.id}`)}
@@ -736,6 +953,14 @@ export default function PartnerDetailPage() {
                 </div>
               ))}
             </div>
+          )}
+          {orders.length > ORDERS_PAGE_SIZE && (
+            <button
+              onClick={() => setShowAllOrders((v) => !v)}
+              className="mt-3 text-xs font-medium text-gray-500 hover:text-gray-900"
+            >
+              {showAllOrders ? "Show less" : `Show all ${orders.length}`}
+            </button>
           )}
           </div>
 

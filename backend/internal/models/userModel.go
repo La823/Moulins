@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -294,6 +295,18 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 	return &u, nil
 }
 
+// ErrWrongPassword is returned by a self-service password change when the
+// supplied current password doesn't match.
+var ErrWrongPassword = errors.New("current password is incorrect")
+
+// GetPasswordHash fetches just the stored hash, for verifying a user's
+// current password before letting them set a new one.
+func GetPasswordHash(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (string, error) {
+	var hash string
+	err := db.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&hash)
+	return hash, err
+}
+
 func UpdateUserPassword(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, newPassword string) error {
 	hashedPassword, err := utils.HashPassword(newPassword)
 	if err != nil {
@@ -364,6 +377,32 @@ func UpdateAddresses(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, bi
 		 WHERE id = $3`,
 		billing, shipping, userID,
 	)
+	return err
+}
+
+// ErrPhoneTaken is returned by UpdatePhoneNumber when the new phone number
+// is already registered to a different user.
+var ErrPhoneTaken = errors.New("phone number is already registered")
+
+// UpdateEmail sets a user's own email address — used both by admin edits
+// and by a partner adding/changing their own email from their profile. An
+// empty string clears it.
+func UpdateEmail(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, email string) error {
+	var e *string
+	if email != "" {
+		e = &email
+	}
+	_, err := db.Exec(ctx, `UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2`, e, userID)
+	return err
+}
+
+// UpdatePhoneNumber changes a partner's login phone number, rejecting the
+// change if another user already has it.
+func UpdatePhoneNumber(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, phone string) error {
+	if other, err := GetUserByPhone(ctx, db, phone); err == nil && other != nil && other.ID != userID {
+		return ErrPhoneTaken
+	}
+	_, err := db.Exec(ctx, `UPDATE users SET phone_number = $1, updated_at = NOW() WHERE id = $2`, phone, userID)
 	return err
 }
 

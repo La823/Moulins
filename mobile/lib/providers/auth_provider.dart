@@ -119,6 +119,32 @@ class AuthNotifier extends StateNotifier<AuthState> {
         customerType: current.customerType,
         permissions: current.permissions,
         defaultTransportMode: mode,
+        billingAddress: current.billingAddress,
+        shippingAddress: current.shippingAddress,
+      );
+      await saveCachedUser(jsonEncode(user.toJson()));
+      state = state.copyWith(user: user);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateAddress({String? billingAddress, String? shippingAddress}) async {
+    final current = state.user;
+    if (current == null) return false;
+    try {
+      await _service.updateAddress(billingAddress: billingAddress, shippingAddress: shippingAddress);
+      final user = User(
+        id: current.id,
+        phoneNumber: current.phoneNumber,
+        username: current.username,
+        role: current.role,
+        customerType: current.customerType,
+        permissions: current.permissions,
+        defaultTransportMode: current.defaultTransportMode,
+        billingAddress: billingAddress ?? current.billingAddress,
+        shippingAddress: shippingAddress ?? current.shippingAddress,
       );
       await saveCachedUser(jsonEncode(user.toJson()));
       state = state.copyWith(user: user);

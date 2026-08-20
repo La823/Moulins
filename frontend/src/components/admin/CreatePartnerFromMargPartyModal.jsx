@@ -39,7 +39,7 @@ export default function CreatePartnerFromMargPartyModal({ party, onClose, onCrea
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.phone_number.trim() || !form.email.trim() || !form.password.trim()) return;
+    if (!form.phone_number.trim() || !form.password.trim()) return;
     setSubmitting(true);
     setError("");
     try {
@@ -48,7 +48,7 @@ export default function CreatePartnerFromMargPartyModal({ party, onClose, onCrea
         body: JSON.stringify({
           phone_number: form.phone_number.trim(),
           password: form.password,
-          email: form.email.trim(),
+          email: form.email.trim() || undefined,
           username: form.username.trim() || undefined,
           billing_address: form.billing_address.trim() || undefined,
           shipping_address: form.shipping_address.trim() || undefined,
@@ -105,18 +105,15 @@ export default function CreatePartnerFromMargPartyModal({ party, onClose, onCrea
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
                 type="email"
                 value={form.email}
                 onChange={set("email")}
-                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-                placeholder="Email address"
+                placeholder="Email address (optional)"
               />
-              {!party.email1?.trim() && (
-                <p className="text-[11px] text-amber-600 mt-1">Not on the Marg record — enter manually.</p>
-              )}
+              <p className="text-[11px] text-gray-400 mt-1">Optional — the partner can add this themselves later from their profile.</p>
             </div>
           </div>
 

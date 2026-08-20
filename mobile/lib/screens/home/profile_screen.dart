@@ -174,6 +174,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
 
+          // Billing / Shipping Address (partners only)
+          if (user?.role == 'partner')
+            _AddressCard(
+              billingAddress: user?.billingAddress,
+              shippingAddress: user?.shippingAddress,
+            ),
+          if (user?.role == 'partner') const SizedBox(height: 16),
+
           // Menu items
           Container(
             color: Colors.white,
@@ -333,6 +341,136 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
 
   Widget _divider() => const Divider(height: 1, indent: 56);
+}
+
+class _AddressCard extends ConsumerStatefulWidget {
+  final String? billingAddress;
+  final String? shippingAddress;
+
+  const _AddressCard({this.billingAddress, this.shippingAddress});
+
+  @override
+  ConsumerState<_AddressCard> createState() => _AddressCardState();
+}
+
+class _AddressCardState extends ConsumerState<_AddressCard> {
+  static const teal = Color(0xFF00A6A4);
+  bool _editing = false;
+  bool _saving = false;
+  late final TextEditingController _billingCtrl;
+  late final TextEditingController _shippingCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _billingCtrl = TextEditingController(text: widget.billingAddress ?? '');
+    _shippingCtrl = TextEditingController(text: widget.shippingAddress ?? '');
+  }
+
+  @override
+  void dispose() {
+    _billingCtrl.dispose();
+    _shippingCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final ok = await ref.read(authProvider.notifier).updateAddress(
+          billingAddress: _billingCtrl.text.trim(),
+          shippingAddress: _shippingCtrl.text.trim(),
+        );
+    if (mounted) {
+      setState(() { _saving = false; if (ok) _editing = false; });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? 'Address updated' : 'Failed to update address'),
+          backgroundColor: ok ? teal : Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Billing & Shipping Address', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              if (!_editing)
+                TextButton(
+                  onPressed: () => setState(() => _editing = true),
+                  child: const Text('Edit', style: TextStyle(color: teal, fontSize: 13)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_editing) ...[
+            TextField(
+              controller: _billingCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Billing address',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _shippingCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Shipping address',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: teal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: _saving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Save'),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: _saving ? null : () => setState(() => _editing = false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text('Billing', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text(
+              widget.billingAddress?.isNotEmpty == true ? widget.billingAddress! : 'Not set',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            Text('Shipping', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text(
+              widget.shippingAddress?.isNotEmpty == true ? widget.shippingAddress! : 'Not set',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _DocumentCard extends ConsumerStatefulWidget {

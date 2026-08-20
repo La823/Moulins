@@ -13,6 +13,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/dailylogs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/designfiles"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/emailtemplates"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
@@ -93,6 +94,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
 
 	// order routes (any authenticated user, except doctors — catalog
 	// browsing only, no ordering)
@@ -219,6 +222,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/admins", userauth.GetAdminsHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}", userauth.GetEmployeeDetailHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}/password", userauth.UpdateEmployeePasswordHandler(db, rdb)).Methods("PUT")
+	admin.HandleFunc("/employees/{id}/email", userauth.UpdateEmployeeEmailHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/employees/{id}/permissions", userauth.GetPermissionsHandler(db)).Methods("GET")
 	admin.HandleFunc("/employees/{id}/permissions", userauth.SetPermissionsHandler(db, rdb)).Methods("PUT")
 	admin.HandleFunc("/employees/{id}/role", userauth.UpdateEmployeeRoleHandler(db, rdb)).Methods("PUT")
@@ -251,6 +255,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// settings routes (admin only)
 	admin.HandleFunc("/settings", attendance.GetSettingsHandler(db, rdb)).Methods("GET")
 	admin.HandleFunc("/settings", attendance.UpdateSettingsHandler(db, rdb)).Methods("PUT")
+
+	admin.HandleFunc("/email-templates", emailtemplates.ListHandler(db)).Methods("GET")
+	admin.HandleFunc("/email-templates/{key}", emailtemplates.GetHandler(db)).Methods("GET")
+	admin.HandleFunc("/email-templates/{key}", emailtemplates.UpdateHandler(db)).Methods("PUT")
 
 	// manufacturer routes (admin only)
 	admin.HandleFunc("/manufacturers", manufacturers.ListHandler(db, rdb)).Methods("GET")
@@ -307,9 +315,22 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/doctors/{id}/contact-name", doctors.UpdateDoctorContactNameHandler(db)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/verify-document", userauth.VerifyPartnerDocumentHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
-	partnerStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}/rid", userauth.UpdatePartnerRidHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/partners/{id}/address", userauth.UpdatePartnerAddressHandler(db, rdb)).Methods("PUT")
+	partnerStaff.HandleFunc("/partners/{id}/send-email/{key}", userauth.SendPartnerEmailHandler(db)).Methods("POST")
+
+	// staff routes — changing a partner's login phone/email/password is
+	// gated behind its own permission on top of "partners", since it's a
+	// more sensitive action (can lock the partner out or hijack their
+	// login) than viewing/managing the rest of their profile.
+	partnerCredentialsStaff := protected.PathPrefix("/admin").Subrouter()
+	partnerCredentialsStaff.Use(middleware.StaffOnly)
+	partnerCredentialsStaff.Use(middleware.RequirePermission(db, "partners", rdb))
+	partnerCredentialsStaff.Use(middleware.RequirePermission(db, "partners_credentials", rdb))
+	partnerCredentialsStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
+	partnerCredentialsStaff.HandleFunc("/partners/{id}/email", userauth.UpdatePartnerEmailHandler(db, rdb)).Methods("PUT")
+	partnerCredentialsStaff.HandleFunc("/partners/{id}/phone", userauth.UpdatePartnerPhoneHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/marg-parties/{rid}/create-partner", userauth.CreatePartnerFromMargPartyHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
