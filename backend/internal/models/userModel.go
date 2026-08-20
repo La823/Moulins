@@ -140,7 +140,7 @@ func GetUserByPhone(
 		SELECT
 			id, phone_number, password_hash, username, email,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
-			default_transport_mode, last_login_at, created_at, updated_at
+			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address
 		FROM users
 		WHERE phone_number = $1;
 	`
@@ -149,7 +149,7 @@ func GetUserByPhone(
 	err := db.QueryRow(ctx, query, phoneNumber).Scan(
 		&u.ID, &u.PhoneNumber, &u.PasswordHash, &u.Username, &u.Email,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
-		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
 	)
 	if err != nil {
 		return nil, err

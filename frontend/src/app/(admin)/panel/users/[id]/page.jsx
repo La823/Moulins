@@ -65,6 +65,15 @@ export default function PartnerDetailPage() {
   const [sendingWelcomeEmail, setSendingWelcomeEmail] = useState(false);
   const [welcomeEmailError, setWelcomeEmailError] = useState("");
   const [welcomeEmailSuccess, setWelcomeEmailSuccess] = useState("");
+  const [sendLog, setSendLog] = useState([]);
+
+  const loadSendLog = () =>
+    apiFetch(`/admin/partners/${id}/send-log`)
+      .then((data) => setSendLog(data.entries || []))
+      .catch(() => {});
+
+  const lastSent = (templateKey) =>
+    sendLog.find((e) => e.template_key === templateKey);
 
   useEffect(() => {
     apiFetch(`/admin/partners/${id}`)
@@ -78,6 +87,7 @@ export default function PartnerDetailPage() {
       })
       .catch(() => setPartner(null))
       .finally(() => setLoading(false));
+    loadSendLog();
   }, [id]);
 
   if (loading) {
@@ -251,6 +261,7 @@ export default function PartnerDetailPage() {
       });
       setWelcomeEmailSuccess("Email sent");
       setTimeout(() => setWelcomeEmailSuccess(""), 4000);
+      loadSendLog();
     } catch (err) {
       setWelcomeEmailError(err.message);
     } finally {
@@ -726,6 +737,14 @@ export default function PartnerDetailPage() {
               </button>
               {!partner.email && (
                 <p className="text-[11px] text-gray-400 mt-1">Set an email above first.</p>
+              )}
+              {lastSent("partner_welcome_credentials") && (
+                <p className="flex items-center gap-1.5 text-xs text-green-700 mt-1">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                  Sent {new Date(lastSent("partner_welcome_credentials").sent_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                </p>
               )}
               {welcomeEmailError && <p className="text-xs text-red-600 mt-1">{welcomeEmailError}</p>}
               {welcomeEmailSuccess && <p className="text-xs text-green-600 mt-1">{welcomeEmailSuccess}</p>}

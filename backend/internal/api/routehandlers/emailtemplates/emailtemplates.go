@@ -56,8 +56,13 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if body.Subject == "" || body.BodyHTML == "" {
-			http.Error(w, "subject and body_html are required", http.StatusBadRequest)
+		if body.BodyHTML == "" {
+			http.Error(w, "body_html is required", http.StatusBadRequest)
+			return
+		}
+		// Whatsapp templates have no subject line — only email ones need one.
+		if existing, err := models.GetEmailTemplateByKey(r.Context(), db, key); err == nil && existing.Channel != "whatsapp" && body.Subject == "" {
+			http.Error(w, "subject is required", http.StatusBadRequest)
 			return
 		}
 

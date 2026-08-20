@@ -176,3 +176,41 @@ func UpdateMyEmailHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
 	}
 }
+
+// GET /profile/balance — a partner's own current ledger balance from Marg
+// ERP, looked up via their linked rid. Returns balance: null (not an
+// error) if they don't have an rid set yet, or if that rid has no synced
+// Marg party record — either way there's nothing to show, not a failure.
+func GetMyBalanceHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userIDStr, ok := r.Context().Value("user_id").(string)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		user, err := models.GetUserByID(r.Context(), db, userID)
+		if err != nil || user.Rid == nil || *user.Rid == "" {
+			json.NewEncoder(w).Encode(map[string]any{"balance": nil})
+			return
+		}
+
+		party, err := models.GetMargPartyByRid(r.Context(), db, *user.Rid)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]any{"balance": nil})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"balance":   party.Balance,
+			"synced_at": party.SyncedAt,
+		})
+	}
+}

@@ -259,3 +259,20 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search string, limit,
 	page.Parties = parties
 	return page, nil
 }
+
+// GetMargPartyByRid looks up a single synced Marg party by its rid — used
+// by a logged-in partner's own balance view, keyed off users.rid.
+func GetMargPartyByRid(ctx context.Context, db *pgxpool.Pool, rid string) (*MargParty, error) {
+	var p MargParty
+	err := db.QueryRow(ctx, `
+		SELECT id, rid, code, name, area, address, balance, gcode, is_deleted,
+		       phone1, email1, gstin, ledgercode, synced_at
+		FROM margmaster_party WHERE rid = $1`,
+		rid,
+	).Scan(&p.ID, &p.Rid, &p.Code, &p.Name, &p.Area, &p.Address, &p.Balance, &p.Gcode,
+		&p.IsDeleted, &p.Phone1, &p.Email1, &p.GSTIN, &p.LedgerCode, &p.SyncedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}

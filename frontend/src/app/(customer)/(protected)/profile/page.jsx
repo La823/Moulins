@@ -86,25 +86,42 @@ export default function ProfilePage() {
   const [billingAddress, setBillingAddress] = useState(user?.billing_address || "");
   const [shippingAddress, setShippingAddress] = useState(user?.shipping_address || "");
   const [savingAddress, setSavingAddress] = useState(false);
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressError, setAddressError] = useState(null);
 
   useEffect(() => {
     setBillingAddress(user?.billing_address || "");
     setShippingAddress(user?.shipping_address || "");
   }, [user?.billing_address, user?.shipping_address]);
 
+  const startEditingAddress = () => {
+    setBillingAddress(user?.billing_address || "");
+    setShippingAddress(user?.shipping_address || "");
+    setAddressError(null);
+    setEditingAddress(true);
+  };
+
+  const cancelEditingAddress = () => {
+    setBillingAddress(user?.billing_address || "");
+    setShippingAddress(user?.shipping_address || "");
+    setAddressError(null);
+    setEditingAddress(false);
+  };
+
   const saveAddress = async (e) => {
     e.preventDefault();
     setSavingAddress(true);
-    setError(null);
+    setAddressError(null);
     try {
       await apiFetch("/profile/address", {
         method: "PUT",
         body: JSON.stringify({ billing_address: billingAddress, shipping_address: shippingAddress }),
       });
       await refreshUser();
+      setEditingAddress(false);
       setSuccess("Address updated");
     } catch (err) {
-      setError(err.message);
+      setAddressError(err.message);
     } finally {
       setSavingAddress(false);
     }
@@ -239,39 +256,79 @@ export default function ProfilePage() {
         {emailSuccess && <p className="text-xs text-green-600 mt-2">{emailSuccess}</p>}
       </div>
 
-      {/* Billing / Shipping Address */}
+      {/* Billing / Shipping Address — locked by default, edit is explicit */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="font-semibold text-gray-900 mb-1">Billing &amp; Shipping Address</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-gray-900">Billing &amp; Shipping Address</h2>
+          {!editingAddress && (
+            <button
+              onClick={startEditingAddress}
+              className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              Edit
+            </button>
+          )}
+        </div>
         <p className="text-xs text-gray-500 mb-4">Used for invoicing and default delivery — you can still override the ship-to address per order.</p>
-        <form onSubmit={saveAddress} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Billing Address</label>
-            <textarea
-              value={billingAddress}
-              onChange={(e) => setBillingAddress(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
-              placeholder="Billing address"
-            />
+
+        {editingAddress ? (
+          <form onSubmit={saveAddress} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Billing Address</label>
+              <textarea
+                value={billingAddress}
+                onChange={(e) => setBillingAddress(e.target.value)}
+                rows={2}
+                autoFocus
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
+                placeholder="Billing address"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Shipping Address</label>
+              <textarea
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
+                placeholder="Shipping address"
+              />
+            </div>
+            {addressError && <p className="text-sm text-red-600">{addressError}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={savingAddress}
+                className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+              >
+                {savingAddress ? "Saving..." : "Save Address"}
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditingAddress}
+                disabled={savingAddress}
+                className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Billing Address</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 px-3 py-2 rounded-lg">
+                {user?.billing_address || "Not set"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Shipping Address</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 px-3 py-2 rounded-lg">
+                {user?.shipping_address || "Not set"}
+              </p>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Shipping Address</label>
-            <textarea
-              value={shippingAddress}
-              onChange={(e) => setShippingAddress(e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none"
-              placeholder="Shipping address"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={savingAddress}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-          >
-            {savingAddress ? "Saving..." : "Save Address"}
-          </button>
-        </form>
+        )}
       </div>
 
       {/* Journey Progress */}

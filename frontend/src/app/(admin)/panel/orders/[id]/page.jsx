@@ -53,6 +53,36 @@ export default function AdminOrderDetail() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingTracking, setUploadingTracking] = useState(false);
   const [showMargModal, setShowMargModal] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [whatsAppError, setWhatsAppError] = useState("");
+  const [sendLog, setSendLog] = useState([]);
+
+  const loadSendLog = () =>
+    apiFetch(`/admin/orders/${id}/send-log`)
+      .then((data) => setSendLog(data.entries || []))
+      .catch(() => {});
+
+  const handleSendWhatsApp = async () => {
+    setSendingWhatsApp(true);
+    setWhatsAppError("");
+    try {
+      const { message, phone } = await apiFetch(`/admin/orders/${id}/whatsapp-message`);
+      const digits = phone.replace(/[^\d]/g, "");
+      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(message)}`, "_blank");
+      await apiFetch(`/admin/orders/${id}/whatsapp-sent`, {
+        method: "POST",
+        body: JSON.stringify({ key: "order_received_whatsapp", phone }),
+      });
+      loadSendLog();
+    } catch (err) {
+      setWhatsAppError(err.message);
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
+
+  const lastSent = (templateKey) =>
+    sendLog.find((e) => e.template_key === templateKey);
 
   const loadOrder = () =>
     apiFetch(`/orders/${id}`).then((data) => {
@@ -73,6 +103,7 @@ export default function AdminOrderDetail() {
     loadOrder()
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    loadSendLog();
   }, [id]);
 
   // Clear alerts after 4s
@@ -298,6 +329,30 @@ export default function AdminOrderDetail() {
             {order.status}
           </span>
         )}
+      </div>
+
+      {/* WhatsApp order-received message */}
+      <div className="mb-6 flex items-center gap-3 flex-wrap">
+        <button
+          onClick={handleSendWhatsApp}
+          disabled={sendingWhatsApp}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+        >
+          <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+            <path d="M12.002 2C6.478 2 2 6.477 2 12c0 1.833.488 3.599 1.415 5.153L2 22l4.943-1.393A9.955 9.955 0 0012.002 22C17.525 22 22 17.523 22 12S17.525 2 12.002 2zm0 18.086c-1.63 0-3.204-.436-4.58-1.263l-.328-.196-3.296.929.897-3.309-.216-.34A8.09 8.09 0 013.914 12c0-4.463 3.626-8.086 8.088-8.086 4.462 0 8.086 3.623 8.086 8.086 0 4.462-3.624 8.086-8.086 8.086z" />
+          </svg>
+          {sendingWhatsApp ? "Preparing..." : "Send WhatsApp Message"}
+        </button>
+        {lastSent("order_received_whatsapp") && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-green-700">
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg>
+            Sent {new Date(lastSent("order_received_whatsapp").sent_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+          </span>
+        )}
+        {whatsAppError && <p className="text-xs text-red-600">{whatsAppError}</p>}
       </div>
 
       {/* Marg ERP push */}

@@ -96,6 +96,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/balance", userauth.GetMyBalanceHandler(db)).Methods("GET")
 
 	// order routes (any authenticated user, except doctors — catalog
 	// browsing only, no ordering)
@@ -319,6 +320,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/{id}/rid", userauth.UpdatePartnerRidHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}/address", userauth.UpdatePartnerAddressHandler(db, rdb)).Methods("PUT")
 	partnerStaff.HandleFunc("/partners/{id}/send-email/{key}", userauth.SendPartnerEmailHandler(db)).Methods("POST")
+	partnerStaff.HandleFunc("/partners/{id}/send-log", userauth.PartnerSendLogHandler(db)).Methods("GET")
 
 	// staff routes — changing a partner's login phone/email/password is
 	// gated behind its own permission on top of "partners", since it's a
@@ -347,6 +349,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderStaff.Use(middleware.RequirePermission(db, "orders", rdb))
 
 	orderStaff.HandleFunc("/orders", orders.ListAllOrdersHandler(db)).Methods("GET")
+	orderStaff.HandleFunc("/orders/{id}/whatsapp-message", orders.OrderWhatsAppMessageHandler(db)).Methods("GET")
+	orderStaff.HandleFunc("/orders/{id}/whatsapp-sent", orders.MarkOrderWhatsAppSentHandler(db)).Methods("POST")
+	orderStaff.HandleFunc("/orders/{id}/send-log", orders.OrderSendLogHandler(db)).Methods("GET")
 
 	// staff routes — order management (edit: status, quantities, delivery
 	// details, photos, and the transports/modes master data), gated

@@ -59,6 +59,10 @@ func notifyOrderStatusEmail(db *pgxpool.Pool, orderID uuid.UUID, status string) 
 		}
 		if err := mailer.Send(ctx, mailer.ConfigFromEnv(), *user.Email, subject, body); err != nil {
 			log.Printf("order status email: send failed: %v", err)
+			return
+		}
+		if err := models.LogEmailSend(ctx, db, "order_status_changed", "email", "order", orderID, *user.Email, nil); err != nil {
+			log.Printf("order status email: log send failed: %v", err)
 		}
 	}()
 }
@@ -143,8 +147,126 @@ func notifyOrderPlacedEmail(db *pgxpool.Pool, orderID uuid.UUID) {
 		}
 		if err := mailer.Send(ctx, mailer.ConfigFromEnv(), *user.Email, subject, body); err != nil {
 			log.Printf("order placed email: send failed: %v", err)
+			return
+		}
+		if err := models.LogEmailSend(ctx, db, "order_placed", "email", "order", orderID, *user.Email, nil); err != nil {
+			log.Printf("order placed email: log send failed: %v", err)
 		}
 	}()
+}
+
+// GET /admin/orders/{id}/whatsapp-message?key=order_received_whatsapp — staff
+// gets the rendered text for a manual whatsapp template plus the
+// customer's phone, so the frontend can build a wa.me deep link (opens
+// WhatsApp with the message prefilled — no WhatsApp Business API needed).
+func OrderWhatsAppMessageHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			key = "order_received_whatsapp"
+		}
+
+		order, err := models.GetOrderByID(r.Context(), db, id)
+		if err != nil {
+			http.Error(w, "order not found", http.StatusNotFound)
+			return
+		}
+		user, err := models.GetUserByID(r.Context(), db, order.UserID)
+		if err != nil {
+			http.Error(w, "could not load customer", http.StatusInternalServerError)
+			return
+		}
+		if user.PhoneNumber == "" {
+			http.Error(w, "this partner has no phone number on file", http.StatusBadRequest)
+			return
+		}
+
+		name := "there"
+		if user.Username != nil && *user.Username != "" {
+			name = *user.Username
+		}
+		data := buildOrderEmailData(order, user)
+		data.CustomerName = name
+
+		message, err := mailer.RenderText(r.Context(), db, key, data)
+		if err != nil {
+			log.Printf("order whatsapp message: render failed: %v", err)
+			http.Error(w, "could not render message", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": message,
+			"phone":   user.PhoneNumber,
+		})
+	}
+}
+
+// POST /admin/orders/{id}/whatsapp-sent — logs that staff opened the wa.me
+// link for this order (called by the frontend right after window.open
+// succeeds). There's no WhatsApp Business API here, so this is the
+// closest signal to "sent" available — it can't confirm delivery, only
+// that staff drafted and launched the message.
+func MarkOrderWhatsAppSentHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Key   string `json:"key"`
+			Phone string `json:"phone"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if body.Key == "" {
+			body.Key = "order_received_whatsapp"
+		}
+		if body.Phone == "" {
+			http.Error(w, "phone is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.LogEmailSend(r.Context(), db, body.Key, "whatsapp", "order", id, body.Phone, actorID(r)); err != nil {
+			log.Printf("mark whatsapp sent: log failed: %v", err)
+			http.Error(w, "could not log send", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "logged"})
+	}
+}
+
+// GET /admin/orders/{id}/send-log — every recorded email/whatsapp send for
+// this order, most recent first, so the order page can show "sent ✓" and
+// when instead of staff guessing or re-sending blind.
+func OrderSendLogHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+		entries, err := models.ListEmailSendLog(r.Context(), db, "order", id)
+		if err != nil {
+			log.Printf("order send log error: %v", err)
+			http.Error(w, "could not fetch send log", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"entries": entries})
+	}
 }
 
 // POST /orders — partner places an order from their cart

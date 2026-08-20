@@ -479,9 +479,42 @@ func SendPartnerEmailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not send email", http.StatusInternalServerError)
 			return
 		}
+		if err := models.LogEmailSend(r.Context(), db, key, "email", "partner", userID, *user.Email, sendEmailActorID(r)); err != nil {
+			log.Printf("send partner email: log send failed for %s: %v", key, err)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	}
+}
+
+// sendEmailActorID returns the acting staff user's ID for send-log
+// attribution, or nil if it can't be parsed from the request context.
+func sendEmailActorID(r *http.Request) *uuid.UUID {
+	id, err := uuid.Parse(r.Context().Value("user_id").(string))
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
+// GET /admin/partners/{id}/send-log — every recorded email send for this
+// partner, most recent first (e.g. the welcome-credentials email).
+func PartnerSendLogHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		entries, err := models.ListEmailSendLog(r.Context(), db, "partner", userID)
+		if err != nil {
+			log.Printf("partner send log error: %v", err)
+			http.Error(w, "could not fetch send log", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"entries": entries})
 	}
 }
 

@@ -27,10 +27,11 @@ export default function DashboardPage() {
   const [meetings, setMeetings] = useState([]);
   const [requestsList, setRequestsList] = useState([]);
   const [ledger, setLedger] = useState(null);
+  const [balance, setBalance] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Ledger is partner-only — team members never see it, so skip the fetch
-  // entirely for them rather than just hiding the section after the fact.
+  // Ledger/balance are partner-only — team members never see them, so skip
+  // the fetch entirely rather than just hiding the section after the fact.
   const isTeamMember = user?.role === "team_member";
 
   useEffect(() => {
@@ -40,12 +41,14 @@ export default function DashboardPage() {
       apiFetch("/meetings").catch(() => []),
       apiFetch("/requests").catch(() => []),
       isTeamMember ? Promise.resolve(null) : apiFetch("/ledger").catch(() => null),
-    ]).then(([o, d, m, r, l]) => {
+      isTeamMember ? Promise.resolve(null) : apiFetch("/profile/balance").catch(() => null),
+    ]).then(([o, d, m, r, l, b]) => {
       setOrders(Array.isArray(o) ? o : []);
       setDoctors(Array.isArray(d) ? d : []);
       setMeetings(Array.isArray(m) ? m : []);
       setRequestsList(Array.isArray(r) ? r : []);
       setLedger(l || null);
+      setBalance(b || null);
       setLoading(false);
     });
   }, [isTeamMember]);
@@ -81,6 +84,25 @@ export default function DashboardPage() {
         <SummaryCard label="Upcoming Meetings" value={upcomingMeetings.length} href="/meetings" />
         <SummaryCard label="Requests" value={requestsList.length} href="/requests" />
       </div>
+
+      {/* Current Balance — partner-only, pulled from their linked Marg
+          ledger account. Not shown at all if there's no rid linked yet or
+          no synced balance, rather than showing a confusing zero. */}
+      {!isTeamMember && balance?.balance !== null && balance?.balance !== undefined && (
+        <div className="mb-10 border border-gray-200 rounded-lg px-5 py-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Current Balance</p>
+            <p className="text-2xl font-light text-gray-900">
+              ₹{Number(balance.balance).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          {balance.synced_at && (
+            <p className="text-xs text-gray-400">
+              As of {new Date(balance.synced_at).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Upcoming meetings */}

@@ -84,15 +84,22 @@ export default function EmailTemplatesPage() {
             >
               <div className="flex items-center justify-between gap-2 mb-1">
                 <p className="text-sm font-medium text-gray-900">{t.label}</p>
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
-                    t.trigger_mode === "automated"
-                      ? "bg-blue-50 text-blue-700"
-                      : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {t.trigger_mode}
-                </span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {t.channel === "whatsapp" && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-green-50 text-green-700">
+                      WhatsApp
+                    </span>
+                  )}
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
+                      t.trigger_mode === "automated"
+                        ? "bg-blue-50 text-blue-700"
+                        : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {t.trigger_mode}
+                  </span>
+                </div>
               </div>
               <p className="text-xs text-gray-500">{t.description}</p>
             </button>
@@ -110,19 +117,23 @@ export default function EmailTemplatesPage() {
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono"
-                />
-              </div>
+              {selected.channel !== "whatsapp" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono"
+                  />
+                </div>
+              )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Body (HTML)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {selected.channel === "whatsapp" ? "Message" : "Body (HTML)"}
+                </label>
                 <textarea
                   value={bodyHtml}
                   onChange={(e) => setBodyHtml(e.target.value)}
@@ -130,6 +141,9 @@ export default function EmailTemplatesPage() {
                   rows={14}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-900 font-mono resize-y"
                 />
+                {selected.channel === "whatsapp" && (
+                  <p className="text-[11px] text-gray-400 mt-1">Plain text — no HTML tags.</p>
+                )}
               </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}

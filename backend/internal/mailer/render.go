@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"html/template"
+	texttemplate "text/template"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
@@ -41,6 +42,34 @@ func Render(ctx context.Context, db *pgxpool.Pool, key string, data any) (subjec
 
 func execute(name, src string, data any) (string, error) {
 	tmpl, err := template.New(name).Parse(src)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// RenderText is Render's plain-text counterpart — used for the "whatsapp"
+// channel, whose body isn't HTML and shouldn't go through html/template's
+// auto-escaping (which would turn a customer's "&" into "&amp;" in a chat
+// message). Whatsapp templates have no subject.
+func RenderText(ctx context.Context, db *pgxpool.Pool, key string, data any) (body string, err error) {
+	t, err := models.GetEmailTemplateByKey(ctx, db, key)
+	bodySrc := ""
+	if err != nil {
+		def, ok := defaultTemplates[key]
+		if !ok {
+			return "", err
+		}
+		bodySrc = def.body
+	} else {
+		bodySrc = t.BodyHTML
+	}
+
+	tmpl, err := texttemplate.New(key + "_text").Parse(bodySrc)
 	if err != nil {
 		return "", err
 	}
@@ -96,6 +125,19 @@ var defaultTemplates = map[string]defaultTemplate{
 			<p style="color:#555">Your order status has been updated to <strong>{{.StatusLabel}}</strong>.</p>` + orderDetailsBlock + `
 			<p style="margin-top:32px;font-size:12px;color:#999">Moulins Pharma</p>
 		</div>`,
+	},
+	"order_received_whatsapp": {
+		body: `Hi {{.CustomerName}}, we've received your order {{.OrderCode}}.
+
+Items:
+{{range .Items}}- {{.ProductName}} x{{.Quantity}}
+{{end}}
+{{if .TransportMode}}Transport: {{.TransportMode}}
+{{end}}{{if .ShippingAddress}}Shipping to: {{.ShippingAddress}}
+{{end}}
+We'll keep you posted as it moves through confirmation, shipping, and delivery.
+
+- Moulins Pharma`,
 	},
 	"partner_welcome_credentials": {
 		subject: "Your Moulins Pharma account is ready",
