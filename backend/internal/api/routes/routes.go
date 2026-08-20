@@ -150,6 +150,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// doctor's own profile (doctor-role login only, but open to any
 	// authenticated user — the handler scopes by user_id)
 	protected.HandleFunc("/doctor/me", doctors.GetMyDoctorProfileHandler(db)).Methods("GET")
+	protected.HandleFunc("/doctor/me", doctors.UpdateMyDoctorProfileHandler(db)).Methods("PUT")
 
 	// meeting routes (any authenticated user — partners and employees both own doctors/meetings)
 	protected.HandleFunc("/meetings", meetings.CreateHandler(db)).Methods("POST")

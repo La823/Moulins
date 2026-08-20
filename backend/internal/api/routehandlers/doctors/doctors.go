@@ -387,6 +387,50 @@ func GetMyDoctorProfileHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// PUT /doctor/me — a doctor edits their own name/email/clinic details and
+// location. Phone stays fixed (it's their login identity, only staff can
+// change it) and speciality isn't part of the self-service profile.
+func UpdateMyDoctorProfileHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(r.Context().Value("user_id").(string))
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		doctor, err := models.GetDoctorByUserID(r.Context(), db, userID)
+		if err != nil {
+			http.Error(w, "doctor profile not found", http.StatusNotFound)
+			return
+		}
+
+		var req models.UpdateDoctorSelfRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if req.Name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateDoctorSelf(r.Context(), db, doctor.ID, req); err != nil {
+			log.Printf("update my doctor profile error: %v", err)
+			http.Error(w, "could not update profile", http.StatusInternalServerError)
+			return
+		}
+
+		updated, err := models.GetDoctorByUserID(r.Context(), db, userID)
+		if err != nil {
+			http.Error(w, "doctor profile not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(updated)
+	}
+}
+
 func RemoveDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])

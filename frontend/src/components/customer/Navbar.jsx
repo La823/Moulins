@@ -327,6 +327,11 @@ export default function CustomerNavbar() {
     }
   };
 
+  // Doctors have their own minimal profile (name/phone/email/speciality/
+  // clinic — no GST/license/address, none of which applies to them). The
+  // generic customer /profile page shouldn't ever appear in their nav.
+  const profileHref = (u) => (u.role === "doctor" ? "/doctor-panel/profile" : "/profile");
+
   const dashboardHref = (u) =>
     u.role === "admin" || u.role === "employee"
       ? "/panel"
@@ -687,7 +692,7 @@ export default function CustomerNavbar() {
                       </div>
                       <div className="py-1">
                         <Link
-                          href="/profile"
+                          href={profileHref(user)}
                           onClick={close}
                           className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         >
@@ -860,7 +865,7 @@ export default function CustomerNavbar() {
                 {user && (
                   <div className="flex flex-col gap-1">
                     <p className="text-sm font-medium text-gray-900 mb-2">{user.username || user.phone_number}</p>
-                    <Link href="/profile" onClick={close} className="py-2 text-sm text-gray-700">My Profile</Link>
+                    <Link href={profileHref(user)} onClick={close} className="py-2 text-sm text-gray-700">My Profile</Link>
                     <Link
                       href={dashboardHref(user)}
                       onClick={close}
