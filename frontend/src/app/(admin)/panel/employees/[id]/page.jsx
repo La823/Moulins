@@ -444,7 +444,7 @@ export default function EmployeeDetailPage() {
         </div>
 
         {/* Right column — permissions (employees only; admins have full access already) */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 min-w-0">
           {employee.role === "employee" && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-5">
@@ -491,11 +491,11 @@ export default function EmployeeDetailPage() {
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                       {groupName}
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                       {perms.map((perm) => (
                         <label
                           key={perm.key}
-                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors min-w-0"
                         >
                           <input
                             type="checkbox"
@@ -506,13 +506,13 @@ export default function EmployeeDetailPage() {
                                 [perm.key]: e.target.checked,
                               })
                             }
-                            className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                            className="w-4 h-4 flex-shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
                           />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 break-words">
                               {perm.label}
                             </p>
-                            <p className="text-xs text-gray-500">{perm.desc}</p>
+                            <p className="text-xs text-gray-500 break-words">{perm.desc}</p>
                           </div>
                         </label>
                       ))}

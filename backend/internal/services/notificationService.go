@@ -30,7 +30,7 @@ func DispatchBroadcast(ctx context.Context, db *pgxpool.Pool, notification *mode
 	if listID != nil {
 		eligibleUserIDs, err = models.GetEligibleUserIDsFromList(ctx, db, *listID, excludedUserIDs)
 	} else {
-		eligibleUserIDs, err = models.GetEligibleUserIDs(ctx, db, excludedUserIDs)
+		eligibleUserIDs, err = models.GetEligibleUserIDs(ctx, db, excludedUserIDs, notification.IncludeDoctors)
 	}
 	if err != nil {
 		return err

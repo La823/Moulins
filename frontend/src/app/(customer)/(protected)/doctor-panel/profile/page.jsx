@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import LocationPicker from "@/components/LocationPicker";
 
 export default function DoctorProfilePage() {
   const [doctor, setDoctor] = useState(null);
@@ -13,8 +12,6 @@ export default function DoctorProfilePage() {
   const [email, setEmail] = useState("");
   const [clinicName, setClinicName] = useState("");
   const [clinicAddress, setClinicAddress] = useState("");
-  const [location, setLocation] = useState(null); // {lat, lng}
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -28,11 +25,6 @@ export default function DoctorProfilePage() {
         setEmail(data.email || "");
         setClinicName(data.clinic_name || "");
         setClinicAddress(data.clinic_address || "");
-        setLocation(
-          data.latitude != null && data.longitude != null
-            ? { lat: data.latitude, lng: data.longitude }
-            : null
-        );
       })
       .catch((err) => setLoadError(err.message || "Could not load profile"))
       .finally(() => setLoading(false));
@@ -40,12 +32,6 @@ export default function DoctorProfilePage() {
   useEffect(() => {
     loadDoctor();
   }, []);
-
-  const handleLocationConfirm = (picked) => {
-    setLocation({ lat: picked.lat, lng: picked.lng });
-    if (picked.address) setClinicAddress(picked.address);
-    setShowLocationPicker(false);
-  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -60,8 +46,6 @@ export default function DoctorProfilePage() {
           email: email.trim() || undefined,
           clinic_name: clinicName.trim() || undefined,
           clinic_address: clinicAddress.trim() || undefined,
-          latitude: location?.lat,
-          longitude: location?.lng,
         }),
       });
       setSuccess("Profile updated");
@@ -142,16 +126,7 @@ export default function DoctorProfilePage() {
               />
             </div>
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700">Clinic Location</label>
-                <button
-                  type="button"
-                  onClick={() => setShowLocationPicker(true)}
-                  className="text-xs text-red-600 hover:text-red-700 font-medium"
-                >
-                  {location ? "Change" : "Set location"}
-                </button>
-              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Clinic Address</label>
               <textarea
                 value={clinicAddress}
                 onChange={(e) => setClinicAddress(e.target.value)}
@@ -159,11 +134,6 @@ export default function DoctorProfilePage() {
                 placeholder="Clinic address"
                 className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 outline-none focus:border-gray-400 transition-colors resize-none"
               />
-              {location && (
-                <p className="text-[11px] text-gray-400 mt-1">
-                  📍 {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -179,14 +149,6 @@ export default function DoctorProfilePage() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
       </form>
-
-      {showLocationPicker && (
-        <LocationPicker
-          initial={location ? { ...location, address: clinicAddress } : null}
-          onConfirm={handleLocationConfirm}
-          onClose={() => setShowLocationPicker(false)}
-        />
-      )}
     </div>
   );
 }

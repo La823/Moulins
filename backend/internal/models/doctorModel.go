@@ -297,23 +297,22 @@ func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req
 // profile — deliberately narrower than CreateDoctorRequest: no phone
 // (that's their login identity, changed only by staff), no speciality
 // (dropped from the self-service profile), no DOB (partner/staff-managed
-// for birthday reminders).
+// for birthday reminders), and no lat/lng (clinic location is set by the
+// partner who added them, not self-editable — untouched by this update).
 type UpdateDoctorSelfRequest struct {
-	Name          string   `json:"name"`
-	Email         *string  `json:"email,omitempty"`
-	ClinicName    *string  `json:"clinic_name,omitempty"`
-	ClinicAddress *string  `json:"clinic_address,omitempty"`
-	Latitude      *float64 `json:"latitude,omitempty"`
-	Longitude     *float64 `json:"longitude,omitempty"`
+	Name          string  `json:"name"`
+	Email         *string `json:"email,omitempty"`
+	ClinicName    *string `json:"clinic_name,omitempty"`
+	ClinicAddress *string `json:"clinic_address,omitempty"`
 }
 
 // UpdateDoctorSelf lets a doctor edit their own name/email/clinic
-// name/address/location — never their phone (login identity, staff-only)
-// or speciality (removed from the self-service profile).
+// name/address — never their phone (login identity, staff-only),
+// speciality, or clinic location (removed from the self-service profile).
 func UpdateDoctorSelf(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req UpdateDoctorSelfRequest) error {
 	_, err := db.Exec(ctx,
-		`UPDATE doctors SET name = $1, email = $2, clinic_name = $3, clinic_address = $4, latitude = $5, longitude = $6 WHERE id = $7`,
-		req.Name, req.Email, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, doctorID,
+		`UPDATE doctors SET name = $1, email = $2, clinic_name = $3, clinic_address = $4 WHERE id = $5`,
+		req.Name, req.Email, req.ClinicName, req.ClinicAddress, doctorID,
 	)
 	return err
 }

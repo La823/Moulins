@@ -1,0 +1,1 @@
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS include_doctors BOOLEAN NOT NULL DEFAULT false;

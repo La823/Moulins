@@ -9,6 +9,7 @@ export default function NotificationsPage() {
   const [excluded, setExcluded] = useState([]); // [{id, username, phone_number}]
   const [lists, setLists] = useState([]);
   const [listId, setListId] = useState("");
+  const [includeDoctors, setIncludeDoctors] = useState(false);
   const [allPartners, setAllPartners] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
@@ -108,6 +109,7 @@ export default function NotificationsPage() {
           deep_link: form.deep_link.trim() || null,
           image_key: imageKey,
           broadcast_list_id: listId || null,
+          include_doctors: !listId && includeDoctors,
           exclude_user_ids: excluded.map((u) => u.id),
         }),
       });
@@ -117,6 +119,7 @@ export default function NotificationsPage() {
       setImageFile(null);
       setExcluded([]);
       setListId("");
+      setIncludeDoctors(false);
       fetchHistory();
     } catch (err) {
       setError(err.message);
@@ -195,6 +198,18 @@ export default function NotificationsPage() {
             </a>{" "}
             page.
           </p>
+
+          {!listId && (
+            <label className="flex items-center gap-2 mt-3 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeDoctors}
+                onChange={(e) => setIncludeDoctors(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+              />
+              Also send to doctors
+            </label>
+          )}
         </div>
 
         <div>
@@ -270,6 +285,11 @@ export default function NotificationsPage() {
           <strong>
             {listId ? lists.find((l) => l.id === listId)?.name || "selected list" : "all partners"}
           </strong>
+          {!listId && includeDoctors && (
+            <>
+              {" "}and <strong>doctors</strong>
+            </>
+          )}
           {excluded.length > 0 && (
             <> except <strong>{excluded.length}</strong> excluded user{excluded.length !== 1 ? "s" : ""}</>
           )}

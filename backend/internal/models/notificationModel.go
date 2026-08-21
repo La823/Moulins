@@ -16,6 +16,7 @@ type Notification struct {
 	ImageURL         string     `json:"image_url,omitempty"`
 	DeepLink         *string    `json:"deep_link,omitempty"`
 	BroadcastListID  *uuid.UUID `json:"broadcast_list_id,omitempty"`
+	IncludeDoctors   bool       `json:"include_doctors"`
 	AudienceType     string     `json:"audience_type"`
 	Status           string     `json:"status"`
 	RecipientCount   int        `json:"recipient_count"`
@@ -34,8 +35,12 @@ type CreateNotificationRequest struct {
 	ImageKey        *string     `json:"image_key,omitempty"`
 	DeepLink        *string     `json:"deep_link,omitempty"`
 	BroadcastListID *uuid.UUID  `json:"broadcast_list_id,omitempty"`
-	ExcludeUserIDs  []uuid.UUID `json:"exclude_user_ids"`
-	CreatedBy       uuid.UUID   `json:"-"`
+	// IncludeDoctors adds doctor-role users to the "all partners" audience.
+	// Only meaningful when BroadcastListID is nil — a specific broadcast
+	// list is exactly its members, doctors or not.
+	IncludeDoctors bool        `json:"include_doctors"`
+	ExcludeUserIDs []uuid.UUID `json:"exclude_user_ids"`
+	CreatedBy      uuid.UUID   `json:"-"`
 }
 
 // NotificationInboxItem is a recipient row joined with its notification content,
@@ -58,11 +63,12 @@ func CreateNotification(ctx context.Context, db *pgxpool.Pool, req CreateNotific
 	if req.BroadcastListID != nil {
 		audienceType = "list"
 	}
+	includeDoctors := req.IncludeDoctors && req.BroadcastListID == nil
 	err := db.QueryRow(ctx, `
-		INSERT INTO notifications (title, body, image_key, deep_link, broadcast_list_id, audience_type, status, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, 'sending', $7)
+		INSERT INTO notifications (title, body, image_key, deep_link, broadcast_list_id, include_doctors, audience_type, status, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'sending', $8)
 		RETURNING id
-	`, req.Title, req.Body, req.ImageKey, req.DeepLink, req.BroadcastListID, audienceType, req.CreatedBy).Scan(&id)
+	`, req.Title, req.Body, req.ImageKey, req.DeepLink, req.BroadcastListID, includeDoctors, audienceType, req.CreatedBy).Scan(&id)
 	return id, err
 }
 
@@ -106,12 +112,14 @@ func CreateExclusions(ctx context.Context, db *pgxpool.Pool, notificationID uuid
 	return err
 }
 
-// GetEligibleUserIDs returns partner user IDs excluding the given set.
-func GetEligibleUserIDs(ctx context.Context, db *pgxpool.Pool, excludedIDs []uuid.UUID) ([]uuid.UUID, error) {
+// GetEligibleUserIDs returns partner user IDs excluding the given set —
+// plus doctor-role users too when includeDoctors is set, for a broadcast
+// that's meant to reach both.
+func GetEligibleUserIDs(ctx context.Context, db *pgxpool.Pool, excludedIDs []uuid.UUID, includeDoctors bool) ([]uuid.UUID, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id FROM users
-		WHERE role = 'partner' AND NOT (id = ANY($1::uuid[]))
-	`, uuidStrings(excludedIDs))
+		WHERE (role = 'partner' OR ($2 AND role = 'doctor')) AND NOT (id = ANY($1::uuid[]))
+	`, uuidStrings(excludedIDs), includeDoctors)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +192,7 @@ func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, limit, offset in
 	}
 
 	rows, err := db.Query(ctx, `
-		SELECT n.id, n.title, n.body, n.image_key, n.deep_link, n.audience_type, n.status,
+		SELECT n.id, n.title, n.body, n.image_key, n.deep_link, n.include_doctors, n.audience_type, n.status,
 			n.recipient_count, n.push_success_count, n.push_failure_count, n.created_by, n.sent_at, n.created_at,
 			COALESCE(u.username, ''), COALESCE(u.role, '')
 		FROM notifications n
@@ -200,7 +208,7 @@ func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, limit, offset in
 	list := []Notification{}
 	for rows.Next() {
 		var n Notification
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.ImageKey, &n.DeepLink, &n.AudienceType, &n.Status,
+		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.ImageKey, &n.DeepLink, &n.IncludeDoctors, &n.AudienceType, &n.Status,
 			&n.RecipientCount, &n.PushSuccessCount, &n.PushFailureCount, &n.CreatedBy, &n.SentAt, &n.CreatedAt,
 			&n.CreatedByName, &n.CreatedByRole); err != nil {
 			return nil, 0, err
@@ -213,13 +221,13 @@ func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, limit, offset in
 func GetNotificationByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Notification, error) {
 	var n Notification
 	err := db.QueryRow(ctx, `
-		SELECT n.id, n.title, n.body, n.image_key, n.deep_link, n.audience_type, n.status,
+		SELECT n.id, n.title, n.body, n.image_key, n.deep_link, n.include_doctors, n.audience_type, n.status,
 			n.recipient_count, n.push_success_count, n.push_failure_count, n.created_by, n.sent_at, n.created_at,
 			COALESCE(u.username, ''), COALESCE(u.role, '')
 		FROM notifications n
 		LEFT JOIN users u ON u.id = n.created_by
 		WHERE n.id = $1
-	`, id).Scan(&n.ID, &n.Title, &n.Body, &n.ImageKey, &n.DeepLink, &n.AudienceType, &n.Status,
+	`, id).Scan(&n.ID, &n.Title, &n.Body, &n.ImageKey, &n.DeepLink, &n.IncludeDoctors, &n.AudienceType, &n.Status,
 		&n.RecipientCount, &n.PushSuccessCount, &n.PushFailureCount, &n.CreatedBy, &n.SentAt, &n.CreatedAt,
 		&n.CreatedByName, &n.CreatedByRole)
 	if err != nil {

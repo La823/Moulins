@@ -276,7 +276,7 @@ export default function EmployeesPage() {
               </div>
 
               {/* Current permissions badges */}
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {(emp.permissions || []).length === 0 ? (
                   <span className="text-xs text-gray-400 italic">
                     No permissions assigned
@@ -287,7 +287,7 @@ export default function EmployeesPage() {
                       key={p}
                       className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-md bg-blue-50 text-blue-700"
                     >
-                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                      {allPermissions.find((perm) => perm.key === p)?.label || p}
                     </span>
                   ))
                 )}
@@ -299,30 +299,45 @@ export default function EmployeesPage() {
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
                     Manage Permissions
                   </p>
-                  <div className="space-y-2">
-                    {allPermissions.map((perm) => (
-                      <label
-                        key={perm.key}
-                        className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={permState[perm.key] || false}
-                          onChange={(e) =>
-                            setPermState({
-                              ...permState,
-                              [perm.key]: e.target.checked,
-                            })
-                          }
-                          className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
-                        />
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {perm.label}
-                          </p>
-                          <p className="text-xs text-gray-500">{perm.desc}</p>
+                  <div className="space-y-4 min-w-0">
+                    {Object.entries(
+                      allPermissions.reduce((groups, perm) => {
+                        const g = perm.group || "Other";
+                        (groups[g] = groups[g] || []).push(perm);
+                        return groups;
+                      }, {})
+                    ).map(([groupName, perms]) => (
+                      <div key={groupName} className="min-w-0">
+                        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                          {groupName}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
+                          {perms.map((perm) => (
+                            <label
+                              key={perm.key}
+                              className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors min-w-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={permState[perm.key] || false}
+                                onChange={(e) =>
+                                  setPermState({
+                                    ...permState,
+                                    [perm.key]: e.target.checked,
+                                  })
+                                }
+                                className="w-4 h-4 flex-shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 break-words">
+                                  {perm.label}
+                                </p>
+                                <p className="text-xs text-gray-500 break-words">{perm.desc}</p>
+                              </div>
+                            </label>
+                          ))}
                         </div>
-                      </label>
+                      </div>
                     ))}
                   </div>
                   <button
