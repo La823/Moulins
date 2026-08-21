@@ -214,140 +214,263 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/onboarding/upload-url", onboardingHandler.GetUploadURL).Methods("POST")
 	protected.HandleFunc("/onboarding/status", onboardingHandler.GetStatus).Methods("GET")
 
-	// admin-only routes
+	// admin-only routes — nothing permission-gated lives here anymore
+	// except things too sensitive to delegate (creating admin/staff logins
+	// via /createuser is intentionally not exposed to permission-holders).
 	admin := protected.PathPrefix("/admin").Subrouter()
 	admin.Use(middleware.AdminOnly)
 
 	admin.HandleFunc("/users", userauth.GetLastUsersHandler(db)).Methods("GET")
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
-	admin.HandleFunc("/employees", userauth.GetEmployeesHandler(db)).Methods("GET")
-	admin.HandleFunc("/admins", userauth.GetAdminsHandler(db)).Methods("GET")
-	admin.HandleFunc("/employees/{id}", userauth.GetEmployeeDetailHandler(db)).Methods("GET")
-	admin.HandleFunc("/employees/{id}/password", userauth.UpdateEmployeePasswordHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/employees/{id}/email", userauth.UpdateEmployeeEmailHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/employees/{id}/permissions", userauth.GetPermissionsHandler(db)).Methods("GET")
-	admin.HandleFunc("/employees/{id}/permissions", userauth.SetPermissionsHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/employees/{id}/role", userauth.UpdateEmployeeRoleHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/employees/{id}", userauth.DeleteEmployeeHandler(db, rdb)).Methods("DELETE")
 
-	// Marg ERP master-data sync (products + party ledgers) — admin manual trigger
-	admin.HandleFunc("/marg-sync/trigger", margsyncHandlers.TriggerHandler(db)).Methods("POST")
+	// staff routes — employee management
+	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()
+	employeesViewStaff.Use(middleware.StaffOnly)
+	employeesViewStaff.Use(middleware.RequirePermission(db, "employees_view", rdb))
+	employeesViewStaff.HandleFunc("/employees", userauth.GetEmployeesHandler(db)).Methods("GET")
+	employeesViewStaff.HandleFunc("/employees/{id}", userauth.GetEmployeeDetailHandler(db)).Methods("GET")
+	employeesViewStaff.HandleFunc("/employees/{id}/permissions", userauth.GetPermissionsHandler(db)).Methods("GET")
+
+	employeesEditStaff := protected.PathPrefix("/admin").Subrouter()
+	employeesEditStaff.Use(middleware.StaffOnly)
+	employeesEditStaff.Use(middleware.RequirePermission(db, "employees_edit", rdb))
+	employeesEditStaff.HandleFunc("/employees/{id}/password", userauth.UpdateEmployeePasswordHandler(db, rdb)).Methods("PUT")
+	employeesEditStaff.HandleFunc("/employees/{id}/email", userauth.UpdateEmployeeEmailHandler(db, rdb)).Methods("PUT")
+	employeesEditStaff.HandleFunc("/employees/{id}/permissions", userauth.SetPermissionsHandler(db, rdb)).Methods("PUT")
+	employeesEditStaff.HandleFunc("/employees/{id}/role", userauth.UpdateEmployeeRoleHandler(db, rdb)).Methods("PUT")
+
+	employeesDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	employeesDeleteStaff.Use(middleware.StaffOnly)
+	employeesDeleteStaff.Use(middleware.RequirePermission(db, "employees_delete", rdb))
+	employeesDeleteStaff.HandleFunc("/employees/{id}", userauth.DeleteEmployeeHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — admin account list (view only, no separate admin
+	// management surface exists beyond the employees/{id}/role promotion)
+	adminsViewStaff := protected.PathPrefix("/admin").Subrouter()
+	adminsViewStaff.Use(middleware.StaffOnly)
+	adminsViewStaff.Use(middleware.RequirePermission(db, "admins_view", rdb))
+	adminsViewStaff.HandleFunc("/admins", userauth.GetAdminsHandler(db)).Methods("GET")
+
+	// staff routes — Marg ERP master-data sync (products + party ledgers)
+	margMasterEditStaff := protected.PathPrefix("/admin").Subrouter()
+	margMasterEditStaff.Use(middleware.StaffOnly)
+	margMasterEditStaff.Use(middleware.RequirePermission(db, "marg_master_edit", rdb))
+	margMasterEditStaff.HandleFunc("/marg-sync/trigger", margsyncHandlers.TriggerHandler(db)).Methods("POST")
 
 	// staff routes — Marg master data viewer (synced products/party ledgers)
 	margMasterStaff := protected.PathPrefix("/admin").Subrouter()
 	margMasterStaff.Use(middleware.StaffOnly)
-	margMasterStaff.Use(middleware.RequirePermission(db, "marg_master", rdb))
+	margMasterStaff.Use(middleware.RequirePermission(db, "marg_master_view", rdb))
 	margMasterStaff.HandleFunc("/marg-products", margmaster.ListProductsHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-parties", margmaster.ListPartiesHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/status", margsyncHandlers.StatusHandler(db)).Methods("GET")
 
-	// client-employee assignment routes (admin only)
-	admin.HandleFunc("/assignments", assignments.ListAllHandler(db)).Methods("GET")
-	admin.HandleFunc("/clients/{id}/employees", assignments.ListForClientHandler(db)).Methods("GET")
-	admin.HandleFunc("/clients/{id}/employees", assignments.AssignHandler(db)).Methods("POST")
-	admin.HandleFunc("/clients/{id}/employees/{employeeId}", assignments.RemoveHandler(db)).Methods("DELETE")
-	admin.HandleFunc("/employees/{id}/clients", assignments.ListForEmployeeHandler(db)).Methods("GET")
+	// staff routes — client-employee assignments
+	assignmentsViewStaff := protected.PathPrefix("/admin").Subrouter()
+	assignmentsViewStaff.Use(middleware.StaffOnly)
+	assignmentsViewStaff.Use(middleware.RequirePermission(db, "assignments_view", rdb))
+	assignmentsViewStaff.HandleFunc("/assignments", assignments.ListAllHandler(db)).Methods("GET")
+	assignmentsViewStaff.HandleFunc("/clients/{id}/employees", assignments.ListForClientHandler(db)).Methods("GET")
+	assignmentsViewStaff.HandleFunc("/employees/{id}/clients", assignments.ListForEmployeeHandler(db)).Methods("GET")
 
-	// attendance routes (admin only)
-	admin.HandleFunc("/attendance", attendance.MarkAttendanceHandler(db)).Methods("POST")
-	admin.HandleFunc("/attendance", attendance.GetAttendanceByDateHandler(db)).Methods("GET")
-	admin.HandleFunc("/attendance/month", attendance.GetAttendanceByMonthHandler(db)).Methods("GET")
-	admin.HandleFunc("/attendance/{id}", attendance.DeleteAttendanceHandler(db)).Methods("DELETE")
+	assignmentsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	assignmentsEditStaff.Use(middleware.StaffOnly)
+	assignmentsEditStaff.Use(middleware.RequirePermission(db, "assignments_edit", rdb))
+	assignmentsEditStaff.HandleFunc("/clients/{id}/employees", assignments.AssignHandler(db)).Methods("POST")
 
-	// settings routes (admin only)
-	admin.HandleFunc("/settings", attendance.GetSettingsHandler(db, rdb)).Methods("GET")
-	admin.HandleFunc("/settings", attendance.UpdateSettingsHandler(db, rdb)).Methods("PUT")
+	assignmentsDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	assignmentsDeleteStaff.Use(middleware.StaffOnly)
+	assignmentsDeleteStaff.Use(middleware.RequirePermission(db, "assignments_delete", rdb))
+	assignmentsDeleteStaff.HandleFunc("/clients/{id}/employees/{employeeId}", assignments.RemoveHandler(db)).Methods("DELETE")
 
-	admin.HandleFunc("/email-templates", emailtemplates.ListHandler(db)).Methods("GET")
-	admin.HandleFunc("/email-templates/{key}", emailtemplates.GetHandler(db)).Methods("GET")
-	admin.HandleFunc("/email-templates/{key}", emailtemplates.UpdateHandler(db)).Methods("PUT")
+	// staff routes — attendance
+	attendanceViewStaff := protected.PathPrefix("/admin").Subrouter()
+	attendanceViewStaff.Use(middleware.StaffOnly)
+	attendanceViewStaff.Use(middleware.RequirePermission(db, "attendance_view", rdb))
+	attendanceViewStaff.HandleFunc("/attendance", attendance.GetAttendanceByDateHandler(db)).Methods("GET")
+	attendanceViewStaff.HandleFunc("/attendance/month", attendance.GetAttendanceByMonthHandler(db)).Methods("GET")
 
-	// manufacturer routes (admin only)
-	admin.HandleFunc("/manufacturers", manufacturers.ListHandler(db, rdb)).Methods("GET")
-	admin.HandleFunc("/manufacturers", manufacturers.CreateHandler(db, rdb)).Methods("POST")
-	admin.HandleFunc("/manufacturers/{id}", manufacturers.GetHandler(db)).Methods("GET")
-	admin.HandleFunc("/manufacturers/{id}", manufacturers.UpdateHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/manufacturers/{id}", manufacturers.DeleteHandler(db, rdb)).Methods("DELETE")
+	attendanceEditStaff := protected.PathPrefix("/admin").Subrouter()
+	attendanceEditStaff.Use(middleware.StaffOnly)
+	attendanceEditStaff.Use(middleware.RequirePermission(db, "attendance_edit", rdb))
+	attendanceEditStaff.HandleFunc("/attendance", attendance.MarkAttendanceHandler(db)).Methods("POST")
 
-	// purchase order routes (admin only)
-	admin.HandleFunc("/purchase-orders", purchaseorders.ListHandler(db, rdb)).Methods("GET")
-	admin.HandleFunc("/purchase-orders/last-by-product", purchaseorders.LastByProductHandler(db)).Methods("GET")
-	admin.HandleFunc("/purchase-orders", purchaseorders.CreateHandler(db, rdb)).Methods("POST")
-	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.GetHandler(db, rdb)).Methods("GET")
-	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.UpdateHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/purchase-orders/{id}/status", purchaseorders.UpdateStatusHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/purchase-orders/{id}", purchaseorders.DeleteHandler(db, rdb)).Methods("DELETE")
+	attendanceDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	attendanceDeleteStaff.Use(middleware.StaffOnly)
+	attendanceDeleteStaff.Use(middleware.RequirePermission(db, "attendance_delete", rdb))
+	attendanceDeleteStaff.HandleFunc("/attendance/{id}", attendance.DeleteAttendanceHandler(db)).Methods("DELETE")
 
-	// onboarding routes (admin only)
-	admin.HandleFunc("/onboarding", onboardingHandler.GetPendingPartners).Methods("GET")
-	admin.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
-	admin.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
+	// staff routes — settings
+	settingsViewStaff := protected.PathPrefix("/admin").Subrouter()
+	settingsViewStaff.Use(middleware.StaffOnly)
+	settingsViewStaff.Use(middleware.RequirePermission(db, "settings_view", rdb))
+	settingsViewStaff.HandleFunc("/settings", attendance.GetSettingsHandler(db, rdb)).Methods("GET")
 
-	// home highlights (admin only)
-	admin.HandleFunc("/home-highlights", homehighlights.UpdateHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/home-highlights/upload-url", homehighlights.UploadURLHandler()).Methods("POST")
+	settingsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	settingsEditStaff.Use(middleware.StaffOnly)
+	settingsEditStaff.Use(middleware.RequirePermission(db, "settings_edit", rdb))
+	settingsEditStaff.HandleFunc("/settings", attendance.UpdateSettingsHandler(db, rdb)).Methods("PUT")
 
-	// home carousel (admin only)
-	admin.HandleFunc("/home-carousel", homecarousel.CreateHandler(db, rdb)).Methods("POST")
-	admin.HandleFunc("/home-carousel/{position}", homecarousel.UpdateHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/home-carousel/{position}", homecarousel.DeleteHandler(db, rdb)).Methods("DELETE")
-	admin.HandleFunc("/home-carousel/upload-url", homecarousel.UploadURLHandler()).Methods("POST")
+	// staff routes — email/whatsapp templates
+	emailTemplatesViewStaff := protected.PathPrefix("/admin").Subrouter()
+	emailTemplatesViewStaff.Use(middleware.StaffOnly)
+	emailTemplatesViewStaff.Use(middleware.RequirePermission(db, "email_templates_view", rdb))
+	emailTemplatesViewStaff.HandleFunc("/email-templates", emailtemplates.ListHandler(db)).Methods("GET")
+	emailTemplatesViewStaff.HandleFunc("/email-templates/{key}", emailtemplates.GetHandler(db)).Methods("GET")
 
-	// areas of focus (admin only)
-	admin.HandleFunc("/home-focus", homefocus.UpdateSectionHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/home-focus/cards/{position}", homefocus.UpdateCardHandler(db, rdb)).Methods("PUT")
-	admin.HandleFunc("/home-focus/upload-url", homefocus.UploadURLHandler()).Methods("POST")
+	emailTemplatesEditStaff := protected.PathPrefix("/admin").Subrouter()
+	emailTemplatesEditStaff.Use(middleware.StaffOnly)
+	emailTemplatesEditStaff.Use(middleware.RequirePermission(db, "email_templates_edit", rdb))
+	emailTemplatesEditStaff.HandleFunc("/email-templates/{key}", emailtemplates.UpdateHandler(db)).Methods("PUT")
 
-	// careers — job openings management (admin only)
-	admin.HandleFunc("/careers", jobs.AdminListHandler(db)).Methods("GET")
-	admin.HandleFunc("/careers", jobs.CreateHandler(db)).Methods("POST")
-	admin.HandleFunc("/careers/{id}", jobs.UpdateHandler(db)).Methods("PUT")
-	admin.HandleFunc("/careers/{id}", jobs.DeleteHandler(db)).Methods("DELETE")
-	admin.HandleFunc("/careers/{id}/applications", jobs.ListApplicationsHandler(db)).Methods("GET")
+	// staff routes — manufacturers
+	manufacturersViewStaff := protected.PathPrefix("/admin").Subrouter()
+	manufacturersViewStaff.Use(middleware.StaffOnly)
+	manufacturersViewStaff.Use(middleware.RequirePermission(db, "manufacturers_view", rdb))
+	manufacturersViewStaff.HandleFunc("/manufacturers", manufacturers.ListHandler(db, rdb)).Methods("GET")
+	manufacturersViewStaff.HandleFunc("/manufacturers/{id}", manufacturers.GetHandler(db)).Methods("GET")
+
+	manufacturersEditStaff := protected.PathPrefix("/admin").Subrouter()
+	manufacturersEditStaff.Use(middleware.StaffOnly)
+	manufacturersEditStaff.Use(middleware.RequirePermission(db, "manufacturers_edit", rdb))
+	manufacturersEditStaff.HandleFunc("/manufacturers", manufacturers.CreateHandler(db, rdb)).Methods("POST")
+	manufacturersEditStaff.HandleFunc("/manufacturers/{id}", manufacturers.UpdateHandler(db, rdb)).Methods("PUT")
+
+	manufacturersDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	manufacturersDeleteStaff.Use(middleware.StaffOnly)
+	manufacturersDeleteStaff.Use(middleware.RequirePermission(db, "manufacturers_delete", rdb))
+	manufacturersDeleteStaff.HandleFunc("/manufacturers/{id}", manufacturers.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — purchase orders
+	purchaseOrdersViewStaff := protected.PathPrefix("/admin").Subrouter()
+	purchaseOrdersViewStaff.Use(middleware.StaffOnly)
+	purchaseOrdersViewStaff.Use(middleware.RequirePermission(db, "purchase_orders_view", rdb))
+	purchaseOrdersViewStaff.HandleFunc("/purchase-orders", purchaseorders.ListHandler(db, rdb)).Methods("GET")
+	purchaseOrdersViewStaff.HandleFunc("/purchase-orders/last-by-product", purchaseorders.LastByProductHandler(db)).Methods("GET")
+	purchaseOrdersViewStaff.HandleFunc("/purchase-orders/{id}", purchaseorders.GetHandler(db, rdb)).Methods("GET")
+
+	purchaseOrdersEditStaff := protected.PathPrefix("/admin").Subrouter()
+	purchaseOrdersEditStaff.Use(middleware.StaffOnly)
+	purchaseOrdersEditStaff.Use(middleware.RequirePermission(db, "purchase_orders_edit", rdb))
+	purchaseOrdersEditStaff.HandleFunc("/purchase-orders", purchaseorders.CreateHandler(db, rdb)).Methods("POST")
+	purchaseOrdersEditStaff.HandleFunc("/purchase-orders/{id}", purchaseorders.UpdateHandler(db, rdb)).Methods("PUT")
+	purchaseOrdersEditStaff.HandleFunc("/purchase-orders/{id}/status", purchaseorders.UpdateStatusHandler(db, rdb)).Methods("PUT")
+
+	purchaseOrdersDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	purchaseOrdersDeleteStaff.Use(middleware.StaffOnly)
+	purchaseOrdersDeleteStaff.Use(middleware.RequirePermission(db, "purchase_orders_delete", rdb))
+	purchaseOrdersDeleteStaff.HandleFunc("/purchase-orders/{id}", purchaseorders.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — onboarding review (folded into partners view/edit,
+	// since it's reviewing partner documents)
+	onboardingViewStaff := protected.PathPrefix("/admin").Subrouter()
+	onboardingViewStaff.Use(middleware.StaffOnly)
+	onboardingViewStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
+	onboardingViewStaff.HandleFunc("/onboarding", onboardingHandler.GetPendingPartners).Methods("GET")
+	onboardingViewStaff.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
+
+	onboardingEditStaff := protected.PathPrefix("/admin").Subrouter()
+	onboardingEditStaff.Use(middleware.StaffOnly)
+	onboardingEditStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))
+	onboardingEditStaff.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
+
+	// staff routes — homepage (highlights, carousel, areas of focus)
+	homepageEditStaff := protected.PathPrefix("/admin").Subrouter()
+	homepageEditStaff.Use(middleware.StaffOnly)
+	homepageEditStaff.Use(middleware.RequirePermission(db, "homepage_edit", rdb))
+	homepageEditStaff.HandleFunc("/home-highlights", homehighlights.UpdateHandler(db, rdb)).Methods("PUT")
+	homepageEditStaff.HandleFunc("/home-highlights/upload-url", homehighlights.UploadURLHandler()).Methods("POST")
+	homepageEditStaff.HandleFunc("/home-carousel", homecarousel.CreateHandler(db, rdb)).Methods("POST")
+	homepageEditStaff.HandleFunc("/home-carousel/{position}", homecarousel.UpdateHandler(db, rdb)).Methods("PUT")
+	homepageEditStaff.HandleFunc("/home-carousel/upload-url", homecarousel.UploadURLHandler()).Methods("POST")
+	homepageEditStaff.HandleFunc("/home-focus", homefocus.UpdateSectionHandler(db, rdb)).Methods("PUT")
+	homepageEditStaff.HandleFunc("/home-focus/cards/{position}", homefocus.UpdateCardHandler(db, rdb)).Methods("PUT")
+	homepageEditStaff.HandleFunc("/home-focus/upload-url", homefocus.UploadURLHandler()).Methods("POST")
+
+	homepageDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	homepageDeleteStaff.Use(middleware.StaffOnly)
+	homepageDeleteStaff.Use(middleware.RequirePermission(db, "homepage_delete", rdb))
+	homepageDeleteStaff.HandleFunc("/home-carousel/{position}", homecarousel.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — careers (job openings management)
+	careersViewStaff := protected.PathPrefix("/admin").Subrouter()
+	careersViewStaff.Use(middleware.StaffOnly)
+	careersViewStaff.Use(middleware.RequirePermission(db, "careers_view", rdb))
+	careersViewStaff.HandleFunc("/careers", jobs.AdminListHandler(db)).Methods("GET")
+	careersViewStaff.HandleFunc("/careers/{id}/applications", jobs.ListApplicationsHandler(db)).Methods("GET")
+
+	careersEditStaff := protected.PathPrefix("/admin").Subrouter()
+	careersEditStaff.Use(middleware.StaffOnly)
+	careersEditStaff.Use(middleware.RequirePermission(db, "careers_edit", rdb))
+	careersEditStaff.HandleFunc("/careers", jobs.CreateHandler(db)).Methods("POST")
+	careersEditStaff.HandleFunc("/careers/{id}", jobs.UpdateHandler(db)).Methods("PUT")
+
+	careersDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	careersDeleteStaff.Use(middleware.StaffOnly)
+	careersDeleteStaff.Use(middleware.RequirePermission(db, "careers_delete", rdb))
+	careersDeleteStaff.HandleFunc("/careers/{id}", jobs.DeleteHandler(db)).Methods("DELETE")
 
 	// staff routes — partner management
 	partnerStaff := protected.PathPrefix("/admin").Subrouter()
 	partnerStaff.Use(middleware.StaffOnly)
-	partnerStaff.Use(middleware.RequirePermission(db, "partners", rdb))
+	partnerStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
 
-	partnerStaff.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/geocode/pincode", userauth.GeocodePincodeHandler()).Methods("GET")
 	partnerStaff.HandleFunc("/partners", userauth.GetPartnersHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/doctors", doctors.AdminListDoctorsHandler(db)).Methods("GET")
-	partnerStaff.HandleFunc("/doctors/{id}/contact-name", doctors.UpdateDoctorContactNameHandler(db)).Methods("PUT")
-	partnerStaff.HandleFunc("/partners/verify-document", userauth.VerifyPartnerDocumentHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
-	partnerStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
-	partnerStaff.HandleFunc("/partners/{id}/rid", userauth.UpdatePartnerRidHandler(db, rdb)).Methods("PUT")
-	partnerStaff.HandleFunc("/partners/{id}/address", userauth.UpdatePartnerAddressHandler(db, rdb)).Methods("PUT")
-	partnerStaff.HandleFunc("/partners/{id}/send-email/{key}", userauth.SendPartnerEmailHandler(db)).Methods("POST")
 	partnerStaff.HandleFunc("/partners/{id}/send-log", userauth.PartnerSendLogHandler(db)).Methods("GET")
 
+	// staff routes — partner management (edit)
+	partnerEditStaff := protected.PathPrefix("/admin").Subrouter()
+	partnerEditStaff.Use(middleware.StaffOnly)
+	partnerEditStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))
+
+	partnerEditStaff.HandleFunc("/createuser", userauth.CreateUserHandler(db)).Methods("POST")
+	partnerEditStaff.HandleFunc("/doctors/{id}/contact-name", doctors.UpdateDoctorContactNameHandler(db)).Methods("PUT")
+	partnerEditStaff.HandleFunc("/partners/verify-document", userauth.VerifyPartnerDocumentHandler(db)).Methods("POST")
+	partnerEditStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
+	partnerEditStaff.HandleFunc("/partners/{id}/rid", userauth.UpdatePartnerRidHandler(db, rdb)).Methods("PUT")
+	partnerEditStaff.HandleFunc("/partners/{id}/address", userauth.UpdatePartnerAddressHandler(db, rdb)).Methods("PUT")
+	partnerEditStaff.HandleFunc("/partners/{id}/send-email/{key}", userauth.SendPartnerEmailHandler(db)).Methods("POST")
+	partnerEditStaff.HandleFunc("/marg-parties/{rid}/create-partner", userauth.CreatePartnerFromMargPartyHandler(db)).Methods("POST")
+	partnerEditStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
+	partnerEditStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
+
+	// staff routes — partner management (delete)
+	partnerDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	partnerDeleteStaff.Use(middleware.StaffOnly)
+	partnerDeleteStaff.Use(middleware.RequirePermission(db, "partners_delete", rdb))
+	partnerDeleteStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
+
 	// staff routes — changing a partner's login phone/email/password is
-	// gated behind its own permission on top of "partners", since it's a
-	// more sensitive action (can lock the partner out or hijack their
-	// login) than viewing/managing the rest of their profile.
+	// gated behind its own permission on top of "partners_edit", since
+	// it's a more sensitive action (can lock the partner out or hijack
+	// their login) than editing the rest of their profile.
 	partnerCredentialsStaff := protected.PathPrefix("/admin").Subrouter()
 	partnerCredentialsStaff.Use(middleware.StaffOnly)
-	partnerCredentialsStaff.Use(middleware.RequirePermission(db, "partners", rdb))
+	partnerCredentialsStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))
 	partnerCredentialsStaff.Use(middleware.RequirePermission(db, "partners_credentials", rdb))
 	partnerCredentialsStaff.HandleFunc("/partners/{id}/password", userauth.UpdatePartnerPasswordHandler(db, rdb)).Methods("PUT")
 	partnerCredentialsStaff.HandleFunc("/partners/{id}/email", userauth.UpdatePartnerEmailHandler(db, rdb)).Methods("PUT")
 	partnerCredentialsStaff.HandleFunc("/partners/{id}/phone", userauth.UpdatePartnerPhoneHandler(db, rdb)).Methods("PUT")
-	partnerStaff.HandleFunc("/marg-parties/{rid}/create-partner", userauth.CreatePartnerFromMargPartyHandler(db)).Methods("POST")
-	partnerStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
-	partnerStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
-	partnerStaff.HandleFunc("/partners/{id}", userauth.DeletePartnerHandler(db, rdb)).Methods("DELETE")
 
 	// account deletion request review queue
-	partnerStaff.HandleFunc("/deletion-requests", accountdeletion.ListPendingHandler(db)).Methods("GET")
-	partnerStaff.HandleFunc("/deletion-requests/{id}/approve", accountdeletion.ApproveHandler(db)).Methods("PUT")
-	partnerStaff.HandleFunc("/deletion-requests/{id}/reject", accountdeletion.RejectHandler(db)).Methods("PUT")
+	deletionRequestsViewStaff := protected.PathPrefix("/admin").Subrouter()
+	deletionRequestsViewStaff.Use(middleware.StaffOnly)
+	deletionRequestsViewStaff.Use(middleware.RequirePermission(db, "deletion_requests_view", rdb))
+	deletionRequestsViewStaff.HandleFunc("/deletion-requests", accountdeletion.ListPendingHandler(db)).Methods("GET")
+
+	deletionRequestsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	deletionRequestsEditStaff.Use(middleware.StaffOnly)
+	deletionRequestsEditStaff.Use(middleware.RequirePermission(db, "deletion_requests_edit", rdb))
+	deletionRequestsEditStaff.HandleFunc("/deletion-requests/{id}/approve", accountdeletion.ApproveHandler(db)).Methods("PUT")
+	deletionRequestsEditStaff.HandleFunc("/deletion-requests/{id}/reject", accountdeletion.RejectHandler(db)).Methods("PUT")
 
 	// staff routes — order management (view-only: seeing the all-orders list)
 	orderStaff := protected.PathPrefix("/admin").Subrouter()
 	orderStaff.Use(middleware.StaffOnly)
-	orderStaff.Use(middleware.RequirePermission(db, "orders", rdb))
+	orderStaff.Use(middleware.RequirePermission(db, "orders_view", rdb))
 
 	orderStaff.HandleFunc("/orders", orders.ListAllOrdersHandler(db)).Methods("GET")
 	orderStaff.HandleFunc("/orders/{id}/whatsapp-message", orders.OrderWhatsAppMessageHandler(db)).Methods("GET")
@@ -355,8 +478,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderStaff.HandleFunc("/orders/{id}/send-log", orders.OrderSendLogHandler(db)).Methods("GET")
 
 	// staff routes — order management (edit: status, quantities, delivery
-	// details, photos, and the transports/modes master data), gated
-	// separately so "view only" staff can't mutate anything
+	// details, photos, and pushing to Marg), gated separately so "view
+	// only" staff can't mutate anything
 	orderEditStaff := protected.PathPrefix("/admin").Subrouter()
 	orderEditStaff.Use(middleware.StaffOnly)
 	orderEditStaff.Use(middleware.RequirePermission(db, "orders_edit", rdb))
@@ -371,136 +494,180 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.HandleFunc("/orders/photos/{photoId}", orders.DeletePhotoHandler(db)).Methods("DELETE")
 	orderEditStaff.HandleFunc("/orders/{id}/marg-batch-options", orders.MargBatchOptionsHandler(db)).Methods("GET")
 	orderEditStaff.HandleFunc("/orders/{id}/push-to-marg", orders.PushToMargHandler(db)).Methods("POST")
-	orderEditStaff.HandleFunc("/transports", transports.CreateHandler(db, rdb)).Methods("POST")
-	orderEditStaff.HandleFunc("/transports/{id}", transports.UpdateHandler(db, rdb)).Methods("PUT")
-	orderEditStaff.HandleFunc("/transports/{id}", transports.DeleteHandler(db, rdb)).Methods("DELETE")
-	orderEditStaff.HandleFunc("/transport-modes", transportmodes.CreateHandler(db, rdb)).Methods("POST")
-	orderEditStaff.HandleFunc("/transport-modes/{id}", transportmodes.DeleteHandler(db, rdb)).Methods("DELETE")
 
-	// staff routes — product management
+	// staff routes — transports / transport modes (their own edit/delete
+	// permissions, shown alongside Orders in the panel)
+	transportsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	transportsEditStaff.Use(middleware.StaffOnly)
+	transportsEditStaff.Use(middleware.RequirePermission(db, "transports_edit", rdb))
+	transportsEditStaff.HandleFunc("/transports", transports.CreateHandler(db, rdb)).Methods("POST")
+	transportsEditStaff.HandleFunc("/transports/{id}", transports.UpdateHandler(db, rdb)).Methods("PUT")
+	transportsEditStaff.HandleFunc("/transport-modes", transportmodes.CreateHandler(db, rdb)).Methods("POST")
+
+	transportsDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	transportsDeleteStaff.Use(middleware.StaffOnly)
+	transportsDeleteStaff.Use(middleware.RequirePermission(db, "transports_delete", rdb))
+	transportsDeleteStaff.HandleFunc("/transports/{id}", transports.DeleteHandler(db, rdb)).Methods("DELETE")
+	transportsDeleteStaff.HandleFunc("/transport-modes/{id}", transportmodes.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — product management (view)
+	productViewStaff := protected.PathPrefix("/admin").Subrouter()
+	productViewStaff.Use(middleware.StaffOnly)
+	productViewStaff.Use(middleware.RequirePermission(db, "products_view", rdb))
+	productViewStaff.HandleFunc("/products", products.ListProductsHandler(db, false, rdb)).Methods("GET")
+	productViewStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
+
+	// staff routes — product management (edit)
 	productStaff := protected.PathPrefix("/admin").Subrouter()
 	productStaff.Use(middleware.StaffOnly)
-	productStaff.Use(middleware.RequirePermission(db, "products", rdb))
+	productStaff.Use(middleware.RequirePermission(db, "products_edit", rdb))
 
-	productStaff.HandleFunc("/products", products.ListProductsHandler(db, false, rdb)).Methods("GET")
 	productStaff.HandleFunc("/products", products.CreateProductHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/marg-products/{base_code}/create-product", products.CreateProductFromMargProductHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/upload-url", products.UploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/document-upload-url", products.DocumentUploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/{id}", products.UpdateProductHandler(db, rdb)).Methods("PUT")
-	productStaff.HandleFunc("/products/{id}", products.DeleteProductHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/images", products.AddImageHandler(db, rdb)).Methods("POST")
-	productStaff.HandleFunc("/products/images/{imgId}", products.DeleteImageHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
-	productStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
-
-	// staff routes — graphics design files (split from product management
-	// so it can be granted to employees independently)
-	graphicsDesignStaff := protected.PathPrefix("/admin").Subrouter()
-	graphicsDesignStaff.Use(middleware.StaffOnly)
-	graphicsDesignStaff.Use(middleware.RequirePermission(db, "graphics_design", rdb))
-
-	graphicsDesignStaff.HandleFunc("/design-files/counts", designfiles.CountsHandler(db)).Methods("GET")
-	graphicsDesignStaff.HandleFunc("/design-files/upload-url", designfiles.UploadURLHandler()).Methods("POST")
-	graphicsDesignStaff.HandleFunc("/products/{id}/design-files", designfiles.ListHandler(db)).Methods("GET")
-	graphicsDesignStaff.HandleFunc("/products/{id}/design-files", designfiles.AddHandler(db)).Methods("POST")
-	graphicsDesignStaff.HandleFunc("/products/design-files/{fileId}", designfiles.DeleteHandler(db)).Methods("DELETE")
-
-	// special product management (admin only, same product permission)
-	productStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
 	productStaff.HandleFunc("/special-products", specialproducts.AdminCreateSpecialProductHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/upload-url", specialproducts.AdminUploadURLHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/document-upload-url", specialproducts.AdminDocUploadURLHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/{id}", specialproducts.AdminUpdateSpecialProductHandler(db)).Methods("PUT")
 	productStaff.HandleFunc("/special-products/{id}/audio", specialproducts.AdminSetSpecialProductAudioHandler(db)).Methods("PUT")
-	productStaff.HandleFunc("/special-products/{id}", specialproducts.AdminDeleteSpecialProductHandler(db)).Methods("DELETE")
 	productStaff.HandleFunc("/special-products/{id}/images", specialproducts.AdminAddImageHandler(db)).Methods("POST")
-	productStaff.HandleFunc("/special-products/images/{imgId}", specialproducts.AdminDeleteImageHandler(db)).Methods("DELETE")
 	productStaff.HandleFunc("/special-products/{id}/documents", specialproducts.AdminAddDocumentHandler(db)).Methods("POST")
-	productStaff.HandleFunc("/special-products/documents/{docId}", specialproducts.AdminDeleteDocumentHandler(db)).Methods("DELETE")
-
-	// category routes (admin only, same product permission)
 	productStaff.HandleFunc("/categories", categories.CreateHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/categories/{id}", categories.UpdateHandler(db, rdb)).Methods("PUT")
-	productStaff.HandleFunc("/categories/{id}", categories.DeleteHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/tags", tags.CreateHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/tags/{id}", tags.UpdateHandler(db, rdb)).Methods("PUT")
-	productStaff.HandleFunc("/tags/{id}", tags.DeleteHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/units", units.CreateHandler(db, rdb)).Methods("POST")
-	productStaff.HandleFunc("/units/{id}", units.DeleteHandler(db, rdb)).Methods("DELETE")
 
-	// staff routes — meeting oversight
+	// staff routes — product management (delete)
+	productDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	productDeleteStaff.Use(middleware.StaffOnly)
+	productDeleteStaff.Use(middleware.RequirePermission(db, "products_delete", rdb))
+	productDeleteStaff.HandleFunc("/products/{id}", products.DeleteProductHandler(db, rdb)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/products/images/{imgId}", products.DeleteImageHandler(db, rdb)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/products/documents/{docId}", products.DeleteDocumentHandler(db, rdb)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/special-products/{id}", specialproducts.AdminDeleteSpecialProductHandler(db)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/special-products/images/{imgId}", specialproducts.AdminDeleteImageHandler(db)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/special-products/documents/{docId}", specialproducts.AdminDeleteDocumentHandler(db)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/categories/{id}", categories.DeleteHandler(db, rdb)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/tags/{id}", tags.DeleteHandler(db, rdb)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/units/{id}", units.DeleteHandler(db, rdb)).Methods("DELETE")
+
+	// staff routes — graphics design files (split from product management
+	// so it can be granted to employees independently)
+	graphicsDesignViewStaff := protected.PathPrefix("/admin").Subrouter()
+	graphicsDesignViewStaff.Use(middleware.StaffOnly)
+	graphicsDesignViewStaff.Use(middleware.RequirePermission(db, "graphics_design_view", rdb))
+	graphicsDesignViewStaff.HandleFunc("/design-files/counts", designfiles.CountsHandler(db)).Methods("GET")
+	graphicsDesignViewStaff.HandleFunc("/products/{id}/design-files", designfiles.ListHandler(db)).Methods("GET")
+
+	graphicsDesignEditStaff := protected.PathPrefix("/admin").Subrouter()
+	graphicsDesignEditStaff.Use(middleware.StaffOnly)
+	graphicsDesignEditStaff.Use(middleware.RequirePermission(db, "graphics_design_edit", rdb))
+	graphicsDesignEditStaff.HandleFunc("/design-files/upload-url", designfiles.UploadURLHandler()).Methods("POST")
+	graphicsDesignEditStaff.HandleFunc("/products/{id}/design-files", designfiles.AddHandler(db)).Methods("POST")
+
+	graphicsDesignDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	graphicsDesignDeleteStaff.Use(middleware.StaffOnly)
+	graphicsDesignDeleteStaff.Use(middleware.RequirePermission(db, "graphics_design_delete", rdb))
+	graphicsDesignDeleteStaff.HandleFunc("/products/design-files/{fileId}", designfiles.DeleteHandler(db)).Methods("DELETE")
+
+	// staff routes — meeting oversight (view only, no admin edit exists)
 	meetingsStaff := protected.PathPrefix("/admin").Subrouter()
 	meetingsStaff.Use(middleware.StaffOnly)
-	meetingsStaff.Use(middleware.RequirePermission(db, "meetings", rdb))
-
+	meetingsStaff.Use(middleware.RequirePermission(db, "meetings_view", rdb))
 	meetingsStaff.HandleFunc("/meetings", meetings.AdminListHandler(db)).Methods("GET")
 
 	// staff routes — request inbox
 	requestsStaff := protected.PathPrefix("/admin").Subrouter()
 	requestsStaff.Use(middleware.StaffOnly)
-	requestsStaff.Use(middleware.RequirePermission(db, "requests", rdb))
-
+	requestsStaff.Use(middleware.RequirePermission(db, "requests_view", rdb))
 	requestsStaff.HandleFunc("/requests", requests.AdminListHandler(db)).Methods("GET")
-	requestsStaff.HandleFunc("/requests/{id}/status", requests.AdminUpdateStatusHandler(db)).Methods("PUT")
+
+	requestsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	requestsEditStaff.Use(middleware.StaffOnly)
+	requestsEditStaff.Use(middleware.RequirePermission(db, "requests_edit", rdb))
+	requestsEditStaff.HandleFunc("/requests/{id}/status", requests.AdminUpdateStatusHandler(db)).Methods("PUT")
 
 	// staff routes — partner ledger management
 	ledgerStaff := protected.PathPrefix("/admin").Subrouter()
 	ledgerStaff.Use(middleware.StaffOnly)
-	ledgerStaff.Use(middleware.RequirePermission(db, "ledger", rdb))
-
-	ledgerStaff.HandleFunc("/ledger/upload-url", ledger.UploadURLHandler()).Methods("POST")
-	ledgerStaff.HandleFunc("/partners/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
+	ledgerStaff.Use(middleware.RequirePermission(db, "ledger_view", rdb))
 	ledgerStaff.HandleFunc("/partners/{id}/ledger", ledger.GetLedgerHandler(db)).Methods("GET")
+
+	ledgerEditStaff := protected.PathPrefix("/admin").Subrouter()
+	ledgerEditStaff.Use(middleware.StaffOnly)
+	ledgerEditStaff.Use(middleware.RequirePermission(db, "ledger_edit", rdb))
+	ledgerEditStaff.HandleFunc("/ledger/upload-url", ledger.UploadURLHandler()).Methods("POST")
+	ledgerEditStaff.HandleFunc("/partners/{id}/ledger", ledger.UpsertLedgerHandler(db)).Methods("PUT")
 
 	// staff routes — payment verification
 	paymentsStaff := protected.PathPrefix("/admin").Subrouter()
 	paymentsStaff.Use(middleware.StaffOnly)
-	paymentsStaff.Use(middleware.RequirePermission(db, "payments", rdb))
-
+	paymentsStaff.Use(middleware.RequirePermission(db, "payments_view", rdb))
 	paymentsStaff.HandleFunc("/payments", payments.ListAllHandler(db)).Methods("GET")
 	paymentsStaff.HandleFunc("/payments/{id}", payments.GetHandler(db)).Methods("GET")
-	paymentsStaff.HandleFunc("/payments/{id}/verify", payments.VerifyHandler(db)).Methods("PUT")
+
+	paymentsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	paymentsEditStaff.Use(middleware.StaffOnly)
+	paymentsEditStaff.Use(middleware.RequirePermission(db, "payments_edit", rdb))
+	paymentsEditStaff.HandleFunc("/payments/{id}/verify", payments.VerifyHandler(db)).Methods("PUT")
 
 	// staff routes — learning platform management
-	learningStaff := protected.PathPrefix("/admin").Subrouter()
-	learningStaff.Use(middleware.StaffOnly)
-	learningStaff.Use(middleware.RequirePermission(db, "learning", rdb))
+	learningEditStaff := protected.PathPrefix("/admin").Subrouter()
+	learningEditStaff.Use(middleware.StaffOnly)
+	learningEditStaff.Use(middleware.RequirePermission(db, "learning_edit", rdb))
+	learningEditStaff.HandleFunc("/learning/videos", learning.CreateVideoHandler(db)).Methods("POST")
+	learningEditStaff.HandleFunc("/learning/playlists", learning.CreatePlaylistHandler(db)).Methods("POST")
+	learningEditStaff.HandleFunc("/learning/playlists/{id}/videos", learning.AddVideoToPlaylistHandler(db)).Methods("POST")
 
-	learningStaff.HandleFunc("/learning/videos", learning.CreateVideoHandler(db)).Methods("POST")
-	learningStaff.HandleFunc("/learning/videos/{id}", learning.DeleteVideoHandler(db)).Methods("DELETE")
-	learningStaff.HandleFunc("/learning/playlists", learning.CreatePlaylistHandler(db)).Methods("POST")
-	learningStaff.HandleFunc("/learning/playlists/{id}", learning.DeletePlaylistHandler(db)).Methods("DELETE")
-	learningStaff.HandleFunc("/learning/playlists/{id}/videos", learning.AddVideoToPlaylistHandler(db)).Methods("POST")
-	learningStaff.HandleFunc("/learning/playlists/{id}/videos/{videoId}", learning.RemoveVideoFromPlaylistHandler(db)).Methods("DELETE")
+	learningDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	learningDeleteStaff.Use(middleware.StaffOnly)
+	learningDeleteStaff.Use(middleware.RequirePermission(db, "learning_delete", rdb))
+	learningDeleteStaff.HandleFunc("/learning/videos/{id}", learning.DeleteVideoHandler(db)).Methods("DELETE")
+	learningDeleteStaff.HandleFunc("/learning/playlists/{id}", learning.DeletePlaylistHandler(db)).Methods("DELETE")
+	learningDeleteStaff.HandleFunc("/learning/playlists/{id}/videos/{videoId}", learning.RemoveVideoFromPlaylistHandler(db)).Methods("DELETE")
 
 	// staff routes — broadcast notifications
 	notificationsStaff := protected.PathPrefix("/admin").Subrouter()
 	notificationsStaff.Use(middleware.StaffOnly)
-	notificationsStaff.Use(middleware.RequirePermission(db, "notifications", rdb))
-
+	notificationsStaff.Use(middleware.RequirePermission(db, "notifications_view", rdb))
 	notificationsStaff.HandleFunc("/notifications", notifications.ListHandler(db)).Methods("GET")
-	notificationsStaff.HandleFunc("/notifications", notifications.CreateHandler(db)).Methods("POST")
-	notificationsStaff.HandleFunc("/notifications/upload-url", notifications.UploadURLHandler()).Methods("POST")
+
+	notificationsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	notificationsEditStaff.Use(middleware.StaffOnly)
+	notificationsEditStaff.Use(middleware.RequirePermission(db, "notifications_edit", rdb))
+	notificationsEditStaff.HandleFunc("/notifications", notifications.CreateHandler(db)).Methods("POST")
+	notificationsEditStaff.HandleFunc("/notifications/upload-url", notifications.UploadURLHandler()).Methods("POST")
 
 	// staff routes — per-employee broadcast lists (independent from the
-	// "notifications" permission, so it can be granted separately)
+	// "notifications" permissions, so they can be granted separately)
 	broadcastListsStaff := protected.PathPrefix("/admin").Subrouter()
 	broadcastListsStaff.Use(middleware.StaffOnly)
-	broadcastListsStaff.Use(middleware.RequirePermission(db, "broadcast_lists", rdb))
-
+	broadcastListsStaff.Use(middleware.RequirePermission(db, "broadcast_lists_view", rdb))
 	broadcastListsStaff.HandleFunc("/broadcast-lists", broadcastlists.ListHandler(db)).Methods("GET")
-	broadcastListsStaff.HandleFunc("/broadcast-lists", broadcastlists.CreateHandler(db)).Methods("POST")
 	broadcastListsStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.GetHandler(db)).Methods("GET")
-	broadcastListsStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.UpdateHandler(db)).Methods("PUT")
-	broadcastListsStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.DeleteHandler(db)).Methods("DELETE")
+
+	broadcastListsEditStaff := protected.PathPrefix("/admin").Subrouter()
+	broadcastListsEditStaff.Use(middleware.StaffOnly)
+	broadcastListsEditStaff.Use(middleware.RequirePermission(db, "broadcast_lists_edit", rdb))
+	broadcastListsEditStaff.HandleFunc("/broadcast-lists", broadcastlists.CreateHandler(db)).Methods("POST")
+	broadcastListsEditStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.UpdateHandler(db)).Methods("PUT")
+
+	broadcastListsDeleteStaff := protected.PathPrefix("/admin").Subrouter()
+	broadcastListsDeleteStaff.Use(middleware.StaffOnly)
+	broadcastListsDeleteStaff.Use(middleware.RequirePermission(db, "broadcast_lists_delete", rdb))
+	broadcastListsDeleteStaff.HandleFunc("/broadcast-lists/{id}", broadcastlists.DeleteHandler(db)).Methods("DELETE")
 
 	// shared partner search picker — used by both the notification composer
-	// and the broadcast-list editor, reachable with either permission
+	// and the broadcast-list editor, reachable with either view permission
 	partnerSearchStaff := protected.PathPrefix("/admin").Subrouter()
 	partnerSearchStaff.Use(middleware.StaffOnly)
-	partnerSearchStaff.Use(middleware.RequireAnyPermission(db, []string{"notifications", "broadcast_lists"}, rdb))
+	partnerSearchStaff.Use(middleware.RequireAnyPermission(db, []string{"notifications_view", "notifications_edit", "broadcast_lists_view", "broadcast_lists_edit"}, rdb))
 
 	partnerSearchStaff.HandleFunc("/users/search", notifications.SearchUsersHandler(db)).Methods("GET")
 }

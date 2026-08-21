@@ -459,7 +459,7 @@ export default function EmployeeDetailPage() {
               </div>
 
               {/* Current permission badges */}
-              <div className="flex items-center gap-2 mb-5">
+              <div className="flex flex-wrap items-center gap-2 mb-5">
                 {(employee.permissions || []).length === 0 ? (
                   <span className="text-xs text-gray-400 italic">
                     No permissions assigned
@@ -470,37 +470,54 @@ export default function EmployeeDetailPage() {
                       key={p}
                       className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-700"
                     >
-                      {p.charAt(0).toUpperCase() + p.slice(1)}
+                      {allPermissions.find((perm) => perm.key === p)?.label || p}
                     </span>
                   ))
                 )}
               </div>
 
-              {/* Permission checkboxes */}
-              <div className="space-y-2">
-                {allPermissions.map((perm) => (
-                  <label
-                    key={perm.key}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={permState[perm.key] || false}
-                      onChange={(e) =>
-                        setPermState({
-                          ...permState,
-                          [perm.key]: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {perm.label}
-                      </p>
-                      <p className="text-xs text-gray-500">{perm.desc}</p>
+              {/* Permission checkboxes — grouped by panel so the
+                  view/edit/delete split per panel doesn't turn into an
+                  unreadable wall of ~45 flat checkboxes. */}
+              <div className="space-y-5">
+                {Object.entries(
+                  allPermissions.reduce((groups, perm) => {
+                    const g = perm.group || "Other";
+                    (groups[g] = groups[g] || []).push(perm);
+                    return groups;
+                  }, {})
+                ).map(([groupName, perms]) => (
+                  <div key={groupName}>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      {groupName}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {perms.map((perm) => (
+                        <label
+                          key={perm.key}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={permState[perm.key] || false}
+                            onChange={(e) =>
+                              setPermState({
+                                ...permState,
+                                [perm.key]: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                          />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {perm.label}
+                            </p>
+                            <p className="text-xs text-gray-500">{perm.desc}</p>
+                          </div>
+                        </label>
+                      ))}
                     </div>
-                  </label>
+                  </div>
                 ))}
               </div>
 
