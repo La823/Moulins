@@ -142,6 +142,8 @@ func ApproveHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		models.LogAction(r.Context(), db, &adminID, "deletion_request.approved", "deletion_request", &requestID, "Approved an account deletion request")
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "account deleted"})
 	}
@@ -182,6 +184,8 @@ func RejectHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not reject deletion request", http.StatusInternalServerError)
 			return
 		}
+
+		models.LogAction(r.Context(), db, &adminID, "deletion_request.rejected", "deletion_request", &requestID, "Rejected an account deletion request")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "rejected"})

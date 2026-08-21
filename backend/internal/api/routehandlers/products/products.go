@@ -20,6 +20,16 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
+// actorID returns the acting staff user's ID for audit logging, or nil if
+// it can't be parsed from the request context.
+func actorID(r *http.Request) *uuid.UUID {
+	id, err := uuid.Parse(r.Context().Value("user_id").(string))
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
 // isProductIDConflict reports whether err is a unique-constraint violation
 // on products.product_id — the admin-supplied "actual product id" colliding
 // with one already in use.
@@ -84,6 +94,7 @@ func CreateProductFromMargProductHandler(db *pgxpool.Pool, rdb *cache.Client) ht
 
 		rdb.Del(r.Context(), "categories")
 		rdb.DelPattern(r.Context(), "products:*")
+		models.LogAction(r.Context(), db, actorID(r), "product.created", "product", &id, fmt.Sprintf("Created product %q from Marg base code %s", req.Name, baseCode))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -221,6 +232,7 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 
 		rdb.Del(r.Context(), "categories")
 		rdb.DelPattern(r.Context(), "products:*")
+		models.LogAction(r.Context(), db, actorID(r), "product.created", "product", &id, fmt.Sprintf("Created product %q", req.Name))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -389,6 +401,7 @@ func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		}
 
 		invalidateProduct(rdb, r, id)
+		models.LogAction(r.Context(), db, actorID(r), "product.updated", "product", &id, "Updated a product")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
@@ -409,6 +422,7 @@ func DeleteProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 			http.Error(w, "could not delete product", http.StatusInternalServerError)
 			return
 		}
+		models.LogAction(r.Context(), db, actorID(r), "product.deleted", "product", &id, "Deleted a product")
 
 		invalidateProduct(rdb, r, id)
 

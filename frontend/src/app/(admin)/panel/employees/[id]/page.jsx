@@ -39,6 +39,9 @@ export default function EmployeeDetailPage() {
   const [emailError, setEmailError] = useState("");
   const [emailSuccess, setEmailSuccess] = useState("");
 
+  // Activity log
+  const [auditLog, setAuditLog] = useState([]);
+
   useEffect(() => {
     apiFetch(`/admin/employees/${id}`)
       .then((data) => {
@@ -56,6 +59,10 @@ export default function EmployeeDetailPage() {
     apiFetch("/admin/permissions")
       .then((data) => setAllPermissions(data.permissions || []))
       .catch(() => setAllPermissions([]));
+
+    apiFetch(`/admin/employees/${id}/audit-log`)
+      .then((data) => setAuditLog(data.entries || []))
+      .catch(() => setAuditLog([]));
   }, [id]);
 
   // Clear success messages
@@ -532,6 +539,29 @@ export default function EmployeeDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Recent activity — not exhaustive, only higher-signal actions
+              (deletes, credential/permission changes, product/partner
+              edits) are recorded. */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">
+              Recent Activity
+            </h3>
+            {auditLog.length === 0 ? (
+              <p className="text-sm text-gray-400">No recorded actions yet</p>
+            ) : (
+              <div className="space-y-3">
+                {auditLog.map((entry) => (
+                  <div key={entry.id} className="flex items-start justify-between gap-4 text-sm">
+                    <p className="text-gray-700">{entry.description}</p>
+                    <p className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">
+                      {new Date(entry.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <UserMeetingsRequests userId={employee.id} />
           {employee.role === "employee" && (

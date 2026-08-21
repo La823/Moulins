@@ -2,6 +2,7 @@ package manufacturers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -12,6 +13,15 @@ import (
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 )
+
+// actorID returns the acting staff user's ID for audit logging, or nil.
+func actorID(r *http.Request) *uuid.UUID {
+	id, err := uuid.Parse(r.Context().Value("user_id").(string))
+	if err != nil {
+		return nil
+	}
+	return &id
+}
 
 const cacheKey = "manufacturers"
 const cacheTTL = 10 * time.Minute
@@ -79,6 +89,7 @@ func CreateHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		}
 
 		rdb.Del(r.Context(), cacheKey)
+		models.LogAction(r.Context(), db, actorID(r), "manufacturer.created", "manufacturer", &id, fmt.Sprintf("Created manufacturer %q", req.Name))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -113,6 +124,7 @@ func UpdateHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		}
 
 		rdb.Del(r.Context(), cacheKey)
+		models.LogAction(r.Context(), db, actorID(r), "manufacturer.updated", "manufacturer", &id, fmt.Sprintf("Updated manufacturer %q", req.Name))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
@@ -133,6 +145,7 @@ func DeleteHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		}
 
 		rdb.Del(r.Context(), cacheKey)
+		models.LogAction(r.Context(), db, actorID(r), "manufacturer.deleted", "manufacturer", &id, "Deleted a manufacturer")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "deleted"})

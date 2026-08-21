@@ -2,8 +2,10 @@ package userauth
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -72,6 +74,7 @@ func SetPermissionsHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc
 		}
 
 		middleware.InvalidatePermissions(r.Context(), rdb, userID)
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "employee.permissions_changed", "user", &userID, fmt.Sprintf("Set permissions: %s", strings.Join(body.Permissions, ", ")))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string][]string{"permissions": body.Permissions})

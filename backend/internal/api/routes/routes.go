@@ -230,6 +230,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	employeesViewStaff.HandleFunc("/employees", userauth.GetEmployeesHandler(db)).Methods("GET")
 	employeesViewStaff.HandleFunc("/employees/{id}", userauth.GetEmployeeDetailHandler(db)).Methods("GET")
 	employeesViewStaff.HandleFunc("/employees/{id}/permissions", userauth.GetPermissionsHandler(db)).Methods("GET")
+	employeesViewStaff.HandleFunc("/employees/{id}/audit-log", userauth.GetEmployeeAuditLogHandler(db)).Methods("GET")
 
 	employeesEditStaff := protected.PathPrefix("/admin").Subrouter()
 	employeesEditStaff.Use(middleware.StaffOnly)

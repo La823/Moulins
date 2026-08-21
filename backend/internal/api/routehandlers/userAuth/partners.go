@@ -163,6 +163,7 @@ func UpdatePartnerPasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Hand
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "partner.password_changed", "user", &userID, "Changed a partner's password")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "password updated"})
@@ -200,6 +201,7 @@ func UpdatePartnerCustomerTypeHandler(db *pgxpool.Pool, rdb *cache.Client) http.
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "partner.customer_type_changed", "user", &userID, fmt.Sprintf("Changed a partner's customer type to %s", body.CustomerType))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "customer type updated", "customer_type": body.CustomerType})
@@ -268,6 +270,8 @@ func CreatePartnerFromMargPartyHandler(db *pgxpool.Pool) http.HandlerFunc {
 				log.Printf("set new partner address error: %v", err)
 			}
 		}
+
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "partner.created_from_marg", "user", &userID, fmt.Sprintf("Created a partner account from Marg party RID %s (phone %s)", rid, body.PhoneNumber))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -338,6 +342,7 @@ func UpdatePartnerEmailHandler(db *pgxpool.Pool, rdb *cache.Client) http.Handler
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "partner.email_changed", "user", &userID, fmt.Sprintf("Changed a partner's email to %s", body.Email))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "email updated"})
@@ -378,6 +383,7 @@ func UpdatePartnerPhoneHandler(db *pgxpool.Pool, rdb *cache.Client) http.Handler
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "partner.phone_changed", "user", &userID, fmt.Sprintf("Changed a partner's login phone to %s", body.PhoneNumber))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "phone number updated"})
@@ -599,6 +605,7 @@ func DeletePartnerHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "partner.deleted", "user", &userID, "Deleted a partner account")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "partner deleted"})

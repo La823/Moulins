@@ -102,6 +102,7 @@ func UpdateEmployeePasswordHandler(db *pgxpool.Pool, rdb *cache.Client) http.Han
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "employee.password_changed", "user", &userID, "Changed an employee's password")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "password updated"})
@@ -133,6 +134,7 @@ func UpdateEmployeeEmailHandler(db *pgxpool.Pool, rdb *cache.Client) http.Handle
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "employee.email_changed", "user", &userID, fmt.Sprintf("Changed an employee's email to %s", body.Email))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "email updated"})
@@ -180,6 +182,7 @@ func UpdateEmployeeRoleHandler(db *pgxpool.Pool, rdb *cache.Client) http.Handler
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "employee.role_changed", "user", &userID, fmt.Sprintf("Changed an employee's role to %s", body.Role))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "role updated", "role": body.Role})
@@ -212,8 +215,39 @@ func DeleteEmployeeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+		models.LogAction(r.Context(), db, sendEmailActorID(r), "employee.deleted", "user", &userID, fmt.Sprintf("Deleted employee %s (%s)", displayNameOrPhone(user), user.PhoneNumber))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "employee deleted"})
+	}
+}
+
+func displayNameOrPhone(u *models.User) string {
+	if u.Username != nil && *u.Username != "" {
+		return *u.Username
+	}
+	return u.PhoneNumber
+}
+
+// GET /admin/employees/{id}/audit-log — this employee/admin's own recorded
+// actions, most recent first (not exhaustive — only the higher-signal
+// mutating actions get logged; see models.LogAction call sites).
+func GetEmployeeAuditLogHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		entries, err := models.ListAuditLogByActor(r.Context(), db, userID, 50)
+		if err != nil {
+			log.Printf("get employee audit log error: %v", err)
+			http.Error(w, "could not fetch audit log", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"entries": entries})
 	}
 }
