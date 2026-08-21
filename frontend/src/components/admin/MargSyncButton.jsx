@@ -51,7 +51,10 @@ export default function MargSyncButton({ onDone }) {
         data.products_upserted === 0 && data.parties_upserted === 0
           ? "Already up to date — no changes since last sync."
           : `Synced ${data.products_upserted} product${data.products_upserted !== 1 ? "s" : ""} and ${data.parties_upserted} part${data.parties_upserted !== 1 ? "ies" : "y"}.`;
-      setStatus({ type: "success", message });
+      setStatus({
+        type: data.cursor_warning ? "error" : "success",
+        message: data.cursor_warning ? `${message} (${data.cursor_warning})` : message,
+      });
       apiFetch("/admin/marg-sync/status")
         .then((d) => setLastSyncedAt(d.last_synced_at || null))
         .catch(() => {});

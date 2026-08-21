@@ -46,11 +46,18 @@ func TriggerHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		cursorWarning := ""
 		if err := margsync.SetLastSyncedAt(r.Context(), db, dateTime); err != nil {
 			log.Printf("marg sync: failed to persist last synced at: %v", err)
+			cursorWarning = "sync completed but the last-synced cursor could not be saved — the next sync may re-pull the same data"
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		json.NewEncoder(w).Encode(map[string]any{
+			"products_upserted": result.ProductsUpserted,
+			"batches_upserted":  result.BatchesUpserted,
+			"parties_upserted":  result.PartiesUpserted,
+			"cursor_warning":    cursorWarning,
+		})
 	}
 }

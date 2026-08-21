@@ -9,6 +9,29 @@ class DoctorService {
     return (res.data as List<dynamic>).map((e) => Doctor.fromJson(e)).toList();
   }
 
+  // GET /doctor/me — a doctor-role login's own profile.
+  Future<Doctor> getMyProfile() async {
+    final res = await _dio.get('/doctor/me');
+    return Doctor.fromJson(res.data);
+  }
+
+  // PUT /doctor/me — self-service update. Email/clinicAddress are set
+  // directly (not COALESCEd) on the backend, so pass the current values
+  // through even when only name/clinicName changed.
+  Future<void> updateMyProfile({
+    required String name,
+    String? email,
+    String? clinicName,
+    String? clinicAddress,
+  }) async {
+    await _dio.put('/doctor/me', data: {
+      'name': name,
+      'email': email,
+      'clinic_name': clinicName,
+      'clinic_address': clinicAddress,
+    });
+  }
+
   Future<Doctor> createDoctor({
     required String name,
     String? phone,

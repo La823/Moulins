@@ -11,6 +11,8 @@ import '../../models/onboarding.dart';
 import '../../config/api.dart';
 import '../../services/ledger_service.dart';
 import '../../services/transport_service.dart';
+import '../../services/doctor_service.dart';
+import '../../models/doctor.dart';
 import '../../models/transport_mode.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
@@ -97,6 +99,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // Doctor's own profile — name, phone (read-only), clinic name
+          if (user?.role == 'doctor')
+            _DoctorProfileCard(phoneNumber: user?.phoneNumber ?? ''),
+          if (user?.role == 'doctor') const SizedBox(height: 16),
 
           // Verification Journey (partners only)
           if (user?.role == 'partner')
@@ -341,6 +348,180 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
 
   Widget _divider() => const Divider(height: 1, indent: 56);
+}
+
+class _DoctorProfileCard extends ConsumerStatefulWidget {
+  final String phoneNumber;
+
+  const _DoctorProfileCard({required this.phoneNumber});
+
+  @override
+  ConsumerState<_DoctorProfileCard> createState() => _DoctorProfileCardState();
+}
+
+class _DoctorProfileCardState extends ConsumerState<_DoctorProfileCard> {
+  static const teal = Color(0xFF00A6A4);
+  final _service = DoctorService();
+
+  Doctor? _doctor;
+  bool _loading = true;
+  bool _editing = false;
+  bool _saving = false;
+  String? _error;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _clinicCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController();
+    _clinicCtrl = TextEditingController();
+    _service.getMyProfile().then((d) {
+      if (mounted) {
+        setState(() {
+          _doctor = d;
+          _nameCtrl.text = d.name;
+          _clinicCtrl.text = d.clinicName ?? '';
+          _loading = false;
+        });
+      }
+    }).catchError((_) {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _clinicCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_nameCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Name is required');
+      return;
+    }
+    setState(() { _saving = true; _error = null; });
+    try {
+      await _service.updateMyProfile(
+        name: _nameCtrl.text.trim(),
+        email: _doctor?.email,
+        clinicName: _clinicCtrl.text.trim().isEmpty ? null : _clinicCtrl.text.trim(),
+        clinicAddress: _doctor?.clinicAddress,
+      );
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _editing = false;
+          _doctor = Doctor(
+            id: _doctor!.id,
+            name: _nameCtrl.text.trim(),
+            phone: _doctor!.phone,
+            email: _doctor!.email,
+            clinicName: _clinicCtrl.text.trim().isEmpty ? null : _clinicCtrl.text.trim(),
+            clinicAddress: _doctor!.clinicAddress,
+          );
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated'), backgroundColor: teal),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() { _saving = false; _error = 'Failed to update profile'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator()));
+    }
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('My Profile', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              if (!_editing)
+                TextButton(
+                  onPressed: () => setState(() => _editing = true),
+                  child: const Text('Edit', style: TextStyle(color: teal, fontSize: 13)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_editing) ...[
+            TextField(
+              controller: _nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _clinicCtrl,
+              decoration: InputDecoration(
+                labelText: 'Clinic name',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: teal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: _saving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Save'),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: _saving ? null : () => setState(() {
+                    _editing = false;
+                    _nameCtrl.text = _doctor?.name ?? '';
+                    _clinicCtrl.text = _doctor?.clinicName ?? '';
+                  }),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text('Name', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text(_doctor?.name.isNotEmpty == true ? _doctor!.name : 'Not set', style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 10),
+            Text('Phone', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text(widget.phoneNumber, style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 10),
+            Text('Clinic name', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            Text(
+              _doctor?.clinicName?.isNotEmpty == true ? _doctor!.clinicName! : 'Not set',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _AddressCard extends ConsumerStatefulWidget {

@@ -206,8 +206,11 @@ func ApplySync(ctx context.Context, db *pgxpool.Pool, details mst2017Details) (R
 
 // GetLastSyncedAt / SetLastSyncedAt manage the single-row delta cursor.
 func GetLastSyncedAt(ctx context.Context, db *pgxpool.Pool) (string, error) {
+	// Format without a timezone offset — Marg expects bare "YYYY-MM-DD HH:MM:SS"
+	// and a naive ::text cast on a TIMESTAMPTZ appends a "+00" suffix it can't
+	// parse, silently causing every delta pull to match nothing.
 	var lastSyncedAt *string
-	err := db.QueryRow(ctx, `SELECT last_synced_at::text FROM margmaster_sync_state WHERE id = TRUE`).Scan(&lastSyncedAt)
+	err := db.QueryRow(ctx, `SELECT to_char(last_synced_at, 'YYYY-MM-DD HH24:MI:SS') FROM margmaster_sync_state WHERE id = TRUE`).Scan(&lastSyncedAt)
 	if err != nil {
 		return "", nil // no row yet -> full pull
 	}
