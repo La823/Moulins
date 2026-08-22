@@ -62,7 +62,7 @@ export default function HomeCarousel() {
                 {/* Text panel */}
                 <div
                   className="flex flex-col items-center justify-center text-center px-10 pb-10"
-                  style={{ backgroundColor: "#4E1111" }}
+                  style={{ backgroundColor: slide.card_color || "#4E1111" }}
                 >
                   <div className="flex-1 flex flex-col items-center justify-center">
                     <h3 className="text-3xl text-[#F3EEE3] leading-tight mb-5">{slide.heading}</h3>
@@ -75,7 +75,7 @@ export default function HomeCarousel() {
                   <Link
                     href={slide.button_link || "/products"}
                     className="w-full py-3.5 text-sm font-medium text-center"
-                    style={{ backgroundColor: "#F3EEE3", color: "#4E1111" }}
+                    style={{ backgroundColor: "#F3EEE3", color: slide.card_color || "#4E1111" }}
                   >
                     {slide.button_text}
                   </Link>

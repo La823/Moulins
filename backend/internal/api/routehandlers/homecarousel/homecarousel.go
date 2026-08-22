@@ -77,11 +77,20 @@ func UpdateHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 			return
 		}
 
-		if req.ImageKey == "" {
+		req.CardColor = strings.TrimSpace(req.CardColor)
+		if req.ImageKey == "" || req.CardColor == "" {
 			current, err := models.GetCarouselSlide(r.Context(), db, position)
 			if err == nil {
-				req.ImageKey = current.ImageKey
+				if req.ImageKey == "" {
+					req.ImageKey = current.ImageKey
+				}
+				if req.CardColor == "" {
+					req.CardColor = current.CardColor
+				}
 			}
+		}
+		if req.CardColor == "" {
+			req.CardColor = "#4E1111"
 		}
 
 		if err := models.UpdateCarouselSlide(r.Context(), db, position, req); err != nil {

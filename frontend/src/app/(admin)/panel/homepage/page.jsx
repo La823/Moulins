@@ -415,6 +415,22 @@ function CarouselSlideEditor({ slide, onSaved, onDelete }) {
         placeholder="/products"
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 mb-3"
       />
+      <label className="block text-xs font-medium text-gray-500 mb-1">Card background color</label>
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          type="color"
+          value={form.card_color || "#4E1111"}
+          onChange={(e) => setForm({ ...form, card_color: e.target.value })}
+          className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer p-0.5"
+        />
+        <input
+          type="text"
+          value={form.card_color || "#4E1111"}
+          onChange={(e) => setForm({ ...form, card_color: e.target.value })}
+          placeholder="#4E1111"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+        />
+      </div>
 
       {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
 

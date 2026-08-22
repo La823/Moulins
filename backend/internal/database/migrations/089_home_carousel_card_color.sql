@@ -1,0 +1,1 @@
+ALTER TABLE home_carousel_slides ADD COLUMN IF NOT EXISTS card_color TEXT NOT NULL DEFAULT '#4E1111';

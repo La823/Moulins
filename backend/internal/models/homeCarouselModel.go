@@ -14,6 +14,7 @@ type CarouselSlide struct {
 	Description string `json:"description"`
 	ButtonText  string `json:"button_text"`
 	ButtonLink  string `json:"button_link"`
+	CardColor   string `json:"card_color"`
 }
 
 type UpdateCarouselSlideRequest struct {
@@ -22,11 +23,12 @@ type UpdateCarouselSlideRequest struct {
 	Description string `json:"description"`
 	ButtonText  string `json:"button_text"`
 	ButtonLink  string `json:"button_link"`
+	CardColor   string `json:"card_color"`
 }
 
 func GetAllCarouselSlides(ctx context.Context, db *pgxpool.Pool) ([]CarouselSlide, error) {
 	rows, err := db.Query(ctx,
-		`SELECT position, image_key, heading, description, button_text, button_link
+		`SELECT position, image_key, heading, description, button_text, button_link, card_color
 		 FROM home_carousel_slides ORDER BY position ASC`,
 	)
 	if err != nil {
@@ -38,7 +40,7 @@ func GetAllCarouselSlides(ctx context.Context, db *pgxpool.Pool) ([]CarouselSlid
 	for rows.Next() {
 		var s CarouselSlide
 		var imageKey *string
-		if err := rows.Scan(&s.Position, &imageKey, &s.Heading, &s.Description, &s.ButtonText, &s.ButtonLink); err != nil {
+		if err := rows.Scan(&s.Position, &imageKey, &s.Heading, &s.Description, &s.ButtonText, &s.ButtonLink, &s.CardColor); err != nil {
 			return nil, err
 		}
 		if imageKey != nil {
@@ -53,10 +55,10 @@ func GetCarouselSlide(ctx context.Context, db *pgxpool.Pool, position int) (Caro
 	var s CarouselSlide
 	var imageKey *string
 	err := db.QueryRow(ctx,
-		`SELECT position, image_key, heading, description, button_text, button_link
+		`SELECT position, image_key, heading, description, button_text, button_link, card_color
 		 FROM home_carousel_slides WHERE position = $1`,
 		position,
-	).Scan(&s.Position, &imageKey, &s.Heading, &s.Description, &s.ButtonText, &s.ButtonLink)
+	).Scan(&s.Position, &imageKey, &s.Heading, &s.Description, &s.ButtonText, &s.ButtonLink, &s.CardColor)
 	if imageKey != nil {
 		s.ImageKey = *imageKey
 	}
@@ -66,9 +68,9 @@ func GetCarouselSlide(ctx context.Context, db *pgxpool.Pool, position int) (Caro
 func UpdateCarouselSlide(ctx context.Context, db *pgxpool.Pool, position int, req UpdateCarouselSlideRequest) error {
 	_, err := db.Exec(ctx,
 		`UPDATE home_carousel_slides SET
-		   image_key = $1, heading = $2, description = $3, button_text = $4, button_link = $5, updated_at = now()
-		 WHERE position = $6`,
-		req.ImageKey, req.Heading, req.Description, req.ButtonText, req.ButtonLink, position,
+		   image_key = $1, heading = $2, description = $3, button_text = $4, button_link = $5, card_color = $6, updated_at = now()
+		 WHERE position = $7`,
+		req.ImageKey, req.Heading, req.Description, req.ButtonText, req.ButtonLink, req.CardColor, position,
 	)
 	return err
 }
@@ -78,8 +80,8 @@ func CreateCarouselSlide(ctx context.Context, db *pgxpool.Pool) (CarouselSlide, 
 	err := db.QueryRow(ctx,
 		`INSERT INTO home_carousel_slides (position, button_text, button_link)
 		 VALUES (coalesce((SELECT max(position) FROM home_carousel_slides), 0) + 1, 'Learn More', '/products')
-		 RETURNING position, heading, description, button_text, button_link`,
-	).Scan(&s.Position, &s.Heading, &s.Description, &s.ButtonText, &s.ButtonLink)
+		 RETURNING position, heading, description, button_text, button_link, card_color`,
+	).Scan(&s.Position, &s.Heading, &s.Description, &s.ButtonText, &s.ButtonLink, &s.CardColor)
 	return s, err
 }
 
