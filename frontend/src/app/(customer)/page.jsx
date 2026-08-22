@@ -296,7 +296,7 @@ export default function HomePage() {
                   <Link
                     key={p.id}
                     href={`/products/${p.id}`}
-                    className="group block flex-shrink-0 w-[20rem] snap-start rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-shadow duration-300"
+                    className="group flex flex-col flex-shrink-0 w-[20rem] snap-start rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-xl transition-shadow duration-300"
                     style={{ border: `1px solid ${accent.border}` }}
                   >
                     {/* Image banner */}
@@ -325,7 +325,7 @@ export default function HomePage() {
                     </div>
 
                     {/* Body */}
-                    <div className="px-5 pt-4 pb-1 bg-white">
+                    <div className="px-5 pt-4 pb-1 bg-white flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <span
                           className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
@@ -354,7 +354,7 @@ export default function HomePage() {
 
                     {/* Footer bar */}
                     <div
-                      className="flex items-center justify-between px-5 py-3.5 mt-3"
+                      className="flex items-center justify-between px-5 py-3.5 mt-auto"
                       style={{ backgroundColor: accent.bg }}
                     >
                       <div className="flex items-center gap-4">
