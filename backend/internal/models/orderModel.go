@@ -139,17 +139,23 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 	return orderID, nil
 }
 
-func GetOrdersByUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]Order, error) {
+// GetOrdersByUser returns every order placed by ownerID or by any
+// team_member owned by ownerID — so a partner sees orders their team placed
+// on their behalf, and a team member (already resolved to their owning
+// partner's id by the caller) sees the whole team's orders too. Mirrors how
+// doctors/meetings are pooled at the partner level via ResolveOwnerID.
+func GetOrdersByUser(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID) ([]Order, error) {
 	query := `
 		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.created_at, o.updated_at,
 			COUNT(oi.id) AS item_count
 		FROM orders o
 		LEFT JOIN order_items oi ON oi.order_id = o.id
 		WHERE o.user_id = $1
+			OR o.user_id IN (SELECT id FROM users WHERE team_owner_id = $1)
 		GROUP BY o.id
 		ORDER BY o.created_at DESC
 	`
-	rows, err := db.Query(ctx, query, userID)
+	rows, err := db.Query(ctx, query, ownerID)
 	if err != nil {
 		return nil, err
 	}

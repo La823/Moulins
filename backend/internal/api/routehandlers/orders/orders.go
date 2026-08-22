@@ -348,7 +348,13 @@ func ListMyOrdersHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		orders, err := models.GetOrdersByUser(r.Context(), db, userID)
+		ownerID, err := models.ResolveOwnerID(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("list my orders resolve owner error: %v", err)
+			ownerID = userID
+		}
+
+		orders, err := models.GetOrdersByUser(r.Context(), db, ownerID)
 		if err != nil {
 			log.Printf("list my orders error: %v", err)
 			http.Error(w, "could not fetch orders", http.StatusInternalServerError)
