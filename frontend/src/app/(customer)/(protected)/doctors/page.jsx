@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -26,6 +26,7 @@ export default function DoctorsPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const formRef = useRef(null);
 
   const fetchDoctors = () => {
     apiFetch("/doctors")
@@ -60,6 +61,7 @@ export default function DoctorsPage() {
         : null
     );
     setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
 
   const cancelForm = () => {
@@ -126,7 +128,7 @@ export default function DoctorsPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="mb-8 border border-gray-200 rounded-lg p-6 space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="mb-8 border border-gray-200 rounded-lg p-6 space-y-4">
           <h2 className="text-sm font-semibold text-gray-700">{editingId ? "Edit Doctor" : "Add Doctor"}</h2>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -254,7 +256,8 @@ export default function DoctorsPage() {
           {doctors.map((doctor) => (
             <div
               key={doctor.id}
-              className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors"
+              onClick={() => startEdit(doctor)}
+              className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors cursor-pointer"
             >
               {/* Header: avatar, name, speciality, status */}
               <div className="flex items-center gap-3 px-5 py-4">
@@ -300,19 +303,17 @@ export default function DoctorsPage() {
               <div className="flex items-center gap-5 px-5 py-3">
                 <Link
                   href={`/doctors/${doctor.id}`}
+                  onClick={(e) => e.stopPropagation()}
                   className="text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
                   Manage Products
                 </Link>
-                <button
-                  onClick={() => startEdit(doctor)}
-                  className="text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                >
-                  Edit Profile
-                </button>
                 {canDelete && (
                   <button
-                    onClick={() => handleDelete(doctor.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(doctor.id);
+                    }}
                     className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-auto"
                   >
                     Delete

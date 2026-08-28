@@ -417,7 +417,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                     itemBuilder: (ctx, i) {
                       final d = _doctors![i];
                       return GestureDetector(
-                        onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctor: d))),
+                        onTap: () => _showDoctorForm(existing: d),
                         child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -471,12 +471,6 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                                   onPressed: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctor: d))),
                                   style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                                   child: const Text('Manage Products', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
-                                ),
-                                const SizedBox(width: 20),
-                                TextButton(
-                                  onPressed: () => _showDoctorForm(existing: d),
-                                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                                  child: const Text('Edit Profile', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
                                 ),
                                 const Spacer(),
                                 if (canDelete)
