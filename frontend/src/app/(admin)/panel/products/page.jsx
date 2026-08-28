@@ -13,6 +13,20 @@ export default function AdminProducts() {
   );
 }
 
+function ContentBadge({ label, filled }) {
+  return (
+    <span
+      title={filled ? `${label} added` : `${label} not added`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+        filled ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${filled ? "bg-green-500" : "bg-gray-300"}`} />
+      {label}
+    </span>
+  );
+}
+
 function AdminProductsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -692,6 +706,12 @@ function AdminProductsInner() {
                       <p className="text-sm text-gray-500 mt-0.5">
                         ₹{p.price}
                       </p>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <ContentBadge label="Audio" filled={!!p.audio_key} />
+                        <ContentBadge label="Directions" filled={!!p.direction_for_use} />
+                        <ContentBadge label="Safety" filled={!!p.safety_information} />
+                        <ContentBadge label="E-Detailing" filled={!!p.edetailing} />
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
