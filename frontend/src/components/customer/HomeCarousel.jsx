@@ -47,13 +47,13 @@ export default function HomeCarousel() {
               <div
                 key={slide.position}
                 ref={(el) => (slideRefs.current[i] = el)}
-                className="grid grid-cols-2 shrink-0 w-[85%] md:w-[78%] h-[520px] transition-opacity duration-500"
+                className="grid grid-cols-2 shrink-0 w-[85%] md:w-[78%] h-[558px] transition-opacity duration-500"
                 style={{ opacity: i === index ? 1 : 0.35 }}
               >
                 {/* Image */}
                 <div className="relative overflow-hidden bg-gray-100">
                   {slide.image_url ? (
-                    <img src={slide.image_url} alt={slide.heading} className="w-full h-full object-cover object-top" />
+                    <img src={slide.image_url} alt={slide.heading} className="w-full h-full object-cover object-center" />
                   ) : (
                     <div className="w-full h-full bg-gray-100" />
                   )}
@@ -86,7 +86,7 @@ export default function HomeCarousel() {
         </div>
 
         {/* Navigation: arrows + diamond indicators */}
-        <div className="flex items-center justify-center gap-6 mt-10">
+        <div className="flex items-center justify-center gap-6 mt-4">
           <button
             onClick={() => goTo(index - 1)}
             aria-label="Previous slide"

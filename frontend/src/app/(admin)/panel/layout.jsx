@@ -208,6 +208,7 @@ const NAV_ITEMS = [
       { label: "Notifications", href: "/panel/notifications", permission: "notifications_view" },
       { label: "Broadcast Lists", href: "/panel/broadcast-lists", permission: "broadcast_lists_view" },
       { label: "Careers", href: "/panel/careers", permission: "careers_view" },
+      { label: "Product Assistant", href: "/panel/product-assistant", adminOnly: true },
     ],
   },
 ];

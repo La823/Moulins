@@ -75,6 +75,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
     final specialityCtrl = TextEditingController(text: existing?.speciality ?? '');
     final clinicCtrl = TextEditingController(text: existing?.clinicName ?? '');
     DateTime? dob = existing?.dob;
+    DateTime? anniversary = existing?.anniversary;
     PickedLocation? location = existing != null && existing.latitude != null && existing.longitude != null
         ? PickedLocation(lat: existing.latitude!, lng: existing.longitude!, address: existing.clinicAddress)
         : null;
@@ -217,6 +218,36 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                 'Adds a yearly birthday reminder to your meetings calendar, with daily notifications in the 10 days before.',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
               ),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: sheetCtx,
+                    initialDate: anniversary ?? DateTime(2010, 1, 1),
+                    firstDate: DateTime(1930),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setSheetState(() => anniversary = picked);
+                },
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: 'Anniversary',
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                  child: Text(
+                    anniversary == null ? 'Select date' : '${anniversary!.day}/${anniversary!.month}/${anniversary!.year}',
+                    style: TextStyle(fontSize: 14, color: anniversary == null ? Colors.grey.shade400 : Colors.black87),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Adds a yearly anniversary reminder to your meetings calendar, with daily notifications in the 10 days before.',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+              ),
               if (submitError != null) ...[
                 const SizedBox(height: 8),
                 Text(submitError!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
@@ -251,6 +282,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                                 latitude: location?.lat,
                                 longitude: location?.lng,
                                 dob: dob,
+                                anniversary: anniversary,
                               );
                             } else {
                               await _service.updateDoctor(
@@ -264,6 +296,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                                 latitude: location?.lat,
                                 longitude: location?.lng,
                                 dob: dob,
+                                anniversary: anniversary,
                               );
                             }
                             if (sheetCtx.mounted) Navigator.pop(sheetCtx);
@@ -428,6 +461,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                             _fieldRow('Phone', d.phone),
                             _fieldRow('Email', d.email),
                             _fieldRow('Birthday', d.dob != null ? '${d.dob!.day}/${d.dob!.month}' : null),
+                            _fieldRow('Anniversary', d.anniversary != null ? '${d.anniversary!.day}/${d.anniversary!.month}' : null),
                             _fieldRow('Clinic', d.clinicName ?? d.clinicAddress),
                             _fieldRow('Products', '${d.productCount}'),
                             const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),

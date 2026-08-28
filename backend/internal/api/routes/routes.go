@@ -39,6 +39,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transports"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
+	vectorsearchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/vectorsearch"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/services"
@@ -159,6 +160,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/meetings/{id}", meetings.UpdateHandler(db)).Methods("PUT")
 	protected.HandleFunc("/meetings/{id}/status", meetings.UpdateStatusHandler(db)).Methods("PUT")
 	protected.HandleFunc("/meetings/{id}/mom", meetings.UpdateMomHandler(db)).Methods("PUT")
+	protected.HandleFunc("/meetings/{id}/visit-log", meetings.CreateVisitLogHandler(db)).Methods("POST")
+	protected.HandleFunc("/meetings/{id}/visit-log", meetings.ListVisitLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/meetings/{id}", meetings.DeleteHandler(db)).Methods("DELETE")
 
 	// request routes (any authenticated user)
@@ -222,6 +225,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	admin.HandleFunc("/users", userauth.GetLastUsersHandler(db)).Methods("GET")
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
+	admin.HandleFunc("/vector-search/backfill", vectorsearchHandlers.BackfillHandler(db)).Methods("POST")
+	admin.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskHandler(db)).Methods("POST")
 
 	// staff routes — employee management
 	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()
@@ -433,6 +438,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerEditStaff.HandleFunc("/partners/{id}/customer-type", userauth.UpdatePartnerCustomerTypeHandler(db, rdb)).Methods("PUT")
 	partnerEditStaff.HandleFunc("/partners/{id}/rid", userauth.UpdatePartnerRidHandler(db, rdb)).Methods("PUT")
 	partnerEditStaff.HandleFunc("/partners/{id}/address", userauth.UpdatePartnerAddressHandler(db, rdb)).Methods("PUT")
+	partnerEditStaff.HandleFunc("/partners/{id}/pincode", userauth.UpdatePartnerPincodeHandler(db, rdb)).Methods("PUT")
 	partnerEditStaff.HandleFunc("/partners/{id}/send-email/{key}", userauth.SendPartnerEmailHandler(db)).Methods("POST")
 	partnerEditStaff.HandleFunc("/marg-parties/{rid}/create-partner", userauth.CreatePartnerFromMargPartyHandler(db)).Methods("POST")
 	partnerEditStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")

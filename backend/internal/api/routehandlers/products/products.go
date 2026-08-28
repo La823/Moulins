@@ -1,6 +1,7 @@
 package products
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,31 @@ import (
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
+	vectorsearch "github.com/lavanyaarora/server/internal/vectorsearch"
 )
+
+// syncVectorAsync re-embeds a product in the background after a
+// create/update — uses a fresh context since r.Context() is cancelled the
+// moment the handler returns, and never fails the actual API response.
+func syncVectorAsync(db *pgxpool.Pool, id uuid.UUID) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := vectorsearch.SyncProductByID(ctx, db, id); err != nil {
+			log.Printf("vector sync error for product %s: %v", id, err)
+		}
+	}()
+}
+
+func deleteVectorAsync(id uuid.UUID) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := vectorsearch.DeleteProductVector(ctx, id); err != nil {
+			log.Printf("vector delete error for product %s: %v", id, err)
+		}
+	}()
+}
 
 // actorID returns the acting staff user's ID for audit logging, or nil if
 // it can't be parsed from the request context.
@@ -95,6 +120,7 @@ func CreateProductFromMargProductHandler(db *pgxpool.Pool, rdb *cache.Client) ht
 		rdb.Del(r.Context(), "categories")
 		rdb.DelPattern(r.Context(), "products:*")
 		models.LogAction(r.Context(), db, actorID(r), "product.created", "product", &id, fmt.Sprintf("Created product %q from Marg base code %s", req.Name, baseCode))
+		syncVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -233,6 +259,7 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		rdb.Del(r.Context(), "categories")
 		rdb.DelPattern(r.Context(), "products:*")
 		models.LogAction(r.Context(), db, actorID(r), "product.created", "product", &id, fmt.Sprintf("Created product %q", req.Name))
+		syncVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -402,6 +429,7 @@ func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 
 		invalidateProduct(rdb, r, id)
 		models.LogAction(r.Context(), db, actorID(r), "product.updated", "product", &id, "Updated a product")
+		syncVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
@@ -423,6 +451,7 @@ func DeleteProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 			return
 		}
 		models.LogAction(r.Context(), db, actorID(r), "product.deleted", "product", &id, "Deleted a product")
+		deleteVectorAsync(id)
 
 		invalidateProduct(rdb, r, id)
 

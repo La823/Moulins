@@ -9,6 +9,7 @@ class Doctor {
   final double? latitude;
   final double? longitude;
   final DateTime? dob;
+  final DateTime? anniversary;
   final DateTime? lastMeetingAt;
   final String? lastMeetingNotes;
   final String? ownerName;
@@ -26,6 +27,7 @@ class Doctor {
     this.latitude,
     this.longitude,
     this.dob,
+    this.anniversary,
     this.lastMeetingAt,
     this.lastMeetingNotes,
     this.ownerName,
@@ -44,6 +46,7 @@ class Doctor {
         latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
         longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
         dob: json['dob'] != null ? DateTime.tryParse(json['dob']) : null,
+        anniversary: json['anniversary'] != null ? DateTime.tryParse(json['anniversary']) : null,
         lastMeetingAt: json['last_meeting_at'] != null ? DateTime.tryParse(json['last_meeting_at'])?.toLocal() : null,
         lastMeetingNotes: json['last_meeting_notes'],
         ownerName: json['owner_name'],

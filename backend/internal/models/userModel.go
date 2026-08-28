@@ -276,7 +276,8 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 	query := `
 		SELECT id, phone_number, username, email, plain_password,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
-			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address
+			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address,
+			pincode, city, state
 		FROM users
 		WHERE id = $1
 	`
@@ -285,6 +286,7 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
 		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
+		&u.Pincode, &u.City, &u.State,
 	)
 	if err != nil {
 		return nil, err
@@ -380,6 +382,32 @@ func UpdateAddresses(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, bi
 	return err
 }
 
+// UpdatePincode sets a partner's pincode and re-geocodes city/state/lat/lng
+// from it, mirroring the geocoding CreateUser does at signup. An empty
+// pincode clears the pincode along with the geocoded fields it drove.
+func UpdatePincode(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, pincode string) error {
+	if pincode == "" {
+		_, err := db.Exec(ctx,
+			`UPDATE users SET pincode = NULL, city = NULL, state = NULL, latitude = NULL, longitude = NULL, updated_at = NOW() WHERE id = $1`,
+			userID,
+		)
+		return err
+	}
+
+	var city, state *string
+	var lat, lng *float64
+	if result, ok := utils.GeocodePincode(pincode); ok {
+		city, state = &result.City, &result.State
+		lat, lng = &result.Lat, &result.Lng
+	}
+
+	_, err := db.Exec(ctx,
+		`UPDATE users SET pincode = $1, city = $2, state = $3, latitude = $4, longitude = $5, updated_at = NOW() WHERE id = $6`,
+		pincode, city, state, lat, lng, userID,
+	)
+	return err
+}
+
 // ErrPhoneTaken is returned by UpdatePhoneNumber when the new phone number
 // is already registered to a different user.
 var ErrPhoneTaken = errors.New("phone number is already registered")
@@ -447,6 +475,21 @@ func ResolveOwnerID(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (uu
 		return *u.TeamOwnerID, nil
 	}
 	return userID, nil
+}
+
+// ValidateAssignee checks that assigneeID is either ownerID itself or a
+// team_member owned by ownerID — used to make sure a partner can only
+// assign meetings (etc.) to themselves or their own team, not anyone else.
+func ValidateAssignee(ctx context.Context, db *pgxpool.Pool, ownerID, assigneeID uuid.UUID) (bool, error) {
+	if assigneeID == ownerID {
+		return true, nil
+	}
+	var exists bool
+	err := db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND team_owner_id = $2)`,
+		assigneeID, ownerID,
+	).Scan(&exists)
+	return exists, err
 }
 
 // CreateTeamMember creates a login for a partner's team member — same

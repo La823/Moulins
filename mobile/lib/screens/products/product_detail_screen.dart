@@ -304,9 +304,20 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                   Text(p.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
                   const SizedBox(height: 8),
 
-                  Text(
-                    'MRP Rs. ${(p.mrp ?? p.price).toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF00A6A4)),
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'MRP Rs. ${(p.mrp ?? p.price).toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF00A6A4)),
+                        ),
+                        if (p.mrpUnit != null && p.mrpUnit!.isNotEmpty)
+                          TextSpan(
+                            text: ' / ${p.mrpUnit}',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: Colors.grey.shade500),
+                          ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
 
@@ -317,15 +328,23 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  if (p.keyIngredients != null && p.keyIngredients!.isNotEmpty) ...[
-                    const Text('Composition', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    Text(
-                      p.keyIngredients!,
-                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+                  if (p.keyIngredients != null && p.keyIngredients!.isNotEmpty)
+                    _CollapsibleSection(
+                      title: 'Composition',
+                      body: p.keyIngredients!,
+                      initiallyExpanded: true,
                     ),
-                    const SizedBox(height: 16),
-                  ],
+
+                  if (p.directionForUse != null && p.directionForUse!.isNotEmpty)
+                    _CollapsibleSection(title: 'Directions For Use', body: p.directionForUse!),
+
+                  if (p.safetyInformation != null && p.safetyInformation!.isNotEmpty)
+                    _CollapsibleSection(title: 'Safety Information', body: p.safetyInformation!),
+
+                  if (p.edetailing != null && p.edetailing!.isNotEmpty)
+                    _CollapsibleSection(title: 'E-Detailing', body: p.edetailing!),
+
+                  const SizedBox(height: 4),
 
                   // Details
                   Container(
@@ -527,6 +546,40 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
           ],
         ),
       );
+}
+
+class _CollapsibleSection extends StatelessWidget {
+  final String title;
+  final String body;
+  final bool initiallyExpanded;
+
+  const _CollapsibleSection({
+    required this.title,
+    required this.body,
+    this.initiallyExpanded = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 16),
+        title: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              body,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ProductRow extends ConsumerWidget {

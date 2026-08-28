@@ -2,11 +2,20 @@
 backend/.env
 backend/tmp/
 backend/*.exe
+backend/*.exe~
+backend/*.log
+backend/backend.dev*.log
 
 # Frontend
 frontend/node_modules/
 frontend/.next/
 frontend/.env*.local
+frontend/*.log
+frontend/frontend.dev*.log
+
+# Mobile
+mobile/android/.kotlin/
+mobile/*.ipa
 
 # Root
 node_modules/
@@ -15,6 +24,9 @@ passwords.txt
 *.pem
 ~$*
 firebase/
+.aws/
+appcerts/
+api test/
 
 # OS
 .DS_Store

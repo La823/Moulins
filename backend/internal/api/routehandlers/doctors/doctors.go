@@ -58,8 +58,27 @@ func syncDoctorBirthdayMeeting(r *http.Request, db *pgxpool.Pool, doctorID, part
 	title := "Birthday"
 	notes := "Doctor's birthday"
 	req := models.CreateMeetingRequest{DoctorID: &doctorID, Title: &title, ScheduledAt: next, Notes: &notes}
-	if _, err := models.CreateMeeting(ctx, db, partnerID, req); err != nil {
+	if _, err := models.CreateMeeting(ctx, db, partnerID, partnerID, req); err != nil {
 		log.Printf("sync doctor birthday meeting: failed to create entry: %v", err)
+	}
+}
+
+// syncDoctorAnniversaryMeeting mirrors syncDoctorBirthdayMeeting for the
+// doctor's anniversary date.
+func syncDoctorAnniversaryMeeting(r *http.Request, db *pgxpool.Pool, doctorID, partnerID uuid.UUID, anniversary *time.Time) {
+	ctx := r.Context()
+	if err := models.DeleteUpcomingAnniversaryMeeting(ctx, db, doctorID); err != nil {
+		log.Printf("sync doctor anniversary meeting: failed to clear old entry: %v", err)
+	}
+	if anniversary == nil {
+		return
+	}
+	next := nextBirthdayOccurrence(*anniversary, time.Now())
+	title := "Anniversary"
+	notes := "Doctor's anniversary"
+	req := models.CreateMeetingRequest{DoctorID: &doctorID, Title: &title, ScheduledAt: next, Notes: &notes}
+	if _, err := models.CreateMeeting(ctx, db, partnerID, partnerID, req); err != nil {
+		log.Printf("sync doctor anniversary meeting: failed to create entry: %v", err)
 	}
 }
 
@@ -147,6 +166,9 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if req.DOB != nil {
 			syncDoctorBirthdayMeeting(r, db, id, userID, req.DOB)
 		}
+		if req.Anniversary != nil {
+			syncDoctorAnniversaryMeeting(r, db, id, userID, req.Anniversary)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -215,6 +237,7 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		syncDoctorBirthdayMeeting(r, db, doctorID, doctor.PartnerID, req.DOB)
+		syncDoctorAnniversaryMeeting(r, db, doctorID, doctor.PartnerID, req.Anniversary)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "doctor updated"})

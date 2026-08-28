@@ -186,10 +186,27 @@ export default function ProductDetailPage() {
 
 
           {product.key_ingredients && (
-            <div className="mb-8 pb-6 border-b border-gray-200">
-              <p className="text-xs uppercase tracking-widest text-gray-400 mb-2">Composition</p>
-              <p className="text-sm text-gray-700 leading-relaxed">{product.key_ingredients}</p>
-            </div>
+            <CollapsibleSection title="Composition" defaultOpen>
+              {product.key_ingredients}
+            </CollapsibleSection>
+          )}
+
+          {product.direction_for_use && (
+            <CollapsibleSection title="Directions For Use">
+              {product.direction_for_use}
+            </CollapsibleSection>
+          )}
+
+          {product.safety_information && (
+            <CollapsibleSection title="Safety Information">
+              {product.safety_information}
+            </CollapsibleSection>
+          )}
+
+          {product.edetailing && (
+            <CollapsibleSection title="E-Detailing">
+              {product.edetailing}
+            </CollapsibleSection>
           )}
 
           {/* Details */}
@@ -220,6 +237,9 @@ export default function ProductDetailPage() {
 
           <p className="text-2xl font-light text-gray-900 mb-4">
             MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
+            {product.mrp_unit && (
+              <span className="text-sm text-gray-400 font-normal"> / {product.mrp_unit}</span>
+            )}
           </p>
 
           {canOrder && (
@@ -357,5 +377,25 @@ export default function ProductDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CollapsibleSection({ title, defaultOpen = false, children }) {
+  return (
+    <details className="mb-8 pb-6 border-b border-gray-200 group" open={defaultOpen}>
+      <summary className="flex items-center justify-between cursor-pointer list-none">
+        <p className="text-xs uppercase tracking-widest text-gray-400">{title}</p>
+        <svg
+          className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+        </svg>
+      </summary>
+      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line mt-2">{children}</p>
+    </details>
   );
 }

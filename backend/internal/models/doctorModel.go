@@ -31,6 +31,7 @@ type Doctor struct {
 	Latitude         *float64   `json:"latitude,omitempty"`
 	Longitude        *float64   `json:"longitude,omitempty"`
 	DOB              *time.Time `json:"dob,omitempty"`
+	Anniversary      *time.Time `json:"anniversary,omitempty"`
 	LastMeetingAt    *time.Time `json:"last_meeting_at,omitempty"`
 	LastMeetingNotes *string    `json:"last_meeting_notes,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
@@ -69,17 +70,18 @@ type CreateDoctorRequest struct {
 	Latitude      *float64   `json:"latitude,omitempty"`
 	Longitude     *float64   `json:"longitude,omitempty"`
 	DOB           *time.Time `json:"dob,omitempty"`
+	Anniversary   *time.Time `json:"anniversary,omitempty"`
 }
 
 type AddDoctorProductRequest struct {
 	ProductID uuid.UUID `json:"product_id"`
 }
 
-const doctorColumns = `id, partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, last_meeting_at, last_meeting_notes, created_at`
+const doctorColumns = `id, partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, anniversary, last_meeting_at, last_meeting_notes, created_at`
 
 func scanDoctor(row interface{ Scan(...any) error }, d *Doctor) error {
 	return row.Scan(&d.ID, &d.PartnerID, &d.UserID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
-		&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
+		&d.DOB, &d.Anniversary, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt)
 }
 
 // CreateDoctor creates the doctor record and, since a doctor's phone
@@ -101,9 +103,9 @@ func CreateDoctor(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, re
 
 	var id uuid.UUID
 	err = db.QueryRow(ctx,
-		`INSERT INTO doctors (partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-		partnerID, userID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB,
+		`INSERT INTO doctors (partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, anniversary)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+		partnerID, userID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, req.Anniversary,
 	).Scan(&id)
 	if err != nil {
 		return uuid.Nil, err
@@ -133,7 +135,7 @@ func GetDoctorsByPartner(ctx context.Context, db *pgxpool.Pool, partnerID uuid.U
 	for rows.Next() {
 		var d DoctorListItem
 		if err := rows.Scan(&d.ID, &d.PartnerID, &d.UserID, &d.Name, &d.Phone, &d.Email, &d.Speciality, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
-			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.ProductCount); err != nil {
+			&d.DOB, &d.Anniversary, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.ProductCount); err != nil {
 			return nil, err
 		}
 		doctors = append(doctors, d)
@@ -170,6 +172,26 @@ func GetDoctorsWithDOB(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) 
 	return doctors, rows.Err()
 }
 
+// GetDoctorsWithAnniversary returns every doctor with an anniversary date
+// set, across all partners — mirrors GetDoctorsWithDOB.
+func GetDoctorsWithAnniversary(ctx context.Context, db *pgxpool.Pool) ([]Doctor, error) {
+	rows, err := db.Query(ctx, `SELECT `+doctorColumns+` FROM doctors WHERE anniversary IS NOT NULL AND is_deleted = FALSE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	doctors := []Doctor{}
+	for rows.Next() {
+		var d Doctor
+		if err := scanDoctor(rows, &d); err != nil {
+			return nil, err
+		}
+		doctors = append(doctors, d)
+	}
+	return doctors, rows.Err()
+}
+
 // HasUpcomingBirthdayMeeting reports whether a doctor already has a
 // not-yet-happened auto-created "Birthday" calendar entry — used by the
 // scheduler to know whether next year's occurrence still needs creating.
@@ -185,12 +207,26 @@ func HasUpcomingBirthdayMeeting(ctx context.Context, db *pgxpool.Pool, doctorID 
 	return exists, err
 }
 
+// HasUpcomingAnniversaryMeeting mirrors HasUpcomingBirthdayMeeting for the
+// "Anniversary" auto-created calendar entry.
+func HasUpcomingAnniversaryMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) (bool, error) {
+	var exists bool
+	err := db.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM meetings
+			WHERE doctor_id = $1 AND title = 'Anniversary' AND status = 'upcoming' AND scheduled_at > now()
+		)`,
+		doctorID,
+	).Scan(&exists)
+	return exists, err
+}
+
 // GetAllDoctorsWithLocation returns every doctor across every partner that
 // has a pinned clinic location, for the admin-only doctors map.
 func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorWithOwner, error) {
 	rows, err := db.Query(ctx,
 		`SELECT d.id, d.partner_id, d.name, d.phone, d.clinic_name, d.clinic_address, d.latitude, d.longitude,
-		        d.dob, d.last_meeting_at, d.last_meeting_notes, d.created_at, u.username, u.phone_number, d.internal_contact_name
+		        d.dob, d.anniversary, d.last_meeting_at, d.last_meeting_notes, d.created_at, u.username, u.phone_number, d.internal_contact_name
 		 FROM doctors d
 		 JOIN users u ON u.id = d.partner_id
 		 WHERE d.latitude IS NOT NULL AND d.longitude IS NOT NULL AND d.is_deleted = FALSE
@@ -205,7 +241,7 @@ func GetAllDoctorsWithLocation(ctx context.Context, db *pgxpool.Pool) ([]DoctorW
 	for rows.Next() {
 		var d DoctorWithOwner
 		if err := rows.Scan(&d.ID, &d.PartnerID, &d.Name, &d.Phone, &d.ClinicName, &d.ClinicAddress, &d.Latitude, &d.Longitude,
-			&d.DOB, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.OwnerName, &d.OwnerPhone, &d.InternalContactName); err != nil {
+			&d.DOB, &d.Anniversary, &d.LastMeetingAt, &d.LastMeetingNotes, &d.CreatedAt, &d.OwnerName, &d.OwnerPhone, &d.InternalContactName); err != nil {
 			return nil, err
 		}
 		doctors = append(doctors, d)
@@ -227,6 +263,19 @@ func UpdateDoctorInternalContactName(ctx context.Context, db *pgxpool.Pool, doct
 func MarkBirthdayReminderSent(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, date time.Time) (bool, error) {
 	tag, err := db.Exec(ctx,
 		`INSERT INTO doctor_birthday_reminders (doctor_id, reminder_date) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+		doctorID, date.Format("2006-01-02"),
+	)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// MarkAnniversaryReminderSent mirrors MarkBirthdayReminderSent for the
+// anniversary-countdown reminder.
+func MarkAnniversaryReminderSent(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, date time.Time) (bool, error) {
+	tag, err := db.Exec(ctx,
+		`INSERT INTO doctor_anniversary_reminders (doctor_id, reminder_date) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 		doctorID, date.Format("2006-01-02"),
 	)
 	if err != nil {
@@ -287,8 +336,8 @@ func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req
 	}
 
 	_, err = db.Exec(ctx,
-		`UPDATE doctors SET name = $1, phone = $2, email = $3, speciality = $4, clinic_name = $5, clinic_address = $6, latitude = $7, longitude = $8, dob = $9 WHERE id = $10`,
-		req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, doctorID,
+		`UPDATE doctors SET name = $1, phone = $2, email = $3, speciality = $4, clinic_name = $5, clinic_address = $6, latitude = $7, longitude = $8, dob = $9, anniversary = $10 WHERE id = $11`,
+		req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, req.Anniversary, doctorID,
 	)
 	return err
 }

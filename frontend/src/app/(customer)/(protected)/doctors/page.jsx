@@ -6,7 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import LocationPicker from "@/components/LocationPicker";
 
-const emptyForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "" };
+const emptyForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "", anniversary: "" };
 
 function initials(name) {
   if (!name) return "?";
@@ -52,6 +52,7 @@ export default function DoctorsPage() {
       speciality: doctor.speciality || "",
       clinic_name: doctor.clinic_name || "",
       dob: doctor.dob ? doctor.dob.slice(0, 10) : "",
+      anniversary: doctor.anniversary ? doctor.anniversary.slice(0, 10) : "",
     });
     setLocation(
       doctor.latitude != null && doctor.longitude != null
@@ -81,6 +82,7 @@ export default function DoctorsPage() {
       speciality: form.speciality.trim() || null,
       clinic_name: form.clinic_name.trim() || null,
       dob: form.dob || null,
+      anniversary: form.anniversary || null,
       clinic_address: location?.address || null,
       latitude: location?.lat ?? null,
       longitude: location?.lng ?? null,
@@ -205,6 +207,18 @@ export default function DoctorsPage() {
               Adds a yearly birthday reminder to your meetings calendar, with daily notifications in the 10 days before.
             </p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Anniversary</label>
+            <input
+              type="date"
+              value={form.anniversary}
+              onChange={(e) => setForm({ ...form, anniversary: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Adds a yearly anniversary reminder to your meetings calendar, with daily notifications in the 10 days before.
+            </p>
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
             type="submit"
@@ -267,6 +281,10 @@ export default function DoctorsPage() {
                 <Field
                   label="Birthday"
                   value={doctor.dob ? new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" }) : null}
+                />
+                <Field
+                  label="Anniversary"
+                  value={doctor.anniversary ? new Date(doctor.anniversary).toLocaleDateString("en-IN", { day: "numeric", month: "long" }) : null}
                 />
                 <Field label="Clinic" value={doctor.clinic_name || doctor.clinic_address} />
                 <Field

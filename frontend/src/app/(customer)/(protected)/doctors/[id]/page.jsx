@@ -154,6 +154,11 @@ export default function DoctorDetailPage() {
                 🎂 {new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
               </p>
             )}
+            {doctor.anniversary && (
+              <p className="text-sm text-gray-400 mt-1">
+                🎉 {new Date(doctor.anniversary).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+              </p>
+            )}
           </div>
           <Link
             href={`/meetings?doctor_id=${doctor.id}`}

@@ -62,6 +62,10 @@ export default function PartnerDetailPage() {
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState("");
   const [addressSuccess, setAddressSuccess] = useState("");
+  const [pincodeInput, setPincodeInput] = useState("");
+  const [savingPincode, setSavingPincode] = useState(false);
+  const [pincodeError, setPincodeError] = useState("");
+  const [pincodeSuccess, setPincodeSuccess] = useState("");
   const [sendingWelcomeEmail, setSendingWelcomeEmail] = useState(false);
   const [welcomeEmailError, setWelcomeEmailError] = useState("");
   const [welcomeEmailSuccess, setWelcomeEmailSuccess] = useState("");
@@ -84,6 +88,7 @@ export default function PartnerDetailPage() {
         setPhoneInput(data?.phone_number || "");
         setBillingInput(data?.billing_address || "");
         setShippingInput(data?.shipping_address || "");
+        setPincodeInput(data?.pincode || "");
       })
       .catch(() => setPartner(null))
       .finally(() => setLoading(false));
@@ -248,6 +253,26 @@ export default function PartnerDetailPage() {
       setAddressError(err.message);
     } finally {
       setSavingAddress(false);
+    }
+  };
+
+  const handlePincodeSave = async (e) => {
+    e.preventDefault();
+    setSavingPincode(true);
+    setPincodeError("");
+    setPincodeSuccess("");
+    try {
+      await apiFetch(`/admin/partners/${id}/pincode`, {
+        method: "PUT",
+        body: JSON.stringify({ pincode: pincodeInput }),
+      });
+      setPartner((prev) => ({ ...prev, pincode: pincodeInput || null }));
+      setPincodeSuccess("Saved");
+      setTimeout(() => setPincodeSuccess(""), 3000);
+    } catch (err) {
+      setPincodeError(err.message);
+    } finally {
+      setSavingPincode(false);
     }
   };
 
@@ -602,6 +627,35 @@ export default function PartnerDetailPage() {
               </form>
               {addressError && <p className="text-xs text-red-600 mt-1">{addressError}</p>}
               {addressSuccess && <p className="text-xs text-green-600 mt-1">{addressSuccess}</p>}
+            </div>
+
+            {/* Pincode — drives the geocoded city/state/lat/lng, same as at
+                signup. */}
+            <div className="mb-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Pincode</p>
+              <form onSubmit={handlePincodeSave} className="flex gap-2">
+                <input
+                  type="text"
+                  value={pincodeInput}
+                  onChange={(e) => setPincodeInput(e.target.value)}
+                  placeholder="Pincode"
+                  className="flex-1 px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                />
+                <button
+                  type="submit"
+                  disabled={savingPincode}
+                  className="px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {savingPincode ? "Saving..." : "Save"}
+                </button>
+              </form>
+              {(partner.city || partner.state) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {[partner.city, partner.state].filter(Boolean).join(", ")}
+                </p>
+              )}
+              {pincodeError && <p className="text-xs text-red-600 mt-1">{pincodeError}</p>}
+              {pincodeSuccess && <p className="text-xs text-green-600 mt-1">{pincodeSuccess}</p>}
             </div>
 
             <div className="space-y-3">

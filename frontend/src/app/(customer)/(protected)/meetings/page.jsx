@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const STATUS_STYLES = {
   upcoming: "bg-blue-50 text-blue-700",
@@ -24,15 +25,17 @@ export default function MeetingsPage() {
 }
 
 function MeetingsPageInner() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const [meetings, setMeetings] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [monthCursor, setMonthCursor] = useState(new Date());
 
   // Day panel — opened by clicking a date on the calendar
   const [selectedDateKey, setSelectedDateKey] = useState(null);
-  const [dayForm, setDayForm] = useState({ doctor_id: "", time: "", notes: "", mom: "", request: "" });
+  const [dayForm, setDayForm] = useState({ doctor_id: "", time: "", notes: "", mom: "", request: "", assigned_to: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -40,6 +43,13 @@ function MeetingsPageInner() {
   const [editingMomId, setEditingMomId] = useState(null);
   const [momDraft, setMomDraft] = useState("");
   const [savingMom, setSavingMom] = useState(false);
+
+  // Visit-log capture/display
+  const [visitLogsByMeeting, setVisitLogsByMeeting] = useState({});
+  const [loggingVisitId, setLoggingVisitId] = useState(null);
+  const [visitNotes, setVisitNotes] = useState("");
+  const [capturingLocation, setCapturingLocation] = useState(false);
+  const [visitError, setVisitError] = useState("");
 
   const fetchMeetings = useCallback(() => {
     apiFetch("/meetings")
@@ -53,7 +63,59 @@ function MeetingsPageInner() {
     apiFetch("/doctors")
       .then((data) => setDoctors(Array.isArray(data) ? data : []))
       .catch(() => setDoctors([]));
-  }, [fetchMeetings]);
+    if (user?.role === "partner") {
+      apiFetch("/team")
+        .then((data) => setTeamMembers(Array.isArray(data) ? data : []))
+        .catch(() => setTeamMembers([]));
+    }
+  }, [fetchMeetings, user?.role]);
+
+  const loadVisitLogs = useCallback((meetingId) => {
+    apiFetch(`/meetings/${meetingId}/visit-log`)
+      .then((data) => setVisitLogsByMeeting((prev) => ({ ...prev, [meetingId]: data.logs || [] })))
+      .catch(() => {});
+  }, []);
+
+  const startLogVisit = (meetingId) => {
+    setLoggingVisitId(meetingId);
+    setVisitNotes("");
+    setVisitError("");
+    if (!visitLogsByMeeting[meetingId]) loadVisitLogs(meetingId);
+  };
+
+  const submitVisitLog = async (meetingId) => {
+    if (!navigator.geolocation) {
+      setVisitError("Location capture isn't supported on this device");
+      return;
+    }
+    setCapturingLocation(true);
+    setVisitError("");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await apiFetch(`/meetings/${meetingId}/visit-log`, {
+            method: "POST",
+            body: JSON.stringify({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              notes: visitNotes.trim() || null,
+            }),
+          });
+          setLoggingVisitId(null);
+          loadVisitLogs(meetingId);
+        } catch (err) {
+          setVisitError(err.message);
+        } finally {
+          setCapturingLocation(false);
+        }
+      },
+      () => {
+        setVisitError("Could not get your current location — check location permissions");
+        setCapturingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // Deep link from a doctor's page (?doctor_id=) — open today's panel with the doctor preselected
   useEffect(() => {
@@ -118,7 +180,7 @@ function MeetingsPageInner() {
 
   const openDay = (dateKey) => {
     setSelectedDateKey(dateKey);
-    setDayForm({ doctor_id: "", time: "11:00", notes: "", mom: "", request: "" });
+    setDayForm({ doctor_id: "", time: "11:00", notes: "", mom: "", request: "", assigned_to: "" });
     setError("");
   };
 
@@ -144,6 +206,7 @@ function MeetingsPageInner() {
           scheduled_at: scheduledAt,
           notes: dayForm.notes || null,
           mom: dayForm.mom || null,
+          assigned_to: dayForm.assigned_to || null,
         }),
       });
 
@@ -159,7 +222,7 @@ function MeetingsPageInner() {
         }).catch(() => {});
       }
 
-      setDayForm({ doctor_id: "", time: "", notes: "", mom: "", request: "" });
+      setDayForm({ doctor_id: "", time: "", notes: "", mom: "", request: "", assigned_to: "" });
       fetchMeetings();
     } catch (err) {
       setError(err.message);
@@ -306,6 +369,9 @@ function MeetingsPageInner() {
                           {new Date(m.scheduled_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                         </p>
                         {m.notes && <p className="text-xs text-gray-400 mt-1">{m.notes}</p>}
+                        {user?.role === "partner" && m.assigned_to_name && m.assigned_to !== user.id && (
+                          <p className="text-xs text-purple-600 mt-1">Assigned to {m.assigned_to_name}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[m.status]}`}>
@@ -369,6 +435,59 @@ function MeetingsPageInner() {
                         </button>
                       )}
                     </div>
+
+                    {/* Visit log — proof of attendance (location + timestamp) */}
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Visit Log</p>
+                        {loggingVisitId !== m.id && (
+                          <button onClick={() => startLogVisit(m.id)} className="text-xs text-blue-600 hover:text-blue-700">
+                            + Log Visit
+                          </button>
+                        )}
+                      </div>
+
+                      {(visitLogsByMeeting[m.id] || []).map((l) => (
+                        <div key={l.id} className="text-xs text-gray-600 mb-1">
+                          <span className="font-medium text-gray-900">{l.user_name}</span> at{" "}
+                          {new Date(l.recorded_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} —{" "}
+                          <a
+                            href={`https://maps.google.com/?q=${l.latitude},${l.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            view location
+                          </a>
+                          {l.notes && <p className="text-gray-400 mt-0.5">{l.notes}</p>}
+                        </div>
+                      ))}
+
+                      {loggingVisitId === m.id && (
+                        <div className="space-y-2 mt-2">
+                          <textarea
+                            value={visitNotes}
+                            onChange={(e) => setVisitNotes(e.target.value)}
+                            rows={2}
+                            placeholder="Notes about the visit (optional)..."
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-900"
+                          />
+                          {visitError && <p className="text-xs text-red-600">{visitError}</p>}
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => submitVisitLog(m.id)}
+                              disabled={capturingLocation}
+                              className="text-xs font-medium text-gray-900 hover:underline disabled:opacity-50"
+                            >
+                              {capturingLocation ? "Getting location..." : "Capture location & save"}
+                            </button>
+                            <button onClick={() => setLoggingVisitId(null)} className="text-xs text-gray-400 hover:text-gray-900">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -399,6 +518,26 @@ function MeetingsPageInner() {
                   </p>
                 )}
               </div>
+              {user?.role === "partner" && teamMembers.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Assign to (optional)</label>
+                  <select
+                    value={dayForm.assigned_to}
+                    onChange={(e) => setDayForm({ ...dayForm, assigned_to: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                  >
+                    <option value="">Myself</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.username || m.phone_number}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Assigning it to a team member puts it on their portal instead of yours.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Time</label>
                 <input

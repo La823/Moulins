@@ -42,10 +42,14 @@ class Product {
   final int moq;
   final bool isActive;
   final double? mrp;
+  final String? mrpUnit;
   final String? packSize;
   final String? productForm;
   final String? keyIngredients;
   final String? strength;
+  final String? directionForUse;
+  final String? safetyInformation;
+  final String? edetailing;
   final List<ProductImage> images;
   final List<ProductDocument> documents;
   final String? audioUrl;
@@ -62,10 +66,14 @@ class Product {
     this.moq = 1,
     required this.isActive,
     this.mrp,
+    this.mrpUnit,
     this.packSize,
     this.productForm,
     this.keyIngredients,
     this.strength,
+    this.directionForUse,
+    this.safetyInformation,
+    this.edetailing,
     this.images = const [],
     this.documents = const [],
     this.audioUrl,
@@ -83,10 +91,14 @@ class Product {
         moq: json['moq'] ?? 1,
         isActive: json['is_active'] ?? true,
         mrp: json['mrp']?.toDouble(),
+        mrpUnit: json['mrp_unit'],
         packSize: json['pack_size'],
         productForm: json['product_form'],
         keyIngredients: json['key_ingredients'],
         strength: json['strength'],
+        directionForUse: json['direction_for_use'],
+        safetyInformation: json['safety_information'],
+        edetailing: json['edetailing'],
         images: (json['images'] as List<dynamic>? ?? [])
             .map((e) => ProductImage.fromJson(e))
             .toList(),
@@ -111,10 +123,14 @@ class Product {
         'moq': moq,
         'is_active': isActive,
         'mrp': mrp,
+        'mrp_unit': mrpUnit,
         'pack_size': packSize,
         'product_form': productForm,
         'key_ingredients': keyIngredients,
         'strength': strength,
+        'direction_for_use': directionForUse,
+        'safety_information': safetyInformation,
+        'edetailing': edetailing,
         'images': images.map((e) => e.toJson()).toList(),
         'documents': documents.map((e) => e.toJson()).toList(),
       };

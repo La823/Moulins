@@ -30,6 +30,8 @@ func StartScheduler(db *pgxpool.Pool) {
 		if today != lastBirthdayRunDate {
 			dispatchBirthdayReminders(db)
 			dispatchBirthdayMeetingSync(db)
+			dispatchAnniversaryReminders(db)
+			dispatchAnniversaryMeetingSync(db)
 			dispatchMargSync(db)
 			lastBirthdayRunDate = today
 		}
@@ -96,7 +98,7 @@ func dispatchBirthdayMeetingSync(db *pgxpool.Pool) {
 		title := "Birthday"
 		notes := "Doctor's birthday"
 		req := models.CreateMeetingRequest{DoctorID: &d.ID, Title: &title, ScheduledAt: next, Notes: &notes}
-		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, req); err != nil {
+		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, d.PartnerID, req); err != nil {
 			log.Printf("scheduler: failed to create birthday meeting for doctor %s: %v", d.ID, err)
 		}
 	}
@@ -157,6 +159,82 @@ func dispatchBirthdayReminders(db *pgxpool.Pool) {
 
 		if err := SendDirectNotification(ctx, db, d.PartnerID, title, body, &deepLink); err != nil {
 			log.Printf("scheduler: failed to send birthday reminder for doctor %s: %v", d.ID, err)
+		}
+	}
+}
+
+// dispatchAnniversaryMeetingSync mirrors dispatchBirthdayMeetingSync for the
+// doctor's anniversary date.
+func dispatchAnniversaryMeetingSync(db *pgxpool.Pool) {
+	ctx := context.Background()
+
+	doctors, err := models.GetDoctorsWithAnniversary(ctx, db)
+	if err != nil {
+		log.Printf("scheduler: failed to fetch doctors with anniversary: %v", err)
+		return
+	}
+
+	for _, d := range doctors {
+		has, err := models.HasUpcomingAnniversaryMeeting(ctx, db, d.ID)
+		if err != nil {
+			log.Printf("scheduler: failed to check anniversary meeting for doctor %s: %v", d.ID, err)
+			continue
+		}
+		if has {
+			continue
+		}
+
+		next := nextBirthdayOccurrence(*d.Anniversary, time.Now())
+		title := "Anniversary"
+		notes := "Doctor's anniversary"
+		req := models.CreateMeetingRequest{DoctorID: &d.ID, Title: &title, ScheduledAt: next, Notes: &notes}
+		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, d.PartnerID, req); err != nil {
+			log.Printf("scheduler: failed to create anniversary meeting for doctor %s: %v", d.ID, err)
+		}
+	}
+}
+
+// dispatchAnniversaryReminders mirrors dispatchBirthdayReminders for the
+// doctor's anniversary date.
+func dispatchAnniversaryReminders(db *pgxpool.Pool) {
+	ctx := context.Background()
+	now := time.Now()
+
+	doctors, err := models.GetDoctorsWithAnniversary(ctx, db)
+	if err != nil {
+		log.Printf("scheduler: failed to fetch doctors with anniversary: %v", err)
+		return
+	}
+
+	for _, d := range doctors {
+		next := time.Date(now.Year(), d.Anniversary.Month(), d.Anniversary.Day(), 0, 0, 0, 0, now.Location())
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		if next.Before(today) {
+			next = next.AddDate(1, 0, 0)
+		}
+		daysUntil := int(next.Sub(today).Hours() / 24)
+		if daysUntil < 0 || daysUntil > 9 {
+			continue
+		}
+
+		sent, err := models.MarkAnniversaryReminderSent(ctx, db, d.ID, today)
+		if err != nil {
+			log.Printf("scheduler: failed to record anniversary reminder for doctor %s: %v", d.ID, err)
+			continue
+		}
+		if !sent {
+			continue // already sent today
+		}
+
+		title := "🎉 Upcoming doctor anniversary"
+		body := fmt.Sprintf("Dr. %s's anniversary is today!", d.Name)
+		if daysUntil > 0 {
+			body = fmt.Sprintf("Dr. %s's anniversary is in %d day%s (%s).", d.Name, daysUntil, plural(daysUntil), next.Format("Jan 2"))
+		}
+		deepLink := fmt.Sprintf("/doctors/%s", d.ID)
+
+		if err := SendDirectNotification(ctx, db, d.PartnerID, title, body, &deepLink); err != nil {
+			log.Printf("scheduler: failed to send anniversary reminder for doctor %s: %v", d.ID, err)
 		}
 	}
 }

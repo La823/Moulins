@@ -47,6 +47,9 @@ type PartnerDetailResponse struct {
 	Rid                 *string                  `json:"rid,omitempty"`
 	BillingAddress      *string                  `json:"billing_address,omitempty"`
 	ShippingAddress     *string                  `json:"shipping_address,omitempty"`
+	Pincode             *string                  `json:"pincode,omitempty"`
+	City                *string                  `json:"city,omitempty"`
+	State               *string                  `json:"state,omitempty"`
 }
 
 func GetPartnerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -93,6 +96,9 @@ func GetPartnerDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Rid:                 user.Rid,
 			BillingAddress:      user.BillingAddress,
 			ShippingAddress:     user.ShippingAddress,
+			Pincode:             user.Pincode,
+			City:                user.City,
+			State:               user.State,
 		}
 
 		if user.LastLoginAt != nil {
@@ -421,6 +427,37 @@ func UpdatePartnerAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.Handl
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "address updated"})
+	}
+}
+
+// UpdatePartnerPincodeHandler — admin/staff edits a partner's pincode,
+// which re-geocodes city/state/lat/lng the same way signup does.
+func UpdatePartnerPincodeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Pincode string `json:"pincode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdatePincode(r.Context(), db, userID, body.Pincode); err != nil {
+			log.Printf("update partner pincode error: %v", err)
+			http.Error(w, "could not update pincode", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "pincode updated"})
 	}
 }
 

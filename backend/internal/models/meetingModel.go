@@ -24,6 +24,8 @@ type Meeting struct {
 	Reminder1HourSent bool       `json:"reminder_1hour_sent"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	AssignedTo        *uuid.UUID `json:"assigned_to,omitempty"`
+	AssignedToName    string     `json:"assigned_to_name,omitempty"`
 }
 
 type CreateMeetingRequest struct {
@@ -32,6 +34,7 @@ type CreateMeetingRequest struct {
 	ScheduledAt time.Time  `json:"scheduled_at"`
 	Notes       *string    `json:"notes,omitempty"`
 	Mom         *string    `json:"mom,omitempty"`
+	AssignedTo  *uuid.UUID `json:"assigned_to,omitempty"`
 }
 
 type UpdateMeetingRequest struct {
@@ -42,33 +45,49 @@ type UpdateMeetingRequest struct {
 	Mom         *string    `json:"mom,omitempty"`
 }
 
-func CreateMeeting(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req CreateMeetingRequest) (uuid.UUID, error) {
+func CreateMeeting(ctx context.Context, db *pgxpool.Pool, userID, assignedTo uuid.UUID, req CreateMeetingRequest) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
-		`INSERT INTO meetings (user_id, doctor_id, title, scheduled_at, notes, mom) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		userID, req.DoctorID, req.Title, req.ScheduledAt, req.Notes, req.Mom,
+		`INSERT INTO meetings (user_id, doctor_id, title, scheduled_at, notes, mom, assigned_to) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		userID, req.DoctorID, req.Title, req.ScheduledAt, req.Notes, req.Mom, assignedTo,
 	).Scan(&id)
 	return id, err
 }
 
 func GetMeetingByID(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID) (*Meeting, error) {
 	var m Meeting
+	var assignedToName *string
 	err := db.QueryRow(ctx,
-		`SELECT id, user_id, doctor_id, title, scheduled_at, notes, mom, status, reminder_1day_sent, reminder_1hour_sent, created_at, updated_at
-		 FROM meetings WHERE id = $1`,
+		`SELECT m.id, m.user_id, m.doctor_id, m.title, m.scheduled_at, m.notes, m.mom, m.status,
+		        m.reminder_1day_sent, m.reminder_1hour_sent, m.created_at, m.updated_at, m.assigned_to, au.username
+		 FROM meetings m
+		 LEFT JOIN users au ON au.id = m.assigned_to
+		 WHERE m.id = $1`,
 		meetingID,
-	).Scan(&m.ID, &m.UserID, &m.DoctorID, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status, &m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt)
+	).Scan(&m.ID, &m.UserID, &m.DoctorID, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status, &m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt, &m.AssignedTo, &assignedToName)
 	if err != nil {
 		return nil, err
+	}
+	if assignedToName != nil {
+		m.AssignedToName = *assignedToName
 	}
 	return &m, nil
 }
 
-func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, doctorID *uuid.UUID, status, from, to string) ([]Meeting, error) {
+// GetMeetingsForUser returns every meeting pooled under ownerID (a partner
+// sees their whole team's meetings this way), optionally narrowed to just
+// the meetings assigned to assigneeID — used so a team member only sees
+// meetings assigned to them rather than the whole team's.
+func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, assigneeID, doctorID *uuid.UUID, status, from, to string) ([]Meeting, error) {
 	conditions := []string{"m.user_id = $1"}
 	args := []any{userID}
 	argIdx := 2
 
+	if assigneeID != nil {
+		conditions = append(conditions, fmt.Sprintf("m.assigned_to = $%d", argIdx))
+		args = append(args, *assigneeID)
+		argIdx++
+	}
 	if doctorID != nil {
 		conditions = append(conditions, fmt.Sprintf("m.doctor_id = $%d", argIdx))
 		args = append(args, *doctorID)
@@ -97,9 +116,10 @@ func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 
 	query := `
 		SELECT m.id, m.user_id, m.doctor_id, d.name, m.title, m.scheduled_at, m.notes, m.mom, m.status,
-		       m.reminder_1day_sent, m.reminder_1hour_sent, m.created_at, m.updated_at
+		       m.reminder_1day_sent, m.reminder_1hour_sent, m.created_at, m.updated_at, m.assigned_to, au.username
 		FROM meetings m
-		LEFT JOIN doctors d ON d.id = m.doctor_id` + where + `
+		LEFT JOIN doctors d ON d.id = m.doctor_id
+		LEFT JOIN users au ON au.id = m.assigned_to` + where + `
 		ORDER BY m.scheduled_at ASC`
 
 	rows, err := db.Query(ctx, query, args...)
@@ -111,13 +131,16 @@ func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID,
 	meetings := []Meeting{}
 	for rows.Next() {
 		var m Meeting
-		var doctorName *string
+		var doctorName, assignedToName *string
 		if err := rows.Scan(&m.ID, &m.UserID, &m.DoctorID, &doctorName, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
-			&m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			&m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt, &m.AssignedTo, &assignedToName); err != nil {
 			return nil, err
 		}
 		if doctorName != nil {
 			m.DoctorName = *doctorName
+		}
+		if assignedToName != nil {
+			m.AssignedToName = *assignedToName
 		}
 		meetings = append(meetings, m)
 	}
@@ -302,6 +325,16 @@ func MarkReminderSent(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID
 func DeleteUpcomingBirthdayMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) error {
 	_, err := db.Exec(ctx,
 		`DELETE FROM meetings WHERE doctor_id = $1 AND title = 'Birthday' AND status = 'upcoming' AND scheduled_at > now()`,
+		doctorID,
+	)
+	return err
+}
+
+// DeleteUpcomingAnniversaryMeeting mirrors DeleteUpcomingBirthdayMeeting for
+// the "Anniversary" auto-created calendar entry.
+func DeleteUpcomingAnniversaryMeeting(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID) error {
+	_, err := db.Exec(ctx,
+		`DELETE FROM meetings WHERE doctor_id = $1 AND title = 'Anniversary' AND status = 'upcoming' AND scheduled_at > now()`,
 		doctorID,
 	)
 	return err

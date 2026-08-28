@@ -42,6 +42,7 @@ class DoctorService {
     double? latitude,
     double? longitude,
     DateTime? dob,
+    DateTime? anniversary,
   }) async {
     final res = await _dio.post('/doctors', data: {
       'name': name,
@@ -53,6 +54,7 @@ class DoctorService {
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       if (dob != null) 'dob': dob.toUtc().toIso8601String(),
+      if (anniversary != null) 'anniversary': anniversary.toUtc().toIso8601String(),
     });
     return Doctor.fromJson(res.data);
   }
@@ -68,6 +70,7 @@ class DoctorService {
     double? latitude,
     double? longitude,
     DateTime? dob,
+    DateTime? anniversary,
   }) async {
     await _dio.put('/doctors/$id', data: {
       'name': name,
@@ -79,6 +82,7 @@ class DoctorService {
       'latitude': latitude,
       'longitude': longitude,
       if (dob != null) 'dob': dob.toUtc().toIso8601String(),
+      if (anniversary != null) 'anniversary': anniversary.toUtc().toIso8601String(),
     });
   }
 
