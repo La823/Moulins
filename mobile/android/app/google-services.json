@@ -7,9 +7,28 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:970076765844:android:da8662e193f4118855fe81",
+        "android_client_info": {
+          "package_name": "com.moulinspharma.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9j56rs23ZXTuoFDpNv8jxds4a67P72jw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:970076765844:android:445b50a04d68c37255fe81",
         "android_client_info": {
-          "package_name": "com.moulins.app"
+          "package_name": "com.moulinspharma.moulins"
         }
       },
       "oauth_client": [],
