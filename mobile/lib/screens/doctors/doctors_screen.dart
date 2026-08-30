@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../models/doctor.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/doctor_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
@@ -38,31 +37,6 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       setState(() { _doctors = d; _loading = false; });
     } catch (_) {
       setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _deleteDoctor(Doctor d) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete doctor?'),
-        content: Text('"${d.name}" will be removed from your doctors list.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await _service.deleteDoctor(d.id);
-      _load();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete doctor')),
-        );
-      }
     }
   }
 
@@ -364,7 +338,6 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canDelete = ref.watch(authProvider).user?.role != 'team_member';
     return Scaffold(
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
@@ -417,7 +390,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                     itemBuilder: (ctx, i) {
                       final d = _doctors![i];
                       return GestureDetector(
-                        onTap: () => _showDoctorForm(existing: d),
+                        onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctor: d))),
                         child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -464,23 +437,6 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                             _fieldRow('Anniversary', d.anniversary != null ? '${d.anniversary!.day}/${d.anniversary!.month}' : null),
                             _fieldRow('Clinic', d.clinicName ?? d.clinicAddress),
                             _fieldRow('Products', '${d.productCount}'),
-                            const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
-                            Row(
-                              children: [
-                                TextButton(
-                                  onPressed: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctor: d))),
-                                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                                  child: const Text('Manage Products', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
-                                ),
-                                const Spacer(),
-                                if (canDelete)
-                                  TextButton(
-                                    onPressed: () => _deleteDoctor(d),
-                                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                                    child: const Text('Delete', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red)),
-                                  ),
-                              ],
-                            ),
                           ],
                         ),
                       ));

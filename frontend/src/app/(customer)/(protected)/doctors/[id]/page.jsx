@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import LocationPicker from "@/components/LocationPicker";
+
+const emptyProfileForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "", anniversary: "" };
 
 export default function DoctorDetailPage() {
   const { id } = useParams();
@@ -21,6 +24,12 @@ export default function DoctorDetailPage() {
   const [meetingDate, setMeetingDate] = useState("");
   const [meetingNotes, setMeetingNotes] = useState("");
   const [savingMeeting, setSavingMeeting] = useState(false);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState(emptyProfileForm);
+  const [profileLocation, setProfileLocation] = useState(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
 
   const fetchData = useCallback(async () => {
     try {
@@ -102,6 +111,53 @@ export default function DoctorDetailPage() {
     }
   };
 
+  const startEditProfile = () => {
+    setProfileForm({
+      name: doctor.name || "",
+      phone: doctor.phone || "",
+      email: doctor.email || "",
+      speciality: doctor.speciality || "",
+      clinic_name: doctor.clinic_name || "",
+      dob: doctor.dob ? doctor.dob.slice(0, 10) : "",
+      anniversary: doctor.anniversary ? doctor.anniversary.slice(0, 10) : "",
+    });
+    setProfileLocation(
+      doctor.latitude != null && doctor.longitude != null
+        ? { lat: doctor.latitude, lng: doctor.longitude, address: doctor.clinic_address }
+        : null
+    );
+    setProfileError("");
+    setEditingProfile(true);
+  };
+
+  const saveProfile = async (e) => {
+    e.preventDefault();
+    if (!profileForm.name.trim() || !profileForm.phone.trim()) return;
+    setSavingProfile(true);
+    setProfileError("");
+    const body = {
+      name: profileForm.name.trim(),
+      phone: profileForm.phone.trim(),
+      email: profileForm.email.trim() || null,
+      speciality: profileForm.speciality.trim() || null,
+      clinic_name: profileForm.clinic_name.trim() || null,
+      dob: profileForm.dob || null,
+      anniversary: profileForm.anniversary || null,
+      clinic_address: profileLocation?.address || null,
+      latitude: profileLocation?.lat ?? null,
+      longitude: profileLocation?.lng ?? null,
+    };
+    try {
+      await apiFetch(`/doctors/${id}`, { method: "PUT", body: JSON.stringify(body) });
+      setDoctor((prev) => ({ ...prev, ...body }));
+      setEditingProfile(false);
+    } catch (err) {
+      setProfileError(err.message);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const assignedIds = new Set(assignedProducts.map((p) => p.product_id));
 
   const filteredProducts = allProducts.filter(
@@ -143,11 +199,17 @@ export default function DoctorDetailPage() {
         <div className="flex items-start justify-between gap-4 mt-3">
           <div>
             <h1 className="text-2xl font-light text-gray-900">{doctor.name}</h1>
+            {doctor.speciality && (
+              <p className="text-sm text-gray-500 mt-1">{doctor.speciality}</p>
+            )}
             {doctor.clinic_name && (
               <p className="text-sm text-gray-500 mt-1">{doctor.clinic_name}</p>
             )}
             {doctor.phone && (
               <p className="text-sm text-gray-400 mt-1">{doctor.phone}</p>
+            )}
+            {doctor.email && (
+              <p className="text-sm text-gray-400 mt-1">{doctor.email}</p>
             )}
             {doctor.dob && (
               <p className="text-sm text-gray-400 mt-1">
@@ -160,13 +222,141 @@ export default function DoctorDetailPage() {
               </p>
             )}
           </div>
-          <Link
-            href={`/meetings?doctor_id=${doctor.id}`}
-            className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500 transition-colors flex-shrink-0"
-          >
-            Schedule Meeting
-          </Link>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={startEditProfile}
+              className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500 transition-colors"
+            >
+              Edit Profile
+            </button>
+            <Link
+              href={`/meetings?doctor_id=${doctor.id}`}
+              className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500 transition-colors"
+            >
+              Schedule Meeting
+            </Link>
+          </div>
         </div>
+
+        {editingProfile && (
+          <form onSubmit={saveProfile} className="mt-6 border border-gray-200 rounded-lg p-6 space-y-4">
+            <h2 className="text-sm font-semibold text-gray-700">Edit Doctor</h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+              <input
+                type="text"
+                value={profileForm.name}
+                onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                placeholder="Dr. Name"
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                <input
+                  type="text"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                  placeholder="Phone number"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                  placeholder="doctor@email.com"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Speciality</label>
+              <input
+                type="text"
+                value={profileForm.speciality}
+                onChange={(e) => setProfileForm({ ...profileForm, speciality: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                placeholder="e.g. Dermatologist"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Clinic Name</label>
+              <input
+                type="text"
+                value={profileForm.clinic_name}
+                onChange={(e) => setProfileForm({ ...profileForm, clinic_name: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                placeholder="Clinic or hospital name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Clinic Location</label>
+              <button
+                type="button"
+                onClick={() => setShowLocationPicker(true)}
+                className="w-full text-left border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 hover:border-gray-400 transition-colors"
+              >
+                {profileLocation
+                  ? `📍 ${profileLocation.address || `${profileLocation.lat.toFixed(5)}, ${profileLocation.lng.toFixed(5)}`}`
+                  : "Set location on map..."}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                <input
+                  type="date"
+                  value={profileForm.dob}
+                  onChange={(e) => setProfileForm({ ...profileForm, dob: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Anniversary</label>
+                <input
+                  type="date"
+                  value={profileForm.anniversary}
+                  onChange={(e) => setProfileForm({ ...profileForm, anniversary: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-gray-400 transition-colors"
+                />
+              </div>
+            </div>
+            {profileError && <p className="text-sm text-red-600">{profileError}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="px-5 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {savingProfile ? "Saving..." : "Save Changes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingProfile(false)}
+                className="px-5 py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+
+        {showLocationPicker && (
+          <LocationPicker
+            initial={profileLocation}
+            onClose={() => setShowLocationPicker(false)}
+            onConfirm={(loc) => {
+              setProfileLocation(loc);
+              setShowLocationPicker(false);
+            }}
+          />
+        )}
       </div>
 
       {/* Last Meeting */}

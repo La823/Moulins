@@ -8,6 +8,8 @@ import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
+import '../../utils/validators.dart';
+import '../../widgets/location_picker_screen.dart';
 
 class DoctorDetailScreen extends StatefulWidget {
   final Doctor doctor;
@@ -23,6 +25,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   bool _loading = true;
   String? _removingId;
   final _service = DoctorService();
+  late Doctor _doctor;
 
   List<Meeting> _meetings = [];
   bool _loadingMeetings = true;
@@ -37,6 +40,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _doctor = widget.doctor;
     _lastMeetingAt = widget.doctor.lastMeetingAt;
     _lastMeetingNotes = widget.doctor.lastMeetingNotes;
     _loadProducts();
@@ -126,6 +130,214 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     );
   }
 
+  void _showEditSheet() {
+    final nameCtrl = TextEditingController(text: _doctor.name);
+    final phoneCtrl = TextEditingController(text: _doctor.phone ?? '');
+    final emailCtrl = TextEditingController(text: _doctor.email ?? '');
+    final specialityCtrl = TextEditingController(text: _doctor.speciality ?? '');
+    final clinicCtrl = TextEditingController(text: _doctor.clinicName ?? '');
+    DateTime? dob = _doctor.dob;
+    DateTime? anniversary = _doctor.anniversary;
+    PickedLocation? location = _doctor.latitude != null && _doctor.longitude != null
+        ? PickedLocation(lat: _doctor.latitude!, lng: _doctor.longitude!, address: _doctor.clinicAddress)
+        : null;
+    bool submitting = false;
+    String? submitError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Edit Doctor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                _editField(nameCtrl, 'Doctor Name *'),
+                const SizedBox(height: 12),
+                _editField(phoneCtrl, 'Phone', type: TextInputType.phone),
+                const SizedBox(height: 12),
+                _editField(emailCtrl, 'Email', type: TextInputType.emailAddress),
+                const SizedBox(height: 12),
+                _editField(specialityCtrl, 'Speciality'),
+                const SizedBox(height: 12),
+                _editField(clinicCtrl, 'Clinic Name'),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final picked = await Navigator.push<PickedLocation>(
+                      sheetCtx,
+                      MaterialPageRoute(builder: (_) => LocationPickerScreen(initial: location)),
+                    );
+                    if (picked != null) setSheetState(() => location = picked);
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Clinic Location',
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    ),
+                    child: Text(
+                      location == null
+                          ? 'Set location on map...'
+                          : (location!.address ?? '${location!.lat.toStringAsFixed(5)}, ${location!.lng.toStringAsFixed(5)}'),
+                      style: TextStyle(fontSize: 14, color: location == null ? Colors.grey.shade400 : Colors.black87),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: sheetCtx,
+                      initialDate: dob ?? DateTime(1985, 1, 1),
+                      firstDate: DateTime(1930),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) setSheetState(() => dob = picked);
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Date of Birth',
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    ),
+                    child: Text(
+                      dob == null ? 'Select date' : '${dob!.day}/${dob!.month}/${dob!.year}',
+                      style: TextStyle(fontSize: 14, color: dob == null ? Colors.grey.shade400 : Colors.black87),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: sheetCtx,
+                      initialDate: anniversary ?? DateTime(2010, 1, 1),
+                      firstDate: DateTime(1930),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) setSheetState(() => anniversary = picked);
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Anniversary',
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                    ),
+                    child: Text(
+                      anniversary == null ? 'Select date' : '${anniversary!.day}/${anniversary!.month}/${anniversary!.year}',
+                      style: TextStyle(fontSize: 14, color: anniversary == null ? Colors.grey.shade400 : Colors.black87),
+                    ),
+                  ),
+                ),
+                if (submitError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(submitError!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+                ],
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: submitting
+                        ? null
+                        : () async {
+                            if (nameCtrl.text.trim().isEmpty) return;
+                            String? phone;
+                            if (phoneCtrl.text.trim().isNotEmpty) {
+                              phone = Validators.normalizePhone(phoneCtrl.text);
+                              if (phone == null) {
+                                setSheetState(() => submitError = Validators.phoneError(phoneCtrl.text));
+                                return;
+                              }
+                            }
+                            setSheetState(() { submitting = true; submitError = null; });
+                            try {
+                              await _service.updateDoctor(
+                                _doctor.id,
+                                name: nameCtrl.text.trim(),
+                                phone: phone,
+                                email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                                speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
+                                clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
+                                clinicAddress: location?.address,
+                                latitude: location?.lat,
+                                longitude: location?.lng,
+                                dob: dob,
+                                anniversary: anniversary,
+                              );
+                              if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                              setState(() {
+                                _doctor = Doctor(
+                                  id: _doctor.id,
+                                  name: nameCtrl.text.trim(),
+                                  phone: phone,
+                                  email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                                  speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
+                                  clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
+                                  clinicAddress: location?.address,
+                                  latitude: location?.lat,
+                                  longitude: location?.lng,
+                                  dob: dob,
+                                  anniversary: anniversary,
+                                  lastMeetingAt: _doctor.lastMeetingAt,
+                                  lastMeetingNotes: _doctor.lastMeetingNotes,
+                                  ownerName: _doctor.ownerName,
+                                  ownerPhone: _doctor.ownerPhone,
+                                  productCount: _doctor.productCount,
+                                );
+                              });
+                            } catch (e) {
+                              setSheetState(() { submitting = false; submitError = 'Could not save changes. Please try again.'; });
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A6A4),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: submitting
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Save Changes'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _editField(TextEditingController ctrl, String label, {TextInputType type = TextInputType.text}) =>
+      TextField(
+        controller: ctrl,
+        keyboardType: type,
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF00A6A4))),
+        ),
+      );
+
   void _showAddProductSheet() {
     showModalBottomSheet(
       context: context,
@@ -145,7 +357,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.doctor;
+    final d = _doctor;
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -155,6 +367,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
         foregroundColor: Colors.black,
         title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Color(0xFF00A6A4), size: 20),
+            tooltip: 'Edit profile',
+            onPressed: _showEditSheet,
+          ),
           IconButton(
             icon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF00A6A4), size: 20),
             tooltip: 'Schedule meeting',

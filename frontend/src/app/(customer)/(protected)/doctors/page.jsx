@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
-import { useAuth } from "@/context/AuthContext";
 import LocationPicker from "@/components/LocationPicker";
 
 const emptyForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "", anniversary: "" };
@@ -15,18 +14,14 @@ function initials(name) {
 }
 
 export default function DoctorsPage() {
-  const { user } = useAuth();
-  const canDelete = user?.role !== "team_member";
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [location, setLocation] = useState(null);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const formRef = useRef(null);
 
   const fetchDoctors = () => {
     apiFetch("/doctors")
@@ -38,35 +33,13 @@ export default function DoctorsPage() {
   useEffect(() => { fetchDoctors(); }, []);
 
   const startAdd = () => {
-    setEditingId(null);
     setForm(emptyForm);
     setLocation(null);
     setShowForm(true);
   };
 
-  const startEdit = (doctor) => {
-    setEditingId(doctor.id);
-    setForm({
-      name: doctor.name || "",
-      phone: doctor.phone || "",
-      email: doctor.email || "",
-      speciality: doctor.speciality || "",
-      clinic_name: doctor.clinic_name || "",
-      dob: doctor.dob ? doctor.dob.slice(0, 10) : "",
-      anniversary: doctor.anniversary ? doctor.anniversary.slice(0, 10) : "",
-    });
-    setLocation(
-      doctor.latitude != null && doctor.longitude != null
-        ? { lat: doctor.latitude, lng: doctor.longitude, address: doctor.clinic_address }
-        : null
-    );
-    setShowForm(true);
-    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
-  };
-
   const cancelForm = () => {
     setShowForm(false);
-    setEditingId(null);
     setForm(emptyForm);
     setLocation(null);
     setError("");
@@ -90,11 +63,7 @@ export default function DoctorsPage() {
       longitude: location?.lng ?? null,
     };
     try {
-      if (editingId) {
-        await apiFetch(`/doctors/${editingId}`, { method: "PUT", body: JSON.stringify(body) });
-      } else {
-        await apiFetch("/doctors", { method: "POST", body: JSON.stringify(body) });
-      }
+      await apiFetch("/doctors", { method: "POST", body: JSON.stringify(body) });
       cancelForm();
       setLoading(true);
       fetchDoctors();
@@ -102,16 +71,6 @@ export default function DoctorsPage() {
       setError(err.message);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm("Delete this doctor and all assigned products?")) return;
-    try {
-      await apiFetch(`/doctors/${id}`, { method: "DELETE" });
-      setDoctors((prev) => prev.filter((d) => d.id !== id));
-    } catch (err) {
-      alert(err.message);
     }
   };
 
@@ -128,8 +87,8 @@ export default function DoctorsPage() {
       </div>
 
       {showForm && (
-        <form ref={formRef} onSubmit={handleSubmit} className="mb-8 border border-gray-200 rounded-lg p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700">{editingId ? "Edit Doctor" : "Add Doctor"}</h2>
+        <form onSubmit={handleSubmit} className="mb-8 border border-gray-200 rounded-lg p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">Add Doctor</h2>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
             <input
@@ -227,7 +186,7 @@ export default function DoctorsPage() {
             disabled={submitting}
             className="px-5 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
           >
-            {submitting ? "Saving..." : editingId ? "Save Changes" : "Add Doctor"}
+            {submitting ? "Saving..." : "Add Doctor"}
           </button>
         </form>
       )}
@@ -254,10 +213,10 @@ export default function DoctorsPage() {
       ) : (
         <div className="space-y-4">
           {doctors.map((doctor) => (
-            <div
+            <Link
               key={doctor.id}
-              onClick={() => startEdit(doctor)}
-              className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors cursor-pointer"
+              href={`/doctors/${doctor.id}`}
+              className="block border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors"
             >
               {/* Header: avatar, name, speciality, status */}
               <div className="flex items-center gap-3 px-5 py-4">
@@ -296,31 +255,7 @@ export default function DoctorsPage() {
                 />
                 <Field label="Products" value={String(doctor.product_count ?? 0)} />
               </div>
-
-              <div className="border-t border-gray-100" />
-
-              {/* Actions */}
-              <div className="flex items-center gap-5 px-5 py-3">
-                <Link
-                  href={`/doctors/${doctor.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                >
-                  Manage Products
-                </Link>
-                {canDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(doctor.id);
-                    }}
-                    className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors ml-auto"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
