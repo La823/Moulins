@@ -47,9 +47,15 @@ func TriggerHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		cursorWarning := ""
+		// Reflect the cursor that's ACTUALLY persisted — if the save fails,
+		// the UI should keep showing the old timestamp, not claim a sync
+		// time that never made it to the database.
+		newLastSyncedAt := lastSyncedAt
 		if err := margsync.SetLastSyncedAt(r.Context(), db, dateTime); err != nil {
 			log.Printf("marg sync: failed to persist last synced at: %v", err)
 			cursorWarning = "sync completed but the last-synced cursor could not be saved — the next sync may re-pull the same data"
+		} else {
+			newLastSyncedAt = dateTime
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -58,6 +64,7 @@ func TriggerHandler(db *pgxpool.Pool) http.HandlerFunc {
 			"batches_upserted":  result.BatchesUpserted,
 			"parties_upserted":  result.PartiesUpserted,
 			"cursor_warning":    cursorWarning,
+			"last_synced_at":    newLastSyncedAt,
 		})
 	}
 }

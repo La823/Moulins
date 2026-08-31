@@ -6,12 +6,18 @@ import { apiFetch } from "@/lib/api";
 
 function formatLastSynced(value) {
   if (!value) return "Never synced";
-  // Marg's DateTime cursor comes back as "YYYY-MM-DD HH:MM:SS" (no
-  // timezone) — treat it as UTC, matching how it's stored (TIMESTAMPTZ).
-  const iso = value.includes("T") ? value : value.replace(" ", "T") + "Z";
+  // Marg's DateTime cursor comes back as "YYYY-MM-DD HH:MM:SS" — this is
+  // Marg's own India-local (IST) wall-clock time, NOT UTC, even though it's
+  // stored in a TIMESTAMPTZ column. Labeling it "Z" (UTC) here was the bug:
+  // it shifted an already-correct IST time forward by another +05:30 on
+  // display (e.g. an actual 00:49 sync showed as "6:19 am"). Label it
+  // +05:30 instead so the parsed instant is correct, then always render in
+  // Asia/Kolkata explicitly — regardless of the viewing admin's own
+  // browser timezone — since that's the timezone this timestamp means.
+  const iso = value.includes("T") ? value : value.replace(" ", "T") + "+05:30";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Never synced";
-  return `Last synced ${date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`;
+  return `Last synced ${date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })}`;
 }
 
 // Triggers a Marg ERP master-data sync (products + parties, one API call
@@ -55,9 +61,12 @@ export default function MargSyncButton({ onDone }) {
         type: data.cursor_warning ? "error" : "success",
         message: data.cursor_warning ? `${message} (${data.cursor_warning})` : message,
       });
-      apiFetch("/admin/marg-sync/status")
-        .then((d) => setLastSyncedAt(d.last_synced_at || null))
-        .catch(() => {});
+      // The trigger response already carries the cursor that actually got
+      // persisted — using it directly avoids depending on a second
+      // GET /admin/marg-sync/status call, which needs its own permission
+      // (marg_master_view) and could silently fail to refresh the
+      // displayed time even though the sync itself succeeded.
+      setLastSyncedAt(data.last_synced_at || null);
       onDone?.();
     } catch (err) {
       setStatus({ type: "error", message: err.message || "Sync failed" });
