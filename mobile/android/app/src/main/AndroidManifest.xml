@@ -1,7 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Image picking (order/tracking/bill photos) goes through
+         image_picker's system Photo Picker (ImageSource.gallery) — that
+         requires zero permissions on modern Android and doesn't need
+         READ_MEDIA_IMAGES/READ_EXTERNAL_STORAGE. Declaring them anyway is
+         what got the app flagged for Google's broad-media-permissions
+         policy on infrequent actions like attaching a bill photo. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
