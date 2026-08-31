@@ -20,5 +20,9 @@ export async function apiFetch(path, options = {}) {
     throw new Error(text || res.statusText);
   }
 
-  return res.json();
+  // 204 No Content (and any other empty body) has nothing to parse —
+  // res.json() throws on an empty body, so short-circuit instead.
+  if (res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 }

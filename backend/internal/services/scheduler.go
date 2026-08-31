@@ -33,6 +33,7 @@ func StartScheduler(db *pgxpool.Pool) {
 			dispatchAnniversaryReminders(db)
 			dispatchAnniversaryMeetingSync(db)
 			dispatchMargSync(db)
+			dispatchCartPurge(db)
 			lastBirthdayRunDate = today
 		}
 	}
@@ -65,6 +66,23 @@ func dispatchMargSync(db *pgxpool.Pool) {
 
 	if err := margsync.SetLastSyncedAt(ctx, db, dateTime); err != nil {
 		log.Printf("scheduler: failed to persist marg sync cursor: %v", err)
+	}
+}
+
+// dispatchCartPurge removes abandoned cart_items rows older than 2 months
+// (the threshold lives in the SQL itself — models.PurgeOldCartItems), so
+// this only needs to run roughly daily, which the shared gate already
+// provides.
+func dispatchCartPurge(db *pgxpool.Pool) {
+	ctx := context.Background()
+
+	purged, err := models.PurgeOldCartItems(ctx, db)
+	if err != nil {
+		log.Printf("scheduler: cart purge failed: %v", err)
+		return
+	}
+	if purged > 0 {
+		log.Printf("scheduler: purged %d abandoned cart item(s)", purged)
 	}
 }
 

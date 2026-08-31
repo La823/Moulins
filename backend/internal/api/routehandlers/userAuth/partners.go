@@ -543,6 +543,26 @@ func sendEmailActorID(r *http.Request) *uuid.UUID {
 
 // GET /admin/partners/{id}/send-log — every recorded email send for this
 // partner, most recent first (e.g. the welcome-credentials email).
+// GET /admin/partners/{id}/cart — lets staff see exactly what's currently
+// sitting in a partner's cart, e.g. to help with a support query.
+func GetPartnerCartHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+		items, err := models.GetCartItems(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("get partner cart error: %v", err)
+			http.Error(w, "could not fetch cart", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"items": items})
+	}
+}
+
 func PartnerSendLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := uuid.Parse(mux.Vars(r)["id"])

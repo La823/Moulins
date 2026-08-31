@@ -11,7 +11,7 @@ const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, itemCount, clearCart } = useCart();
+  const { items, itemCount, clearCartLocal } = useCart();
   const { user } = useAuth();
   const [notes, setNotes] = useState("");
   const [transportModes, setTransportModes] = useState([]);
@@ -57,7 +57,7 @@ export default function CheckoutPage() {
           transport_id: transportId || undefined,
         }),
       });
-      clearCart();
+      clearCartLocal();
       router.push(`/orders/${res.order_id}`);
     } catch (err) {
       setError(err.message || "Failed to place order");

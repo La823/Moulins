@@ -132,6 +132,12 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 		return uuid.Nil, err
 	}
 
+	// Cart clears only when the order actually commits — if anything above
+	// fails, the rollback restores the cart along with everything else.
+	if err = ClearCart(ctx, tx, userID); err != nil {
+		return uuid.Nil, err
+	}
+
 	if err = tx.Commit(ctx); err != nil {
 		return uuid.Nil, err
 	}

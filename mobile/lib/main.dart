@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'providers/auth_provider.dart';
+import 'providers/cart_provider.dart';
 import 'providers/notification_provider.dart';
 import 'services/local_notifications_service.dart';
 import 'screens/login/login_screen.dart';
@@ -230,6 +231,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
     Future.microtask(() =>
         ref.read(authProvider.notifier).loadUser().catchError((_) {}));
     Future.microtask(() => ref.read(notificationsProvider.notifier).load());
+    Future.microtask(() => ref.read(cartProvider.notifier).loadFromServer());
   }
 
   @override

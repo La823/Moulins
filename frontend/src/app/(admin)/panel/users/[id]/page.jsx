@@ -21,6 +21,44 @@ const STATUS_STYLES = {
   refunded: "bg-orange-50 text-orange-700",
 };
 
+// Collapsed-by-default section wrapper — used for Cart/Orders/Meetings so
+// the profile page opens compact and staff expand only what they need.
+function Collapsible({ title, subtitle, children, small = false }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between"
+      >
+        <h3
+          className={
+            small
+              ? "text-xs font-medium text-gray-400"
+              : "text-sm font-semibold text-gray-700 uppercase tracking-wider"
+          }
+        >
+          {title}
+        </h3>
+        <div className="flex items-center gap-2">
+          {subtitle && <span className="text-xs text-gray-400">{subtitle}</span>}
+          <svg
+            className={`w-4 h-4 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </div>
+  );
+}
+
 export default function PartnerDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -56,6 +94,8 @@ export default function PartnerDetailPage() {
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [showAllOrders, setShowAllOrders] = useState(false);
+  const [cartItems, setCartItems] = useState([]);
+  const [cartLoading, setCartLoading] = useState(true);
   const ORDERS_PAGE_SIZE = 5;
   const [billingInput, setBillingInput] = useState("");
   const [shippingInput, setShippingInput] = useState("");
@@ -93,6 +133,10 @@ export default function PartnerDetailPage() {
       .catch(() => setPartner(null))
       .finally(() => setLoading(false));
     loadSendLog();
+    apiFetch(`/admin/partners/${id}/cart`)
+      .then((data) => setCartItems(data.items || []))
+      .catch(() => setCartItems([]))
+      .finally(() => setCartLoading(false));
   }, [id]);
 
   if (loading) {
@@ -412,6 +456,7 @@ export default function PartnerDetailPage() {
               </div>
             </div>
 
+            <Collapsible title="Details">
             {/* Customer type — controls whether this partner sees their own
                 private "Special" product division. Admin-only. */}
             <div className="mb-5">
@@ -692,14 +737,13 @@ export default function PartnerDetailPage() {
                 </p>
               </div>
             </div>
+            </Collapsible>
           </div>
 
           {/* Credentials card */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
-                Login Credentials
-              </h3>
+            <Collapsible title="Login Credentials">
+            <div className="flex justify-end mb-4">
               <button
                 onClick={() => setShowPassword(!showPassword)}
                 className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
@@ -803,6 +847,7 @@ export default function PartnerDetailPage() {
               {welcomeEmailError && <p className="text-xs text-red-600 mt-1">{welcomeEmailError}</p>}
               {welcomeEmailSuccess && <p className="text-xs text-green-600 mt-1">{welcomeEmailSuccess}</p>}
             </div>
+            </Collapsible>
           </div>
 
           {/* Journey Status */}
@@ -837,28 +882,24 @@ export default function PartnerDetailPage() {
             </div>
           </div>
 
-          {/* ID */}
+          {/* ID + tucked-away delete option — intentionally low-visibility,
+              this is a destructive/irreversible action */}
           <div className="px-1">
-            <p className="text-[10px] text-gray-400 font-mono">
+            <p className="text-[10px] text-gray-400 font-mono mb-2">
               ID: {partner.id}
             </p>
-          </div>
-
-          {/* Delete */}
-          <div className="bg-white rounded-xl border border-red-200 p-6">
-            <h3 className="text-sm font-semibold text-red-700 uppercase tracking-wider mb-2">
-              Danger Zone
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              Permanently delete this partner and all associated data. This action cannot be undone.
-            </p>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-            >
-              {deleting ? "Deleting..." : "Delete Partner"}
-            </button>
+            <Collapsible title="Advanced" small>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Permanently delete this partner and all associated data. This action cannot be undone.
+              </p>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="text-xs text-red-400 hover:text-red-600 underline underline-offset-2 disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Delete partner"}
+              </button>
+            </Collapsible>
           </div>
         </div>
 
@@ -948,15 +989,72 @@ export default function PartnerDetailPage() {
             </div>
           )}
 
-          <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
-              Orders
-            </h3>
-            <span className="text-xs text-gray-400">
-              {orders.length} order{orders.length !== 1 ? "s" : ""}
-            </span>
+          <div className="mb-8">
+            <Collapsible
+              title="Cart"
+              subtitle={!cartLoading ? `${cartItems.length} item${cartItems.length !== 1 ? "s" : ""}` : undefined}
+            >
+            {cartLoading ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                <p className="text-sm text-gray-400">Loading cart...</p>
+              </div>
+            ) : cartItems.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                <svg
+                  className="w-10 h-10 text-gray-300 mx-auto mb-3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                  />
+                </svg>
+                <p className="text-sm text-gray-400">This partner&apos;s cart is empty</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+                {cartItems.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => router.push(`/panel/products/${item.product_id}`)}
+                    className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {item.product_name}
+                        {!item.is_active && (
+                          <span className="ml-2 text-[11px] font-medium text-red-500">inactive</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {[item.pack_size, item.product_form].filter(Boolean).join(" · ")}
+                        {item.stock <= 0 && <span className="text-red-500 ml-2">out of stock</span>}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm text-gray-900">
+                        Qty <span className="font-semibold">{item.quantity}</span>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        &#8377;{item.price} each
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            </Collapsible>
           </div>
+
+          <div>
+            <Collapsible
+              title="Orders"
+              subtitle={`${orders.length} order${orders.length !== 1 ? "s" : ""}`}
+            >
 
           {orders.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
@@ -1035,9 +1133,12 @@ export default function PartnerDetailPage() {
               {showAllOrders ? "Show less" : `Show all ${orders.length}`}
             </button>
           )}
+            </Collapsible>
           </div>
 
-          <UserMeetingsRequests userId={partner.id} />
+          <Collapsible title="Meetings & Requests">
+            <UserMeetingsRequests userId={partner.id} />
+          </Collapsible>
           <LedgerPanel partnerId={partner.id} />
           <AssignmentPanel mode="client" userId={partner.id} />
         </div>

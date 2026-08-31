@@ -62,7 +62,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     setState(() => _placing = true);
     try {
       final orderId = await OrderService().placeOrder(items, transportMode: _transportMode, transportId: _transportId);
-      ref.read(cartProvider.notifier).clear();
+      // The backend already cleared cart_items transactionally as part of
+      // placing the order — clearLocal() just syncs local UI state with
+      // that, without firing a redundant DELETE /cart.
+      ref.read(cartProvider.notifier).clearLocal();
       if (mounted) {
         context.go('/orders/$orderId');
         ScaffoldMessenger.of(context).showSnackBar(

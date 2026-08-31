@@ -24,6 +24,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/margmaster"
 	margsyncHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/margsync"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/cart"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
@@ -152,6 +153,13 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// authenticated user — the handler scopes by user_id)
 	protected.HandleFunc("/doctor/me", doctors.GetMyDoctorProfileHandler(db)).Methods("GET")
 	protected.HandleFunc("/doctor/me", doctors.UpdateMyDoctorProfileHandler(db)).Methods("PUT")
+
+	// cart routes (personal, not pooled across a team — scoped by the raw logged-in user id)
+	protected.HandleFunc("/cart", cart.ListHandler(db)).Methods("GET")
+	protected.HandleFunc("/cart", cart.ClearHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/cart/items", cart.AddHandler(db)).Methods("POST")
+	protected.HandleFunc("/cart/items/{productId}", cart.UpdateHandler(db)).Methods("PATCH")
+	protected.HandleFunc("/cart/items/{productId}", cart.DeleteHandler(db)).Methods("DELETE")
 
 	// meeting routes (any authenticated user — partners and employees both own doctors/meetings)
 	protected.HandleFunc("/meetings", meetings.CreateHandler(db)).Methods("POST")
@@ -426,6 +434,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/doctors", doctors.AdminListDoctorsHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}/send-log", userauth.PartnerSendLogHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/partners/{id}/cart", userauth.GetPartnerCartHandler(db)).Methods("GET")
 
 	// staff routes — partner management (edit)
 	partnerEditStaff := protected.PathPrefix("/admin").Subrouter()
