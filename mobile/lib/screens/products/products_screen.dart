@@ -44,6 +44,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   bool _loading = false;
   bool _hasMore = true;
   bool _offline = false;
+  String? _spellingSuggestion;
   final List<Product> _products = [];
   final _scrollCtrl = ScrollController();
 
@@ -87,6 +88,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         _products.addAll(res.products);
         _hasMore = _page < res.totalPages;
         _offline = res.isFromCache;
+        _spellingSuggestion = res.suggestion;
         _loading = false;
       });
     } catch (_) {
@@ -102,6 +104,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
   void _onSearch(String val) {
     setState(() => _search = val);
+    _load(reset: true);
+  }
+
+  void _applySuggestion(String suggestion) {
+    _searchCtrl.text = suggestion;
+    setState(() => _search = suggestion);
     _load(reset: true);
   }
 
@@ -377,6 +385,33 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     const SizedBox(width: 6),
                     Text('Offline — showing saved products', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
                   ],
+                ),
+              ),
+            ),
+
+          if (_spellingSuggestion != null && _spellingSuggestion!.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: GestureDetector(
+                  onTap: () => _applySuggestion(_spellingSuggestion!),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      children: [
+                        const TextSpan(text: 'Did you mean '),
+                        TextSpan(
+                          text: _spellingSuggestion!,
+                          style: const TextStyle(
+                            color: Color(0xFF00A6A4),
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        const TextSpan(text: '?'),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

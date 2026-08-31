@@ -74,6 +74,7 @@ function ProductsPageInner() {
 
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [spellingSuggestion, setSpellingSuggestion] = useState("");
 
   const [specialProducts, setSpecialProducts] = useState([]);
 
@@ -133,6 +134,7 @@ function ProductsPageInner() {
       apiFetch(`/products?search=${encodeURIComponent(q)}&limit=5`)
         .then((data) => {
           setSearchSuggestions(data.products || []);
+          setSpellingSuggestion(data.suggestion || "");
           setShowSuggestions(true);
         })
         .catch(() => {});
@@ -196,6 +198,7 @@ function ProductsPageInner() {
         setProducts(list);
         setTotal(combinedTotal);
         setTotalPages(data.total_pages || 0);
+        setSpellingSuggestion(data.suggestion || "");
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -217,6 +220,19 @@ function ProductsPageInner() {
                 : ""}
               {activeForm ? ` (${activeForm})` : ""}
               {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
+            </p>
+          )}
+          {!loading && spellingSuggestion && (
+            <p className="text-sm text-gray-500 mt-1">
+              Did you mean{" "}
+              <button
+                type="button"
+                onClick={() => { setSearch(spellingSuggestion); runSearch(spellingSuggestion); }}
+                className="text-gray-900 underline underline-offset-2 hover:text-gray-600"
+              >
+                {spellingSuggestion}
+              </button>
+              ?
             </p>
           )}
         </div>
@@ -252,6 +268,14 @@ function ProductsPageInner() {
             <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-gray-200 shadow-lg rounded-lg overflow-hidden z-30">
               {searchSuggestions.length > 0 ? (
                 <>
+                  {spellingSuggestion && (
+                    <button
+                      onClick={() => { setSearch(spellingSuggestion); runSearch(spellingSuggestion); }}
+                      className="w-full px-4 py-2 text-left text-xs text-gray-500 border-b border-gray-100 hover:bg-gray-50"
+                    >
+                      Did you mean <span className="text-gray-900 underline underline-offset-2">{spellingSuggestion}</span>?
+                    </button>
+                  )}
                   <div className="divide-y divide-gray-100">
                     {searchSuggestions.map((p) => (
                       <button

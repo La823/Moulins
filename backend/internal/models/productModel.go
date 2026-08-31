@@ -476,7 +476,11 @@ func titleCase(s string) string {
 	return strings.Join(words, " ")
 }
 
-func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
+// buildProductConditions builds the shared WHERE-clause pieces for
+// GetAllProducts. fuzzy swaps the search condition from a literal ILIKE
+// match to a pg_trgm similarity match (used as a fallback when the literal
+// search finds nothing, e.g. a misspelled salt/composition name).
+func buildProductConditions(activeOnly bool, search, category, form, tag string, nameOnly, fuzzy bool) ([]string, []any, int) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
@@ -485,12 +489,21 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		conditions = append(conditions, "is_active = TRUE")
 	}
 	if search != "" {
-		if nameOnly {
-			conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIdx))
+		if fuzzy {
+			if nameOnly {
+				conditions = append(conditions, fmt.Sprintf("$%d <%% name", argIdx))
+			} else {
+				conditions = append(conditions, fmt.Sprintf("($%d <%% name OR $%d <%% key_ingredients)", argIdx, argIdx))
+			}
+			args = append(args, search)
 		} else {
-			conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR description ILIKE $%d OR key_ingredients ILIKE $%d)", argIdx, argIdx, argIdx))
+			if nameOnly {
+				conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIdx))
+			} else {
+				conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR key_ingredients ILIKE $%d)", argIdx, argIdx))
+			}
+			args = append(args, "%"+search+"%")
 		}
-		args = append(args, "%"+search+"%")
 		argIdx++
 	}
 	if category != "" {
@@ -512,20 +525,38 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		args = append(args, tag)
 		argIdx++
 	}
+	return conditions, args, argIdx
+}
 
-	where := ""
-	if len(conditions) > 0 {
-		where = " WHERE " + conditions[0]
-		for _, c := range conditions[1:] {
-			where += " AND " + c
-		}
+func productWhereClause(conditions []string) string {
+	if len(conditions) == 0 {
+		return ""
 	}
+	where := " WHERE " + conditions[0]
+	for _, c := range conditions[1:] {
+		where += " AND " + c
+	}
+	return where
+}
 
-	// Get total count
+func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, args []any, argIdx, limit, offset int, fuzzy bool, search string) ([]Product, int, error) {
+	where := productWhereClause(conditions)
+
 	var total int
 	countQuery := "SELECT COUNT(*) FROM products" + where
 	if err := db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
+	}
+
+	orderBy := " ORDER BY name ASC"
+	if fuzzy && search != "" {
+		orderBy = fmt.Sprintf(" ORDER BY GREATEST(word_similarity($%d, name), word_similarity($%d, key_ingredients)) DESC", argIdx, argIdx)
+		// word_similarity (not similarity) matches a short search term against
+		// the best-matching substring of a longer field — plain similarity()
+		// dilutes short terms against e.g. "LAXPOSE SYP 100 ML" and misses
+		// otherwise-good typo matches. Needs its own copy of the search term
+		// as a trailing arg, distinct from the positional args already
+		// consumed by the WHERE clause.
 	}
 
 	baseQuery := `
@@ -536,16 +567,22 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
 			created_at, updated_at
 		FROM products
-	` + where + " ORDER BY name ASC"
+	` + where + orderBy
 
-	var query string
-	var queryArgs []any
-	if limit == 0 {
-		query = baseQuery
-		queryArgs = args
-	} else {
-		query = fmt.Sprintf(baseQuery+" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
-		queryArgs = append(args, limit, offset)
+	queryArgs := args
+	if fuzzy && search != "" {
+		queryArgs = append(append([]any{}, args...), search)
+		argIdx++
+	}
+
+	query := baseQuery
+	if limit != 0 {
+		// Concatenate rather than re-running the whole query through
+		// Sprintf — baseQuery/where can contain literal "%" (the pg_trgm
+		// fuzzy-match operator), which Sprintf would otherwise reinterpret
+		// as a format verb.
+		query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+		queryArgs = append(queryArgs, limit, offset)
 	}
 
 	rows, err := db.Query(ctx, query, queryArgs...)
@@ -573,6 +610,74 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 		products = append(products, p)
 	}
 	return products, total, rows.Err()
+}
+
+func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
+	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, limit, offset, nameOnly)
+	return products, total, err
+}
+
+// GetAllProductsWithSuggestion is GetAllProducts plus a "did you mean"
+// spelling suggestion. It's computed for any non-empty search term —
+// whether the literal search found results or not — but only returned
+// when it differs from what was actually typed (case aside), so a
+// correctly-spelled search doesn't get a pointless "did you mean X?"
+// pointing back at the same word.
+func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, string, error) {
+	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, false)
+	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search)
+	if err != nil || search == "" {
+		return products, total, "", err
+	}
+
+	if len(products) > 0 {
+		return products, total, suggestionOrEmpty(ctx, db, search), nil
+	}
+
+	// Literal search found nothing — fall back to a pg_trgm fuzzy match in
+	// case the term was misspelled (e.g. a salt/composition name).
+	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, true)
+	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search)
+	if err != nil || len(fuzzyProducts) == 0 {
+		return fuzzyProducts, fuzzyTotal, "", err
+	}
+	return fuzzyProducts, fuzzyTotal, suggestionOrEmpty(ctx, db, search), nil
+}
+
+// suggestionOrEmpty runs suggestSpelling and suppresses it if it errored,
+// or if it just echoes back the term the user already typed.
+func suggestionOrEmpty(ctx context.Context, db *pgxpool.Pool, search string) string {
+	suggestion, err := suggestSpelling(ctx, db, search)
+	if err != nil || strings.EqualFold(suggestion, search) {
+		return ""
+	}
+	return suggestion
+}
+
+// suggestSpelling finds the single real word (from any product's name or
+// key_ingredients) closest to the given typo, for a "did you mean X?"
+// prompt — independent of which specific products matched, since a typo
+// like "paracetmol" should surface "Paracetamol" even though many
+// different products contain it.
+func suggestSpelling(ctx context.Context, db *pgxpool.Pool, term string) (string, error) {
+	const q = `
+		SELECT word FROM (
+			SELECT DISTINCT unnest(regexp_split_to_array(
+				regexp_replace(name || ' ' || COALESCE(key_ingredients, ''), '[^a-zA-Z0-9]+', ' ', 'g'),
+				' '
+			)) AS word
+			FROM products
+		) words
+		WHERE length(word) > 3
+		ORDER BY word_similarity($1, word) DESC
+		LIMIT 1
+	`
+	var word string
+	err := db.QueryRow(ctx, q, term).Scan(&word)
+	if err != nil {
+		return "", err
+	}
+	return word, nil
 }
 
 func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Product, error) {

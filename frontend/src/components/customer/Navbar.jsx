@@ -225,6 +225,7 @@ export default function CustomerNavbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [spellingSuggestion, setSpellingSuggestion] = useState("");
   const navRef = useRef(null);
   const router = useRouter();
 
@@ -241,6 +242,7 @@ export default function CustomerNavbar() {
       apiFetch(`/products?search=${encodeURIComponent(q)}&limit=5`)
         .then((data) => {
           setSearchSuggestions(data.products || []);
+          setSpellingSuggestion(data.suggestion || "");
           setShowSuggestions(true);
         })
         .catch(() => {});
@@ -947,6 +949,15 @@ export default function CustomerNavbar() {
                 {/* Top-5 suggestions — lightweight, doesn't load the full grid */}
                 {showSuggestions && searchSuggestions.length > 0 && (
                   <div className="mt-4 divide-y divide-gray-100">
+                    {spellingSuggestion && (
+                      <button
+                        onClick={() => goToSearch(spellingSuggestion)}
+                        className="w-full py-2 text-left text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        Did you mean{" "}
+                        <span className="text-gray-900 underline underline-offset-2">{spellingSuggestion}</span>?
+                      </button>
+                    )}
                     {searchSuggestions.map((p) => (
                       <button
                         key={p.id}

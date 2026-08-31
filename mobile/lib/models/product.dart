@@ -142,6 +142,7 @@ class ProductListResponse {
   final int page;
   final int totalPages;
   final bool isFromCache;
+  final String? suggestion;
 
   ProductListResponse({
     required this.products,
@@ -149,6 +150,7 @@ class ProductListResponse {
     required this.page,
     required this.totalPages,
     this.isFromCache = false,
+    this.suggestion,
   });
 
   factory ProductListResponse.fromJson(Map<String, dynamic> json) =>
@@ -159,5 +161,6 @@ class ProductListResponse {
         total: json['total'] ?? 0,
         page: json['page'] ?? 1,
         totalPages: json['total_pages'] ?? 1,
+        suggestion: json['suggestion'] as String?,
       );
 }

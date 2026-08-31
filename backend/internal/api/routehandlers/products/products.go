@@ -273,6 +273,7 @@ type productListResult struct {
 	Page       int              `json:"page"`
 	Limit      int              `json:"limit"`
 	TotalPages int              `json:"total_pages"`
+	Suggestion string           `json:"suggestion,omitempty"`
 }
 
 // GET /products and GET /admin/products
@@ -332,7 +333,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, err := models.GetAllProducts(r.Context(), db, activeOnly, search, category, form, tag, limit, offset, nameOnly)
+		products, total, suggestion, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, form, tag, limit, offset, nameOnly)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)
@@ -352,6 +353,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			Page:       page,
 			Limit:      limit,
 			TotalPages: totalPages,
+			Suggestion: suggestion,
 		}
 
 		c.SetJSON(r.Context(), cacheKey, result, 5*time.Minute)
