@@ -1,9 +1,53 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/context/CartContext";
+
+// Rounds a typed quantity up to the nearest multiple of the product's MOQ
+// (e.g. typing 7 with an MOQ of 5 commits as 10), and never below one MOQ.
+function roundUpToMoq(quantity, moq) {
+  const step = moq && moq > 0 ? moq : 1;
+  return Math.max(step, Math.ceil(quantity / step) * step);
+}
+
+// Free-text quantity field — lets the shopper type any number, then on
+// blur/Enter rounds it up to the nearest MOQ multiple and commits. Keeps
+// its own draft state so typing doesn't fight the cart's actual quantity
+// on every keystroke.
+function CartQuantityInput({ quantity, moq, onCommit }) {
+  const [draft, setDraft] = useState(String(quantity));
+
+  useEffect(() => {
+    setDraft(String(quantity));
+  }, [quantity]);
+
+  const commit = () => {
+    const parsed = parseInt(draft, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      setDraft(String(quantity));
+      return;
+    }
+    const rounded = roundUpToMoq(parsed, moq);
+    setDraft(String(rounded));
+    if (rounded !== quantity) onCommit(rounded);
+  };
+
+  return (
+    <input
+      type="number"
+      min={1}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      className="w-10 h-8 text-center text-sm font-medium text-gray-900 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+    />
+  );
+}
 
 export default function CartDrawer() {
   const router = useRouter();
@@ -174,9 +218,11 @@ export default function CartDrawer() {
                             >
                               &minus;
                             </button>
-                            <span className="w-8 h-8 flex items-center justify-center text-sm font-medium text-gray-900">
-                              {quantity}
-                            </span>
+                            <CartQuantityInput
+                              quantity={quantity}
+                              moq={product.moq}
+                              onCommit={(next) => updateQuantity(product.id, next)}
+                            />
                             <button
                               onClick={() => {
                                 const step = product.moq && product.moq > 0 ? product.moq : 1;

@@ -11,6 +11,88 @@ import '../../utils/responsive.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
 
+// Rounds a typed quantity up to the nearest multiple of the product's MOQ
+// (e.g. typing 7 with an MOQ of 5 commits as 10), and never below one MOQ.
+int _roundUpToMoq(int quantity, int moq) {
+  final step = moq > 0 ? moq : 1;
+  final rounded = ((quantity + step - 1) ~/ step) * step;
+  return rounded < step ? step : rounded;
+}
+
+// Free-text quantity field — lets the shopper type any number, then on
+// blur/submit rounds it up to the nearest MOQ multiple and commits.
+class _CartQtyField extends StatefulWidget {
+  final int quantity;
+  final int moq;
+  final ValueChanged<int> onCommit;
+
+  const _CartQtyField({super.key, required this.quantity, required this.moq, required this.onCommit});
+
+  @override
+  State<_CartQtyField> createState() => _CartQtyFieldState();
+}
+
+class _CartQtyFieldState extends State<_CartQtyField> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: '${widget.quantity}');
+    _focusNode = FocusNode();
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _CartQtyField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.quantity != widget.quantity && !_focusNode.hasFocus) {
+      _ctrl.text = '${widget.quantity}';
+    }
+  }
+
+  void _commit() {
+    final parsed = int.tryParse(_ctrl.text);
+    if (parsed == null || parsed < 1) {
+      _ctrl.text = '${widget.quantity}';
+      return;
+    }
+    final rounded = _roundUpToMoq(parsed, widget.moq);
+    _ctrl.text = '$rounded';
+    if (rounded != widget.quantity) widget.onCommit(rounded);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 44,
+      child: TextField(
+        controller: _ctrl,
+        focusNode: _focusNode,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+        decoration: const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(vertical: 6),
+          border: InputBorder.none,
+        ),
+        onSubmitted: (_) => _focusNode.unfocus(),
+      ),
+    );
+  }
+}
+
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
@@ -149,9 +231,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                   final step = item.product.moq > 0 ? item.product.moq : 1;
                                   cart.updateQty(item.product.id, item.quantity - step);
                                 }),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  child: Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                                _CartQtyField(
+                                  key: ValueKey(item.product.id),
+                                  quantity: item.quantity,
+                                  moq: item.product.moq,
+                                  onCommit: (next) => cart.updateQty(item.product.id, next),
                                 ),
                                 _qtyBtn(Icons.add, () {
                                   final step = item.product.moq > 0 ? item.product.moq : 1;
