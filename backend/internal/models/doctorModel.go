@@ -2,12 +2,47 @@ package models
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// DateOnly unmarshals the "YYYY-MM-DD" string an HTML <input type="date">
+// sends (time.Time's default JSON unmarshaling requires a full RFC3339
+// timestamp and rejects a date-only string with a decode error).
+type DateOnly time.Time
+
+func (d *DateOnly) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if s == "" {
+		*d = DateOnly(time.Time{})
+		return nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return err
+	}
+	*d = DateOnly(t)
+	return nil
+}
+
+func (d DateOnly) Time() time.Time { return time.Time(d) }
+
+// dateOnlyToTime converts a *DateOnly request field to the *time.Time the
+// db layer and handlers expect, keeping the nil-ness of the pointer.
+func dateOnlyToTime(d *DateOnly) *time.Time {
+	if d == nil {
+		return nil
+	}
+	t := d.Time()
+	return &t
+}
 
 // ErrDoctorPhoneRequired and ErrDoctorPhoneTaken are returned by
 // CreateDoctor/UpdateDoctor when the doctor's phone can't be used as their
@@ -69,8 +104,8 @@ type CreateDoctorRequest struct {
 	ClinicAddress *string    `json:"clinic_address,omitempty"`
 	Latitude      *float64   `json:"latitude,omitempty"`
 	Longitude     *float64   `json:"longitude,omitempty"`
-	DOB           *time.Time `json:"dob,omitempty"`
-	Anniversary   *time.Time `json:"anniversary,omitempty"`
+	DOB           *DateOnly  `json:"dob,omitempty"`
+	Anniversary   *DateOnly  `json:"anniversary,omitempty"`
 }
 
 type AddDoctorProductRequest struct {
@@ -105,7 +140,7 @@ func CreateDoctor(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, re
 	err = db.QueryRow(ctx,
 		`INSERT INTO doctors (partner_id, user_id, name, phone, email, speciality, clinic_name, clinic_address, latitude, longitude, dob, anniversary)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-		partnerID, userID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, req.Anniversary,
+		partnerID, userID, req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, dateOnlyToTime(req.DOB), dateOnlyToTime(req.Anniversary),
 	).Scan(&id)
 	if err != nil {
 		return uuid.Nil, err
@@ -337,7 +372,7 @@ func UpdateDoctor(ctx context.Context, db *pgxpool.Pool, doctorID uuid.UUID, req
 
 	_, err = db.Exec(ctx,
 		`UPDATE doctors SET name = $1, phone = $2, email = $3, speciality = $4, clinic_name = $5, clinic_address = $6, latitude = $7, longitude = $8, dob = $9, anniversary = $10 WHERE id = $11`,
-		req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, req.DOB, req.Anniversary, doctorID,
+		req.Name, req.Phone, req.Email, req.Speciality, req.ClinicName, req.ClinicAddress, req.Latitude, req.Longitude, dateOnlyToTime(req.DOB), dateOnlyToTime(req.Anniversary), doctorID,
 	)
 	return err
 }

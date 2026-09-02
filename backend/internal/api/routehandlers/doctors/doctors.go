@@ -164,10 +164,12 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		if req.DOB != nil {
-			syncDoctorBirthdayMeeting(r, db, id, userID, req.DOB)
+			dob := req.DOB.Time()
+			syncDoctorBirthdayMeeting(r, db, id, userID, &dob)
 		}
 		if req.Anniversary != nil {
-			syncDoctorAnniversaryMeeting(r, db, id, userID, req.Anniversary)
+			anniversary := req.Anniversary.Time()
+			syncDoctorAnniversaryMeeting(r, db, id, userID, &anniversary)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -236,8 +238,17 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not update doctor", http.StatusInternalServerError)
 			return
 		}
-		syncDoctorBirthdayMeeting(r, db, doctorID, doctor.PartnerID, req.DOB)
-		syncDoctorAnniversaryMeeting(r, db, doctorID, doctor.PartnerID, req.Anniversary)
+		var dob, anniversary *time.Time
+		if req.DOB != nil {
+			t := req.DOB.Time()
+			dob = &t
+		}
+		if req.Anniversary != nil {
+			t := req.Anniversary.Time()
+			anniversary = &t
+		}
+		syncDoctorBirthdayMeeting(r, db, doctorID, doctor.PartnerID, dob)
+		syncDoctorAnniversaryMeeting(r, db, doctorID, doctor.PartnerID, anniversary)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "doctor updated"})
