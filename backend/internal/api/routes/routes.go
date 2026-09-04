@@ -155,11 +155,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/doctor/me", doctors.GetMyDoctorProfileHandler(db)).Methods("GET")
 	protected.HandleFunc("/doctor/me", doctors.UpdateMyDoctorProfileHandler(db)).Methods("PUT")
 
-	// owner-scoped doctors/meetings RAG (any authenticated user — the
-	// retrieval query itself is filtered by the resolved owner id, so this
-	// never needs to be admin-gated)
-	protected.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskScopedHandler(db)).Methods("POST")
-
 	// cart routes (personal, not pooled across a team — scoped by the raw logged-in user id)
 	protected.HandleFunc("/cart", cart.ListHandler(db)).Methods("GET")
 	protected.HandleFunc("/cart", cart.ClearHandler(db)).Methods("DELETE")
@@ -251,8 +246,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
 	admin.HandleFunc("/vector-search/backfill", vectorsearchHandlers.BackfillHandler(db)).Methods("POST")
 	admin.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskHandler(db)).Methods("POST")
-	admin.HandleFunc("/vector-search/backfill-doctors", vectorsearchHandlers.BackfillDoctorsHandler(db)).Methods("POST")
-	admin.HandleFunc("/vector-search/backfill-meetings", vectorsearchHandlers.BackfillMeetingsHandler(db)).Methods("POST")
 
 	// staff routes — employee management
 	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()
