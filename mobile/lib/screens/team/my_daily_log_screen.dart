@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
 
@@ -46,20 +47,43 @@ class _MyDailyLogScreenState extends State<MyDailyLogScreen> {
     _load();
   }
 
+  // Only the device's current position is used — no manual pin-drop — so a
+  // partner can trust a log's location reflects where it was actually
+  // submitted from.
+  Future<Position> _getCurrentLocation() async {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      throw Exception('Location permission denied');
+    }
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      throw Exception('Please turn on location services');
+    }
+    return Geolocator.getCurrentPosition();
+  }
+
   Future<void> _submit() async {
     if (_notesCtrl.text.trim().isEmpty) return;
     setState(() => _submitting = true);
     try {
+      final pos = await _getCurrentLocation();
       final dateStr = '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
-      await _service.submitMyDailyLog(date: dateStr, notes: _notesCtrl.text.trim());
+      await _service.submitMyDailyLog(
+        date: dateStr,
+        notes: _notesCtrl.text.trim(),
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
       _notesCtrl.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Log saved')));
       }
       _load();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save log')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save log: ${e.toString().replaceFirst('Exception: ', '')}')));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -148,7 +172,21 @@ class _MyDailyLogScreenState extends State<MyDailyLogScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(l.date, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(l.date, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                          if (l.latitude != null && l.longitude != null)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on, size: 12, color: _teal),
+                                const SizedBox(width: 2),
+                                Text('Located', style: TextStyle(fontSize: 11, color: _teal)),
+                              ],
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Text(l.notes, style: const TextStyle(fontSize: 13)),
                     ],

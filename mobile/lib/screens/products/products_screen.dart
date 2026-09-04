@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -44,9 +45,18 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   bool _loading = false;
   bool _hasMore = true;
   bool _offline = false;
-  String? _spellingSuggestion;
+  List<String> _spellingSuggestions = [];
   final List<Product> _products = [];
   final _scrollCtrl = ScrollController();
+  final _searchFocus = FocusNode();
+
+  // Lightweight top-5 suggestions as you type — doesn't touch the full grid
+  // until a search is actually submitted (matches the website's behavior).
+  Timer? _suggestDebounce;
+  List<Product> _liveSuggestions = [];
+  List<String> _liveSpellingSuggestions = [];
+  bool _showDropdown = false;
+  bool _saltOnly = false;
 
   @override
   void initState() {
@@ -55,7 +65,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _tag = widget.initialTag ?? '';
     _load();
     _scrollCtrl.addListener(() {
-      if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+      if (_scrollCtrl.position.pixels >=
+          _scrollCtrl.position.maxScrollExtent - 200) {
         _loadMore();
       }
     });
@@ -65,6 +76,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   void dispose() {
     _searchCtrl.dispose();
     _scrollCtrl.dispose();
+    _searchFocus.dispose();
+    _suggestDebounce?.cancel();
     super.dispose();
   }
 
@@ -83,12 +96,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         category: _category,
         form: _form,
         tag: _tag,
+        saltOnly: _saltOnly,
       );
       setState(() {
         _products.addAll(res.products);
         _hasMore = _page < res.totalPages;
         _offline = res.isFromCache;
-        _spellingSuggestion = res.suggestion;
+        _spellingSuggestions = res.suggestions;
         _loading = false;
       });
     } catch (_) {
@@ -102,14 +116,56 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _load();
   }
 
+  // Fires on every keystroke — debounced fetch of the top-5 dropdown
+  // suggestions (products + "did you mean" salts) without touching the
+  // full product grid, mirroring the website's search bar.
   void _onSearch(String val) {
     setState(() => _search = val);
+    _suggestDebounce?.cancel();
+    final q = val.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _showDropdown = false;
+        _liveSuggestions = [];
+        _liveSpellingSuggestions = [];
+      });
+      return;
+    }
+    _suggestDebounce = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final res = await _productService.getProducts(search: q, limit: 5);
+        if (!mounted || _searchCtrl.text.trim() != q) return;
+        setState(() {
+          _liveSuggestions = res.products;
+          _liveSpellingSuggestions = res.suggestions;
+          _showDropdown = true;
+        });
+      } catch (_) {}
+    });
+  }
+
+  void _runSearch(String val) {
+    _suggestDebounce?.cancel();
+    setState(() {
+      _search = val;
+      _saltOnly = false;
+      _showDropdown = false;
+    });
+    _searchFocus.unfocus();
     _load(reset: true);
   }
 
-  void _applySuggestion(String suggestion) {
+  // Clicking a "did you mean" salt suggestion filters to products that
+  // actually contain that salt (key_ingredients), not a loose name match.
+  void _applySaltSuggestion(String suggestion) {
     _searchCtrl.text = suggestion;
-    setState(() => _search = suggestion);
+    _suggestDebounce?.cancel();
+    setState(() {
+      _search = suggestion;
+      _saltOnly = true;
+      _showDropdown = false;
+    });
+    _searchFocus.unfocus();
     _load(reset: true);
   }
 
@@ -136,7 +192,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Products', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
+        title: const Text('Products',
+            style: TextStyle(
+                color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: [
           IconButton(
             icon: const Icon(Icons.star_border, color: Color(0xFF1A1A1A)),
@@ -147,17 +205,25 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             Stack(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
+                  icon: const Icon(Icons.shopping_bag_outlined,
+                      color: Color(0xFF1A1A1A)),
                   onPressed: () => context.push('/cart'),
                 ),
                 if (cart.isNotEmpty)
                   Positioned(
-                    right: 8, top: 8,
+                    right: 8,
+                    top: 8,
                     child: Container(
-                      width: 16, height: 16,
-                      decoration: const BoxDecoration(color: Color(0xFF00A6A4), shape: BoxShape.circle),
+                      width: 16,
+                      height: 16,
+                      decoration: const BoxDecoration(
+                          color: Color(0xFF00A6A4), shape: BoxShape.circle),
                       child: Center(
-                        child: Text('${cart.length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: Text('${cart.length}',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ),
@@ -177,281 +243,478 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _searchCtrl,
-              onChanged: _onSearch,
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                filled: true,
-                fillColor: Colors.grey.shade50,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF00A6A4))),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                TextField(
+                  controller: _searchCtrl,
+                  focusNode: _searchFocus,
+                  onChanged: _onSearch,
+                  onSubmitted: _runSearch,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search products...',
+                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF00A6A4))),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  ),
+                ),
+                if (_showDropdown)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 52,
+                    child: Material(
+                      elevation: 6,
+                      borderRadius: BorderRadius.circular(12),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 360),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_liveSuggestions.isEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 14),
+                                  child: Text('No matches found',
+                                      style: TextStyle(
+                                          fontSize: 13, color: Colors.grey)),
+                                ),
+                              ] else ...[
+                                if (_liveSpellingSuggestions.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 10),
+                                    child: Wrap(
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        const Text('Did you mean ',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey)),
+                                        for (var i = 0;
+                                            i < _liveSpellingSuggestions.length;
+                                            i++)
+                                          GestureDetector(
+                                            onTap: () => _applySaltSuggestion(
+                                                _liveSpellingSuggestions[i]),
+                                            child: Text(
+                                              '${_liveSpellingSuggestions[i]}${i < _liveSpellingSuggestions.length - 1 ? ", " : ""}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF00A6A4),
+                                                fontWeight: FontWeight.w600,
+                                                decoration:
+                                                    TextDecoration.underline,
+                                              ),
+                                            ),
+                                          ),
+                                        const Text('?',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ),
+                                for (final p in _liveSuggestions)
+                                  InkWell(
+                                    onTap: () {
+                                      _searchFocus.unfocus();
+                                      setState(() => _showDropdown = false);
+                                      context.push('/products/${p.id}');
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 8),
+                                      child: Row(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                            child: p.primaryImageUrl != null
+                                                ? Image.network(
+                                                    p.primaryImageUrl!,
+                                                    width: 32,
+                                                    height: 32,
+                                                    fit: BoxFit.contain)
+                                                : Container(
+                                                    width: 32,
+                                                    height: 32,
+                                                    color:
+                                                        Colors.grey.shade100),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(p.name,
+                                                style: const TextStyle(
+                                                    fontSize: 13,
+                                                    color: Colors.black87),
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                InkWell(
+                                  onTap: () =>
+                                      _runSearch(_searchCtrl.text.trim()),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 10),
+                                    child: Text(
+                                      'See all results for "${_searchCtrl.text.trim()}" →',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFFAC2528)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           Expanded(
             child: CustomScrollView(
               controller: _scrollCtrl,
               slivers: [
-          // Category filter: "All" bar spanning full width, then a 3x4 grid
-          // of division tiles below it (mirrors the website's product filter).
-          SliverToBoxAdapter(
-            child: categories.when(
-              data: (cats) => Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        if (_category != '') setState(() => _category = '');
-                        _load(reset: true);
-                      },
+                // Category filter: "All" bar spanning full width, then a 3x4 grid
+                // of division tiles below it (mirrors the website's product filter).
+                SliverToBoxAdapter(
+                  child: categories.when(
+                    data: (cats) => Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                       child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        alignment: Alignment.center,
+                        padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: _category == '' ? _filterRed : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(10),
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Text(
-                          'All',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: _category == '' ? Colors.white : Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (isSpecial) ...[
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () => context.push('/special'),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00A6A4),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Text(
-                            '13 Alpha Unit',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: kDivisions.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        // Division images are mostly landscape/rectangular, not square —
-                        // match the tile shape to that instead of forcing a 1:1 box.
-                        childAspectRatio: 2.6,
-                      ),
-                      itemBuilder: (context, i) {
-                        final d = kDivisions[i];
-                        final isActive = _category == d.category;
-                        return GestureDetector(
-                          onTap: () => _onCategory(d.category),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              color: Colors.grey.shade50,
-                              border: Border.all(color: isActive ? _filterRed : Colors.transparent, width: 3),
-                            ),
-                            padding: const EdgeInsets.all(2),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(7),
-                              child: Image.asset(
-                                d.gridImage,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: Colors.grey.shade200,
-                                  child: const Icon(Icons.image_not_supported_outlined, color: Colors.grey),
+                        child: Column(
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (_category != '')
+                                  setState(() => _category = '');
+                                _load(reset: true);
+                              },
+                              child: Container(
+                                width: double.infinity,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 10),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _category == ''
+                                      ? _filterRed
+                                      : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  'All',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: _category == ''
+                                        ? Colors.white
+                                        : Colors.grey.shade700,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                ),
-              ),
-              loading: () => const SizedBox(height: 44),
-              error: (_, __) => const SizedBox(height: 44),
-            ),
-          ),
-
-          // Type (product form) filter
-          SliverToBoxAdapter(
-            child: Consumer(
-              builder: (context, ref, _) {
-                final forms = ref.watch(formsProvider);
-                return forms.when(
-                  data: (list) => list.isEmpty
-                      ? const SizedBox.shrink()
-                      : Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: Row(
-                            children: [
-                              Text('Type', style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: _form.isEmpty ? '' : _form,
-                                    isDense: true,
-                                    style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
-                                    items: [
-                                      const DropdownMenuItem(value: '', child: Text('All')),
-                                      for (final f in list) DropdownMenuItem(value: f, child: Text(f)),
-                                    ],
-                                    onChanged: (v) => _onForm(v ?? ''),
+                            if (isSpecial) ...[
+                              const SizedBox(height: 8),
+                              GestureDetector(
+                                onTap: () => context.push('/special'),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00A6A4),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    '13 Alpha Unit',
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white),
                                   ),
                                 ),
                               ),
                             ],
-                          ),
+                            const SizedBox(height: 8),
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: kDivisions.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                mainAxisSpacing: 8,
+                                crossAxisSpacing: 8,
+                                // Division images are mostly landscape/rectangular, not square —
+                                // match the tile shape to that instead of forcing a 1:1 box.
+                                childAspectRatio: 2.6,
+                              ),
+                              itemBuilder: (context, i) {
+                                final d = kDivisions[i];
+                                final isActive = _category == d.category;
+                                return GestureDetector(
+                                  onTap: () => _onCategory(d.category),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      color: Colors.grey.shade50,
+                                      border: Border.all(
+                                          color: isActive
+                                              ? _filterRed
+                                              : Colors.transparent,
+                                          width: 3),
+                                    ),
+                                    padding: const EdgeInsets.all(2),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(7),
+                                      child: Image.asset(
+                                        d.gridImage,
+                                        fit: BoxFit.contain,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                Container(
+                                          color: Colors.grey.shade200,
+                                          child: const Icon(
+                                              Icons
+                                                  .image_not_supported_outlined,
+                                              color: Colors.grey),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
-                );
-              },
-            ),
-          ),
-
-          if (_tag.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() => _tag = '');
-                    _load(reset: true);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00A6A4).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Tag: ', style: TextStyle(fontSize: 12, color: Color(0xFF00A6A4))),
-                        Text(_tag, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF00A6A4))),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.close, size: 14, color: Color(0xFF00A6A4)),
-                      ],
-                    ),
+                    loading: () => const SizedBox(height: 44),
+                    error: (_, __) => const SizedBox(height: 44),
                   ),
                 ),
-              ),
-            ),
 
-          if (_offline)
-            SliverToBoxAdapter(
-              child: Container(
-                width: double.infinity,
-                color: Colors.orange.shade50,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.cloud_off, size: 14, color: Colors.orange.shade700),
-                    const SizedBox(width: 6),
-                    Text('Offline — showing saved products', style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
-                  ],
-                ),
-              ),
-            ),
-
-          if (_spellingSuggestion != null && _spellingSuggestion!.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: GestureDetector(
-                  onTap: () => _applySuggestion(_spellingSuggestion!),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      children: [
-                        const TextSpan(text: 'Did you mean '),
-                        TextSpan(
-                          text: _spellingSuggestion!,
-                          style: const TextStyle(
-                            color: Color(0xFF00A6A4),
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                        const TextSpan(text: '?'),
-                      ],
-                    ),
+                // Type (product form) filter
+                SliverToBoxAdapter(
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final forms = ref.watch(formsProvider);
+                      return forms.when(
+                        data: (list) => list.isEmpty
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                child: Row(
+                                  children: [
+                                    Text('Type',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade500,
+                                            fontWeight: FontWeight.w500)),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                            color: Colors.grey.shade300),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: _form.isEmpty ? '' : _form,
+                                          isDense: true,
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.grey.shade800),
+                                          items: [
+                                            const DropdownMenuItem(
+                                                value: '', child: Text('All')),
+                                            for (final f in list)
+                                              DropdownMenuItem(
+                                                  value: f, child: Text(f)),
+                                          ],
+                                          onChanged: (v) => _onForm(v ?? ''),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
+                      );
+                    },
                   ),
                 ),
-              ),
-            ),
 
-          // Product grid
-          if (_products.isEmpty && _loading)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
-            )
-          else if (_products.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(child: Text('No products found', style: TextStyle(color: Colors.grey))),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.all(16),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: responsiveGridColumns(context),
-                  childAspectRatio: 0.72,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (ctx, i) {
-                    if (i >= _products.length) {
-                      return const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)));
-                    }
-                    return ProductCard(
-                      product: _products[i],
-                      onTap: () => context.push('/products/${_products[i].id}'),
-                      onAddToCart: () => ref.read(cartProvider.notifier).add(_products[i]),
-                    );
-                  },
-                  childCount: _products.length + (_hasMore ? 1 : 0),
-                ),
-              ),
-            ),
+                if (_tag.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() => _tag = '');
+                          _load(reset: true);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color:
+                                const Color(0xFF00A6A4).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Tag: ',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Color(0xFF00A6A4))),
+                              Text(_tag,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF00A6A4))),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.close,
+                                  size: 14, color: Color(0xFF00A6A4)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                if (_offline)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      width: double.infinity,
+                      color: Colors.orange.shade50,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.cloud_off,
+                              size: 14, color: Colors.orange.shade700),
+                          const SizedBox(width: 6),
+                          Text('Offline — showing saved products',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.orange.shade700)),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                if (_spellingSuggestions.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const Text('Did you mean ',
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey)),
+                          for (var i = 0; i < _spellingSuggestions.length; i++)
+                            GestureDetector(
+                              onTap: () =>
+                                  _applySaltSuggestion(_spellingSuggestions[i]),
+                              child: Text(
+                                '${_spellingSuggestions[i]}${i < _spellingSuggestions.length - 1 ? ", " : ""}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF00A6A4),
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          const Text('?',
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Product grid
+                if (_products.isEmpty && _loading)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFF00A6A4))),
+                  )
+                else if (_products.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                        child: Text('No products found',
+                            style: TextStyle(color: Colors.grey))),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: responsiveGridColumns(context),
+                        childAspectRatio: 0.72,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, i) {
+                          if (i >= _products.length) {
+                            return const Center(
+                                child: CircularProgressIndicator(
+                                    color: Color(0xFF00A6A4)));
+                          }
+                          return ProductCard(
+                            product: _products[i],
+                            onTap: () =>
+                                context.push('/products/${_products[i].id}'),
+                            onAddToCart: () => ref
+                                .read(cartProvider.notifier)
+                                .add(_products[i]),
+                          );
+                        },
+                        childCount: _products.length + (_hasMore ? 1 : 0),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

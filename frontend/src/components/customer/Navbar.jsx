@@ -225,7 +225,7 @@ export default function CustomerNavbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [spellingSuggestion, setSpellingSuggestion] = useState("");
+  const [spellingSuggestions, setSpellingSuggestions] = useState([]);
   const navRef = useRef(null);
   const router = useRouter();
 
@@ -242,7 +242,7 @@ export default function CustomerNavbar() {
       apiFetch(`/products?search=${encodeURIComponent(q)}&limit=5`)
         .then((data) => {
           setSearchSuggestions(data.products || []);
-          setSpellingSuggestion(data.suggestion || "");
+          setSpellingSuggestions(data.suggestions || []);
           setShowSuggestions(true);
         })
         .catch(() => {});
@@ -250,13 +250,19 @@ export default function CustomerNavbar() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const goToSearch = (q) => {
+  const goToSearch = (q, { saltOnly = false } = {}) => {
     if (!q) return;
-    router.push(`/products?search=${encodeURIComponent(q)}`);
+    const params = new URLSearchParams({ search: q });
+    if (saltOnly) params.set("salt_only", "true");
+    router.push(`/products?${params}`);
     setActiveMenu(null);
     setShowSuggestions(false);
     setSearchQuery("");
   };
+
+  // Clicking a "did you mean" salt suggestion filters to products that
+  // actually contain that salt (key_ingredients), not a loose name match.
+  const goToSaltSearch = (s) => goToSearch(s, { saltOnly: true });
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -949,14 +955,22 @@ export default function CustomerNavbar() {
                 {/* Top-5 suggestions — lightweight, doesn't load the full grid */}
                 {showSuggestions && searchSuggestions.length > 0 && (
                   <div className="mt-4 divide-y divide-gray-100">
-                    {spellingSuggestion && (
-                      <button
-                        onClick={() => goToSearch(spellingSuggestion)}
-                        className="w-full py-2 text-left text-xs text-gray-500 hover:text-gray-700"
-                      >
+                    {spellingSuggestions.length > 0 && (
+                      <div className="w-full py-2 text-left text-xs text-gray-500">
                         Did you mean{" "}
-                        <span className="text-gray-900 underline underline-offset-2">{spellingSuggestion}</span>?
-                      </button>
+                        {spellingSuggestions.map((s, i) => (
+                          <span key={s}>
+                            <button
+                              onClick={() => goToSaltSearch(s)}
+                              className="text-gray-900 underline underline-offset-2 hover:text-gray-700"
+                            >
+                              {s}
+                            </button>
+                            {i < spellingSuggestions.length - 1 ? ", " : ""}
+                          </span>
+                        ))}
+                        ?
+                      </div>
                     )}
                     {searchSuggestions.map((p) => (
                       <button

@@ -343,6 +343,19 @@ export default function EditProduct() {
     }
   };
 
+  const handleToggleVisualAid = async (imgId, visualAid) => {
+    setImages(images.map((img) => (img.id === imgId ? { ...img, visual_aid: visualAid } : img)));
+    try {
+      await apiFetch(`/admin/products/images/${imgId}/visual-aid`, {
+        method: "PATCH",
+        body: JSON.stringify({ visual_aid: visualAid }),
+      });
+    } catch (err) {
+      setImages(images.map((img) => (img.id === imgId ? { ...img, visual_aid: !visualAid } : img)));
+      alert(err.message);
+    }
+  };
+
   const handleDeleteDoc = async (docId) => {
     try {
       await apiFetch(`/admin/products/documents/${docId}`, {
@@ -940,6 +953,18 @@ export default function EditProduct() {
                   >
                     x
                   </button>
+                  <label
+                    title="Recommended for partner slideshow presentations"
+                    className="absolute bottom-1 left-1 flex items-center gap-1 bg-white/90 rounded px-1.5 py-0.5 text-[10px] text-gray-600 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!img.visual_aid}
+                      onChange={(e) => handleToggleVisualAid(img.id, e.target.checked)}
+                      className="w-3 h-3"
+                    />
+                    Visual aid
+                  </label>
                 </div>
               ))}
             </div>

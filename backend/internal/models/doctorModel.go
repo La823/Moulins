@@ -24,7 +24,13 @@ func (d *DateOnly) UnmarshalJSON(data []byte) error {
 		*d = DateOnly(time.Time{})
 		return nil
 	}
-	t, err := time.Parse("2006-01-02", s)
+	// Accept both a bare "YYYY-MM-DD" (web's <input type="date">) and a
+	// full RFC3339 timestamp (the mobile app sends dob.toUtc().toIso8601String()).
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		*d = DateOnly(t)
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
 		return err
 	}

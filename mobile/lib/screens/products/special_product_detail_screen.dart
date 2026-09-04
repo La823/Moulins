@@ -138,12 +138,16 @@ class _SpecialProductDetailScreenState extends ConsumerState<SpecialProductDetai
                                 _imagePageCtrl.jumpToPage(lastViewed);
                               }
                             },
-                            child: CachedNetworkImage(
-                              imageUrl: p.images[i].imageUrl,
-                              fit: BoxFit.cover,
+                            child: Container(
+                              color: Colors.white,
                               width: double.infinity,
-                              placeholder: (_, __) => Container(color: Colors.grey.shade100),
-                              errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 60, color: Colors.grey)),
+                              child: CachedNetworkImage(
+                                imageUrl: p.images[i].imageUrl,
+                                fit: BoxFit.contain,
+                                width: double.infinity,
+                                placeholder: (_, __) => Container(color: Colors.grey.shade100),
+                                errorWidget: (_, __, ___) => Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 60, color: Colors.grey)),
+                              ),
                             ),
                           ),
                         ),

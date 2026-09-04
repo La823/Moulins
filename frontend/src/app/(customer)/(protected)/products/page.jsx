@@ -74,7 +74,11 @@ function ProductsPageInner() {
 
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [spellingSuggestion, setSpellingSuggestion] = useState("");
+  const [spellingSuggestions, setSpellingSuggestions] = useState([]);
+  // True only when the active search came from clicking a "did you mean"
+  // salt suggestion — restricts matching to key_ingredients so the result
+  // list is products that actually contain that salt, not a loose name match.
+  const [saltOnly, setSaltOnly] = useState(false);
 
   const [specialProducts, setSpecialProducts] = useState([]);
 
@@ -118,6 +122,7 @@ function ProductsPageInner() {
     const q = searchParams.get("search") || "";
     setSearch(q);
     setDebouncedSearch(q);
+    setSaltOnly(searchParams.get("salt_only") === "true");
     setActiveCategory(searchParams.get("category") || "");
     setActiveForm(searchParams.get("form") || "");
   }, [searchParams]);
@@ -134,7 +139,7 @@ function ProductsPageInner() {
       apiFetch(`/products?search=${encodeURIComponent(q)}&limit=5`)
         .then((data) => {
           setSearchSuggestions(data.products || []);
-          setSpellingSuggestion(data.suggestion || "");
+          setSpellingSuggestions(data.suggestions || []);
           setShowSuggestions(true);
         })
         .catch(() => {});
@@ -142,10 +147,16 @@ function ProductsPageInner() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const runSearch = (q) => {
+  const runSearch = (q, options = {}) => {
     setDebouncedSearch(q);
+    setSaltOnly(!!options.saltOnly);
     setPage(1);
     setShowSuggestions(false);
+  };
+
+  const searchBySalt = (s) => {
+    setSearch(s);
+    runSearch(s, { saltOnly: true });
   };
 
   // Reset page on category/type change
@@ -175,6 +186,7 @@ function ProductsPageInner() {
       limit: String(limit),
     });
     if (debouncedSearch) params.set("search", debouncedSearch);
+    if (debouncedSearch && saltOnly) params.set("salt_only", "true");
     if (activeCategory) params.set("category", activeCategory);
     if (activeForm) params.set("form", activeForm);
     if (activeTag) params.set("tag", activeTag);
@@ -198,11 +210,11 @@ function ProductsPageInner() {
         setProducts(list);
         setTotal(combinedTotal);
         setTotalPages(data.total_pages || 0);
-        setSpellingSuggestion(data.suggestion || "");
+        setSpellingSuggestions(data.suggestions || []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, debouncedSearch, activeCategory, activeForm, activeTag, specialProducts, isSpecialCustomer]);
+  }, [page, debouncedSearch, saltOnly, activeCategory, activeForm, activeTag, specialProducts, isSpecialCustomer]);
 
   return (
     <div className="max-w-[96rem] mx-auto px-10 py-10">
@@ -222,16 +234,21 @@ function ProductsPageInner() {
               {debouncedSearch ? ` matching "${debouncedSearch}"` : ""}
             </p>
           )}
-          {!loading && spellingSuggestion && (
+          {!loading && spellingSuggestions.length > 0 && (
             <p className="text-sm text-gray-500 mt-1">
               Did you mean{" "}
-              <button
-                type="button"
-                onClick={() => { setSearch(spellingSuggestion); runSearch(spellingSuggestion); }}
-                className="text-gray-900 underline underline-offset-2 hover:text-gray-600"
-              >
-                {spellingSuggestion}
-              </button>
+              {spellingSuggestions.map((s, i) => (
+                <span key={s}>
+                  <button
+                    type="button"
+                    onClick={() => searchBySalt(s)}
+                    className="text-gray-900 underline underline-offset-2 hover:text-gray-600"
+                  >
+                    {s}
+                  </button>
+                  {i < spellingSuggestions.length - 1 ? ", " : ""}
+                </span>
+              ))}
               ?
             </p>
           )}
@@ -268,19 +285,28 @@ function ProductsPageInner() {
             <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-gray-200 shadow-lg rounded-lg overflow-hidden z-30">
               {searchSuggestions.length > 0 ? (
                 <>
-                  {spellingSuggestion && (
-                    <button
-                      onClick={() => { setSearch(spellingSuggestion); runSearch(spellingSuggestion); }}
-                      className="w-full px-4 py-2 text-left text-xs text-gray-500 border-b border-gray-100 hover:bg-gray-50"
-                    >
-                      Did you mean <span className="text-gray-900 underline underline-offset-2">{spellingSuggestion}</span>?
-                    </button>
+                  {spellingSuggestions.length > 0 && (
+                    <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-100">
+                      Did you mean{" "}
+                      {spellingSuggestions.map((s, i) => (
+                        <span key={s}>
+                          <button
+                            onMouseDown={(e) => { e.preventDefault(); searchBySalt(s); }}
+                            className="text-gray-900 underline underline-offset-2 hover:text-gray-600"
+                          >
+                            {s}
+                          </button>
+                          {i < spellingSuggestions.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                      ?
+                    </div>
                   )}
                   <div className="divide-y divide-gray-100">
                     {searchSuggestions.map((p) => (
                       <button
                         key={p.id}
-                        onClick={() => router.push(`/products/${p.id}`)}
+                        onMouseDown={(e) => { e.preventDefault(); router.push(`/products/${p.id}`); }}
                         className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors"
                       >
                         {p.images && p.images.length > 0 ? (
@@ -297,7 +323,7 @@ function ProductsPageInner() {
                     ))}
                   </div>
                   <button
-                    onClick={() => runSearch(search.trim())}
+                    onMouseDown={(e) => { e.preventDefault(); runSearch(search.trim()); }}
                     className="w-full px-4 py-2.5 text-left text-xs font-medium text-red-600 hover:text-red-700 border-t border-gray-100"
                   >
                     See all results for &ldquo;{search.trim()}&rdquo; &rarr;

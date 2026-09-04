@@ -12,12 +12,14 @@ class ProductService {
     String category = '',
     String form = '',
     String tag = '',
+    bool saltOnly = false,
   }) async {
     try {
       final res = await _dio.get('/products', queryParameters: {
         'page': page,
         'limit': limit,
         if (search.isNotEmpty) 'search': search,
+        if (search.isNotEmpty && saltOnly) 'salt_only': 'true',
         if (category.isNotEmpty) 'category': category,
         if (form.isNotEmpty) 'form': form,
         if (tag.isNotEmpty) 'tag': tag,
@@ -39,7 +41,12 @@ class ProductService {
       if (page == 1 && search.isEmpty && category.isEmpty && tag.isEmpty) {
         final cached = await OfflineCache.loadProductList();
         if (cached.isNotEmpty) {
-          return ProductListResponse(products: cached, total: cached.length, page: 1, totalPages: 1, isFromCache: true);
+          return ProductListResponse(
+              products: cached,
+              total: cached.length,
+              page: 1,
+              totalPages: 1,
+              isFromCache: true);
         }
       }
       rethrow;

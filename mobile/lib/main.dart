@@ -16,6 +16,8 @@ import 'screens/products/special_product_detail_screen.dart';
 import 'screens/orders/orders_screen.dart';
 import 'screens/orders/order_detail_screen.dart';
 import 'screens/doctors/doctors_screen.dart';
+import 'screens/presentations/presentations_screen.dart';
+import 'screens/presentations/presentation_builder_screen.dart';
 import 'screens/cart/cart_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/home/profile_screen.dart';
@@ -142,6 +144,17 @@ class MoulinsApp extends ConsumerWidget {
               ],
             ),
             GoRoute(path: '/doctors', builder: (_, __) => const DoctorsScreen()),
+            GoRoute(
+              path: '/presentations',
+              builder: (_, __) => const PresentationsScreen(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (_, state) =>
+                      PresentationBuilderScreen(presentationId: state.pathParameters['id']!),
+                ),
+              ],
+            ),
             GoRoute(path: '/team', builder: (_, __) => const TeamScreen()),
             GoRoute(
               path: '/team/:id',

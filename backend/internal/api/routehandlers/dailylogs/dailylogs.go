@@ -22,8 +22,11 @@ func getUserID(r *http.Request) uuid.UUID {
 func SubmitMyDailyLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Date  string `json:"date"`
-			Notes string `json:"notes"`
+			Date      string   `json:"date"`
+			Notes     string   `json:"notes"`
+			Latitude  *float64 `json:"latitude"`
+			Longitude *float64 `json:"longitude"`
+			Address   *string  `json:"address"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -33,8 +36,12 @@ func SubmitMyDailyLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "date and notes are required", http.StatusBadRequest)
 			return
 		}
+		if body.Latitude == nil || body.Longitude == nil {
+			http.Error(w, "current location is required to submit a daily log", http.StatusBadRequest)
+			return
+		}
 
-		id, err := models.UpsertDailyLog(r.Context(), db, getUserID(r), body.Date, body.Notes)
+		id, err := models.UpsertDailyLog(r.Context(), db, getUserID(r), body.Date, body.Notes, body.Latitude, body.Longitude, body.Address)
 		if err != nil {
 			log.Printf("submit daily log error: %v", err)
 			http.Error(w, "could not save daily log", http.StatusInternalServerError)

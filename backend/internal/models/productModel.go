@@ -57,6 +57,7 @@ type ProductImage struct {
 	ImageKey  string    `json:"image_key"`
 	ImageURL  string    `json:"image_url,omitempty"`
 	SortOrder int       `json:"sort_order"`
+	VisualAid bool      `json:"visual_aid"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -480,7 +481,7 @@ func titleCase(s string) string {
 // GetAllProducts. fuzzy swaps the search condition from a literal ILIKE
 // match to a pg_trgm similarity match (used as a fallback when the literal
 // search finds nothing, e.g. a misspelled salt/composition name).
-func buildProductConditions(activeOnly bool, search, category, form, tag string, nameOnly, fuzzy bool) ([]string, []any, int) {
+func buildProductConditions(activeOnly bool, search, category, form, tag string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
@@ -490,16 +491,22 @@ func buildProductConditions(activeOnly bool, search, category, form, tag string,
 	}
 	if search != "" {
 		if fuzzy {
-			if nameOnly {
+			switch {
+			case saltOnly:
+				conditions = append(conditions, fmt.Sprintf("$%d <%% key_ingredients", argIdx))
+			case nameOnly:
 				conditions = append(conditions, fmt.Sprintf("$%d <%% name", argIdx))
-			} else {
+			default:
 				conditions = append(conditions, fmt.Sprintf("($%d <%% name OR $%d <%% key_ingredients)", argIdx, argIdx))
 			}
 			args = append(args, search)
 		} else {
-			if nameOnly {
+			switch {
+			case saltOnly:
+				conditions = append(conditions, fmt.Sprintf("key_ingredients ILIKE $%d", argIdx))
+			case nameOnly:
 				conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIdx))
-			} else {
+			default:
 				conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR key_ingredients ILIKE $%d)", argIdx, argIdx))
 			}
 			args = append(args, "%"+search+"%")
@@ -613,7 +620,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 }
 
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
-	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, limit, offset, nameOnly)
+	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, limit, offset, nameOnly, false)
 	return products, total, err
 }
 
@@ -623,43 +630,54 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 // when it differs from what was actually typed (case aside), so a
 // correctly-spelled search doesn't get a pointless "did you mean X?"
 // pointing back at the same word.
-func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, string, error) {
-	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, false)
+//
+// saltOnly restricts matching to key_ingredients (composition) instead of
+// name+key_ingredients — used when the search term came from clicking a
+// "did you mean" salt suggestion, so the result list is the products that
+// actually contain that salt rather than a looser text match.
+func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly, saltOnly bool) ([]Product, int, []string, error) {
+	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, saltOnly, false)
 	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search)
 	if err != nil || search == "" {
-		return products, total, "", err
+		return products, total, nil, err
 	}
 
 	if len(products) > 0 {
-		return products, total, suggestionOrEmpty(ctx, db, search), nil
+		return products, total, suggestionsOrEmpty(ctx, db, search), nil
 	}
 
 	// Literal search found nothing — fall back to a pg_trgm fuzzy match in
 	// case the term was misspelled (e.g. a salt/composition name).
-	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, true)
+	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, saltOnly, true)
 	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search)
 	if err != nil || len(fuzzyProducts) == 0 {
-		return fuzzyProducts, fuzzyTotal, "", err
+		return fuzzyProducts, fuzzyTotal, nil, err
 	}
-	return fuzzyProducts, fuzzyTotal, suggestionOrEmpty(ctx, db, search), nil
+	return fuzzyProducts, fuzzyTotal, suggestionsOrEmpty(ctx, db, search), nil
 }
 
-// suggestionOrEmpty runs suggestSpelling and suppresses it if it errored,
-// or if it just echoes back the term the user already typed.
-func suggestionOrEmpty(ctx context.Context, db *pgxpool.Pool, search string) string {
-	suggestion, err := suggestSpelling(ctx, db, search)
-	if err != nil || strings.EqualFold(suggestion, search) {
-		return ""
+// suggestionsOrEmpty runs suggestSpelling and drops any suggestion that
+// errored, or that just echoes back the term the user already typed.
+func suggestionsOrEmpty(ctx context.Context, db *pgxpool.Pool, search string) []string {
+	words, err := suggestSpelling(ctx, db, search)
+	if err != nil {
+		return nil
 	}
-	return suggestion
+	suggestions := make([]string, 0, len(words))
+	for _, w := range words {
+		if !strings.EqualFold(w, search) {
+			suggestions = append(suggestions, w)
+		}
+	}
+	return suggestions
 }
 
-// suggestSpelling finds the single real word (from any product's name or
+// suggestSpelling finds the top 5 real words (from any product's name or
 // key_ingredients) closest to the given typo, for a "did you mean X?"
 // prompt — independent of which specific products matched, since a typo
 // like "paracetmol" should surface "Paracetamol" even though many
 // different products contain it.
-func suggestSpelling(ctx context.Context, db *pgxpool.Pool, term string) (string, error) {
+func suggestSpelling(ctx context.Context, db *pgxpool.Pool, term string) ([]string, error) {
 	const q = `
 		SELECT word FROM (
 			SELECT DISTINCT unnest(regexp_split_to_array(
@@ -670,14 +688,23 @@ func suggestSpelling(ctx context.Context, db *pgxpool.Pool, term string) (string
 		) words
 		WHERE length(word) > 3
 		ORDER BY word_similarity($1, word) DESC
-		LIMIT 1
+		LIMIT 5
 	`
-	var word string
-	err := db.QueryRow(ctx, q, term).Scan(&word)
+	rows, err := db.Query(ctx, q, term)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return word, nil
+	defer rows.Close()
+
+	var words []string
+	for rows.Next() {
+		var word string
+		if err := rows.Scan(&word); err != nil {
+			return nil, err
+		}
+		words = append(words, word)
+	}
+	return words, rows.Err()
 }
 
 func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Product, error) {
@@ -792,7 +819,7 @@ func AddProductImage(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID,
 
 func GetProductImages(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID) ([]ProductImage, error) {
 	query := `
-		SELECT id, product_id, image_key, sort_order, created_at
+		SELECT id, product_id, image_key, sort_order, visual_aid, created_at
 		FROM product_images
 		WHERE product_id = $1
 		ORDER BY sort_order ASC, created_at ASC
@@ -806,7 +833,7 @@ func GetProductImages(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID
 	images := make([]ProductImage, 0)
 	for rows.Next() {
 		var img ProductImage
-		err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.CreatedAt)
+		err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.VisualAid, &img.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -817,6 +844,14 @@ func GetProductImages(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID
 
 func DeleteProductImage(ctx context.Context, db *pgxpool.Pool, imageID uuid.UUID) error {
 	_, err := db.Exec(ctx, "DELETE FROM product_images WHERE id = $1", imageID)
+	return err
+}
+
+// SetImageVisualAid marks a product image as recommended/not-recommended
+// for partners building a slideshow presentation — a staff-set curation
+// signal, distinct from an actual presentation deck.
+func SetImageVisualAid(ctx context.Context, db *pgxpool.Pool, imageID uuid.UUID, visualAid bool) error {
+	_, err := db.Exec(ctx, "UPDATE product_images SET visual_aid = $1 WHERE id = $2", visualAid, imageID)
 	return err
 }
 
@@ -896,7 +931,7 @@ func GetProductImagesBatch(ctx context.Context, db *pgxpool.Pool, productIDs []u
 		return make(map[uuid.UUID][]ProductImage), nil
 	}
 	ph, args := buildPlaceholders(productIDs)
-	query := `SELECT id, product_id, image_key, sort_order, created_at
+	query := `SELECT id, product_id, image_key, sort_order, visual_aid, created_at
 		FROM product_images
 		WHERE product_id IN (` + ph + `)
 		ORDER BY sort_order ASC, created_at ASC`
@@ -910,7 +945,7 @@ func GetProductImagesBatch(ctx context.Context, db *pgxpool.Pool, productIDs []u
 	result := make(map[uuid.UUID][]ProductImage)
 	for rows.Next() {
 		var img ProductImage
-		if err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.VisualAid, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		result[img.ProductID] = append(result[img.ProductID], img)

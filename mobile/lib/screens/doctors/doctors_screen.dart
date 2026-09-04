@@ -72,307 +72,362 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetCtx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 20, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
-          child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+          // Capped so the sheet never grows taller than the screen — with a
+          // fixed-height footer for the Save button (below), the field list
+          // above it scrolls on its own instead of pushing Save off-screen.
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sheetCtx).size.height * 0.9),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(existing == null ? 'Add Doctor' : 'Edit Doctor',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                _field(nameCtrl, 'Doctor Name *'),
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                        child: _field(phoneCtrl, 'Phone',
-                            type: TextInputType.phone)),
-                    const SizedBox(width: 8),
-                    Container(
-                      height: 48,
-                      width: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.contacts_outlined,
-                            color: Color(0xFF00A6A4)),
-                        tooltip: 'Pick from contacts',
-                        onPressed: () async {
-                          try {
-                            // Reading a picked contact's phone number needs
-                            // READ_CONTACTS — request it up front so a denial
-                            // surfaces as a clean message instead of a native
-                            // crash when the plugin tries to read the contact.
-                            // readonly: true — we only read a picked contact's
-                            // number, never write. Requesting WRITE_CONTACTS
-                            // too (the default) would fail permanently since
-                            // that permission isn't declared in the manifest.
-                            final granted =
-                                await FlutterContacts.requestPermission(
-                                    readonly: true);
-                            if (!granted) {
-                              if (sheetCtx.mounted) {
-                                ScaffoldMessenger.of(sheetCtx).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          'Contacts permission is required to pick a number')),
-                                );
-                              }
-                              return;
-                            }
-                            final contact =
-                                await FlutterContacts.openExternalPick();
-                            if (contact == null) return;
-                            if (contact.phones.isNotEmpty) {
-                              phoneCtrl.text = contact.phones.first.number;
-                            }
-                            if (contact.emails.isNotEmpty) {
-                              emailCtrl.text = contact.emails.first.address;
-                            }
-                            if (nameCtrl.text.trim().isEmpty &&
-                                contact.displayName.isNotEmpty) {
-                              nameCtrl.text = contact.displayName;
-                            }
-                          } catch (_) {
-                            if (sheetCtx.mounted) {
-                              ScaffoldMessenger.of(sheetCtx).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Could not open contacts')),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _field(emailCtrl, 'Email', type: TextInputType.emailAddress),
-                const SizedBox(height: 12),
-                _field(specialityCtrl, 'Speciality'),
-                const SizedBox(height: 12),
-                _field(clinicCtrl, 'Clinic Name'),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await Navigator.push<PickedLocation>(
-                      sheetCtx,
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              LocationPickerScreen(initial: location)),
-                    );
-                    if (picked != null) setSheetState(() => location = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Clinic Location',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade200)),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    child: Text(
-                      location == null
-                          ? 'Set location on map...'
-                          : (location!.address ??
-                              '${location!.lat.toStringAsFixed(5)}, ${location!.lng.toStringAsFixed(5)}'),
-                      style: TextStyle(
-                          fontSize: 14,
-                          color: location == null
-                              ? Colors.grey.shade400
-                              : Colors.black87),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetCtx,
-                      initialDate: DateTime(1985, 1, 1),
-                      firstDate: DateTime(1930),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) setSheetState(() => dob = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Date of Birth',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade200)),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    child: Text(
-                      dob == null
-                          ? 'Select date'
-                          : '${dob!.day}/${dob!.month}/${dob!.year}',
-                      style: TextStyle(
-                          fontSize: 14,
-                          color: dob == null
-                              ? Colors.grey.shade400
-                              : Colors.black87),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Adds a yearly birthday reminder to your meetings calendar, with daily notifications in the 10 days before.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetCtx,
-                      initialDate: anniversary ?? DateTime(2010, 1, 1),
-                      firstDate: DateTime(1930),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null)
-                      setSheetState(() => anniversary = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Anniversary',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade200)),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    child: Text(
-                      anniversary == null
-                          ? 'Select date'
-                          : '${anniversary!.day}/${anniversary!.month}/${anniversary!.year}',
-                      style: TextStyle(
-                          fontSize: 14,
-                          color: anniversary == null
-                              ? Colors.grey.shade400
-                              : Colors.black87),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Adds a yearly anniversary reminder to your meetings calendar, with daily notifications in the 10 days before.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                ),
-                if (submitError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(submitError!,
-                      style:
-                          const TextStyle(color: Colors.red, fontSize: 12.5)),
-                ],
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: submitting
-                        ? null
-                        : () async {
-                            if (nameCtrl.text.trim().isEmpty) return;
-                            String? phone;
-                            if (phoneCtrl.text.trim().isNotEmpty) {
-                              phone = Validators.normalizePhone(phoneCtrl.text);
-                              if (phone == null) {
-                                setSheetState(() => submitError =
-                                    Validators.phoneError(phoneCtrl.text));
-                                return;
-                              }
-                            }
-                            setSheetState(() {
-                              submitting = true;
-                              submitError = null;
-                            });
-                            try {
-                              if (existing == null) {
-                                await _service.createDoctor(
-                                  name: nameCtrl.text.trim(),
-                                  phone: phone,
-                                  email: emailCtrl.text.trim().isEmpty
-                                      ? null
-                                      : emailCtrl.text.trim(),
-                                  speciality: specialityCtrl.text.trim().isEmpty
-                                      ? null
-                                      : specialityCtrl.text.trim(),
-                                  clinicName: clinicCtrl.text.trim().isEmpty
-                                      ? null
-                                      : clinicCtrl.text.trim(),
-                                  clinicAddress: location?.address,
-                                  latitude: location?.lat,
-                                  longitude: location?.lng,
-                                  dob: dob,
-                                  anniversary: anniversary,
-                                );
-                              } else {
-                                await _service.updateDoctor(
-                                  existing.id,
-                                  name: nameCtrl.text.trim(),
-                                  phone: phone,
-                                  email: emailCtrl.text.trim().isEmpty
-                                      ? null
-                                      : emailCtrl.text.trim(),
-                                  speciality: specialityCtrl.text.trim().isEmpty
-                                      ? null
-                                      : specialityCtrl.text.trim(),
-                                  clinicName: clinicCtrl.text.trim().isEmpty
-                                      ? null
-                                      : clinicCtrl.text.trim(),
-                                  clinicAddress: location?.address,
-                                  latitude: location?.lat,
-                                  longitude: location?.lng,
-                                  dob: dob,
-                                  anniversary: anniversary,
-                                );
-                              }
-                              if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                              _load();
-                            } catch (e) {
-                              setSheetState(() {
-                                submitting = false;
-                                submitError = existing == null
-                                    ? 'Could not add doctor. Please try again.'
-                                    : 'Could not save changes. Please try again.';
-                              });
-                            }
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(existing == null ? 'Add Doctor' : 'Edit Doctor',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 20),
+                        _field(nameCtrl, 'Doctor Name *'),
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                                child: _field(phoneCtrl, 'Phone',
+                                    type: TextInputType.phone)),
+                            const SizedBox(width: 8),
+                            Container(
+                              height: 48,
+                              width: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.contacts_outlined,
+                                    color: Color(0xFF00A6A4)),
+                                tooltip: 'Pick from contacts',
+                                onPressed: () async {
+                                  try {
+                                    // Reading a picked contact's phone number needs
+                                    // READ_CONTACTS — request it up front so a denial
+                                    // surfaces as a clean message instead of a native
+                                    // crash when the plugin tries to read the contact.
+                                    // readonly: true — we only read a picked contact's
+                                    // number, never write. Requesting WRITE_CONTACTS
+                                    // too (the default) would fail permanently since
+                                    // that permission isn't declared in the manifest.
+                                    final granted =
+                                        await FlutterContacts.requestPermission(
+                                            readonly: true);
+                                    if (!granted) {
+                                      if (sheetCtx.mounted) {
+                                        ScaffoldMessenger.of(sheetCtx)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'Contacts permission is required to pick a number')),
+                                        );
+                                      }
+                                      return;
+                                    }
+                                    final contact = await FlutterContacts
+                                        .openExternalPick();
+                                    if (contact == null) return;
+                                    if (contact.phones.isNotEmpty) {
+                                      phoneCtrl.text =
+                                          contact.phones.first.number;
+                                    }
+                                    if (contact.emails.isNotEmpty) {
+                                      emailCtrl.text =
+                                          contact.emails.first.address;
+                                    }
+                                    if (nameCtrl.text.trim().isEmpty &&
+                                        contact.displayName.isNotEmpty) {
+                                      nameCtrl.text = contact.displayName;
+                                    }
+                                  } catch (_) {
+                                    if (sheetCtx.mounted) {
+                                      ScaffoldMessenger.of(sheetCtx)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'Could not open contacts')),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _field(emailCtrl, 'Email',
+                            type: TextInputType.emailAddress),
+                        const SizedBox(height: 12),
+                        _field(specialityCtrl, 'Speciality'),
+                        const SizedBox(height: 12),
+                        _field(clinicCtrl, 'Clinic Name'),
+                        const SizedBox(height: 12),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await Navigator.push<PickedLocation>(
+                              sheetCtx,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      LocationPickerScreen(initial: location)),
+                            );
+                            if (picked != null)
+                              setSheetState(() => location = picked);
                           },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00A6A4),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Clinic Location',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade200)),
+                              enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade200)),
+                            ),
+                            child: Text(
+                              location == null
+                                  ? 'Set location on map...'
+                                  : (location!.address ??
+                                      '${location!.lat.toStringAsFixed(5)}, ${location!.lng.toStringAsFixed(5)}'),
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: location == null
+                                      ? Colors.grey.shade400
+                                      : Colors.black87),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: sheetCtx,
+                              initialDate: DateTime(1985, 1, 1),
+                              firstDate: DateTime(1930),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null)
+                              setSheetState(() => dob = picked);
+                          },
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Date of Birth',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade200)),
+                              enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade200)),
+                            ),
+                            child: Text(
+                              dob == null
+                                  ? 'Select date'
+                                  : '${dob!.day}/${dob!.month}/${dob!.year}',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: dob == null
+                                      ? Colors.grey.shade400
+                                      : Colors.black87),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Adds a yearly birthday reminder to your meetings calendar, with daily notifications in the 10 days before.',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey.shade400),
+                        ),
+                        const SizedBox(height: 12),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: sheetCtx,
+                              initialDate: anniversary ?? DateTime(2010, 1, 1),
+                              firstDate: DateTime(1930),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null)
+                              setSheetState(() => anniversary = picked);
+                          },
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Anniversary',
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade200)),
+                              enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide:
+                                      BorderSide(color: Colors.grey.shade200)),
+                            ),
+                            child: Text(
+                              anniversary == null
+                                  ? 'Select date'
+                                  : '${anniversary!.day}/${anniversary!.month}/${anniversary!.year}',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color: anniversary == null
+                                      ? Colors.grey.shade400
+                                      : Colors.black87),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Adds a yearly anniversary reminder to your meetings calendar, with daily notifications in the 10 days before.',
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey.shade400),
+                        ),
+                      ],
                     ),
-                    child: submitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : Text(
-                            existing == null ? 'Add Doctor' : 'Save Changes'),
+                  ),
+                ),
+                // Fixed footer — stays visible below the scrollable field
+                // list instead of the Save button scrolling out of view.
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border:
+                        Border(top: BorderSide(color: Colors.grey.shade100)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (submitError != null) ...[
+                        Text(submitError!,
+                            style: const TextStyle(
+                                color: Colors.red, fontSize: 12.5)),
+                        const SizedBox(height: 8),
+                      ],
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: submitting
+                              ? null
+                              : () async {
+                                  if (nameCtrl.text.trim().isEmpty) return;
+                                  String? phone;
+                                  if (phoneCtrl.text.trim().isNotEmpty) {
+                                    phone = Validators.normalizePhone(
+                                        phoneCtrl.text);
+                                    if (phone == null) {
+                                      setSheetState(() => submitError =
+                                          Validators.phoneError(
+                                              phoneCtrl.text));
+                                      return;
+                                    }
+                                  }
+                                  setSheetState(() {
+                                    submitting = true;
+                                    submitError = null;
+                                  });
+                                  try {
+                                    if (existing == null) {
+                                      await _service.createDoctor(
+                                        name: nameCtrl.text.trim(),
+                                        phone: phone,
+                                        email: emailCtrl.text.trim().isEmpty
+                                            ? null
+                                            : emailCtrl.text.trim(),
+                                        speciality:
+                                            specialityCtrl.text.trim().isEmpty
+                                                ? null
+                                                : specialityCtrl.text.trim(),
+                                        clinicName:
+                                            clinicCtrl.text.trim().isEmpty
+                                                ? null
+                                                : clinicCtrl.text.trim(),
+                                        clinicAddress: location?.address,
+                                        latitude: location?.lat,
+                                        longitude: location?.lng,
+                                        dob: dob,
+                                        anniversary: anniversary,
+                                      );
+                                    } else {
+                                      await _service.updateDoctor(
+                                        existing.id,
+                                        name: nameCtrl.text.trim(),
+                                        phone: phone,
+                                        email: emailCtrl.text.trim().isEmpty
+                                            ? null
+                                            : emailCtrl.text.trim(),
+                                        speciality:
+                                            specialityCtrl.text.trim().isEmpty
+                                                ? null
+                                                : specialityCtrl.text.trim(),
+                                        clinicName:
+                                            clinicCtrl.text.trim().isEmpty
+                                                ? null
+                                                : clinicCtrl.text.trim(),
+                                        clinicAddress: location?.address,
+                                        latitude: location?.lat,
+                                        longitude: location?.lng,
+                                        dob: dob,
+                                        anniversary: anniversary,
+                                      );
+                                    }
+                                    if (sheetCtx.mounted)
+                                      Navigator.pop(sheetCtx);
+                                    _load();
+                                  } catch (e) {
+                                    setSheetState(() {
+                                      submitting = false;
+                                      submitError = existing == null
+                                          ? 'Could not add doctor. Please try again.'
+                                          : 'Could not save changes. Please try again.';
+                                    });
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00A6A4),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: submitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : Text(existing == null
+                                  ? 'Add Doctor'
+                                  : 'Save Changes'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -11,6 +11,115 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+let googleMapsScriptPromise = null;
+function loadGoogleMaps() {
+  if (window.google?.maps) return Promise.resolve();
+  if (googleMapsScriptPromise) return googleMapsScriptPromise;
+
+  googleMapsScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`;
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return googleMapsScriptPromise;
+}
+
+// Daily-log markers reuse the doctor pin shape but in teal, so they read as
+// distinct from the red clinic pins on the Doctors Map.
+const LOG_MARKER_ICON = {
+  path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z",
+  fillColor: "#00A6A4",
+  fillOpacity: 1,
+  strokeColor: "#ffffff",
+  strokeWeight: 1.5,
+  scale: 1.6,
+  anchor: { x: 12, y: 22 },
+};
+
+function DailyLogsMap({ logs }) {
+  const [mapReady, setMapReady] = useState(false);
+  const [error, setError] = useState("");
+  const mapDivRef = useRef(null);
+
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      setError("Google Maps API key is not configured");
+      return;
+    }
+    loadGoogleMaps()
+      .then(() => setMapReady(true))
+      .catch(() => setError("Failed to load Google Maps"));
+  }, []);
+
+  const located = logs.filter((l) => l.latitude != null && l.longitude != null);
+
+  useEffect(() => {
+    if (!mapReady || !mapDivRef.current) return;
+
+    const map = new window.google.maps.Map(mapDivRef.current, {
+      center: { lat: 22.5, lng: 79.5 },
+      zoom: 5,
+    });
+
+    if (located.length === 0) return;
+
+    const bounds = new window.google.maps.LatLngBounds();
+    const infoWindow = new window.google.maps.InfoWindow();
+
+    located.forEach((l) => {
+      const position = { lat: l.latitude, lng: l.longitude };
+      const marker = new window.google.maps.Marker({
+        position,
+        map,
+        title: l.date,
+        icon: {
+          ...LOG_MARKER_ICON,
+          anchor: new window.google.maps.Point(12, 22),
+        },
+      });
+      marker.addListener("click", () => {
+        infoWindow.setContent(`
+          <div style="font-size:13px;line-height:1.5;">
+            <strong>${l.date}</strong><br/>
+            ${l.address ? `${l.address}<br/>` : ""}
+            <span style="color:#888;">${(l.notes || "").slice(0, 120)}</span>
+          </div>
+        `);
+        infoWindow.open(map, marker);
+      });
+      bounds.extend(position);
+    });
+
+    if (located.length > 1) {
+      map.fitBounds(bounds);
+    } else {
+      map.setCenter({ lat: located[0].latitude, lng: located[0].longitude });
+      map.setZoom(14);
+    }
+  }, [mapReady, located]);
+
+  if (error) {
+    return <p className="text-sm text-red-600 mb-4">{error}</p>;
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+      {!mapReady ? (
+        <div className="h-[350px] flex items-center justify-center text-sm text-gray-400">Loading map...</div>
+      ) : located.length === 0 ? (
+        <div className="h-[350px] flex items-center justify-center text-sm text-gray-400">
+          No located logs for this month
+        </div>
+      ) : (
+        <div ref={mapDivRef} className="h-[350px] w-full" />
+      )}
+    </div>
+  );
+}
 
 export default function TeamMemberPage() {
   const { id } = useParams();
@@ -311,13 +420,30 @@ export default function TeamMemberPage() {
       {/* Daily logs */}
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Daily Logs</h3>
+        {logs.length > 0 && <DailyLogsMap logs={logs} />}
         {logs.length === 0 ? (
           <p className="text-sm text-gray-400">No logs submitted for {MONTHS[month - 1]} {year}.</p>
         ) : (
           <div className="space-y-3">
             {logs.map((l) => (
               <div key={l.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">{l.date}</p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-gray-400">{l.date}</p>
+                  {l.latitude != null && l.longitude != null && (
+                    <a
+                      href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-teal-600 hover:underline flex items-center gap-0.5"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.5-7.5 11.25-7.5 11.25S4.5 18 4.5 10.5a7.5 7.5 0 1115 0z" />
+                      </svg>
+                      {l.address || "Located"}
+                    </a>
+                  )}
+                </div>
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">{l.notes}</p>
               </div>
             ))}

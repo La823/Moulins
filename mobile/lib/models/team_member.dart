@@ -50,12 +50,25 @@ class DailyLog {
   final String id;
   final String date;
   final String notes;
+  final double? latitude;
+  final double? longitude;
+  final String? address;
 
-  DailyLog({required this.id, required this.date, required this.notes});
+  DailyLog({
+    required this.id,
+    required this.date,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.address,
+  });
 
   factory DailyLog.fromJson(Map<String, dynamic> json) => DailyLog(
         id: json['id'] ?? '',
         date: json['date'] ?? '',
         notes: json['notes'] ?? '',
+        latitude: (json['latitude'] as num?)?.toDouble(),
+        longitude: (json['longitude'] as num?)?.toDouble(),
+        address: json['address'],
       );
 }

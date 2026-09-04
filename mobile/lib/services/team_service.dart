@@ -77,7 +77,19 @@ class SelfService {
     return (res.data as List<dynamic>).map((e) => DailyLog.fromJson(e)).toList();
   }
 
-  Future<void> submitMyDailyLog({required String date, required String notes}) async {
-    await _dio.post('/my-daily-log', data: {'date': date, 'notes': notes});
+  Future<void> submitMyDailyLog({
+    required String date,
+    required String notes,
+    required double latitude,
+    required double longitude,
+    String? address,
+  }) async {
+    await _dio.post('/my-daily-log', data: {
+      'date': date,
+      'notes': notes,
+      'latitude': latitude,
+      'longitude': longitude,
+      if (address != null) 'address': address,
+    });
   }
 }

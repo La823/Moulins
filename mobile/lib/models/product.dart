@@ -2,16 +2,27 @@ class ProductImage {
   final String id;
   final String imageUrl;
   final int sortOrder;
+  final bool visualAid;
 
-  ProductImage({required this.id, required this.imageUrl, required this.sortOrder});
+  ProductImage(
+      {required this.id,
+      required this.imageUrl,
+      required this.sortOrder,
+      this.visualAid = false});
 
   factory ProductImage.fromJson(Map<String, dynamic> json) => ProductImage(
         id: json['id'] ?? '',
         imageUrl: json['image_url'] ?? '',
         sortOrder: json['sort_order'] ?? 0,
+        visualAid: json['visual_aid'] ?? false,
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'image_url': imageUrl, 'sort_order': sortOrder};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'image_url': imageUrl,
+        'sort_order': sortOrder,
+        'visual_aid': visualAid
+      };
 }
 
 class ProductDocument {
@@ -19,15 +30,18 @@ class ProductDocument {
   final String name;
   final String fileUrl;
 
-  ProductDocument({required this.id, required this.name, required this.fileUrl});
+  ProductDocument(
+      {required this.id, required this.name, required this.fileUrl});
 
-  factory ProductDocument.fromJson(Map<String, dynamic> json) => ProductDocument(
+  factory ProductDocument.fromJson(Map<String, dynamic> json) =>
+      ProductDocument(
         id: json['id'] ?? '',
         name: json['name'] ?? '',
         fileUrl: json['file_url'] ?? '',
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'file_url': fileUrl};
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'file_url': fileUrl};
 }
 
 class Product {
@@ -142,7 +156,7 @@ class ProductListResponse {
   final int page;
   final int totalPages;
   final bool isFromCache;
-  final String? suggestion;
+  final List<String> suggestions;
 
   ProductListResponse({
     required this.products,
@@ -150,7 +164,7 @@ class ProductListResponse {
     required this.page,
     required this.totalPages,
     this.isFromCache = false,
-    this.suggestion,
+    this.suggestions = const [],
   });
 
   factory ProductListResponse.fromJson(Map<String, dynamic> json) =>
@@ -161,6 +175,8 @@ class ProductListResponse {
         total: json['total'] ?? 0,
         page: json['page'] ?? 1,
         totalPages: json['total_pages'] ?? 1,
-        suggestion: json['suggestion'] as String?,
+        suggestions: (json['suggestions'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList(),
       );
 }

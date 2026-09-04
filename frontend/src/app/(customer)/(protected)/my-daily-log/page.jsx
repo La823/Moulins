@@ -23,8 +23,25 @@ export default function MyDailyLogPage() {
   const [date, setDate] = useState(todayStr());
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Only the device's current position is ever used — no manual pin-drop —
+  // so a partner can trust a log's location reflects where it was actually
+  // submitted from.
+  const getCurrentLocation = () =>
+    new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported on this device"));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => reject(new Error("Could not get your current location. Please enable location access.")),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -50,9 +67,13 @@ export default function MyDailyLogPage() {
     }
     setSubmitting(true);
     try {
+      setLocating(true);
+      const { lat, lng } = await getCurrentLocation();
+      setLocating(false);
+
       await apiFetch("/my-daily-log", {
         method: "POST",
-        body: JSON.stringify({ date, notes: notes.trim() }),
+        body: JSON.stringify({ date, notes: notes.trim(), latitude: lat, longitude: lng }),
       });
       setNotes("");
       setSuccess("Log saved");
@@ -61,6 +82,7 @@ export default function MyDailyLogPage() {
     } catch (err) {
       setError(err.message);
     } finally {
+      setLocating(false);
       setSubmitting(false);
     }
   };
@@ -97,6 +119,13 @@ export default function MyDailyLogPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
           />
         </div>
+        <p className="text-xs text-gray-400 flex items-center gap-1">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.5-7.5 11.25-7.5 11.25S4.5 18 4.5 10.5a7.5 7.5 0 1115 0z" />
+          </svg>
+          Your current location will be attached to this log automatically.
+        </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {success && <p className="text-sm text-green-600">{success}</p>}
         <button
@@ -104,7 +133,7 @@ export default function MyDailyLogPage() {
           disabled={submitting}
           className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
         >
-          {submitting ? "Saving..." : "Save Log"}
+          {submitting ? (locating ? "Getting location..." : "Saving...") : "Save Log"}
         </button>
       </form>
 
@@ -133,7 +162,23 @@ export default function MyDailyLogPage() {
         <div className="space-y-3">
           {logs.map((l) => (
             <div key={l.id} className="bg-white rounded-xl border border-gray-200 p-4">
-              <p className="text-xs text-gray-400 mb-1">{l.date}</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-gray-400">{l.date}</p>
+                {l.latitude != null && l.longitude != null && (
+                  <a
+                    href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-teal-600 hover:underline flex items-center gap-0.5"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.5-7.5 11.25-7.5 11.25S4.5 18 4.5 10.5a7.5 7.5 0 1115 0z" />
+                    </svg>
+                    Located
+                  </a>
+                )}
+              </div>
               <p className="text-sm text-gray-800 whitespace-pre-wrap">{l.notes}</p>
             </div>
           ))}

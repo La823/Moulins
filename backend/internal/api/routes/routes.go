@@ -30,6 +30,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
@@ -154,6 +155,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/doctor/me", doctors.GetMyDoctorProfileHandler(db)).Methods("GET")
 	protected.HandleFunc("/doctor/me", doctors.UpdateMyDoctorProfileHandler(db)).Methods("PUT")
 
+	// owner-scoped doctors/meetings RAG (any authenticated user — the
+	// retrieval query itself is filtered by the resolved owner id, so this
+	// never needs to be admin-gated)
+	protected.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskScopedHandler(db)).Methods("POST")
+
 	// cart routes (personal, not pooled across a team — scoped by the raw logged-in user id)
 	protected.HandleFunc("/cart", cart.ListHandler(db)).Methods("GET")
 	protected.HandleFunc("/cart", cart.ClearHandler(db)).Methods("DELETE")
@@ -211,6 +217,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/favorites/{id}", products.AddFavoriteHandler(db)).Methods("POST")
 	protected.HandleFunc("/favorites/{id}", products.RemoveFavoriteHandler(db)).Methods("DELETE")
 
+	// partner presentation decks (any authenticated user — team members
+	// share their partner's decks via getUserID/ResolveOwnerID)
+	protected.HandleFunc("/presentations", presentations.ListPresentationsHandler(db)).Methods("GET")
+	protected.HandleFunc("/presentations", presentations.CreatePresentationHandler(db)).Methods("POST")
+	protected.HandleFunc("/presentations/{id}", presentations.GetPresentationHandler(db)).Methods("GET")
+	protected.HandleFunc("/presentations/{id}", presentations.UpdatePresentationHandler(db)).Methods("PUT")
+	protected.HandleFunc("/presentations/{id}/slides", presentations.ReplaceSlidesHandler(db)).Methods("PUT")
+	protected.HandleFunc("/presentations/{id}", presentations.DeletePresentationHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/doctors/{id}/generate-presentation", presentations.GenerateDefaultPresentationHandler(db)).Methods("POST")
+
 	// chat routes (any authenticated user)
 	protected.HandleFunc("/messages/upload-url", messages.UploadURLHandler()).Methods("POST")
 	protected.HandleFunc("/messages/conversations", messages.ListConversationsHandler(db)).Methods("GET")
@@ -235,6 +251,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
 	admin.HandleFunc("/vector-search/backfill", vectorsearchHandlers.BackfillHandler(db)).Methods("POST")
 	admin.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskHandler(db)).Methods("POST")
+	admin.HandleFunc("/vector-search/backfill-doctors", vectorsearchHandlers.BackfillDoctorsHandler(db)).Methods("POST")
+	admin.HandleFunc("/vector-search/backfill-meetings", vectorsearchHandlers.BackfillMeetingsHandler(db)).Methods("POST")
 
 	// staff routes — employee management
 	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()
@@ -546,6 +564,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/{id}/images", products.AddImageHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
+	productStaff.HandleFunc("/products/images/{imgId}/visual-aid", presentations.SetImageVisualAidHandler(db)).Methods("PATCH")
 	productStaff.HandleFunc("/special-products", specialproducts.AdminCreateSpecialProductHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/upload-url", specialproducts.AdminUploadURLHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/document-upload-url", specialproducts.AdminDocUploadURLHandler(db)).Methods("POST")

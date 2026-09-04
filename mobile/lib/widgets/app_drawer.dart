@@ -56,6 +56,17 @@ class AppDrawer extends ConsumerWidget {
                   context.push('/doctors');
                 },
               ),
+            // Slideshow presentations are a sales-pitch tool — not
+            // relevant to a doctor's own login either.
+            if (user?.role != 'doctor')
+              ListTile(
+                leading: const Icon(Icons.slideshow_outlined, color: _teal),
+                title: const Text('Presentations'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/presentations');
+                },
+              ),
             if (user?.role == 'partner') ...[
               ListTile(
                 leading: const Icon(Icons.groups_outlined, color: _teal),

@@ -8,11 +8,69 @@ import LocationPicker from "@/components/LocationPicker";
 
 const emptyProfileForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "", anniversary: "" };
 
+// Minimizable section wrapper — a manually-toggled header (rather than
+// native <details>/<summary>) so an action button can live in the header
+// without also triggering the collapse toggle on click.
+function CollapsibleSection({ title, count, defaultOpen = true, action, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="mb-6 border border-gray-200 rounded-lg overflow-hidden">
+      <div
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-between px-4 py-3 cursor-pointer select-none hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <svg
+            className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
+          <h2 className="text-sm font-medium text-gray-900 truncate">
+            {title} {count != null && count > 0 && `(${count})`}
+          </h2>
+        </div>
+        {action && (
+          <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+            {action}
+          </div>
+        )}
+      </div>
+      {open && <div className="px-4 pb-4 pt-1 border-t border-gray-100">{children}</div>}
+    </div>
+  );
+}
+
+// A labeled detail field — a muted uppercase label above a bold, dark
+// value, with a professional placeholder in place of just omitting the
+// row when there's nothing on file.
+function DetailField({ label, value, placeholder, icon }) {
+  return (
+    <div className="flex items-baseline gap-4 py-1">
+      <p className="w-32 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+      <p className={`text-sm flex-1 min-w-0 ${value ? "text-gray-900 font-medium" : "text-gray-400 italic"}`}>
+        {value ? (
+          <>
+            {icon && <span className="mr-1">{icon}</span>}
+            {value}
+          </>
+        ) : (
+          placeholder
+        )}
+      </p>
+    </div>
+  );
+}
+
 export default function DoctorDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const [doctor, setDoctor] = useState(null);
   const [meetings, setMeetings] = useState([]);
+  const [presentations, setPresentations] = useState([]);
   const [assignedProducts, setAssignedProducts] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,20 +88,23 @@ export default function DoctorDetailPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [generatingPresentation, setGeneratingPresentation] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [doc, meetingList, products, catalog] = await Promise.all([
+      const [doc, meetingList, products, catalog, allPresentations] = await Promise.all([
         apiFetch(`/doctors/${id}`),
         apiFetch(`/meetings?doctor_id=${id}`),
         apiFetch(`/doctors/${id}/products`),
         apiFetch("/products"),
+        apiFetch("/presentations"),
       ]);
       setDoctor(doc);
       setMeetings(Array.isArray(meetingList) ? meetingList : []);
       setAssignedProducts(Array.isArray(products) ? products : []);
       const productList = catalog?.products || catalog || [];
       setAllProducts(Array.isArray(productList) ? productList : []);
+      setPresentations(Array.isArray(allPresentations) ? allPresentations.filter((p) => p.doctor_id === id) : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -158,6 +219,18 @@ export default function DoctorDetailPage() {
     }
   };
 
+  const generatePresentation = async () => {
+    setGeneratingPresentation(true);
+    try {
+      const { id: presentationId } = await apiFetch(`/doctors/${id}/generate-presentation`, { method: "POST" });
+      router.push(`/presentations/${presentationId}`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setGeneratingPresentation(false);
+    }
+  };
+
   const assignedIds = new Set(assignedProducts.map((p) => p.product_id));
 
   const filteredProducts = allProducts.filter(
@@ -197,31 +270,7 @@ export default function DoctorDetailPage() {
           &larr; Back to doctors
         </button>
         <div className="flex items-start justify-between gap-4 mt-3">
-          <div>
-            <h1 className="text-2xl font-light text-gray-900">{doctor.name}</h1>
-            {doctor.speciality && (
-              <p className="text-sm text-gray-500 mt-1">{doctor.speciality}</p>
-            )}
-            {doctor.clinic_name && (
-              <p className="text-sm text-gray-500 mt-1">{doctor.clinic_name}</p>
-            )}
-            {doctor.phone && (
-              <p className="text-sm text-gray-400 mt-1">{doctor.phone}</p>
-            )}
-            {doctor.email && (
-              <p className="text-sm text-gray-400 mt-1">{doctor.email}</p>
-            )}
-            {doctor.dob && (
-              <p className="text-sm text-gray-400 mt-1">
-                🎂 {new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
-              </p>
-            )}
-            {doctor.anniversary && (
-              <p className="text-sm text-gray-400 mt-1">
-                🎉 {new Date(doctor.anniversary).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
-              </p>
-            )}
-          </div>
+          <h1 className="text-2xl font-light text-gray-900">{doctor.name}</h1>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={startEditProfile}
@@ -235,7 +284,37 @@ export default function DoctorDetailPage() {
             >
               Schedule Meeting
             </Link>
+            <button
+              onClick={generatePresentation}
+              disabled={generatingPresentation}
+              className="text-sm px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+              title="Builds/refreshes a slideshow from every visual-aid image of this doctor's assigned products"
+            >
+              {generatingPresentation ? "Generating..." : "Generate Presentation"}
+            </button>
           </div>
+        </div>
+      </div>
+
+      {/* Details */}
+      <CollapsibleSection title="Details">
+        <div className="grid grid-cols-1 divide-y divide-gray-100">
+          <DetailField label="Speciality" value={doctor.speciality} placeholder="Not specified" />
+          <DetailField label="Clinic" value={doctor.clinic_name} placeholder="Not specified" />
+          <DetailField label="Phone" value={doctor.phone} placeholder="No phone on file" />
+          <DetailField label="Email" value={doctor.email} placeholder="No email on file" />
+          <DetailField
+            label="Birthday"
+            value={doctor.dob && new Date(doctor.dob).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+            placeholder="Not set"
+            icon="🎂"
+          />
+          <DetailField
+            label="Anniversary"
+            value={doctor.anniversary && new Date(doctor.anniversary).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}
+            placeholder="Not set"
+            icon="🎉"
+          />
         </div>
 
         {editingProfile && (
@@ -357,22 +436,22 @@ export default function DoctorDetailPage() {
             }}
           />
         )}
-      </div>
+      </CollapsibleSection>
 
       {/* Last Meeting */}
-      <div className="mb-8 border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-900">Last Meeting</h2>
-          {!editingMeeting && (
+      <CollapsibleSection
+        title="Last Meeting"
+        action={
+          !editingMeeting && (
             <button
               onClick={startEditMeeting}
               className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
             >
               {doctor.last_meeting_at ? "Edit" : "+ Add"}
             </button>
-          )}
-        </div>
-
+          )
+        }
+      >
         {editingMeeting ? (
           <div className="space-y-3">
             <input
@@ -419,13 +498,10 @@ export default function DoctorDetailPage() {
         ) : (
           <p className="text-sm text-gray-400">No meeting recorded yet</p>
         )}
-      </div>
+      </CollapsibleSection>
 
       {/* Meetings with this doctor */}
-      <div className="mb-8">
-        <h2 className="text-sm font-medium text-gray-900 mb-3">
-          Meetings with this Doctor {meetings.length > 0 && `(${meetings.length})`}
-        </h2>
+      <CollapsibleSection title="Meetings with this Doctor" count={meetings.length}>
         {meetings.length === 0 ? (
           <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
             <p className="text-sm text-gray-400">No meetings booked yet</p>
@@ -467,22 +543,72 @@ export default function DoctorDetailPage() {
             ))}
           </div>
         )}
-      </div>
+      </CollapsibleSection>
+
+      {/* Presentations linked to this doctor */}
+      <CollapsibleSection title="Presentations" count={presentations.length}>
+        {presentations.length === 0 ? (
+          <div className="text-center py-8 border border-dashed border-gray-200 rounded-lg">
+            <p className="text-sm text-gray-400">No presentations linked yet</p>
+            <button
+              onClick={generatePresentation}
+              disabled={generatingPresentation}
+              className="text-sm text-red-600 hover:text-red-700 mt-2 transition-colors disabled:opacity-40"
+            >
+              Generate one from assigned products
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {presentations.map((p) => (
+              <Link
+                key={p.id}
+                href={`/presentations/${p.id}`}
+                className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 hover:border-gray-400 transition-colors"
+              >
+                <div className="min-w-0 max-w-[60%] bg-gray-50 rounded-md px-3 py-2 flex-shrink-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {p.name}
+                    {p.is_default_for_doctor && (
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 align-middle font-medium">Auto</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {p.slide_count} slide{p.slide_count !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                {p.preview_urls?.length > 0 && (
+                  <div className="flex -space-x-2 flex-shrink-0">
+                    {p.preview_urls.slice(0, 3).map((url, i) => (
+                      <div
+                        key={i}
+                        className="w-10 h-10 rounded-md border-2 border-white bg-gray-50 overflow-hidden shadow-sm"
+                        style={{ zIndex: 3 - i }}
+                      >
+                        <img src={url} alt="" className="w-full h-full object-contain p-0.5" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
+      </CollapsibleSection>
 
       {/* Assigned Products */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-light text-gray-900">
-            Assigned Products ({assignedProducts.length})
-          </h2>
+      <CollapsibleSection
+        title="Assigned Products"
+        count={assignedProducts.length}
+        action={
           <button
             onClick={() => setShowProductPicker(!showProductPicker)}
-            className="text-sm px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
           >
             {showProductPicker ? "Done" : "Add Products"}
           </button>
-        </div>
-
+        }
+      >
         {assignedProducts.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-gray-200 rounded-lg">
             <p className="text-sm text-gray-400">No products assigned yet</p>
@@ -517,11 +643,10 @@ export default function DoctorDetailPage() {
             ))}
           </div>
         )}
-      </div>
 
-      {/* Product Picker */}
-      {showProductPicker && (
-        <div className="border border-gray-200 rounded-lg p-6">
+        {/* Product Picker */}
+        {showProductPicker && (
+        <div className="border border-gray-200 rounded-lg p-6 mt-4">
           <h3 className="text-sm font-medium text-gray-900 mb-4">Add from catalog</h3>
           <input
             type="text"
@@ -562,7 +687,8 @@ export default function DoctorDetailPage() {
             )}
           </div>
         </div>
-      )}
+        )}
+      </CollapsibleSection>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
 
@@ -250,7 +251,30 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(l.date, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(l.date, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                  if (l.latitude != null && l.longitude != null)
+                                    InkWell(
+                                      onTap: () => launchUrl(
+                                        Uri.parse('https://www.google.com/maps?q=${l.latitude},${l.longitude}'),
+                                        mode: LaunchMode.externalApplication,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.location_on, size: 12, color: _teal),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            l.address ?? 'View on map',
+                                            style: const TextStyle(fontSize: 11, color: _teal, decoration: TextDecoration.underline),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
                               const SizedBox(height: 4),
                               Text(l.notes, style: const TextStyle(fontSize: 13)),
                             ],

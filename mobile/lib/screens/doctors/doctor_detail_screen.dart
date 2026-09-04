@@ -3,9 +3,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/doctor.dart';
 import '../../models/meeting.dart';
+import '../../models/presentation.dart';
 import '../../models/product.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
+import '../../services/presentation_service.dart';
 import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 import '../../utils/validators.dart';
@@ -25,6 +27,10 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   bool _loading = true;
   String? _removingId;
   final _service = DoctorService();
+  final _presentationService = PresentationService();
+  bool _generatingPresentation = false;
+  List<Presentation> _presentations = [];
+  bool _loadingPresentations = true;
   late Doctor _doctor;
 
   List<Meeting> _meetings = [];
@@ -45,6 +51,38 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     _lastMeetingNotes = widget.doctor.lastMeetingNotes;
     _loadProducts();
     _loadMeetings();
+    _loadPresentations();
+  }
+
+  Future<void> _loadPresentations() async {
+    try {
+      final all = await _presentationService.getPresentations();
+      if (mounted) {
+        setState(() {
+          _presentations = all.where((p) => p.doctorId == _doctor.id).toList();
+          _loadingPresentations = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingPresentations = false);
+    }
+  }
+
+  Future<void> _generatePresentation() async {
+    setState(() => _generatingPresentation = true);
+    try {
+      final id = await _presentationService.generateDefaultForDoctor(_doctor.id);
+      if (mounted) await context.push('/presentations/$id');
+      _loadPresentations();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not generate presentation: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generatingPresentation = false);
+    }
   }
 
   Future<void> _loadMeetings() async {
@@ -382,6 +420,17 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
             tooltip: 'Assign product',
             onPressed: _showAddProductSheet,
           ),
+          IconButton(
+            icon: _generatingPresentation
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: teal),
+                  )
+                : const Icon(Icons.slideshow_outlined, color: teal, size: 20),
+            tooltip: 'Generate presentation from assigned products',
+            onPressed: _generatingPresentation ? null : _generatePresentation,
+          ),
         ],
       ),
       body: ResponsiveCenter(child: ListView(
@@ -575,6 +624,101 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
                                 child: Text(m.status, style: TextStyle(fontSize: 10.5, color: statusColor, fontWeight: FontWeight.w600)),
                               ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Presentations linked to this doctor
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Presentations${_presentations.isNotEmpty ? ' (${_presentations.length})' : ''}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                const SizedBox(height: 10),
+                if (_loadingPresentations)
+                  const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: CircularProgressIndicator(strokeWidth: 2, color: teal)))
+                else if (_presentations.isEmpty)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('No presentations linked yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+                      const SizedBox(height: 6),
+                      TextButton(
+                        onPressed: _generatingPresentation ? null : _generatePresentation,
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                        child: Text(
+                          _generatingPresentation ? 'Generating...' : 'Generate one from assigned products',
+                          style: const TextStyle(fontSize: 13, color: teal, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Column(
+                    children: _presentations.map((p) {
+                      return InkWell(
+                        onTap: () => context.push('/presentations/${p.id}'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              if (p.previewUrls.isNotEmpty) ...[
+                                SizedBox(
+                                  width: 44,
+                                  height: 32,
+                                  child: Stack(
+                                    children: p.previewUrls.take(3).toList().reversed.toList().asMap().entries.map((entry) {
+                                      final reversedIndex = entry.key;
+                                      final url = entry.value;
+                                      final displayIndex = p.previewUrls.take(3).length - 1 - reversedIndex;
+                                      return Positioned(
+                                        left: displayIndex * 12.0,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          padding: const EdgeInsets.all(1),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: Colors.white, width: 1.5),
+                                            color: Colors.grey.shade50,
+                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          child: Image.network(url, fit: BoxFit.contain),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                              ],
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(p.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                                    ),
+                                    if (p.isDefaultForDoctor) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+                                        child: Text('Auto', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              Text('${p.slideCount} slide${p.slideCount != 1 ? 's' : ''}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
                             ],
                           ),
                         ),

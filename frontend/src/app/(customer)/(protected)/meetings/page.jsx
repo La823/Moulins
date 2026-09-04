@@ -459,6 +459,19 @@ function MeetingsPageInner() {
                           >
                             view location
                           </a>
+                          {l.distance_from_clinic_m != null && (
+                            <span
+                              className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                l.within_expected_proximity
+                                  ? "bg-green-50 text-green-700"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {l.distance_from_clinic_m < 1000
+                                ? `${Math.round(l.distance_from_clinic_m)}m from clinic`
+                                : `${(l.distance_from_clinic_m / 1000).toFixed(1)}km from clinic`}
+                            </span>
+                          )}
                           {l.notes && <p className="text-gray-400 mt-0.5">{l.notes}</p>}
                         </div>
                       ))}

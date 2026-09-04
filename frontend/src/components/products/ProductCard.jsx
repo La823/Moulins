@@ -62,7 +62,7 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
           <img
             src={p.images[0].image_url}
             alt={p.name}
-            className="max-h-full max-w-full object-contain scale-[1.06] origin-bottom"
+            className="max-h-full max-w-full object-contain origin-bottom transition-transform duration-300 group-hover:scale-[1.06]"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gray-50">
