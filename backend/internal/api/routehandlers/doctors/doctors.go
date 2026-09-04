@@ -1,7 +1,6 @@
 package doctors
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -11,31 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
-	vectorsearch "github.com/lavanyaarora/server/internal/vectorsearch"
 )
-
-// syncDoctorVectorAsync re-embeds a doctor in the background after a
-// create/update — uses a fresh context since r.Context() is cancelled the
-// moment the handler returns, and never fails the actual API response.
-func syncDoctorVectorAsync(db *pgxpool.Pool, id uuid.UUID) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := vectorsearch.SyncDoctorByID(ctx, db, id); err != nil {
-			log.Printf("vector sync error for doctor %s: %v", id, err)
-		}
-	}()
-}
-
-func deleteDoctorVectorAsync(id uuid.UUID) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := vectorsearch.DeleteDoctorVector(ctx, id); err != nil {
-			log.Printf("vector delete error for doctor %s: %v", id, err)
-		}
-	}()
-}
 
 // getUserID returns the requesting user's effective partner id — for a
 // team member this resolves to their owning partner's id, so every
@@ -196,7 +171,6 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			anniversary := req.Anniversary.Time()
 			syncDoctorAnniversaryMeeting(r, db, id, userID, &anniversary)
 		}
-		syncDoctorVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -275,7 +249,6 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		syncDoctorBirthdayMeeting(r, db, doctorID, doctor.PartnerID, dob)
 		syncDoctorAnniversaryMeeting(r, db, doctorID, doctor.PartnerID, anniversary)
-		syncDoctorVectorAsync(db, doctorID)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "doctor updated"})
@@ -315,7 +288,6 @@ func DeleteDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not delete doctor", http.StatusInternalServerError)
 			return
 		}
-		deleteDoctorVectorAsync(doctorID)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "doctor deleted"})
