@@ -552,6 +552,42 @@ func DeleteImageHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	}
 }
 
+// PATCH /admin/products/images/{imgId}/hidden — staff-only: hides an image
+// from customer-facing views without deleting it. The image stays visible
+// in the admin panel (with this toggle) so it can be un-hidden later.
+type imageHiddenRequest struct {
+	Hidden bool `json:"hidden"`
+}
+
+func SetImageHiddenHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		imgID, err := uuid.Parse(mux.Vars(r)["imgId"])
+		if err != nil {
+			http.Error(w, "invalid image id", http.StatusBadRequest)
+			return
+		}
+
+		var req imageHiddenRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.SetImageHidden(r.Context(), db, imgID, req.Hidden); err != nil {
+			log.Printf("set image hidden error: %v", err)
+			http.Error(w, "could not update image", http.StatusInternalServerError)
+			return
+		}
+
+		if productID, err := models.GetProductIDByImageID(r.Context(), db, imgID); err == nil && productID != uuid.Nil {
+			rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
+	}
+}
+
 // POST /admin/products/{id}/documents
 func AddDocumentHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

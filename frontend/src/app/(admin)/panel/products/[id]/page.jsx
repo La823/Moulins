@@ -356,6 +356,19 @@ export default function EditProduct() {
     }
   };
 
+  const handleToggleHidden = async (imgId, hidden) => {
+    setImages(images.map((img) => (img.id === imgId ? { ...img, hidden } : img)));
+    try {
+      await apiFetch(`/admin/products/images/${imgId}/hidden`, {
+        method: "PATCH",
+        body: JSON.stringify({ hidden }),
+      });
+    } catch (err) {
+      setImages(images.map((img) => (img.id === imgId ? { ...img, hidden: !hidden } : img)));
+      alert(err.message);
+    }
+  };
+
   const handleDeleteDoc = async (docId) => {
     try {
       await apiFetch(`/admin/products/documents/${docId}`, {
@@ -944,8 +957,27 @@ export default function EditProduct() {
                   <img
                     src={img.image_url}
                     alt="Product"
-                    className="w-24 h-24 object-cover rounded-lg border border-gray-200"
+                    className={`w-24 h-24 object-cover rounded-lg border-2 transition-colors ${
+                      img.visual_aid
+                        ? "border-teal-500 ring-2 ring-teal-200"
+                        : "border-gray-200"
+                    } ${img.hidden ? "opacity-40 grayscale" : ""}`}
                   />
+                  {img.hidden && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <span className="bg-gray-900/80 text-white text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded">
+                        Hidden
+                      </span>
+                    </div>
+                  )}
+                  {img.visual_aid && (
+                    <div
+                      title="Visual aid — recommended for partner slideshow presentations"
+                      className="absolute top-1 left-1 w-5 h-5 rounded-full bg-teal-500 text-white flex items-center justify-center text-[10px] font-bold shadow"
+                    >
+                      V
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDeleteImage(img.id)}
@@ -955,7 +987,9 @@ export default function EditProduct() {
                   </button>
                   <label
                     title="Recommended for partner slideshow presentations"
-                    className="absolute bottom-1 left-1 flex items-center gap-1 bg-white/90 rounded px-1.5 py-0.5 text-[10px] text-gray-600 cursor-pointer"
+                    className={`absolute bottom-1 left-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] cursor-pointer ${
+                      img.visual_aid ? "bg-teal-500 text-white" : "bg-white/90 text-gray-600"
+                    }`}
                   >
                     <input
                       type="checkbox"
@@ -964,6 +998,20 @@ export default function EditProduct() {
                       className="w-3 h-3"
                     />
                     Visual aid
+                  </label>
+                  <label
+                    title="Hide this image from customer-facing pages"
+                    className={`absolute bottom-1 right-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] cursor-pointer ${
+                      img.hidden ? "bg-gray-900 text-white" : "bg-white/90 text-gray-600 opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!img.hidden}
+                      onChange={(e) => handleToggleHidden(img.id, e.target.checked)}
+                      className="w-3 h-3"
+                    />
+                    Hide
                   </label>
                 </div>
               ))}

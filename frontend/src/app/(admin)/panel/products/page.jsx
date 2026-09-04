@@ -247,6 +247,54 @@ function AdminProductsInner() {
     }
   };
 
+  const setImageVisualAidLocal = (imgId, visualAid) => {
+    setProducts((prev) =>
+      prev.map((p) => ({
+        ...p,
+        images: (p.images || []).map((img) =>
+          img.id === imgId ? { ...img, visual_aid: visualAid } : img
+        ),
+      }))
+    );
+  };
+
+  const handleToggleVisualAid = async (imgId, visualAid) => {
+    setImageVisualAidLocal(imgId, visualAid);
+    try {
+      await apiFetch(`/admin/products/images/${imgId}/visual-aid`, {
+        method: "PATCH",
+        body: JSON.stringify({ visual_aid: visualAid }),
+      });
+    } catch (err) {
+      setImageVisualAidLocal(imgId, !visualAid);
+      alert(err.message);
+    }
+  };
+
+  const setImageHiddenLocal = (imgId, hidden) => {
+    setProducts((prev) =>
+      prev.map((p) => ({
+        ...p,
+        images: (p.images || []).map((img) =>
+          img.id === imgId ? { ...img, hidden } : img
+        ),
+      }))
+    );
+  };
+
+  const handleToggleHidden = async (imgId, hidden) => {
+    setImageHiddenLocal(imgId, hidden);
+    try {
+      await apiFetch(`/admin/products/images/${imgId}/hidden`, {
+        method: "PATCH",
+        body: JSON.stringify({ hidden }),
+      });
+    } catch (err) {
+      setImageHiddenLocal(imgId, !hidden);
+      alert(err.message);
+    }
+  };
+
   const handleDeleteDoc = async (docId) => {
     try {
       await apiFetch(`/admin/products/documents/${docId}`, {
@@ -678,13 +726,62 @@ function AdminProductsInner() {
                         <img
                           src={img.image_url}
                           alt={p.name}
-                          className="w-16 h-16 object-cover rounded-lg"
+                          title={img.visual_aid ? "Visual aid image" : undefined}
+                          className={`w-16 h-16 object-cover rounded-lg border-2 ${
+                            img.visual_aid
+                              ? "border-teal-500 ring-2 ring-teal-200"
+                              : "border-transparent"
+                          } ${img.hidden ? "opacity-40 grayscale" : ""}`}
                         />
+                        {img.hidden && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <span className="bg-gray-900/80 text-white text-[8px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded">
+                              Hidden
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleVisualAid(img.id, !img.visual_aid)}
+                          title={
+                            img.visual_aid
+                              ? "Visual aid image — click to unmark"
+                              : "Mark as visual aid image"
+                          }
+                          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center shadow transition-opacity ${
+                            img.visual_aid
+                              ? "bg-teal-500 text-white opacity-100"
+                              : "bg-white/90 text-gray-400 opacity-0 group-hover:opacity-100"
+                          }`}
+                        >
+                          V
+                        </button>
                         <button
                           onClick={() => handleDeleteImage(img.id)}
                           className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           x
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleHidden(img.id, !img.hidden)}
+                          title={img.hidden ? "Hidden from customers — click to unhide" : "Hide from customers"}
+                          className={`absolute bottom-0.5 left-0.5 w-4 h-4 rounded-full flex items-center justify-center shadow transition-opacity ${
+                            img.hidden
+                              ? "bg-gray-900 text-white opacity-100"
+                              : "bg-white/90 text-gray-400 opacity-0 group-hover:opacity-100"
+                          }`}
+                        >
+                          {img.hidden ? (
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                            </svg>
+                          ) : (
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     ))}

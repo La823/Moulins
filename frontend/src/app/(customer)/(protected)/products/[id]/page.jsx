@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { visibleImages } from "@/lib/productImages";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import SmallProductCard from "@/components/products/SmallProductCard";
@@ -93,7 +94,7 @@ export default function ProductDetailPage() {
     </div>
   );
 
-  const images = product.images || [];
+  const images = visibleImages(product.images);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">

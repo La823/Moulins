@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/context/CartContext";
+import { visibleImages } from "@/lib/productImages";
 
 // Rounds a typed quantity up to the nearest multiple of the product's MOQ
 // (e.g. typing 7 with an MOQ of 5 commits as 10), and never below one MOQ.
@@ -139,14 +140,16 @@ export default function CartDrawer() {
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100">
-                  {items.map(({ product, quantity }) => (
+                  {items.map(({ product, quantity }) => {
+                    const images = visibleImages(product.images);
+                    return (
                     <div key={product.id} className="px-6 py-5">
                       <div className="flex gap-4">
                         {/* Thumbnail */}
                         <div className="w-20 h-20 rounded-md bg-gray-50 flex-shrink-0 overflow-hidden">
-                          {product.images && product.images.length > 0 ? (
+                          {images.length > 0 ? (
                             <img
-                              src={product.images[0].image_url}
+                              src={images[0].image_url}
                               alt={product.name}
                               className="w-full h-full object-contain p-1"
                             />
@@ -236,7 +239,8 @@ export default function CartDrawer() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

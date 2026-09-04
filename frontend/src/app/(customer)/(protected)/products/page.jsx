@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { visibleImages } from "@/lib/productImages";
 import ProductCard from "@/components/products/ProductCard";
 import { useAuth } from "@/context/AuthContext";
 
@@ -303,15 +304,17 @@ function ProductsPageInner() {
                     </div>
                   )}
                   <div className="divide-y divide-gray-100">
-                    {searchSuggestions.map((p) => (
+                    {searchSuggestions.map((p) => {
+                      const images = visibleImages(p.images);
+                      return (
                       <button
                         key={p.id}
                         onMouseDown={(e) => { e.preventDefault(); router.push(`/products/${p.id}`); }}
                         className="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors"
                       >
-                        {p.images && p.images.length > 0 ? (
+                        {images.length > 0 ? (
                           <img
-                            src={p.images[0].image_url}
+                            src={images[0].image_url}
                             alt={p.name}
                             className="w-8 h-8 object-contain flex-shrink-0"
                           />
@@ -320,7 +323,8 @@ function ProductsPageInner() {
                         )}
                         <span className="text-sm text-gray-700 truncate">{p.name}</span>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                   <button
                     onMouseDown={(e) => { e.preventDefault(); runSearch(search.trim()); }}

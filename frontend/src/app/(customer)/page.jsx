@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
+import { visibleImages } from "@/lib/productImages";
 import HomeCarousel from "@/components/customer/HomeCarousel";
 import { useAuth } from "@/context/AuthContext";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
@@ -292,6 +293,7 @@ export default function HomePage() {
             <div className="no-scrollbar flex gap-8 overflow-x-auto pb-2 snap-x snap-mandatory">
               {upcomingProducts.map((p, i) => {
                 const accent = UPCOMING_ACCENTS[i % UPCOMING_ACCENTS.length];
+                const images = visibleImages(p.images);
                 return (
                   <Link
                     key={p.id}
@@ -313,9 +315,9 @@ export default function HomePage() {
                         </svg>
                         Launching Soon
                       </span>
-                      {p.images && p.images.length > 0 ? (
+                      {images.length > 0 ? (
                         <img
-                          src={p.images[0].image_url}
+                          src={images[0].image_url}
                           alt={p.name}
                           className="w-full h-full object-contain p-6 transition-transform duration-500 group-hover:scale-105"
                         />

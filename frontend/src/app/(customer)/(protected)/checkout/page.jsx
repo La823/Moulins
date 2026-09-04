@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import { visibleImages } from "@/lib/productImages";
 
 const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 
@@ -103,12 +104,14 @@ export default function CheckoutPage() {
 
       {/* Order items */}
       <div className="divide-y divide-gray-100 mb-8">
-        {items.map(({ product, quantity }) => (
+        {items.map(({ product, quantity }) => {
+          const images = visibleImages(product.images);
+          return (
           <div key={product.id} className="flex gap-4 py-5">
             <div className="w-16 h-16 rounded-md bg-gray-50 flex-shrink-0 overflow-hidden">
-              {product.images && product.images.length > 0 ? (
+              {images.length > 0 ? (
                 <img
-                  src={product.images[0].image_url}
+                  src={images[0].image_url}
                   alt={product.name}
                   className="w-full h-full object-contain p-1"
                 />
@@ -132,7 +135,8 @@ export default function CheckoutPage() {
               Qty: {quantity}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Transport mode */}

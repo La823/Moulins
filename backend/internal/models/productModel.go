@@ -58,6 +58,7 @@ type ProductImage struct {
 	ImageURL  string    `json:"image_url,omitempty"`
 	SortOrder int       `json:"sort_order"`
 	VisualAid bool      `json:"visual_aid"`
+	Hidden    bool      `json:"hidden"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -819,7 +820,7 @@ func AddProductImage(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID,
 
 func GetProductImages(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID) ([]ProductImage, error) {
 	query := `
-		SELECT id, product_id, image_key, sort_order, visual_aid, created_at
+		SELECT id, product_id, image_key, sort_order, visual_aid, hidden, created_at
 		FROM product_images
 		WHERE product_id = $1
 		ORDER BY sort_order ASC, created_at ASC
@@ -833,7 +834,7 @@ func GetProductImages(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID
 	images := make([]ProductImage, 0)
 	for rows.Next() {
 		var img ProductImage
-		err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.VisualAid, &img.CreatedAt)
+		err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.VisualAid, &img.Hidden, &img.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -852,6 +853,14 @@ func DeleteProductImage(ctx context.Context, db *pgxpool.Pool, imageID uuid.UUID
 // signal, distinct from an actual presentation deck.
 func SetImageVisualAid(ctx context.Context, db *pgxpool.Pool, imageID uuid.UUID, visualAid bool) error {
 	_, err := db.Exec(ctx, "UPDATE product_images SET visual_aid = $1 WHERE id = $2", visualAid, imageID)
+	return err
+}
+
+// SetImageHidden marks a product image as hidden from customer-facing
+// views — the image still exists (and is still shown in admin), it's just
+// excluded from what customers see. Distinct from deleting the image.
+func SetImageHidden(ctx context.Context, db *pgxpool.Pool, imageID uuid.UUID, hidden bool) error {
+	_, err := db.Exec(ctx, "UPDATE product_images SET hidden = $1 WHERE id = $2", hidden, imageID)
 	return err
 }
 
@@ -931,7 +940,7 @@ func GetProductImagesBatch(ctx context.Context, db *pgxpool.Pool, productIDs []u
 		return make(map[uuid.UUID][]ProductImage), nil
 	}
 	ph, args := buildPlaceholders(productIDs)
-	query := `SELECT id, product_id, image_key, sort_order, visual_aid, created_at
+	query := `SELECT id, product_id, image_key, sort_order, visual_aid, hidden, created_at
 		FROM product_images
 		WHERE product_id IN (` + ph + `)
 		ORDER BY sort_order ASC, created_at ASC`
@@ -945,7 +954,7 @@ func GetProductImagesBatch(ctx context.Context, db *pgxpool.Pool, productIDs []u
 	result := make(map[uuid.UUID][]ProductImage)
 	for rows.Next() {
 		var img ProductImage
-		if err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.VisualAid, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.ID, &img.ProductID, &img.ImageKey, &img.SortOrder, &img.VisualAid, &img.Hidden, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		result[img.ProductID] = append(result[img.ProductID], img)

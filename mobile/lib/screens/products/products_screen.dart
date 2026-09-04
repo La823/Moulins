@@ -185,6 +185,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final cart = ref.watch(cartProvider);
     final isSpecial = ref.watch(authProvider).user?.isSpecial ?? false;
     final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -471,13 +473,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: kDivisions.length,
                               gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                // More, smaller tiles in landscape so the
+                                // filter row takes up less vertical space.
+                                crossAxisCount: isLandscape ? 5 : 3,
                                 mainAxisSpacing: 8,
                                 crossAxisSpacing: 8,
                                 // Division images are mostly landscape/rectangular, not square —
                                 // match the tile shape to that instead of forcing a 1:1 box.
-                                childAspectRatio: 2.6,
+                                childAspectRatio: isLandscape ? 3.4 : 2.6,
                               ),
                               itemBuilder: (context, i) {
                                 final d = kDivisions[i];
@@ -691,7 +695,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: responsiveGridColumns(context),
-                        childAspectRatio: 0.72,
+                        // Taller cards in landscape so the image area (an
+                        // Expanded above a fixed-height info block) gets
+                        // more room instead of being squeezed thin.
+                        childAspectRatio: isLandscape ? 0.58 : 0.72,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                       ),

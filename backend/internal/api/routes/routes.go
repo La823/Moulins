@@ -558,6 +558,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")
 	productStaff.HandleFunc("/products/images/{imgId}/visual-aid", presentations.SetImageVisualAidHandler(db)).Methods("PATCH")
+	productStaff.HandleFunc("/products/images/{imgId}/hidden", products.SetImageHiddenHandler(db, rdb)).Methods("PATCH")
 	productStaff.HandleFunc("/special-products", specialproducts.AdminCreateSpecialProductHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/upload-url", specialproducts.AdminUploadURLHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/special-products/document-upload-url", specialproducts.AdminDocUploadURLHandler(db)).Methods("POST")

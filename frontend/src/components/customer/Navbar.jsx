@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
+import { visibleImages } from "@/lib/productImages";
 
 const panelEase = [0.33, 1, 0.68, 1];
 
@@ -972,15 +973,17 @@ export default function CustomerNavbar() {
                         ?
                       </div>
                     )}
-                    {searchSuggestions.map((p) => (
+                    {searchSuggestions.map((p) => {
+                      const images = visibleImages(p.images);
+                      return (
                       <button
                         key={p.id}
                         onClick={() => handleSuggestionClick(p)}
                         className="flex items-center gap-4 w-full py-3 text-left hover:bg-gray-50 transition-colors"
                       >
-                        {p.images && p.images.length > 0 ? (
+                        {images.length > 0 ? (
                           <img
-                            src={p.images[0].image_url}
+                            src={images[0].image_url}
                             alt={p.name}
                             className="w-10 h-10 object-contain flex-shrink-0"
                           />
@@ -989,7 +992,8 @@ export default function CustomerNavbar() {
                         )}
                         <span className="text-sm text-gray-700 truncate">{p.name}</span>
                       </button>
-                    ))}
+                      );
+                    })}
                     <button
                       onClick={() => goToSearch(searchQuery.trim())}
                       className="w-full py-3 text-left text-xs font-medium text-red-600 hover:text-red-700"

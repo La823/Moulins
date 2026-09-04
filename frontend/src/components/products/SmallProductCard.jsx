@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import { visibleImages } from "@/lib/productImages";
 
 // Same visual style as ProductCard, sized down for horizontal-scroll rows
 // (Recently Viewed / Explore More on the product detail page) — the
@@ -12,6 +13,7 @@ export default function SmallProductCard({ product: p }) {
   const { addToCart } = useCart();
   const { user } = useAuth();
   const canOrder = user?.role !== "doctor";
+  const images = visibleImages(p.images);
 
   return (
     <div
@@ -29,13 +31,13 @@ export default function SmallProductCard({ product: p }) {
             {p.categories[0]}
           </span>
         )}
-        {p.images && p.images.length > 0 ? (
+        {images.length > 0 ? (
           <div className="absolute inset-0 overflow-hidden flex items-center justify-center">
             {/* scaleY only (not a uniform scale) — crops a bit off the top
                 and bottom equally while the width always stays fully
                 contained, never cropped. */}
             <img
-              src={p.images[0].image_url}
+              src={images[0].image_url}
               alt={p.name}
               className="w-full h-auto"
               style={{ transform: "scaleY(1.15)" }}

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useAuth } from "@/context/AuthContext";
+import { visibleImages } from "@/lib/productImages";
 
 // Shared product card — used on the products listing page and the
 // Recently Viewed / Explore More sections on the product detail page, so
@@ -15,6 +16,7 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
   const { user } = useAuth();
   const canOrder = user?.role !== "doctor";
   const favorite = isFavorite(p.id);
+  const images = visibleImages(p.images);
 
   const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
 
@@ -58,9 +60,9 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
             </svg>
           </button>
         )}
-        {p.images && p.images.length > 0 ? (
+        {images.length > 0 ? (
           <img
-            src={p.images[0].image_url}
+            src={images[0].image_url}
             alt={p.name}
             className="max-h-full max-w-full object-contain origin-bottom transition-transform duration-300 group-hover:scale-[1.06]"
           />

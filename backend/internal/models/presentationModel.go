@@ -219,7 +219,7 @@ func GenerateDefaultPresentationForDoctor(ctx context.Context, db *pgxpool.Pool,
 		`SELECT pi.id
 		 FROM doctor_products dp
 		 JOIN product_images pi ON pi.product_id = dp.product_id
-		 WHERE dp.doctor_id = $1 AND pi.visual_aid = TRUE
+		 WHERE dp.doctor_id = $1 AND pi.visual_aid = TRUE AND pi.hidden = FALSE
 		 ORDER BY dp.created_at ASC, pi.sort_order ASC`,
 		doctorID,
 	)
