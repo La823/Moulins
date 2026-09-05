@@ -101,6 +101,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/address/billing-from-gst", userauth.SetBillingAddressFromGSTHandler(db, rdb)).Methods("POST")
 	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/balance", userauth.GetMyBalanceHandler(db)).Methods("GET")

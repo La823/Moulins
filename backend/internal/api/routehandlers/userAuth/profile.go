@@ -102,8 +102,11 @@ func UpdateMyTransportModeHandler(db *pgxpool.Pool, rdb *cache.Client) http.Hand
 	}
 }
 
-// PUT /profile/address — a user sets their own billing/shipping address.
-// Either field may be omitted (nil pointer) to leave it unchanged.
+// PUT /profile/address — a user sets their own shipping address. Billing
+// address is deliberately NOT settable here: it can only be pulled from the
+// partner's verified GST record (POST /profile/address/billing-from-gst)
+// or changed directly by an admin/staff via /admin/partners/{id}/address —
+// never typed in freely, so it can't drift from what's on the GST cert.
 func UpdateMyAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userIDStr, ok := r.Context().Value("user_id").(string)
@@ -118,7 +121,6 @@ func UpdateMyAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFun
 		}
 
 		var req struct {
-			BillingAddress  *string `json:"billing_address"`
 			ShippingAddress *string `json:"shipping_address"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -126,7 +128,7 @@ func UpdateMyAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFun
 			return
 		}
 
-		if err := models.UpdateAddresses(r.Context(), db, userID, req.BillingAddress, req.ShippingAddress); err != nil {
+		if err := models.UpdateAddresses(r.Context(), db, userID, nil, req.ShippingAddress); err != nil {
 			log.Printf("update address error: %v", err)
 			http.Error(w, "could not update address", http.StatusInternalServerError)
 			return
@@ -136,6 +138,54 @@ func UpdateMyAddressHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFun
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}
+}
+
+// POST /profile/address/billing-from-gst — the only way a partner can set
+// their own billing address: pull it straight from their verified GST
+// document's scraped address, rather than typing it freely.
+func SetBillingAddressFromGSTHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userIDStr, ok := r.Context().Value("user_id").(string)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID, err := uuid.Parse(userIDStr)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		docs, err := models.GetUserDocuments(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("set billing address from gst: fetch docs error: %v", err)
+			http.Error(w, "could not fetch documents", http.StatusInternalServerError)
+			return
+		}
+
+		var address *string
+		for _, d := range docs {
+			if d.DocType == "GST" && d.Address != nil && *d.Address != "" {
+				address = d.Address
+				break
+			}
+		}
+		if address == nil {
+			http.Error(w, "No address found on your GST record yet — verify your GSTIN first.", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateAddresses(r.Context(), db, userID, address, nil); err != nil {
+			log.Printf("set billing address from gst error: %v", err)
+			http.Error(w, "could not update billing address", http.StatusInternalServerError)
+			return
+		}
+
+		rdb.Del(r.Context(), fmt.Sprintf("user:%s", userID))
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "billing_address": *address})
 	}
 }
 

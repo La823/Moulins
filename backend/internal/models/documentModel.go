@@ -414,3 +414,70 @@ func GetPendingOnboardingPartners(
 
 	return partners, total, rows.Err()
 }
+
+// DocStatus mirrors what the partner-listing UI needs to render an
+// upload/verification badge for one document without exposing the full
+// document row: has anything been submitted at all, what state is it in,
+// and was a photo actually attached (should always be true whenever
+// uploaded is true, but exposed separately since the columns are nullable).
+type DocStatus struct {
+	Uploaded bool   `json:"uploaded"`
+	Status   string `json:"status"` // "" | "pending" | "verified" | "rejected"
+	Photo    bool   `json:"photo_uploaded"`
+}
+
+// PartnerDocSummary is the per-partner rollup shown in the partners list —
+// one row per document type a partner can hold (GST, and each drug-license
+// form). A legacy 'LICENSE' row (from before the 20B/21B split) counts
+// toward License20B so old partners still show correctly.
+type PartnerDocSummary struct {
+	GST         DocStatus `json:"gst"`
+	License20B  DocStatus `json:"license_20b"`
+	License21B  DocStatus `json:"license_21b"`
+}
+
+// GetPartnerDocSummaries returns the doc summary for every partner in one
+// query, keyed by user id, so the partners list doesn't do an N+1 lookup.
+func GetPartnerDocSummaries(ctx context.Context, db *pgxpool.Pool) (map[uuid.UUID]PartnerDocSummary, error) {
+	rows, err := db.Query(ctx, `
+		SELECT pd.user_id, pd.doc_type, pd.photo_url, pd.is_verified, pd.rejection_reason
+		FROM partner_documents pd
+		JOIN users u ON u.id = pd.user_id
+		WHERE u.role = 'partner'
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID]PartnerDocSummary)
+	for rows.Next() {
+		var userID uuid.UUID
+		var docType string
+		var photoURL, rejectionReason *string
+		var isVerified bool
+		if err := rows.Scan(&userID, &docType, &photoURL, &isVerified, &rejectionReason); err != nil {
+			return nil, err
+		}
+
+		status := "pending"
+		if isVerified {
+			status = "verified"
+		} else if rejectionReason != nil && *rejectionReason != "" {
+			status = "rejected"
+		}
+		doc := DocStatus{Uploaded: true, Status: status, Photo: photoURL != nil && *photoURL != ""}
+
+		s := result[userID]
+		switch docType {
+		case string(DocumentTypeGST):
+			s.GST = doc
+		case string(DocumentTypeLicense), string(DocumentTypeLicense20B):
+			s.License20B = doc
+		case string(DocumentTypeLicense21B):
+			s.License21B = doc
+		}
+		result[userID] = s
+	}
+	return result, rows.Err()
+}

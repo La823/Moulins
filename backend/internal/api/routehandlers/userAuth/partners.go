@@ -15,6 +15,14 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
+// PartnerListItem is a partner plus their GST/drug-license upload &
+// verification status, so the partners list can show at a glance who has
+// submitted what without a per-row detail fetch.
+type PartnerListItem struct {
+	models.User
+	DocSummary models.PartnerDocSummary `json:"doc_summary"`
+}
+
 func GetPartnersHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		users, err := models.GetUsersByRole(r.Context(), db, "partner")
@@ -24,8 +32,19 @@ func GetPartnersHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		docSummaries, err := models.GetPartnerDocSummaries(r.Context(), db)
+		if err != nil {
+			log.Printf("failed to fetch partner doc summaries: %v", err)
+			docSummaries = map[uuid.UUID]models.PartnerDocSummary{}
+		}
+
+		items := make([]PartnerListItem, len(users))
+		for i, u := range users {
+			items[i] = PartnerListItem{User: u, DocSummary: docSummaries[u.ID]}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(users)
+		json.NewEncoder(w).Encode(items)
 	}
 }
 
