@@ -79,7 +79,9 @@ func GetMeetingByID(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID) 
 // the meetings assigned to assigneeID — used so a team member only sees
 // meetings assigned to them rather than the whole team's.
 func GetMeetingsForUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, assigneeID, doctorID *uuid.UUID, status, from, to string) ([]Meeting, error) {
-	conditions := []string{"m.user_id = $1"}
+	// Hide meetings whose doctor has since been deleted — a title-only
+	// meeting (no doctor_id) is unaffected.
+	conditions := []string{"m.user_id = $1", "(d.id IS NULL OR d.is_deleted = FALSE)"}
 	args := []any{userID}
 	argIdx := 2
 

@@ -20,18 +20,18 @@ type DailyLog struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// UpsertDailyLog creates or replaces a team member's log entry for a given
-// day — one entry per (team_member_id, date), same shape as MarkAttendance.
-// The location is captured from the device's current position at submit
-// time (never a manually-picked point), so the partner can trust it
-// reflects where the team member actually was.
-func UpsertDailyLog(ctx context.Context, db *pgxpool.Pool, teamMemberID uuid.UUID, date, notes string, lat, lng *float64, address *string) (uuid.UUID, error) {
+// InsertDailyLog adds a new log entry for a team member on a given day.
+// Multiple entries on the same date are allowed and kept separately (e.g. a
+// morning and an afternoon check-in) — same append-only shape as
+// meeting_visit_logs, rather than one row per day. The location is captured
+// from the device's current position at submit time (never a manually-picked
+// point), so the partner can trust it reflects where the team member
+// actually was.
+func InsertDailyLog(ctx context.Context, db *pgxpool.Pool, teamMemberID uuid.UUID, date, notes string, lat, lng *float64, address *string) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx,
 		`INSERT INTO daily_logs (team_member_id, date, notes, latitude, longitude, address)
 		 VALUES ($1, $2, $3, $4, $5, $6)
-		 ON CONFLICT (team_member_id, date) DO UPDATE
-		 SET notes = $3, latitude = $4, longitude = $5, address = $6, updated_at = NOW()
 		 RETURNING id`,
 		teamMemberID, date, notes, lat, lng, address,
 	).Scan(&id)
@@ -43,7 +43,7 @@ func GetDailyLogsByMemberMonth(ctx context.Context, db *pgxpool.Pool, teamMember
 		`SELECT id, team_member_id, date::text, notes, latitude, longitude, address, created_at, updated_at
 		 FROM daily_logs
 		 WHERE team_member_id = $1 AND EXTRACT(YEAR FROM date) = $2 AND EXTRACT(MONTH FROM date) = $3
-		 ORDER BY date DESC`,
+		 ORDER BY date DESC, created_at DESC`,
 		teamMemberID, year, month,
 	)
 	if err != nil {

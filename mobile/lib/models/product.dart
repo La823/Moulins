@@ -3,25 +3,29 @@ class ProductImage {
   final String imageUrl;
   final int sortOrder;
   final bool visualAid;
+  final bool hidden;
 
   ProductImage(
       {required this.id,
       required this.imageUrl,
       required this.sortOrder,
-      this.visualAid = false});
+      this.visualAid = false,
+      this.hidden = false});
 
   factory ProductImage.fromJson(Map<String, dynamic> json) => ProductImage(
         id: json['id'] ?? '',
         imageUrl: json['image_url'] ?? '',
         sortOrder: json['sort_order'] ?? 0,
         visualAid: json['visual_aid'] ?? false,
+        hidden: json['hidden'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'image_url': imageUrl,
         'sort_order': sortOrder,
-        'visual_aid': visualAid
+        'visual_aid': visualAid,
+        'hidden': hidden,
       };
 }
 
@@ -122,8 +126,15 @@ class Product {
         audioUrl: json['audio_url'],
       );
 
+  // Customer-facing screens must never show an image staff have marked
+  // hidden — it still exists (and stays visible/toggleable in the admin
+  // panel), just excluded from what customers see. Admin/presentation
+  // screens intentionally use `images` directly, not this getter.
+  List<ProductImage> get visibleImages =>
+      images.where((img) => !img.hidden).toList();
+
   String? get primaryImageUrl =>
-      images.isNotEmpty ? images.first.imageUrl : null;
+      visibleImages.isNotEmpty ? visibleImages.first.imageUrl : null;
 
   Map<String, dynamic> toJson() => {
         'id': id,

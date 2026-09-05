@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/doctor.dart';
 import '../../models/meeting.dart';
+import '../../models/meeting_visit_log.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
@@ -464,6 +467,76 @@ class _DaySheetState extends State<_DaySheet> {
   bool _submitting = false;
   String? _error;
 
+  // Visit-log capture/display — collapsed by default, loaded eagerly per
+  // meeting so viewing existing history doesn't require clicking "+ Log
+  // Visit" first (that button is only for adding a new entry).
+  final _meetingService = MeetingService();
+  final Map<String, List<MeetingVisitLog>> _visitLogsByMeeting = {};
+  final Map<String, bool> _visitLogOpenByMeeting = {};
+  String? _loggingVisitId;
+  final _visitNotesCtrl = TextEditingController();
+  bool _capturingLocation = false;
+  String? _visitError;
+
+  @override
+  void dispose() {
+    _visitNotesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadVisitLogs(String meetingId) async {
+    try {
+      final logs = await _meetingService.getVisitLogs(meetingId);
+      if (mounted) setState(() => _visitLogsByMeeting[meetingId] = logs);
+    } catch (_) {}
+  }
+
+  void _toggleVisitLogOpen(String meetingId) {
+    setState(() => _visitLogOpenByMeeting[meetingId] = !(_visitLogOpenByMeeting[meetingId] ?? false));
+    if (!_visitLogsByMeeting.containsKey(meetingId)) _loadVisitLogs(meetingId);
+  }
+
+  void _startLogVisit(String meetingId) {
+    setState(() {
+      _loggingVisitId = meetingId;
+      _visitNotesCtrl.clear();
+      _visitError = null;
+      _visitLogOpenByMeeting[meetingId] = true;
+    });
+    if (!_visitLogsByMeeting.containsKey(meetingId)) _loadVisitLogs(meetingId);
+  }
+
+  Future<void> _submitVisitLog(String meetingId) async {
+    setState(() { _capturingLocation = true; _visitError = null; });
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        throw Exception('Location permission denied');
+      }
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw Exception('Please turn on location services');
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      await _meetingService.createVisitLog(
+        meetingId,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        notes: _visitNotesCtrl.text.trim().isEmpty ? null : _visitNotesCtrl.text.trim(),
+      );
+      if (mounted) {
+        setState(() => _loggingVisitId = null);
+        _loadVisitLogs(meetingId);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _visitError = 'Could not save visit log: $e');
+    } finally {
+      if (mounted) setState(() => _capturingLocation = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -548,27 +621,155 @@ class _DaySheetState extends State<_DaySheet> {
                     border: Border.all(color: Colors.grey.shade200),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(m.displayTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                Text(_formatTime(m.scheduledAt), style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                                if (m.notes != null && m.notes!.isNotEmpty)
+                                  Text(m.notes!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            m.status,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: m.status == 'upcoming' ? Colors.blue : m.status == 'completed' ? Colors.green : Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(height: 1, color: Colors.grey.shade100),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GestureDetector(
+                            onTap: () => _toggleVisitLogOpen(m.id),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  (_visitLogOpenByMeeting[m.id] ?? false) ? Icons.arrow_drop_down : Icons.arrow_right,
+                                  size: 16,
+                                  color: Colors.grey.shade500,
+                                ),
+                                Text(
+                                  _visitLogsByMeeting[m.id] != null && _visitLogsByMeeting[m.id]!.isNotEmpty
+                                      ? 'Visit Log (${_visitLogsByMeeting[m.id]!.length})'
+                                      : 'Visit Log',
+                                  style: TextStyle(fontSize: 10.5, letterSpacing: 0.4, color: Colors.grey.shade500),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_loggingVisitId != m.id)
+                            GestureDetector(
+                              onTap: () => _startLogVisit(m.id),
+                              child: const Text('+ Log Visit', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                            ),
+                        ],
+                      ),
+                      if ((_visitLogOpenByMeeting[m.id] ?? false)) ...[
+                        const SizedBox(height: 6),
+                        for (final l in _visitLogsByMeeting[m.id] ?? [])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(l.userName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      ' at ${_formatDateTime(l.recordedAt)} — ',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => launchUrl(
+                                        Uri.parse('https://maps.google.com/?q=${l.latitude},${l.longitude}'),
+                                        mode: LaunchMode.externalApplication,
+                                      ),
+                                      child: const Text('view location', style: TextStyle(fontSize: 12, color: Colors.blue)),
+                                    ),
+                                    if (l.distanceFromClinicM != null) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: (l.withinExpectedProximity ?? false) ? Colors.green.shade50 : Colors.amber.shade50,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          l.distanceFromClinicM! < 1000
+                                              ? '${l.distanceFromClinicM!.round()}m from clinic'
+                                              : '${(l.distanceFromClinicM! / 1000).toStringAsFixed(1)}km from clinic',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: (l.withinExpectedProximity ?? false) ? Colors.green.shade700 : Colors.amber.shade800,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (l.notes != null && l.notes!.isNotEmpty)
+                                  Text(l.notes!, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
+                              ],
+                            ),
+                          ),
+                        if (_visitLogsByMeeting[m.id] != null && _visitLogsByMeeting[m.id]!.isEmpty)
+                          Text('No visits logged yet', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                      ],
+                      if (_loggingVisitId == m.id) ...[
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _visitNotesCtrl,
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 12.5),
+                          decoration: InputDecoration(
+                            hintText: 'Notes about the visit (optional)...',
+                            isDense: true,
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
+                          ),
+                        ),
+                        if (_visitError != null) ...[
+                          const SizedBox(height: 6),
+                          Text(_visitError!, style: const TextStyle(color: Colors.red, fontSize: 11.5)),
+                        ],
+                        const SizedBox(height: 8),
+                        Row(
                           children: [
-                            Text(m.displayTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                            Text(_formatTime(m.scheduledAt), style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-                            if (m.notes != null && m.notes!.isNotEmpty)
-                              Text(m.notes!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                            TextButton(
+                              onPressed: _capturingLocation ? null : () => _submitVisitLog(m.id),
+                              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                              child: Text(
+                                _capturingLocation ? 'Getting location...' : 'Capture location & save',
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _ink),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            TextButton(
+                              onPressed: () => setState(() => _loggingVisitId = null),
+                              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                              child: Text('Cancel', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+                            ),
                           ],
                         ),
-                      ),
-                      Text(
-                        m.status,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: m.status == 'upcoming' ? Colors.blue : m.status == 'completed' ? Colors.green : Colors.red,
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

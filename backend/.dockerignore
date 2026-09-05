@@ -2,3 +2,6 @@
 tmp/
 *.exe
 .git
+gst-scraper/
+dl-scraper/
+gst verification scraper/

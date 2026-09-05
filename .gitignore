@@ -5,6 +5,7 @@ backend/*.exe
 backend/*.exe~
 backend/*.log
 backend/backend.dev*.log
+backend/gst verification scraper/
 
 # Frontend
 frontend/node_modules/

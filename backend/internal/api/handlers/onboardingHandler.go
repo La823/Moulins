@@ -62,7 +62,7 @@ func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if req.DocType != "LICENSE" && req.DocType != "GST" {
+	if !models.ValidDocumentTypes[req.DocType] {
 		http.Error(w, "Invalid document type", http.StatusBadRequest)
 		return
 	}
@@ -74,7 +74,7 @@ func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Reques
 
 	// Parse expiry date string into time.Time
 	var expiryDate *time.Time
-	if req.DocType == "LICENSE" {
+	if models.IsLicenseDocType(req.DocType) {
 		if req.ExpiryDate == nil || *req.ExpiryDate == "" {
 			http.Error(w, "Expiry date is required for license documents", http.StatusBadRequest)
 			return
@@ -87,6 +87,20 @@ func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Reques
 		expiryDate = &parsed
 	}
 
+	// The optional scraped-field dates come as plain "YYYY-MM-DD" strings —
+	// parse failures are ignored rather than rejected, since these fields are
+	// a convenience, not required for the upload to succeed.
+	parseOptionalDate := func(s *string) *time.Time {
+		if s == nil || *s == "" {
+			return nil
+		}
+		parsed, err := time.Parse("2006-01-02", *s)
+		if err != nil {
+			return nil
+		}
+		return &parsed
+	}
+
 	doc, err := models.CreateOrUpdateDocument(
 		r.Context(),
 		h.db,
@@ -95,6 +109,18 @@ func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Reques
 		req.DocNumber,
 		expiryDate,
 		req.PhotoURL,
+		req.ScrapedData,
+		models.DocumentScrapedFields{
+			LegalName:       req.LegalName,
+			TradeName:       req.TradeName,
+			Status:          req.Status,
+			BusinessType:    req.BusinessType,
+			RegisteredDate:  parseOptionalDate(req.RegisteredDate),
+			FirstIssueDate:  parseOptionalDate(req.FirstIssueDate),
+			Address:         req.Address,
+			TechPersonName:  req.TechPersonName,
+			TechPersonRegNo: req.TechPersonRegNo,
+		},
 	)
 	if err != nil {
 		http.Error(w, "Failed to upload document", http.StatusInternalServerError)
@@ -193,7 +219,7 @@ func (h *OnboardingHandler) VerifyDocument(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if req.DocType != "LICENSE" && req.DocType != "GST" {
+	if !models.ValidDocumentTypes[req.DocType] {
 		http.Error(w, "Invalid document type", http.StatusBadRequest)
 		return
 	}

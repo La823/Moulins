@@ -1,8 +1,23 @@
 import '../config/api.dart';
 import '../models/meeting.dart';
+import '../models/meeting_visit_log.dart';
 
 class MeetingService {
   final _dio = createDio();
+
+  Future<List<MeetingVisitLog>> getVisitLogs(String meetingId) async {
+    final res = await _dio.get('/meetings/$meetingId/visit-log');
+    final logs = (res.data['logs'] as List<dynamic>?) ?? [];
+    return logs.map((e) => MeetingVisitLog.fromJson(e)).toList();
+  }
+
+  Future<void> createVisitLog(String meetingId, {required double latitude, required double longitude, String? notes}) async {
+    await _dio.post('/meetings/$meetingId/visit-log', data: {
+      'latitude': latitude,
+      'longitude': longitude,
+      if (notes != null) 'notes': notes,
+    });
+  }
 
   Future<List<Meeting>> getMeetings({String? doctorId}) async {
     final res = await _dio.get('/meetings', queryParameters: {

@@ -5,6 +5,280 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 
+// Verifying a GSTIN means solving a live captcha against the government
+// portal each time — there's no way to skip straight to the result, so this
+// is a small multi-step modal: fetch captcha -> submit captcha+GSTIN ->
+// show the scraped business details for the partner to eyeball before
+// they continue with the actual document upload.
+// Government dates come back as "30-Dec-2029" — convert to the <input
+// type="date"> value format ("2029-12-30") so expiry fields can be
+// auto-filled, and reused as-is for the discrete date columns.
+function parseGovDate(s) {
+  if (!s) return "";
+  const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+  const parts = s.split("-");
+  if (parts.length !== 3 || !months[parts[1]]) return "";
+  return `${parts[2]}-${months[parts[1]]}-${parts[0].padStart(2, "0")}`;
+}
+
+// Maps the raw scraper JSON onto the backend's discrete scraped-field
+// columns, kept separate from doc_number/expiry_date/photo_url so each piece
+// of government data (name, address, status, etc.) has its own column
+// instead of being stuffed into one blob.
+function gstFieldsPayload(details) {
+  return details ? {
+    legal_name: details.lgnm || null,
+    trade_name: details.tradeNam || null,
+    status: details.sts || null,
+    business_type: details.ctb || null,
+    registered_date: parseGovDate(details.rgdt) || null,
+    address: details.pradr?.adr || null,
+  } : {};
+}
+
+function dlFieldsPayload(details) {
+  return details ? {
+    legal_name: details.institute_name || null,
+    status: details.licence_status || null,
+    first_issue_date: parseGovDate(details.dt_first_issue_date) || null,
+    address: details.full_address || null,
+    tech_person_name: details.tech_persons?.[0]?.techname || null,
+    tech_person_reg_no: details.tech_persons?.[0]?.techregno ? String(details.tech_persons[0].techregno) : null,
+  } : {};
+}
+
+function GstVerifyModal({ gstin, onClose, onConfirm }) {
+  const [step, setStep] = useState("loading"); // loading | captcha | result | error
+  const [sessionId, setSessionId] = useState(null);
+  const [captchaImage, setCaptchaImage] = useState(null);
+  const [captchaInput, setCaptchaInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [details, setDetails] = useState(null);
+
+  const fetchCaptcha = async () => {
+    setStep("loading");
+    setError("");
+    setCaptchaInput("");
+    try {
+      const res = await apiFetch("/gst-lookup/captcha");
+      setSessionId(res.sessionId);
+      setCaptchaImage(res.image);
+      setStep("captcha");
+    } catch (err) {
+      setError(err.message || "Could not load captcha. Please try again.");
+      setStep("error");
+    }
+  };
+
+  useEffect(() => {
+    fetchCaptcha();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submitCaptcha = async (e) => {
+    e.preventDefault();
+    if (!captchaInput.trim()) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await apiFetch("/gst-lookup/details", {
+        method: "POST",
+        body: JSON.stringify({ session_id: sessionId, gstin, captcha: captchaInput.trim() }),
+      });
+      if (res.error) throw new Error(res.error);
+      setDetails(res);
+      setStep("result");
+    } catch (err) {
+      setError(err.message || "Could not verify this GSTIN. Please check the captcha and try again.");
+      setStep("error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-sm p-6 bg-white rounded-2xl shadow-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Verify GSTIN</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">✕</button>
+        </div>
+
+        {step === "loading" && (
+          <p className="text-sm text-gray-500 text-center py-6">Loading captcha...</p>
+        )}
+
+        {step === "captcha" && (
+          <form onSubmit={submitCaptcha} className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Enter the code shown below to fetch details for <span className="font-medium text-gray-700">{gstin}</span>.
+            </p>
+            {captchaImage && (
+              <img src={captchaImage} alt="captcha" className="mx-auto border border-gray-200 rounded" />
+            )}
+            <button type="button" onClick={fetchCaptcha} className="text-xs text-blue-600 hover:underline block mx-auto">
+              Can&apos;t read it? Get a new one
+            </button>
+            <input
+              value={captchaInput}
+              onChange={(e) => setCaptchaInput(e.target.value)}
+              placeholder="Enter captcha"
+              autoFocus
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]"
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-2.5 text-sm font-semibold text-white rounded-lg disabled:opacity-50"
+              style={{ backgroundColor: "#00A6A4" }}
+            >
+              {submitting ? "Verifying..." : "Fetch Details"}
+            </button>
+          </form>
+        )}
+
+        {step === "error" && (
+          <div className="space-y-4">
+            <p className="text-sm text-red-600">{error}</p>
+            <button
+              onClick={fetchCaptcha}
+              className="w-full py-2.5 text-sm font-semibold text-white rounded-lg"
+              style={{ backgroundColor: "#00A6A4" }}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {step === "result" && details && (
+          <div className="space-y-3">
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-medium">
+              GSTIN found — please check the details below
+            </div>
+            <div className="space-y-1.5 text-sm text-gray-700">
+              {details.lgnm && <p><span className="font-medium">Legal Name:</span> {details.lgnm}</p>}
+              {details.tradeNam && <p><span className="font-medium">Trade Name:</span> {details.tradeNam}</p>}
+              {details.sts && <p><span className="font-medium">Status:</span> {details.sts}</p>}
+              {details.ctb && <p><span className="font-medium">Business Type:</span> {details.ctb}</p>}
+              {details.rgdt && <p><span className="font-medium">Registered:</span> {details.rgdt}</p>}
+              {details.pradr?.adr && <p><span className="font-medium">Address:</span> {details.pradr.adr}</p>}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => onConfirm(details)}
+                className="flex-1 py-2.5 text-sm font-semibold text-white rounded-lg"
+                style={{ backgroundColor: "#00A6A4" }}
+              >
+                Looks good, continue
+              </button>
+              <button
+                onClick={fetchCaptcha}
+                className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Re-check
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Unlike GST verification, the drug-license portal has no captcha step —
+// it's a single lookup call, so this modal just shows a loading state then
+// the result (or an error), no multi-step flow needed.
+function DlVerifyModal({ licenseNo, onClose, onConfirm }) {
+  const [status, setStatus] = useState("loading"); // loading | result | error
+  const [error, setError] = useState("");
+  const [details, setDetails] = useState(null);
+
+  const fetchDetails = async () => {
+    setStatus("loading");
+    setError("");
+    try {
+      const res = await apiFetch(`/dl-lookup/details?license_no=${encodeURIComponent(licenseNo)}`);
+      if (res.error) throw new Error(res.error);
+      setDetails(res);
+      setStatus("result");
+    } catch (err) {
+      setError(err.message || "Could not verify this license number. Please try again.");
+      setStatus("error");
+    }
+  };
+
+  useEffect(() => {
+    fetchDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="w-full max-w-sm p-6 bg-white rounded-2xl shadow-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Verify Drug License</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">✕</button>
+        </div>
+
+        {status === "loading" && (
+          <p className="text-sm text-gray-500 text-center py-6">
+            Looking up <span className="font-medium text-gray-700">{licenseNo}</span>...
+          </p>
+        )}
+
+        {status === "error" && (
+          <div className="space-y-4">
+            <p className="text-sm text-red-600">{error}</p>
+            <button
+              onClick={fetchDetails}
+              className="w-full py-2.5 text-sm font-semibold text-white rounded-lg"
+              style={{ backgroundColor: "#00A6A4" }}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {status === "result" && details && (
+          <div className="space-y-3">
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-medium">
+              License found — please check the details below
+            </div>
+            <div className="space-y-1.5 text-sm text-gray-700">
+              {details.str_ondls_licence_no && <p><span className="font-medium">License No:</span> {details.str_ondls_licence_no}</p>}
+              {details.licence_form_no && <p><span className="font-medium">Form:</span> {details.licence_form_no}</p>}
+              {details.institute_name && <p><span className="font-medium">Firm Name:</span> {details.institute_name}</p>}
+              {details.licence_status && <p><span className="font-medium">Status:</span> {details.licence_status}</p>}
+              {details.dt_curr_validity_date && <p><span className="font-medium">Valid Until:</span> {details.dt_curr_validity_date}</p>}
+              {details.dt_first_issue_date && <p><span className="font-medium">First Issued:</span> {details.dt_first_issue_date}</p>}
+              {details.full_address && <p><span className="font-medium">Address:</span> {details.full_address}</p>}
+              {details.tech_persons?.length > 0 && (
+                <p><span className="font-medium">Technical Person:</span> {details.tech_persons.map((t) => t.techname).join(", ")}</p>
+              )}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => onConfirm(details)}
+                className="flex-1 py-2.5 text-sm font-semibold text-white rounded-lg"
+                style={{ backgroundColor: "#00A6A4" }}
+              >
+                Looks good, continue
+              </button>
+              <button
+                onClick={fetchDetails}
+                className="px-4 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Re-check
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 async function uploadFileToS3(file) {
   const { upload_url, public_url } = await apiFetch("/onboarding/upload-url", {
     method: "POST",
@@ -12,6 +286,182 @@ async function uploadFileToS3(file) {
   });
   await fetch(upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
   return public_url;
+}
+
+// A partner can hold both a Form 20B and a Form 21B wholesale drug license
+// at once, so each form gets its own independent card/upload flow — matched
+// doc types are fixed per instance rather than auto-detected from the
+// scrape, since two cards exist side by side now.
+function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, setSuccess }) {
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [licenseExpiry, setLicenseExpiry] = useState("");
+  const [licensePhotoFile, setLicensePhotoFile] = useState(null);
+  const [updatingLicense, setUpdatingLicense] = useState(false);
+  const [showDlVerify, setShowDlVerify] = useState(false);
+  const [dlScrapedData, setDlScrapedData] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const licenseFileRef = useRef(null);
+
+  const isLicenseExpired = !!(doc?.expiry_date && new Date(doc.expiry_date) < new Date());
+
+  const handleDlConfirm = (details) => {
+    setDlScrapedData(details);
+    const parsedExpiry = parseGovDate(details.dt_curr_validity_date);
+    if (parsedExpiry) setLicenseExpiry(parsedExpiry);
+    setShowDlVerify(false);
+  };
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    if (!licenseExpiry) { setError("Please verify your license first — the expiry date is fetched automatically."); return; }
+    if (!licensePhotoFile) { setError("Please select a photo"); return; }
+
+    setUploading(true);
+    try {
+      let photoUrl;
+      try {
+        photoUrl = await uploadFileToS3(licensePhotoFile);
+      } catch (err) {
+        throw new Error("Photo upload failed: " + err.message);
+      }
+
+      const payload = {
+        doc_type: docType,
+        doc_number: licenseNumber,
+        expiry_date: licenseExpiry,
+        photo_url: photoUrl,
+        scraped_data: dlScrapedData || undefined,
+        ...dlFieldsPayload(dlScrapedData),
+      };
+      await apiFetch("/onboarding/documents", { method: "POST", body: JSON.stringify(payload) });
+      setSuccess(`${title} submitted for verification.`);
+      setLicenseNumber(""); setLicenseExpiry(""); setLicensePhotoFile(null);
+      licenseFileRef.current.value = ""; setUpdatingLicense(false); setDlScrapedData(null);
+      onUploaded();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const detailRows = (d) => (
+    <>
+      <p><span className="font-medium">License No:</span> {d.doc_number}</p>
+      {d.expiry_date && <p><span className="font-medium">Expiry:</span> {new Date(d.expiry_date).toLocaleDateString("en-IN")}</p>}
+      {d.legal_name && <p><span className="font-medium">Firm Name:</span> {d.legal_name}</p>}
+      {d.status && <p><span className="font-medium">Status (govt. portal):</span> {d.status}</p>}
+      {d.address && <p><span className="font-medium">Address:</span> {d.address}</p>}
+      {d.first_issue_date && <p><span className="font-medium">First Issued:</span> {new Date(d.first_issue_date).toLocaleDateString("en-IN")}</p>}
+      {d.tech_person_name && (
+        <p><span className="font-medium">Technical Person:</span> {d.tech_person_name}{d.tech_person_reg_no ? ` (Reg. No: ${d.tech_person_reg_no})` : ""}</p>
+      )}
+      {d.photo_url && <a href={d.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
+    </>
+  );
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-semibold text-gray-900">{title}</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+        </div>
+        {doc?.is_verified && !isLicenseExpired && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">✓ Verified</span>}
+        {doc && !doc.is_verified && !doc.rejection_reason && !isLicenseExpired && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full">⏳ Pending</span>}
+        {doc?.rejection_reason && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">✗ Rejected</span>}
+        {isLicenseExpired && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">⚠ Expired</span>}
+      </div>
+
+      {doc?.rejection_reason && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Reason: {doc.rejection_reason}
+        </div>
+      )}
+
+      {isLicenseExpired && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+          Your license expired on {new Date(doc.expiry_date).toLocaleDateString("en-IN")}. Please update it with a new expiry date and photo.
+        </div>
+      )}
+
+      {doc && !doc.rejection_reason && !isLicenseExpired ? (
+        <div className="space-y-1 text-sm text-gray-600">{detailRows(doc)}</div>
+      ) : isLicenseExpired && !updatingLicense ? (
+        <div className="space-y-3">
+          <div className="space-y-1 text-sm text-gray-600">{detailRows(doc)}</div>
+          <button type="button" onClick={() => setUpdatingLicense(true)}
+            className="px-4 py-2 text-sm font-semibold text-white rounded-lg"
+            style={{ backgroundColor: "#00A6A4" }}>
+            Update License
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleUpload} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">License Number *</label>
+            <div className="flex gap-2">
+              <input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} required
+                placeholder="Enter your drug license number"
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]" />
+              <button
+                type="button"
+                disabled={!licenseNumber.trim()}
+                onClick={() => setShowDlVerify(true)}
+                className="px-3 py-2 text-xs font-semibold text-[#00A6A4] border border-[#00A6A4] rounded-lg hover:bg-[#00A6A4]/5 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                Verify License
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Verifying fetches your registered details from the government drug-license portal so you can double-check the number before submitting.
+            </p>
+          </div>
+          {dlScrapedData && (
+            <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-gray-700 space-y-1">
+              <p className="font-semibold text-teal-700 mb-1">Details fetched — will be saved with this submission:</p>
+              {dlScrapedData.licence_form_no && <p><span className="font-medium">Form:</span> {dlScrapedData.licence_form_no}</p>}
+              {dlScrapedData.institute_name && <p><span className="font-medium">Firm Name:</span> {dlScrapedData.institute_name}</p>}
+              {dlScrapedData.licence_status && <p><span className="font-medium">Status:</span> {dlScrapedData.licence_status}</p>}
+              {dlScrapedData.dt_curr_validity_date && <p><span className="font-medium">Valid Until:</span> {dlScrapedData.dt_curr_validity_date}</p>}
+              {dlScrapedData.full_address && <p><span className="font-medium">Address:</span> {dlScrapedData.full_address}</p>}
+              {dlScrapedData.tech_persons?.length > 0 && (
+                <p><span className="font-medium">Technical Person:</span> {dlScrapedData.tech_persons.map((t) => t.techname).join(", ")}</p>
+              )}
+            </div>
+          )}
+          {!dlScrapedData && (
+            <p className="text-xs text-gray-400">
+              Expiry date is fetched automatically once you verify the license above — no need to enter it manually.
+            </p>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">License Photo *</label>
+            <input ref={licenseFileRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => setLicensePhotoFile(e.target.files[0] || null)} />
+            <button type="button" onClick={() => licenseFileRef.current.click()}
+              className="w-full px-3 py-2 text-sm border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-[#00A6A4] hover:text-[#00A6A4] transition text-left flex items-center gap-2">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              {licensePhotoFile ? licensePhotoFile.name : "Click to upload photo"}
+            </button>
+          </div>
+          <button type="submit" disabled={uploading || !licenseExpiry}
+            className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50"
+            style={{ backgroundColor: "#00A6A4" }}>
+            {uploading ? "Uploading..." : updatingLicense ? "Update License" : "Submit License"}
+          </button>
+        </form>
+      )}
+
+      {showDlVerify && (
+        <DlVerifyModal licenseNo={licenseNumber.trim()} onClose={() => setShowDlVerify(false)} onConfirm={handleDlConfirm} />
+      )}
+    </div>
+  );
 }
 
 const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
@@ -127,12 +577,8 @@ export default function ProfilePage() {
     }
   };
 
-  const [licenseNumber, setLicenseNumber] = useState("");
-  const [licenseExpiry, setLicenseExpiry] = useState("");
-  const [licensePhotoFile, setLicensePhotoFile] = useState(null);
   const [gstNumber, setGstNumber] = useState("");
   const [gstPhotoFile, setGstPhotoFile] = useState(null);
-  const licenseFileRef = useRef(null);
   const gstFileRef = useRef(null);
 
   const fetchStatus = async () => {
@@ -148,32 +594,22 @@ export default function ProfilePage() {
 
   useEffect(() => { fetchStatus(); }, []);
 
-  const handleUpload = async (e, docType) => {
+  const handleGstUpload = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    if (!gstPhotoFile) { setError("Please select a photo"); return; }
 
-    const file = docType === "LICENSE" ? licensePhotoFile : gstPhotoFile;
-    if (!file) { setError("Please select a photo"); return; }
-
-    setUploading(docType);
+    setUploading("GST");
     try {
-      // Step 1: upload photo to S3
-      let photoUrl;
-      try {
-        photoUrl = await uploadFileToS3(file);
-      } catch (err) {
+      const photoUrl = await uploadFileToS3(gstPhotoFile).catch((err) => {
         throw new Error("Photo upload failed: " + err.message);
-      }
+      });
 
-      // Step 2: save document record
-      const payload = docType === "LICENSE"
-        ? { doc_type: "LICENSE", doc_number: licenseNumber, expiry_date: licenseExpiry, photo_url: photoUrl }
-        : { doc_type: "GST", doc_number: gstNumber, photo_url: photoUrl };
+      const payload = { doc_type: "GST", doc_number: gstNumber, photo_url: photoUrl, scraped_data: gstScrapedData || undefined, ...gstFieldsPayload(gstScrapedData) };
       await apiFetch("/onboarding/documents", { method: "POST", body: JSON.stringify(payload) });
-      setSuccess(`${docType === "LICENSE" ? "Drug license" : "GST certificate"} submitted for verification.`);
-      if (docType === "LICENSE") { setLicenseNumber(""); setLicenseExpiry(""); setLicensePhotoFile(null); licenseFileRef.current.value = ""; }
-      else { setGstNumber(""); setGstPhotoFile(null); gstFileRef.current.value = ""; }
+      setSuccess("GST certificate submitted for verification.");
+      setGstNumber(""); setGstPhotoFile(null); gstFileRef.current.value = ""; setGstScrapedData(null); setUpdatingGst(false);
       fetchStatus();
     } catch (err) {
       setError(err.message);
@@ -182,8 +618,17 @@ export default function ProfilePage() {
     }
   };
 
-  const licenseDoc = status?.documents?.find((d) => d.doc_type === "LICENSE");
+  const [showGstVerify, setShowGstVerify] = useState(false);
+  const [gstScrapedData, setGstScrapedData] = useState(null);
+  const [updatingGst, setUpdatingGst] = useState(false);
+  const license20BDoc = status?.documents?.find((d) => ["LICENSE", "LICENSE_20B"].includes(d.doc_type));
+  const license21BDoc = status?.documents?.find((d) => d.doc_type === "LICENSE_21B");
   const gstDoc = status?.documents?.find((d) => d.doc_type === "GST");
+
+  const handleGstConfirm = (details) => {
+    setGstScrapedData(details);
+    setShowGstVerify(false);
+  };
 
   const STEPS = [
     { n: 1, label: "Account Created" },
@@ -367,63 +812,27 @@ export default function ProfilePage() {
       {error && <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
       {success && <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{success}</div>}
 
-      {/* Drug License */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-semibold text-gray-900">Drug License</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Required for order processing</p>
-          </div>
-          {licenseDoc?.is_verified && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">✓ Verified</span>}
-          {licenseDoc && !licenseDoc.is_verified && !licenseDoc.rejection_reason && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full">⏳ Pending</span>}
-          {licenseDoc?.rejection_reason && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">✗ Rejected</span>}
-        </div>
+      {/* Drug License — Form 20B */}
+      <DrugLicenseCard
+        title="Drug License (Form 20B)"
+        subtitle="Wholesale license — required for order processing"
+        docType="LICENSE_20B"
+        doc={license20BDoc}
+        onUploaded={fetchStatus}
+        setError={setError}
+        setSuccess={setSuccess}
+      />
 
-        {licenseDoc?.rejection_reason && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-            Reason: {licenseDoc.rejection_reason}
-          </div>
-        )}
-
-        {licenseDoc && !licenseDoc.rejection_reason ? (
-          <div className="space-y-1 text-sm text-gray-600">
-            <p><span className="font-medium">License No:</span> {licenseDoc.doc_number}</p>
-            {licenseDoc.expiry_date && <p><span className="font-medium">Expiry:</span> {new Date(licenseDoc.expiry_date).toLocaleDateString("en-IN")}</p>}
-            {licenseDoc.photo_url && <a href={licenseDoc.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
-          </div>
-        ) : (
-          <form onSubmit={(e) => handleUpload(e, "LICENSE")} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">License Number *</label>
-              <input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} required
-                placeholder="Enter your drug license number"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Expiry Date *</label>
-              <input type="date" value={licenseExpiry} onChange={(e) => setLicenseExpiry(e.target.value)} required
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">License Photo *</label>
-              <input ref={licenseFileRef} type="file" accept="image/*" className="hidden"
-                onChange={(e) => setLicensePhotoFile(e.target.files[0] || null)} />
-              <button type="button" onClick={() => licenseFileRef.current.click()}
-                className="w-full px-3 py-2 text-sm border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-[#00A6A4] hover:text-[#00A6A4] transition text-left flex items-center gap-2">
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                </svg>
-                {licensePhotoFile ? licensePhotoFile.name : "Click to upload photo"}
-              </button>
-            </div>
-            <button type="submit" disabled={uploading === "LICENSE"}
-              className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50"
-              style={{ backgroundColor: "#00A6A4" }}>
-              {uploading === "LICENSE" ? "Uploading..." : "Submit License"}
-            </button>
-          </form>
-        )}
-      </div>
+      {/* Drug License — Form 21B */}
+      <DrugLicenseCard
+        title="Drug License (Form 21B)"
+        subtitle="Wholesale license for Schedule X drugs, if applicable"
+        docType="LICENSE_21B"
+        doc={license21BDoc}
+        onUploaded={fetchStatus}
+        setError={setError}
+        setSuccess={setSuccess}
+      />
 
       {/* GST Certificate */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -443,19 +852,60 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {gstDoc && !gstDoc.rejection_reason ? (
-          <div className="space-y-1 text-sm text-gray-600">
-            <p><span className="font-medium">GST No:</span> {gstDoc.doc_number}</p>
-            {gstDoc.photo_url && <a href={gstDoc.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
+        {gstDoc && !gstDoc.rejection_reason && !updatingGst ? (
+          <div className="space-y-3">
+            <div className="space-y-1 text-sm text-gray-600">
+              <p><span className="font-medium">GST No:</span> {gstDoc.doc_number}</p>
+              {gstDoc.legal_name && <p><span className="font-medium">Legal Name:</span> {gstDoc.legal_name}</p>}
+              {gstDoc.trade_name && <p><span className="font-medium">Trade Name:</span> {gstDoc.trade_name}</p>}
+              {gstDoc.status && <p><span className="font-medium">Status:</span> {gstDoc.status}</p>}
+              {gstDoc.business_type && <p><span className="font-medium">Business Type:</span> {gstDoc.business_type}</p>}
+              {gstDoc.registered_date && <p><span className="font-medium">Registered:</span> {new Date(gstDoc.registered_date).toLocaleDateString("en-IN")}</p>}
+              {gstDoc.address && <p><span className="font-medium">Address:</span> {gstDoc.address}</p>}
+              {gstDoc.photo_url && <a href={gstDoc.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
+            </div>
+            {!gstDoc.legal_name && (
+              <p className="text-xs text-gray-400">
+                This certificate was submitted before we started fetching details automatically — click below to re-verify and fill them in.
+              </p>
+            )}
+            <button type="button" onClick={() => setUpdatingGst(true)}
+              className="px-4 py-2 text-sm font-semibold text-white rounded-lg"
+              style={{ backgroundColor: "#00A6A4" }}>
+              Update GST
+            </button>
           </div>
         ) : (
-          <form onSubmit={(e) => handleUpload(e, "GST")} className="space-y-4">
+          <form onSubmit={handleGstUpload} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">GST Number *</label>
-              <input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} required
-                placeholder="e.g. 27AAPCT1234H1Z0"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]" />
+              <div className="flex gap-2">
+                <input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} required
+                  placeholder="e.g. 27AAPCT1234H1Z0"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]" />
+                <button
+                  type="button"
+                  disabled={!gstNumber.trim()}
+                  onClick={() => setShowGstVerify(true)}
+                  className="px-3 py-2 text-xs font-semibold text-[#00A6A4] border border-[#00A6A4] rounded-lg hover:bg-[#00A6A4]/5 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  Verify GSTIN
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Verifying fetches your registered business details from the GST portal so you can double-check the number before submitting.
+              </p>
             </div>
+            {gstScrapedData && (
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-gray-700 space-y-1">
+                <p className="font-semibold text-teal-700 mb-1">Details fetched — will be saved with this submission:</p>
+                {gstScrapedData.lgnm && <p><span className="font-medium">Legal Name:</span> {gstScrapedData.lgnm}</p>}
+                {gstScrapedData.tradeNam && <p><span className="font-medium">Trade Name:</span> {gstScrapedData.tradeNam}</p>}
+                {gstScrapedData.sts && <p><span className="font-medium">Status:</span> {gstScrapedData.sts}</p>}
+                {gstScrapedData.ctb && <p><span className="font-medium">Business Type:</span> {gstScrapedData.ctb}</p>}
+                {gstScrapedData.pradr?.adr && <p><span className="font-medium">Address:</span> {gstScrapedData.pradr.adr}</p>}
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">GST Photo *</label>
               <input ref={gstFileRef} type="file" accept="image/*" className="hidden"
@@ -471,7 +921,7 @@ export default function ProfilePage() {
             <button type="submit" disabled={uploading === "GST"}
               className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50"
               style={{ backgroundColor: "#00A6A4" }}>
-              {uploading === "GST" ? "Uploading..." : "Submit GST Certificate"}
+              {uploading === "GST" ? "Uploading..." : updatingGst ? "Update GST Certificate" : "Submit GST Certificate"}
             </button>
           </form>
         )}
@@ -485,6 +935,10 @@ export default function ProfilePage() {
         </Link>
         .
       </p>
+
+      {showGstVerify && (
+        <GstVerifyModal gstin={gstNumber.trim()} onClose={() => setShowGstVerify(false)} onConfirm={handleGstConfirm} />
+      )}
     </div>
   );
 }

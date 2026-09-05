@@ -155,7 +155,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             backgroundColor: Colors.white,
             foregroundColor: Colors.black,
             actions: [
-              if (p.images.isNotEmpty)
+              if (p.visibleImages.isNotEmpty)
                 _downloadingImage
                     ? const Padding(
                         padding: EdgeInsets.all(14),
@@ -163,7 +163,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                       )
                     : IconButton(
                         icon: Icon(Icons.download_outlined, color: Colors.grey.shade600),
-                        onPressed: () => _downloadImage(p.images[_selectedImage].id),
+                        onPressed: () => _downloadImage(p.visibleImages[_selectedImage].id),
                         tooltip: 'Download image',
                       ),
               IconButton(
@@ -179,18 +179,18 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
             flexibleSpace: FlexibleSpaceBar(
               background: Padding(
                 padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + kToolbarHeight + (isWide(context) ? 24 : 12)),
-                child: p.images.isEmpty
+                child: p.visibleImages.isEmpty
                   ? Container(color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, size: 80, color: Colors.grey))
                   : Stack(
                       children: [
                         PageView.builder(
                           controller: _imagePageCtrl,
-                          itemCount: p.images.length,
+                          itemCount: p.visibleImages.length,
                           onPageChanged: (i) => setState(() => _selectedImage = i),
                           itemBuilder: (context, i) => GestureDetector(
                             onTap: () async {
                               final lastViewed = await context.push<int>('/gallery', extra: {
-                                'imageUrls': p.images.map((img) => img.imageUrl).toList(),
+                                'imageUrls': p.visibleImages.map((img) => img.imageUrl).toList(),
                                 'initialIndex': _selectedImage,
                               });
                               if (lastViewed != null && mounted) {
@@ -202,7 +202,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               color: Colors.white,
                               width: double.infinity,
                               child: CachedNetworkImage(
-                                imageUrl: p.images[i].imageUrl,
+                                imageUrl: p.visibleImages[i].imageUrl,
                                 fit: BoxFit.contain,
                                 width: double.infinity,
                                 placeholder: (_, __) => Container(color: Colors.grey.shade100),
@@ -238,13 +238,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               ),
                             ),
                           ),
-                        if (p.images.length > 1)
+                        if (p.visibleImages.length > 1)
                           Positioned(
                             bottom: 12,
                             left: 0, right: 0,
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: p.images.asMap().entries.map((e) => GestureDetector(
+                              children: p.visibleImages.asMap().entries.map((e) => GestureDetector(
                                 onTap: () => _imagePageCtrl.animateToPage(
                                   e.key,
                                   duration: const Duration(milliseconds: 250),

@@ -51,6 +51,15 @@ function MeetingsPageInner() {
   const [capturingLocation, setCapturingLocation] = useState(false);
   const [visitError, setVisitError] = useState("");
 
+  // Collapsible sections in the day panel — meetings list, each meeting's
+  // visit log, and the schedule-a-meeting form all start closed so the
+  // panel opens compact instead of dumping everything at once.
+  const [meetingsOpen, setMeetingsOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [visitLogOpenByMeeting, setVisitLogOpenByMeeting] = useState({});
+  const toggleVisitLogOpen = (meetingId) =>
+    setVisitLogOpenByMeeting((prev) => ({ ...prev, [meetingId]: !prev[meetingId] }));
+
   const fetchMeetings = useCallback(() => {
     apiFetch("/meetings")
       .then((data) => setMeetings(Array.isArray(data) ? data : []))
@@ -80,6 +89,7 @@ function MeetingsPageInner() {
     setLoggingVisitId(meetingId);
     setVisitNotes("");
     setVisitError("");
+    setVisitLogOpenByMeeting((prev) => ({ ...prev, [meetingId]: true }));
     if (!visitLogsByMeeting[meetingId]) loadVisitLogs(meetingId);
   };
 
@@ -182,6 +192,9 @@ function MeetingsPageInner() {
     setSelectedDateKey(dateKey);
     setDayForm({ doctor_id: "", time: "11:00", notes: "", mom: "", request: "", assigned_to: "" });
     setError("");
+    setMeetingsOpen(false);
+    setScheduleOpen(false);
+    setVisitLogOpenByMeeting({});
   };
 
   const closeDay = () => {
@@ -280,6 +293,17 @@ function MeetingsPageInner() {
     ? new Date(`${selectedDateKey}T00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
     : "";
 
+  // Visit logs are history the partner needs to just see, not something they
+  // opt into — load them for every meeting in the opened day panel instead
+  // of waiting for someone to click "+ Log Visit" (that button is only for
+  // adding a new entry, not for revealing existing ones).
+  useEffect(() => {
+    selectedMeetings.forEach((m) => {
+      if (!visitLogsByMeeting[m.id]) loadVisitLogs(m.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDateKey, meetingsByDate]);
+
   return (
     <div className="max-w-6xl mx-auto px-8 py-10">
       <div className="flex items-center justify-between mb-8">
@@ -359,7 +383,16 @@ function MeetingsPageInner() {
             </div>
 
             {selectedMeetings.length > 0 && (
-              <div className="space-y-2 mb-5">
+              <div className="mb-5">
+                <button
+                  onClick={() => setMeetingsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between text-xs font-medium text-gray-500 mb-2"
+                >
+                  <span>Meetings ({selectedMeetings.length})</span>
+                  <span className="text-gray-400">{meetingsOpen ? "▾" : "▸"}</span>
+                </button>
+                {meetingsOpen && (
+                <div className="space-y-2">
                 {selectedMeetings.map((m) => (
                   <div key={m.id} className="border border-gray-200 rounded-lg px-4 py-3">
                     <div className="flex items-center justify-between">
@@ -439,7 +472,13 @@ function MeetingsPageInner() {
                     {/* Visit log — proof of attendance (location + timestamp) */}
                     <div className="mt-3 pt-3 border-t border-gray-100">
                       <div className="flex items-center justify-between mb-1">
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Visit Log</p>
+                        <button
+                          onClick={() => toggleVisitLogOpen(m.id)}
+                          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-400"
+                        >
+                          <span>{visitLogOpenByMeeting[m.id] ? "▾" : "▸"}</span>
+                          <span>Visit Log{(visitLogsByMeeting[m.id] || []).length > 0 ? ` (${visitLogsByMeeting[m.id].length})` : ""}</span>
+                        </button>
                         {loggingVisitId !== m.id && (
                           <button onClick={() => startLogVisit(m.id)} className="text-xs text-blue-600 hover:text-blue-700">
                             + Log Visit
@@ -447,7 +486,7 @@ function MeetingsPageInner() {
                         )}
                       </div>
 
-                      {(visitLogsByMeeting[m.id] || []).map((l) => (
+                      {visitLogOpenByMeeting[m.id] && (visitLogsByMeeting[m.id] || []).map((l) => (
                         <div key={l.id} className="text-xs text-gray-600 mb-1">
                           <span className="font-medium text-gray-900">{l.user_name}</span> at{" "}
                           {new Date(l.recorded_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} —{" "}
@@ -503,12 +542,19 @@ function MeetingsPageInner() {
                     </div>
                   </div>
                 ))}
+                </div>
+                )}
               </div>
             )}
 
-            <p className="text-xs font-medium text-gray-500 mb-3">
-              {selectedMeetings.length > 0 ? "Schedule another meeting for this day" : "Schedule a meeting for this day"}
-            </p>
+            <button
+              onClick={() => setScheduleOpen((v) => !v)}
+              className="w-full flex items-center justify-between text-xs font-medium text-gray-500 mb-3"
+            >
+              <span>{selectedMeetings.length > 0 ? "Schedule another meeting for this day" : "Schedule a meeting for this day"}</span>
+              <span className="text-gray-400">{scheduleOpen ? "▾" : "▸"}</span>
+            </button>
+            {scheduleOpen && (
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Doctor</label>
@@ -603,6 +649,7 @@ function MeetingsPageInner() {
                 {submitting ? "Scheduling..." : "Schedule Meeting"}
               </button>
             </form>
+            )}
           </div>
         ) : (
           <div className="border border-dashed border-gray-200 rounded-lg p-6 flex items-center justify-center text-center h-full min-h-[200px]">

@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,23 +13,64 @@ import (
 type DocumentType string
 
 const (
-	DocumentTypeLicense DocumentType = "LICENSE"
-	DocumentTypeGST     DocumentType = "GST"
+	DocumentTypeLicense    DocumentType = "LICENSE" // legacy generic value, kept for old mobile clients
+	DocumentTypeLicense20B DocumentType = "LICENSE_20B"
+	DocumentTypeLicense21B DocumentType = "LICENSE_21B"
+	DocumentTypeGST        DocumentType = "GST"
 )
 
+// ValidDocumentTypes are the doc_type values UploadDocument/VerifyDocument accept.
+var ValidDocumentTypes = map[string]bool{
+	string(DocumentTypeLicense):    true,
+	string(DocumentTypeLicense20B): true,
+	string(DocumentTypeLicense21B): true,
+	string(DocumentTypeGST):        true,
+}
+
+func IsLicenseDocType(docType string) bool {
+	return docType == string(DocumentTypeLicense) || docType == string(DocumentTypeLicense20B) || docType == string(DocumentTypeLicense21B)
+}
+
 type PartnerDocument struct {
-	ID               uuid.UUID  `json:"id"`
-	UserID           uuid.UUID  `json:"user_id"`
-	DocType          string     `json:"doc_type"`
-	DocNumber        *string    `json:"doc_number"`
-	ExpiryDate       *time.Time `json:"expiry_date"`
-	PhotoURL         *string    `json:"photo_url"`
-	IsVerified       bool       `json:"is_verified"`
-	VerifiedBy       *uuid.UUID `json:"verified_by,omitempty"`
-	VerifiedAt       *time.Time `json:"verified_at,omitempty"`
-	RejectionReason  *string    `json:"rejection_reason,omitempty"`
+	ID              uuid.UUID       `json:"id"`
+	UserID          uuid.UUID       `json:"user_id"`
+	DocType         string          `json:"doc_type"`
+	DocNumber       *string         `json:"doc_number"`
+	ExpiryDate      *time.Time      `json:"expiry_date"`
+	PhotoURL        *string         `json:"photo_url"`
+	IsVerified      bool            `json:"is_verified"`
+	VerifiedBy      *uuid.UUID      `json:"verified_by,omitempty"`
+	VerifiedAt      *time.Time      `json:"verified_at,omitempty"`
+	RejectionReason *string         `json:"rejection_reason,omitempty"`
+	ScrapedData     json.RawMessage `json:"scraped_data,omitempty"`
+	// Discrete fields pulled from the GST/drug-license scrapers. Which ones
+	// are populated depends on doc_type — see DocumentScrapedFields.
+	LegalName        *string    `json:"legal_name,omitempty"`
+	TradeName        *string    `json:"trade_name,omitempty"`
+	Status           *string    `json:"status,omitempty"`
+	BusinessType     *string    `json:"business_type,omitempty"`
+	RegisteredDate   *time.Time `json:"registered_date,omitempty"`
+	FirstIssueDate   *time.Time `json:"first_issue_date,omitempty"`
+	Address          *string    `json:"address,omitempty"`
+	TechPersonName   *string    `json:"tech_person_name,omitempty"`
+	TechPersonRegNo  *string    `json:"tech_person_reg_no,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+// DocumentScrapedFields carries the typed fields extracted from a scraper
+// response (GST portal or drug-license portal) for CreateOrUpdateDocument to
+// persist as discrete columns, alongside the raw scraped_data blob.
+type DocumentScrapedFields struct {
+	LegalName       *string
+	TradeName       *string
+	Status          *string
+	BusinessType    *string
+	RegisteredDate  *time.Time
+	FirstIssueDate  *time.Time
+	Address         *string
+	TechPersonName  *string
+	TechPersonRegNo *string
 }
 
 type OnboardingStatus struct {
@@ -39,10 +81,23 @@ type OnboardingStatus struct {
 }
 
 type UploadDocumentRequest struct {
-	DocType    string  `json:"doc_type"`
-	DocNumber  string  `json:"doc_number"`
-	ExpiryDate *string `json:"expiry_date"` // date string e.g. "2026-01-01"
-	PhotoURL   string  `json:"photo_url"`
+	DocType     string          `json:"doc_type"`
+	DocNumber   string          `json:"doc_number"`
+	ExpiryDate  *string         `json:"expiry_date"` // date string e.g. "2026-01-01"
+	PhotoURL    string          `json:"photo_url"`
+	ScrapedData json.RawMessage `json:"scraped_data,omitempty"`
+
+	// Discrete scraped fields, mapped by the frontend from the GST/DL
+	// verify-modal response before submitting — see DocumentScrapedFields.
+	LegalName       *string `json:"legal_name,omitempty"`
+	TradeName       *string `json:"trade_name,omitempty"`
+	Status          *string `json:"status,omitempty"`
+	BusinessType    *string `json:"business_type,omitempty"`
+	RegisteredDate  *string `json:"registered_date,omitempty"` // "2026-01-01"
+	FirstIssueDate  *string `json:"first_issue_date,omitempty"`
+	Address         *string `json:"address,omitempty"`
+	TechPersonName  *string `json:"tech_person_name,omitempty"`
+	TechPersonRegNo *string `json:"tech_person_reg_no,omitempty"`
 }
 
 type VerifyDocumentRequest struct {
@@ -60,22 +115,77 @@ func CreateOrUpdateDocument(
 	docNumber string,
 	expiryDate *time.Time,
 	photoURL string,
+	scrapedData json.RawMessage,
+	fields DocumentScrapedFields,
 ) (*PartnerDocument, error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Archive whatever document this is about to replace, if any, before
+	// overwriting it — old photos/numbers are otherwise lost on re-upload.
+	_, err = tx.Exec(ctx, `
+		INSERT INTO partner_document_history (
+			document_id, user_id, doc_type, doc_number, expiry_date, photo_url,
+			is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date,
+			first_issue_date, address, tech_person_name, tech_person_reg_no,
+			original_created_at, original_updated_at
+		)
+		SELECT id, user_id, doc_type, doc_number, expiry_date, photo_url,
+			is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date,
+			first_issue_date, address, tech_person_name, tech_person_reg_no,
+			created_at, updated_at
+		FROM partner_documents
+		WHERE user_id = $1 AND doc_type = $2
+	`, userID, docType)
+	if err != nil {
+		return nil, err
+	}
+
+	var scrapedDataParam interface{}
+	if len(scrapedData) > 0 {
+		scrapedDataParam = scrapedData
+	}
+
 	query := `
-		INSERT INTO partner_documents (user_id, doc_type, doc_number, expiry_date, photo_url)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO partner_documents (
+			user_id, doc_type, doc_number, expiry_date, photo_url, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date,
+			first_issue_date, address, tech_person_name, tech_person_reg_no
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (user_id, doc_type) DO UPDATE
-		SET doc_number = $3, expiry_date = $4, photo_url = $5, updated_at = NOW()
-		RETURNING id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, created_at, updated_at
+		SET doc_number = $3, expiry_date = $4, photo_url = $5, scraped_data = $6,
+			legal_name = $7, trade_name = $8, status = $9, business_type = $10,
+			registered_date = $11, first_issue_date = $12, address = $13,
+			tech_person_name = $14, tech_person_reg_no = $15, updated_at = NOW(),
+			is_verified = FALSE, verified_by = NULL, verified_at = NULL, rejection_reason = NULL
+		RETURNING id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date, first_issue_date, address, tech_person_name, tech_person_reg_no,
+			created_at, updated_at
 	`
 
 	var doc PartnerDocument
-	err := db.QueryRow(ctx, query, userID, docType, docNumber, expiryDate, photoURL).Scan(
+	err = tx.QueryRow(ctx, query, userID, docType, docNumber, expiryDate, photoURL, scrapedDataParam,
+		fields.LegalName, fields.TradeName, fields.Status, fields.BusinessType, fields.RegisteredDate,
+		fields.FirstIssueDate, fields.Address, fields.TechPersonName, fields.TechPersonRegNo,
+	).Scan(
 		&doc.ID, &doc.UserID, &doc.DocType, &doc.DocNumber, &doc.ExpiryDate,
 		&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
+		&doc.ScrapedData,
+		&doc.LegalName, &doc.TradeName, &doc.Status, &doc.BusinessType, &doc.RegisteredDate,
+		&doc.FirstIssueDate, &doc.Address, &doc.TechPersonName, &doc.TechPersonRegNo,
 		&doc.CreatedAt, &doc.UpdatedAt,
 	)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
@@ -91,7 +201,9 @@ func GetUserDocuments(
 	userID uuid.UUID,
 ) ([]PartnerDocument, error) {
 	query := `
-		SELECT id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, created_at, updated_at
+		SELECT id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date, first_issue_date, address, tech_person_name, tech_person_reg_no,
+			created_at, updated_at
 		FROM partner_documents
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -109,6 +221,9 @@ func GetUserDocuments(
 		err := rows.Scan(
 			&doc.ID, &doc.UserID, &doc.DocType, &doc.DocNumber, &doc.ExpiryDate,
 			&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
+			&doc.ScrapedData,
+			&doc.LegalName, &doc.TradeName, &doc.Status, &doc.BusinessType, &doc.RegisteredDate,
+			&doc.FirstIssueDate, &doc.Address, &doc.TechPersonName, &doc.TechPersonRegNo,
 			&doc.CreatedAt, &doc.UpdatedAt,
 		)
 		if err != nil {
@@ -205,12 +320,13 @@ func updateUserOnboardingStep(ctx context.Context, db *pgxpool.Pool, userID uuid
 		return err
 	}
 
-	// If both documents verified, step is 4
+	// If both documents verified, step is 4. Any one of LICENSE/LICENSE_20B/
+	// LICENSE_21B being verified counts as the license step.
 	var licenseVerified, gstVerified bool
 	err = db.QueryRow(
 		ctx,
 		`SELECT
-			COALESCE((SELECT is_verified FROM partner_documents WHERE user_id = $1 AND doc_type = 'LICENSE'), FALSE),
+			COALESCE((SELECT bool_or(is_verified) FROM partner_documents WHERE user_id = $1 AND doc_type IN ('LICENSE', 'LICENSE_20B', 'LICENSE_21B')), FALSE),
 			COALESCE((SELECT is_verified FROM partner_documents WHERE user_id = $1 AND doc_type = 'GST'), FALSE)`,
 		userID,
 	).Scan(&licenseVerified, &gstVerified)

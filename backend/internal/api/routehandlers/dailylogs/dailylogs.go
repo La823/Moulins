@@ -17,8 +17,8 @@ func getUserID(r *http.Request) uuid.UUID {
 	return id
 }
 
-// POST /my-daily-log — a team member submits (or replaces) their log entry
-// for a given day.
+// POST /my-daily-log — a team member submits a log entry for a given day.
+// Multiple entries on the same day are kept separately, not merged.
 func SubmitMyDailyLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -41,7 +41,7 @@ func SubmitMyDailyLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		id, err := models.UpsertDailyLog(r.Context(), db, getUserID(r), body.Date, body.Notes, body.Latitude, body.Longitude, body.Address)
+		id, err := models.InsertDailyLog(r.Context(), db, getUserID(r), body.Date, body.Notes, body.Latitude, body.Longitude, body.Address)
 		if err != nil {
 			log.Printf("submit daily log error: %v", err)
 			http.Error(w, "could not save daily log", http.StatusInternalServerError)

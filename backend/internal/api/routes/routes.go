@@ -12,8 +12,10 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/dailylogs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/designfiles"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/dllookup"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/emailtemplates"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/gstlookup"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
@@ -71,6 +73,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// public auth routes
 	router.HandleFunc("/auth/login", auth.LoginHandler(db)).Methods("POST")
+	router.HandleFunc("/auth/forgot-password", auth.ForgotPasswordHandler(db)).Methods("POST")
+	router.HandleFunc("/auth/reset-password", auth.ResetPasswordHandler(db)).Methods("POST")
 
 	// public product routes
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
@@ -235,6 +239,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/onboarding/documents", onboardingHandler.UploadDocument).Methods("POST")
 	protected.HandleFunc("/onboarding/upload-url", onboardingHandler.GetUploadURL).Methods("POST")
 	protected.HandleFunc("/onboarding/status", onboardingHandler.GetStatus).Methods("GET")
+
+	// GST lookup — proxies the internal gst-scraper microservice so a
+	// partner can verify their business details before submitting their
+	// GST document.
+	protected.HandleFunc("/gst-lookup/captcha", gstlookup.GetCaptchaHandler).Methods("GET")
+	protected.HandleFunc("/gst-lookup/details", gstlookup.GetDetailsHandler).Methods("POST")
+
+	// Drug license lookup — proxies the internal dl-scraper microservice.
+	// No captcha step needed here, unlike GST.
+	protected.HandleFunc("/dl-lookup/details", dllookup.GetDetailsHandler).Methods("GET")
 
 	// admin-only routes — nothing permission-gated lives here anymore
 	// except things too sensitive to delegate (creating admin/staff logins

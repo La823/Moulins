@@ -144,6 +144,20 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     });
   }
 
+  void _clearSearch() {
+    _suggestDebounce?.cancel();
+    _searchCtrl.clear();
+    setState(() {
+      _search = '';
+      _saltOnly = false;
+      _showDropdown = false;
+      _liveSuggestions = [];
+      _liveSpellingSuggestions = [];
+    });
+    _searchFocus.unfocus();
+    _load(reset: true);
+  }
+
   void _runSearch(String val) {
     _suggestDebounce?.cancel();
     setState(() {
@@ -241,14 +255,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       // product grid) lives in one CustomScrollView below it so the division
       // filter isn't a separate fixed-height scroll box — it just takes its
       // natural content height and scrolls away with the rest of the page.
-      body: Column(
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                TextField(
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: TextField(
                   controller: _searchCtrl,
                   focusNode: _searchFocus,
                   onChanged: _onSearch,
@@ -257,6 +270,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   decoration: InputDecoration(
                     hintText: 'Search products...',
                     prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    suffixIcon: _searchCtrl.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close,
+                                color: Colors.grey, size: 20),
+                            onPressed: _clearSearch,
+                            tooltip: 'Clear search',
+                          ),
                     filled: true,
                     fillColor: Colors.grey.shade50,
                     border: OutlineInputBorder(
@@ -271,134 +292,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                   ),
                 ),
-                if (_showDropdown)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: 52,
-                    child: Material(
-                      elevation: 6,
-                      borderRadius: BorderRadius.circular(12),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 360),
-                        child: SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              if (_liveSuggestions.isEmpty) ...[
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 14),
-                                  child: Text('No matches found',
-                                      style: TextStyle(
-                                          fontSize: 13, color: Colors.grey)),
-                                ),
-                              ] else ...[
-                                if (_liveSpellingSuggestions.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 10),
-                                    child: Wrap(
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
-                                      children: [
-                                        const Text('Did you mean ',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey)),
-                                        for (var i = 0;
-                                            i < _liveSpellingSuggestions.length;
-                                            i++)
-                                          GestureDetector(
-                                            onTap: () => _applySaltSuggestion(
-                                                _liveSpellingSuggestions[i]),
-                                            child: Text(
-                                              '${_liveSpellingSuggestions[i]}${i < _liveSpellingSuggestions.length - 1 ? ", " : ""}',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: Color(0xFF00A6A4),
-                                                fontWeight: FontWeight.w600,
-                                                decoration:
-                                                    TextDecoration.underline,
-                                              ),
-                                            ),
-                                          ),
-                                        const Text('?',
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey)),
-                                      ],
-                                    ),
-                                  ),
-                                for (final p in _liveSuggestions)
-                                  InkWell(
-                                    onTap: () {
-                                      _searchFocus.unfocus();
-                                      setState(() => _showDropdown = false);
-                                      context.push('/products/${p.id}');
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 8),
-                                      child: Row(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                            child: p.primaryImageUrl != null
-                                                ? Image.network(
-                                                    p.primaryImageUrl!,
-                                                    width: 32,
-                                                    height: 32,
-                                                    fit: BoxFit.contain)
-                                                : Container(
-                                                    width: 32,
-                                                    height: 32,
-                                                    color:
-                                                        Colors.grey.shade100),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(p.name,
-                                                style: const TextStyle(
-                                                    fontSize: 13,
-                                                    color: Colors.black87),
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                InkWell(
-                                  onTap: () =>
-                                      _runSearch(_searchCtrl.text.trim()),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 10),
-                                    child: Text(
-                                      'See all results for "${_searchCtrl.text.trim()}" →',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFFAC2528)),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: CustomScrollView(
+              ),
+              Expanded(
+                child: CustomScrollView(
               controller: _scrollCtrl,
               slivers: [
                 // Category filter: "All" bar spanning full width, then a 3x4 grid
@@ -476,12 +372,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                   SliverGridDelegateWithFixedCrossAxisCount(
                                 // More, smaller tiles in landscape so the
                                 // filter row takes up less vertical space.
-                                crossAxisCount: isLandscape ? 5 : 3,
+                                crossAxisCount: isLandscape ? 6 : 3,
                                 mainAxisSpacing: 8,
                                 crossAxisSpacing: 8,
                                 // Division images are mostly landscape/rectangular, not square —
                                 // match the tile shape to that instead of forcing a 1:1 box.
-                                childAspectRatio: isLandscape ? 3.4 : 2.6,
+                                childAspectRatio: isLandscape ? 2.8 : 2.6,
                               ),
                               itemBuilder: (context, i) {
                                 final d = kDivisions[i];
@@ -725,6 +621,132 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ],
             ),
           ),
+            ],
+          ),
+          if (_showDropdown)
+            Positioned(
+              left: 16,
+              right: 16,
+              top: 60,
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 360),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_liveSuggestions.isEmpty) ...[
+                          const Padding(
+                            padding:
+                                EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 14),
+                            child: Text('No matches found',
+                                style: TextStyle(
+                                    fontSize: 13, color: Colors.grey)),
+                          ),
+                        ] else ...[
+                          if (_liveSpellingSuggestions.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              child: Wrap(
+                                crossAxisAlignment:
+                                    WrapCrossAlignment.center,
+                                children: [
+                                  const Text('Did you mean ',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey)),
+                                  for (var i = 0;
+                                      i < _liveSpellingSuggestions.length;
+                                      i++)
+                                    GestureDetector(
+                                      onTap: () => _applySaltSuggestion(
+                                          _liveSpellingSuggestions[i]),
+                                      child: Text(
+                                        '${_liveSpellingSuggestions[i]}${i < _liveSpellingSuggestions.length - 1 ? ", " : ""}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF00A6A4),
+                                          fontWeight: FontWeight.w600,
+                                          decoration:
+                                              TextDecoration.underline,
+                                        ),
+                                      ),
+                                    ),
+                                  const Text('?',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey)),
+                                ],
+                              ),
+                            ),
+                          for (final p in _liveSuggestions)
+                            InkWell(
+                              onTap: () {
+                                _searchFocus.unfocus();
+                                setState(() => _showDropdown = false);
+                                context.push('/products/${p.id}');
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                child: Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius:
+                                          BorderRadius.circular(4),
+                                      child: p.primaryImageUrl != null
+                                          ? Image.network(
+                                              p.primaryImageUrl!,
+                                              width: 32,
+                                              height: 32,
+                                              fit: BoxFit.contain)
+                                          : Container(
+                                              width: 32,
+                                              height: 32,
+                                              color:
+                                                  Colors.grey.shade100),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(p.name,
+                                          style: const TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.black87),
+                                          maxLines: 1,
+                                          overflow:
+                                              TextOverflow.ellipsis),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          InkWell(
+                            onTap: () =>
+                                _runSearch(_searchCtrl.text.trim()),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              child: Text(
+                                'See all results for "${_searchCtrl.text.trim()}" →',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFAC2528)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

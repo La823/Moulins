@@ -1,8 +1,133 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../config/api.dart';
 import '../../providers/auth_provider.dart';
 import '../../utils/responsive.dart';
+
+const _teal = Color(0xFF00A6A4);
+
+void _showForgotPasswordSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (_) => const _ForgotPasswordSheet(),
+  );
+}
+
+class _ForgotPasswordSheet extends StatefulWidget {
+  const _ForgotPasswordSheet();
+
+  @override
+  State<_ForgotPasswordSheet> createState() => _ForgotPasswordSheetState();
+}
+
+class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
+  final _phoneCtrl = TextEditingController();
+  bool _submitting = false;
+  bool _done = false;
+  String? _message;
+  bool _hasEmail = false;
+
+  @override
+  void dispose() {
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_phoneCtrl.text.trim().isEmpty) return;
+    setState(() => _submitting = true);
+    try {
+      final res = await createDio().post('/auth/forgot-password', data: {
+        'phone_number': _phoneCtrl.text.trim(),
+      });
+      setState(() {
+        _message = res.data['message'] ?? 'If this account has an email on file, a reset link has been sent.';
+        _hasEmail = res.data['has_email'] == true;
+        _done = true;
+      });
+    } catch (e) {
+      setState(() {
+        _message = 'Something went wrong. Please try again.';
+        _hasEmail = false;
+        _done = true;
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Forgot Password', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          if (_done) ...[
+            Text(
+              _message ?? '',
+              style: TextStyle(fontSize: 13.5, color: _hasEmail ? Colors.grey.shade700 : Colors.amber.shade800),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _teal,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Close'),
+              ),
+            ),
+          ] else ...[
+            Text(
+              'Enter your registered phone number. If an email is linked to your account, we\'ll send you a link to reset your password.',
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _phoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: 'Phone Number',
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _submitting ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _teal,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: _submitting
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Send Reset Link'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -113,7 +238,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 onSubmitted: (_) => _login(),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => _showForgotPasswordSheet(context),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                  child: const Text('Forgot password?', style: TextStyle(fontSize: 12.5, color: Colors.grey)),
+                ),
+              ),
+              const SizedBox(height: 4),
 
               if (auth.error != null)
                 Container(
