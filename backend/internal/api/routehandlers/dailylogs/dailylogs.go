@@ -87,6 +87,34 @@ func GetMyDailyLogsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /team/daily-logs?year=&month= — a partner reviews every team
+// member's logs together, interleaved and newest-first.
+func GetTeamDailyLogsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		role, _ := r.Context().Value("role").(string)
+		if role != "partner" {
+			http.Error(w, "only partners can review team daily logs", http.StatusForbidden)
+			return
+		}
+
+		year, month, err := parseYearMonth(r)
+		if err != nil {
+			http.Error(w, "year and month query params are required", http.StatusBadRequest)
+			return
+		}
+
+		logs, err := models.GetDailyLogsByPartnerMonth(r.Context(), db, getUserID(r), year, month)
+		if err != nil {
+			log.Printf("get team daily logs error: %v", err)
+			http.Error(w, "could not fetch daily logs", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(logs)
+	}
+}
+
 // GET /team/{id}/daily-logs?year=&month= — a partner reviews one team
 // member's logs.
 func GetTeamMemberDailyLogsHandler(db *pgxpool.Pool) http.HandlerFunc {

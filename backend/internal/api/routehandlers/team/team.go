@@ -34,6 +34,7 @@ func CreateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 			PhoneNumber string  `json:"phone_number"`
 			Password    string  `json:"password"`
 			Username    *string `json:"username"`
+			Email       *string `json:"email"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -47,8 +48,11 @@ func CreateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if body.Email != nil && *body.Email == "" {
+			body.Email = nil
+		}
 
-		id, err := models.CreateTeamMember(r.Context(), db, getUserID(r), body.PhoneNumber, body.Password, body.Username)
+		id, err := models.CreateTeamMember(r.Context(), db, getUserID(r), body.PhoneNumber, body.Password, body.Username, body.Email)
 		if err != nil {
 			log.Printf("create team member error: %v", err)
 			http.Error(w, "could not create team member", http.StatusInternalServerError)
@@ -124,7 +128,8 @@ func GetTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// PUT /team/{id} — update a team member's password/username.
+// PUT /team/{id} — update a team member's password and/or email. Either
+// field may be omitted; password, if given, must still pass strength checks.
 func UpdateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := requireOwnedMember(w, r, db)
@@ -133,25 +138,36 @@ func UpdateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var body struct {
-			Password string `json:"password"`
+			Password string  `json:"password"`
+			Email    *string `json:"email"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if body.Password == "" {
-			http.Error(w, "password is required", http.StatusBadRequest)
-			return
-		}
-		if err := utils.ValidatePasswordStrength(body.Password); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if body.Password == "" && body.Email == nil {
+			http.Error(w, "nothing to update", http.StatusBadRequest)
 			return
 		}
 
-		if err := models.UpdateUserPassword(r.Context(), db, id, body.Password); err != nil {
-			log.Printf("update team member error: %v", err)
-			http.Error(w, "could not update team member", http.StatusInternalServerError)
-			return
+		if body.Password != "" {
+			if err := utils.ValidatePasswordStrength(body.Password); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := models.UpdateUserPassword(r.Context(), db, id, body.Password); err != nil {
+				log.Printf("update team member error: %v", err)
+				http.Error(w, "could not update team member", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if body.Email != nil {
+			if err := models.UpdateEmail(r.Context(), db, id, *body.Email); err != nil {
+				log.Printf("update team member email error: %v", err)
+				http.Error(w, "could not update team member", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

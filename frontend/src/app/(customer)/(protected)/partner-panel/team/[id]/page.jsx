@@ -138,6 +138,19 @@ export default function TeamMemberPage() {
   const [form, setForm] = useState({ check_in_time: "09:00", status: "present", description: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  // Schedule-a-meeting-for-this-team-member, shown alongside the selected
+  // day's logs/attendance instead of on the general Meetings page, since a
+  // partner reviewing a specific day here is often deciding right then
+  // whether to book a follow-up for that rep.
+  const [doctors, setDoctors] = useState([]);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ doctor_id: "", time: "11:00", notes: "" });
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
 
   useEffect(() => {
     if (user && user.role !== "partner") router.push("/dashboard");
@@ -168,6 +181,9 @@ export default function TeamMemberPage() {
       apiFetch(`/team/${id}`)
         .then(setMember)
         .catch((err) => console.error(err));
+      apiFetch("/doctors")
+        .then((data) => setDoctors(Array.isArray(data) ? data : []))
+        .catch(() => setDoctors([]));
     }
   }, [id, user]);
 
@@ -179,6 +195,12 @@ export default function TeamMemberPage() {
 
   const attendanceByDay = {};
   attendance.forEach((a) => { attendanceByDay[parseInt(a.date.split("-")[2], 10)] = a; });
+
+  const logsByDay = {};
+  logs.forEach((l) => {
+    const day = parseInt(l.date.split("-")[2], 10);
+    (logsByDay[day] ||= []).push(l);
+  });
 
   const dateStr = (day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
@@ -201,6 +223,33 @@ export default function TeamMemberPage() {
     setForm(rec
       ? { check_in_time: rec.check_in_time.slice(0, 5), status: rec.status, description: rec.description || "" }
       : { check_in_time: "09:00", status: "present", description: "" });
+    setScheduleOpen(false);
+    setScheduleError("");
+    setScheduleForm({ doctor_id: "", time: "11:00", notes: "" });
+  };
+
+  const handleScheduleMeeting = async (e) => {
+    e.preventDefault();
+    if (!selectedDate || !scheduleForm.doctor_id) return;
+    setScheduleSubmitting(true);
+    setScheduleError("");
+    try {
+      await apiFetch("/meetings", {
+        method: "POST",
+        body: JSON.stringify({
+          doctor_id: scheduleForm.doctor_id,
+          scheduled_at: `${dateStr(selectedDate)}T${scheduleForm.time}:00`,
+          notes: scheduleForm.notes.trim() || null,
+          assigned_to: id,
+        }),
+      });
+      setScheduleOpen(false);
+      setScheduleForm({ doctor_id: "", time: "11:00", notes: "" });
+    } catch (err) {
+      setScheduleError(err.message);
+    } finally {
+      setScheduleSubmitting(false);
+    }
   };
 
   const handleMark = async (e) => {
@@ -239,6 +288,27 @@ export default function TeamMemberPage() {
 
   const selectedRecord = selectedDate ? attendanceByDay[selectedDate] : null;
 
+  const startEditEmail = () => {
+    setEmailInput(member?.email || "");
+    setEditingEmail(true);
+  };
+
+  const saveEmail = async () => {
+    setSavingEmail(true);
+    try {
+      await apiFetch(`/team/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      setMember((m) => ({ ...m, email: emailInput.trim() || null }));
+      setEditingEmail(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
   if (user && user.role !== "partner") return null;
 
   return (
@@ -250,7 +320,7 @@ export default function TeamMemberPage() {
       {member && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Login Details</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-gray-400 text-xs">Name</span>
               <p className="text-gray-900 font-medium mt-0.5">{member.username || "—"}</p>
@@ -258,6 +328,47 @@ export default function TeamMemberPage() {
             <div>
               <span className="text-gray-400 text-xs">Phone</span>
               <p className="text-gray-900 font-medium mt-0.5">{member.phone_number}</p>
+            </div>
+            <div>
+              <span className="text-gray-400 text-xs">Email</span>
+              {editingEmail ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-2 py-1 text-sm text-gray-900 outline-none focus:border-gray-400"
+                    placeholder="name@example.com"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={saveEmail}
+                    disabled={savingEmail}
+                    className="text-xs text-teal-600 hover:underline disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {savingEmail ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingEmail(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-gray-900 font-medium">{member.email || "—"}</p>
+                  <button
+                    type="button"
+                    onClick={startEditEmail}
+                    className="text-xs text-teal-600 hover:underline"
+                  >
+                    {member.email ? "Edit" : "Add"}
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <span className="text-gray-400 text-xs">Password</span>
@@ -357,8 +468,38 @@ export default function TeamMemberPage() {
               <p className="text-sm text-gray-400 text-center">Click a day to mark attendance</p>
             </div>
           ) : (
-            <form onSubmit={handleMark} className="space-y-3">
+            <div className="space-y-5">
               <h3 className="text-sm font-semibold text-gray-800">{selectedDate} {MONTHS[month - 1]}</h3>
+
+              {/* Logs submitted for this day */}
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-2">Logs for this day</p>
+                {(logsByDay[selectedDate] || []).length === 0 ? (
+                  <p className="text-xs text-gray-400">No logs submitted.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {logsByDay[selectedDate].map((l) => (
+                      <div key={l.id} className="border border-gray-100 rounded-lg p-2.5 bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-gray-800 whitespace-pre-wrap flex-1">{l.notes}</p>
+                          {l.latitude != null && l.longitude != null && (
+                            <a
+                              href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-teal-600 hover:underline ml-2 flex-shrink-0"
+                            >
+                              {l.address || "View location"}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <form onSubmit={handleMark} className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Check-in</label>
@@ -412,7 +553,64 @@ export default function TeamMemberPage() {
                   </button>
                 )}
               </div>
-            </form>
+              </form>
+
+              {/* Schedule a meeting for this team member on this day */}
+              <div className="pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setScheduleOpen((v) => !v)}
+                  className="w-full flex items-center justify-between text-xs font-medium text-gray-500"
+                >
+                  <span>Schedule a meeting for {member?.username || "this member"}</span>
+                  <span className="text-gray-400">{scheduleOpen ? "▾" : "▸"}</span>
+                </button>
+                {scheduleOpen && (
+                  <form onSubmit={handleScheduleMeeting} className="space-y-2 mt-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Doctor</label>
+                      <select
+                        value={scheduleForm.doctor_id}
+                        onChange={(e) => setScheduleForm({ ...scheduleForm, doctor_id: e.target.value })}
+                        required
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                      >
+                        <option value="">Select a doctor</option>
+                        {doctors.map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}{d.clinic_name ? ` — ${d.clinic_name}` : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Time</label>
+                      <input
+                        type="time"
+                        value={scheduleForm.time}
+                        onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Notes (optional)</label>
+                      <input
+                        type="text"
+                        value={scheduleForm.notes}
+                        onChange={(e) => setScheduleForm({ ...scheduleForm, notes: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
+                      />
+                    </div>
+                    {scheduleError && <p className="text-xs text-red-600">{scheduleError}</p>}
+                    <button
+                      type="submit"
+                      disabled={scheduleSubmitting}
+                      className="w-full px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-medium hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      {scheduleSubmitting ? "Scheduling..." : "Schedule Meeting"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>

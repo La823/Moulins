@@ -26,6 +26,16 @@ const NAV_ITEMS = [
     ),
   },
   {
+    label: "Team Logs",
+    href: "/partner-panel/team-logs",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h4m1-16H7a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V8l-6-6z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 2v6h6" />
+      </svg>
+    ),
+  },
+  {
     label: "Attendance",
     href: "/partner-panel/attendance",
     icon: (

@@ -132,6 +132,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/team/{id}/attendance/month", attendance.PartnerAttendanceByMonthHandler(db)).Methods("GET")
 	protected.HandleFunc("/my-daily-log", dailylogs.SubmitMyDailyLogHandler(db)).Methods("POST")
 	protected.HandleFunc("/my-daily-log", dailylogs.GetMyDailyLogsHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/daily-logs", dailylogs.GetTeamDailyLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}/daily-logs", dailylogs.GetTeamMemberDailyLogsHandler(db)).Methods("GET")
 
 	// notification inbox routes (any authenticated user)

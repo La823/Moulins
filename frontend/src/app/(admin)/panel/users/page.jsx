@@ -10,6 +10,7 @@ export default function PartnersPage() {
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [pendingOnly, setPendingOnly] = useState(false);
 
   // Add partner form
   const [showForm, setShowForm] = useState(false);
@@ -82,16 +83,21 @@ export default function PartnersPage() {
     }
   };
 
-  const filtered = partners.filter((c) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      (c.username || "").toLowerCase().includes(q) ||
-      c.phone_number.toLowerCase().includes(q) ||
-      (c.email || "").toLowerCase().includes(q) ||
-      (c.rid || "").toLowerCase().includes(q)
-    );
-  });
+  const hasPendingDoc = (c) =>
+    [c.doc_summary?.gst, c.doc_summary?.license_20b, c.doc_summary?.license_21b].some((d) => d?.status === "pending");
+
+  const filtered = partners
+    .filter((c) => {
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        (c.username || "").toLowerCase().includes(q) ||
+        c.phone_number.toLowerCase().includes(q) ||
+        (c.email || "").toLowerCase().includes(q) ||
+        (c.rid || "").toLowerCase().includes(q)
+      );
+    })
+    .filter((c) => !pendingOnly || hasPendingDoc(c));
 
   return (
     <>
@@ -218,8 +224,8 @@ export default function PartnersPage() {
 
       {/* Search */}
       {!showForm && (
-        <div className="mb-5">
-          <div className="relative max-w-sm">
+        <div className="mb-5 flex items-center gap-3 flex-wrap">
+          <div className="relative max-w-sm flex-1 min-w-[220px]">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
               fill="none"
@@ -241,6 +247,17 @@ export default function PartnersPage() {
               className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 placeholder:text-gray-400"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setPendingOnly((v) => !v)}
+            className={`px-3 py-2 text-xs font-semibold rounded-lg border whitespace-nowrap ${
+              pendingOnly
+                ? "bg-yellow-100 text-yellow-700 border-yellow-300"
+                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            ⏳ Pending only{pendingOnly ? " ✓" : ""}
+          </button>
         </div>
       )}
 
@@ -260,9 +277,9 @@ export default function PartnersPage() {
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <p className="text-sm text-gray-400">
-            {search ? "No partners match your search" : "No partners yet"}
+            {search || pendingOnly ? "No partners match your filters" : "No partners yet"}
           </p>
-          {!search && (
+          {!search && !pendingOnly && (
             <button
               onClick={() => setShowForm(true)}
               className="mt-3 text-sm text-gray-600 hover:text-gray-900 underline"
@@ -277,9 +294,10 @@ export default function PartnersPage() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Partner</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Journey</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">GST</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">License 20B</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">License 21B</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
               </tr>
@@ -299,9 +317,10 @@ export default function PartnersPage() {
                       <span className="font-medium text-gray-900">{c.username || "No name"}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3 text-gray-600 font-mono text-xs">{c.phone_number}</td>
-                  <td className="px-5 py-3 text-gray-600 font-mono text-xs">{c.plain_password || "—"}</td>
                   <td className="px-5 py-3"><JourneyBadge step={c.onboarding_step || 1} /></td>
+                  <td className="px-5 py-3"><DocBadge doc={c.doc_summary?.gst} /></td>
+                  <td className="px-5 py-3"><DocBadge doc={c.doc_summary?.license_20b} /></td>
+                  <td className="px-5 py-3"><DocBadge doc={c.doc_summary?.license_21b} /></td>
                   <td className="px-5 py-3 text-gray-500 text-xs">
                     {new Date(c.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </td>
@@ -315,13 +334,47 @@ export default function PartnersPage() {
 
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
             {filtered.length} partner{filtered.length !== 1 ? "s" : ""}
-            {search && filtered.length !== partners.length
+            {(search || pendingOnly) && filtered.length !== partners.length
               ? ` (filtered from ${partners.length})`
               : ""}
           </div>
         </div>
       )}
     </>
+  );
+}
+
+// Shows whether a partner has uploaded a given document, its verification
+// status, and whether a photo actually came with it — at a glance, without
+// opening the partner's detail page.
+function DocBadge({ doc }) {
+  if (!doc?.uploaded) {
+    return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-400">Not uploaded</span>;
+  }
+  const statusStyle = {
+    verified: "bg-green-100 text-green-700",
+    pending: "bg-yellow-100 text-yellow-700",
+    rejected: "bg-red-100 text-red-700",
+  }[doc.status] || "bg-gray-100 text-gray-600";
+  const statusLabel = { verified: "Verified", pending: "Pending", rejected: "Rejected" }[doc.status] || doc.status;
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusStyle}`}>
+        {statusLabel}
+      </span>
+      <span title={doc.photo_uploaded ? "Photo uploaded" : "No photo on file"}>
+        {doc.photo_uploaded ? (
+          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 4.5h18M3 4.5v15a1.5 1.5 0 001.5 1.5h15a1.5 1.5 0 001.5-1.5v-15M3 4.5h18" />
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5 text-red-300" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        )}
+      </span>
+    </span>
   );
 }
 

@@ -10,6 +10,7 @@ import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 import SpecialProductsPanel from "@/components/admin/SpecialProductsPanel";
+import { GstVerifyModal, DlVerifyModal } from "@/components/shared/DocVerifyModals";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -91,6 +92,7 @@ export default function PartnerDetailPage() {
   const [uploadingTileImage, setUploadingTileImage] = useState(false);
   const [tileImageError, setTileImageError] = useState("");
   const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
+  const [scraperCheckDoc, setScraperCheckDoc] = useState(null); // the doc_type currently being cross-checked
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [showAllOrders, setShowAllOrders] = useState(false);
@@ -916,11 +918,17 @@ export default function PartnerDetailPage() {
             <div>
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Documents</h3>
               <div className="space-y-4">
-                {documents.map((doc) => (
+                {documents.map((doc) => {
+                  const isLicense = doc.doc_type === "LICENSE" || doc.doc_type.startsWith("LICENSE_");
+                  const docLabel = doc.doc_type === "GST" ? "GST Certificate"
+                    : doc.doc_type === "LICENSE_21B" ? "Drug License (Form 21B)"
+                    : doc.doc_type === "LICENSE_20B" ? "Drug License (Form 20B)"
+                    : "Drug License";
+                  return (
                   <div key={doc.id} className="bg-white rounded-xl border border-gray-200 p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <p className="font-semibold text-gray-900">{doc.doc_type === "LICENSE" ? "Drug License" : "GST Certificate"}</p>
+                        <p className="font-semibold text-gray-900">{docLabel}</p>
                         {doc.doc_number && <p className="text-xs text-gray-500 mt-0.5">No: {doc.doc_number}</p>}
                         {doc.expiry_date && <p className="text-xs text-gray-500">Expires: {new Date(doc.expiry_date).toLocaleDateString("en-IN")}</p>}
                       </div>
@@ -940,8 +948,30 @@ export default function PartnerDetailPage() {
                       </a>
                     )}
 
+                    {/* Details the partner's own scraper check saved at upload time,
+                        if any — lets the admin compare against the photo without
+                        necessarily re-running the scraper. */}
+                    {(doc.legal_name || doc.address || doc.status || doc.tech_person_name) && (
+                      <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mb-3 space-y-0.5">
+                        {doc.legal_name && <p><span className="font-medium">Name:</span> {doc.legal_name}</p>}
+                        {doc.trade_name && <p><span className="font-medium">Trade Name:</span> {doc.trade_name}</p>}
+                        {doc.status && <p><span className="font-medium">Portal Status:</span> {doc.status}</p>}
+                        {doc.address && <p><span className="font-medium">Address:</span> {doc.address}</p>}
+                        {doc.tech_person_name && <p><span className="font-medium">Technical Person:</span> {doc.tech_person_name}</p>}
+                      </div>
+                    )}
+
                     {doc.rejection_reason && (
                       <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3">Rejection reason: {doc.rejection_reason}</p>
+                    )}
+
+                    {doc.doc_number && (
+                      <button
+                        onClick={() => setScraperCheckDoc(doc)}
+                        className="mb-3 px-3 py-1.5 text-xs font-semibold text-[#00A6A4] border border-[#00A6A4] rounded-lg hover:bg-[#00A6A4]/5"
+                      >
+                        🔍 Check with {isLicense ? "drug-license" : "GST"} portal
+                      </button>
                     )}
 
                     {/* Action buttons */}
@@ -984,9 +1014,18 @@ export default function PartnerDetailPage() {
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
+          )}
+
+          {scraperCheckDoc && (
+            scraperCheckDoc.doc_type === "GST" ? (
+              <GstVerifyModal gstin={scraperCheckDoc.doc_number} onClose={() => setScraperCheckDoc(null)} />
+            ) : (
+              <DlVerifyModal licenseNo={scraperCheckDoc.doc_number} onClose={() => setScraperCheckDoc(null)} />
+            )
           )}
 
           <div className="mb-8">

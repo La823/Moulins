@@ -495,8 +495,8 @@ func ValidateAssignee(ctx context.Context, db *pgxpool.Pool, ownerID, assigneeID
 // CreateTeamMember creates a login for a partner's team member — same
 // account shape as any other user, just forced to role="team_member" and
 // linked back to the owning partner.
-func CreateTeamMember(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID, phone, password string, username *string) (uuid.UUID, error) {
-	id, err := CreateUser(ctx, db, phone, password, username, nil, "team_member", nil, nil, nil)
+func CreateTeamMember(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID, phone, password string, username, email *string) (uuid.UUID, error) {
+	id, err := CreateUser(ctx, db, phone, password, username, email, "team_member", nil, nil, nil)
 	if err != nil {
 		return uuid.Nil, err
 	}

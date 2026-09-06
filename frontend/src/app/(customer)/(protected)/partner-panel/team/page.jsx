@@ -13,7 +13,7 @@ export default function TeamPage() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ phone_number: "", password: "", username: "" });
+  const [form, setForm] = useState({ phone_number: "", password: "", username: "", email: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [revealed, setRevealed] = useState({});
@@ -47,9 +47,10 @@ export default function TeamPage() {
           phone_number: form.phone_number,
           password: form.password,
           username: form.username || null,
+          email: form.email || null,
         }),
       });
-      setForm({ phone_number: "", password: "", username: "" });
+      setForm({ phone_number: "", password: "", username: "", email: "" });
       setShowForm(false);
       fetchMembers();
     } catch (err) {
@@ -96,6 +97,15 @@ export default function TeamPage() {
               type="text"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
           </div>
