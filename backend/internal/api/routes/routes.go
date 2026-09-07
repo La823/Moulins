@@ -121,19 +121,24 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// self-scoped daily-log endpoints) happen inside each handler rather
 	// than via a permission subrouter, since this is partner-self-service,
 	// not an admin/staff permission.
+	// Literal /team/... routes must be registered before the wildcard
+	// /team/{id} route below — gorilla/mux matches in registration order,
+	// so /team/{id} would otherwise swallow GET /team/attendance and
+	// GET /team/daily-logs (id="attendance"/"daily-logs") before they
+	// ever reach their real handlers.
 	protected.HandleFunc("/team", team.CreateTeamMemberHandler(db)).Methods("POST")
 	protected.HandleFunc("/team", team.ListTeamMembersHandler(db)).Methods("GET")
-	protected.HandleFunc("/team/{id}", team.GetTeamMemberHandler(db)).Methods("GET")
-	protected.HandleFunc("/team/{id}", team.UpdateTeamMemberHandler(db)).Methods("PUT")
-	protected.HandleFunc("/team/{id}", team.DeleteTeamMemberHandler(db)).Methods("DELETE")
 	protected.HandleFunc("/team/attendance", attendance.PartnerMarkAttendanceHandler(db)).Methods("POST")
 	protected.HandleFunc("/team/attendance", attendance.PartnerAttendanceByDateHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/attendance/{id}", attendance.PartnerDeleteAttendanceHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/team/daily-logs", dailylogs.GetTeamDailyLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}/attendance/month", attendance.PartnerAttendanceByMonthHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}/daily-logs", dailylogs.GetTeamMemberDailyLogsHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}", team.GetTeamMemberHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}", team.UpdateTeamMemberHandler(db)).Methods("PUT")
+	protected.HandleFunc("/team/{id}", team.DeleteTeamMemberHandler(db)).Methods("DELETE")
 	protected.HandleFunc("/my-daily-log", dailylogs.SubmitMyDailyLogHandler(db)).Methods("POST")
 	protected.HandleFunc("/my-daily-log", dailylogs.GetMyDailyLogsHandler(db)).Methods("GET")
-	protected.HandleFunc("/team/daily-logs", dailylogs.GetTeamDailyLogsHandler(db)).Methods("GET")
-	protected.HandleFunc("/team/{id}/daily-logs", dailylogs.GetTeamMemberDailyLogsHandler(db)).Methods("GET")
 
 	// notification inbox routes (any authenticated user)
 	protected.HandleFunc("/notifications", notifications.ListMyNotificationsHandler(db)).Methods("GET")
