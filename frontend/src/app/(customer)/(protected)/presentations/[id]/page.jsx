@@ -68,6 +68,8 @@ export default function PresentationBuilderPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [isDefault, setIsDefault] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   // Product picker
   const [search, setSearch] = useState("");
@@ -86,6 +88,7 @@ export default function PresentationBuilderPage() {
       .then((data) => {
         setName(data.name);
         setDoctorId(data.doctor_id || "");
+        setIsDefault(!!data.is_default_for_doctor);
         setSlides(
           (data.slides || []).map((s) => ({
             product_image_id: s.product_image_id,
@@ -168,6 +171,33 @@ export default function PresentationBuilderPage() {
     }
   };
 
+  // Default decks are auto-populated from every visual-aid image of the
+  // doctor's currently assigned products, but that only happens at
+  // creation time — assigning more products afterward doesn't touch the
+  // deck already saved here, so this re-runs the same generation and
+  // reloads the result.
+  const regenerate = async () => {
+    if (!doctorId) return;
+    setRegenerating(true);
+    try {
+      await apiFetch(`/doctors/${doctorId}/generate-presentation`, { method: "POST" });
+      const data = await apiFetch(`/presentations/${id}`);
+      setSlides(
+        (data.slides || []).map((s) => ({
+          product_image_id: s.product_image_id,
+          image_url: s.image_url,
+          product_id: s.product_id,
+          product_name: s.product_name,
+        }))
+      );
+      setDirty(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   useEffect(() => {
     if (!presenting) return;
     const onKey = (e) => {
@@ -210,6 +240,16 @@ export default function PresentationBuilderPage() {
           className="flex-1 text-xl font-light text-gray-900 outline-none border-b border-transparent focus:border-gray-300 transition-colors px-1"
         />
         <div className="flex items-center gap-2 flex-shrink-0">
+          {isDefault && doctorId && (
+            <button
+              onClick={regenerate}
+              disabled={regenerating}
+              title="Rebuilds this deck from every visual-aid image of the doctor's currently assigned products"
+              className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500 transition-colors disabled:opacity-40"
+            >
+              {regenerating ? "Regenerating..." : "Regenerate from products"}
+            </button>
+          )}
           <button
             onClick={save}
             disabled={!dirty || saving}
