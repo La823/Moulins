@@ -17,24 +17,36 @@ const (
 	DocumentTypeLicense20B DocumentType = "LICENSE_20B"
 	DocumentTypeLicense21B DocumentType = "LICENSE_21B"
 	DocumentTypeGST        DocumentType = "GST"
+	// DocumentTypeDrugLicense is what every new, dynamically-added license
+	// uses — as many rows as the partner wants, distinguished from each
+	// other by LicenseLabel (free text they choose) rather than by doc_type.
+	// Never subject to the (user_id, doc_type) uniqueness that the older
+	// fixed types still have — see migration 104.
+	DocumentTypeDrugLicense DocumentType = "DRUG_LICENSE"
 )
 
 // ValidDocumentTypes are the doc_type values UploadDocument/VerifyDocument accept.
 var ValidDocumentTypes = map[string]bool{
-	string(DocumentTypeLicense):    true,
-	string(DocumentTypeLicense20B): true,
-	string(DocumentTypeLicense21B): true,
-	string(DocumentTypeGST):        true,
+	string(DocumentTypeLicense):     true,
+	string(DocumentTypeLicense20B):  true,
+	string(DocumentTypeLicense21B):  true,
+	string(DocumentTypeGST):         true,
+	string(DocumentTypeDrugLicense): true,
 }
 
 func IsLicenseDocType(docType string) bool {
-	return docType == string(DocumentTypeLicense) || docType == string(DocumentTypeLicense20B) || docType == string(DocumentTypeLicense21B)
+	return docType == string(DocumentTypeLicense) || docType == string(DocumentTypeLicense20B) ||
+		docType == string(DocumentTypeLicense21B) || docType == string(DocumentTypeDrugLicense)
 }
 
 type PartnerDocument struct {
 	ID              uuid.UUID       `json:"id"`
 	UserID          uuid.UUID       `json:"user_id"`
 	DocType         string          `json:"doc_type"`
+	// LicenseLabel is the partner's own name for a dynamically-added
+	// license (e.g. "Form 20B", "Wholesale License") — only meaningful when
+	// DocType is DRUG_LICENSE; nil for GST and the older fixed types.
+	LicenseLabel    *string         `json:"license_label,omitempty"`
 	DocNumber       *string         `json:"doc_number"`
 	ExpiryDate      *time.Time      `json:"expiry_date"`
 	PhotoURL        *string         `json:"photo_url"`
@@ -100,13 +112,6 @@ type UploadDocumentRequest struct {
 	TechPersonRegNo *string `json:"tech_person_reg_no,omitempty"`
 }
 
-type VerifyDocumentRequest struct {
-	UserID          uuid.UUID `json:"user_id"`
-	DocType         string    `json:"doc_type"`
-	IsVerified      bool      `json:"is_verified"`
-	RejectionReason *string   `json:"rejection_reason"`
-}
-
 func CreateOrUpdateDocument(
 	ctx context.Context,
 	db *pgxpool.Pool,
@@ -158,7 +163,7 @@ func CreateOrUpdateDocument(
 			first_issue_date, address, tech_person_name, tech_person_reg_no
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-		ON CONFLICT (user_id, doc_type) DO UPDATE
+		ON CONFLICT (user_id, doc_type) WHERE doc_type <> 'DRUG_LICENSE' DO UPDATE
 		SET doc_number = $3, expiry_date = $4, photo_url = $5, scraped_data = $6,
 			legal_name = $7, trade_name = $8, status = $9, business_type = $10,
 			registered_date = $11, first_issue_date = $12, address = $13,
@@ -195,13 +200,167 @@ func CreateOrUpdateDocument(
 	return &doc, nil
 }
 
+// CreateLicense adds a new dynamic drug-license row for a partner — always
+// an INSERT, never an upsert, so a partner can add as many of these as they
+// have licenses for, each labeled by them (e.g. "Form 20B", "Wholesale").
+func CreateLicense(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID uuid.UUID,
+	label string,
+	docNumber string,
+	expiryDate *time.Time,
+	photoURL string,
+	scrapedData json.RawMessage,
+	fields DocumentScrapedFields,
+) (*PartnerDocument, error) {
+	var scrapedDataParam interface{}
+	if len(scrapedData) > 0 {
+		scrapedDataParam = scrapedData
+	}
+
+	query := `
+		INSERT INTO partner_documents (
+			user_id, doc_type, license_label, doc_number, expiry_date, photo_url, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date,
+			first_issue_date, address, tech_person_name, tech_person_reg_no
+		)
+		VALUES ($1, 'DRUG_LICENSE', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING id, user_id, doc_type, license_label, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date, first_issue_date, address, tech_person_name, tech_person_reg_no,
+			created_at, updated_at
+	`
+
+	var doc PartnerDocument
+	err := db.QueryRow(ctx, query, userID, label, docNumber, expiryDate, photoURL, scrapedDataParam,
+		fields.LegalName, fields.TradeName, fields.Status, fields.BusinessType, fields.RegisteredDate,
+		fields.FirstIssueDate, fields.Address, fields.TechPersonName, fields.TechPersonRegNo,
+	).Scan(
+		&doc.ID, &doc.UserID, &doc.DocType, &doc.LicenseLabel, &doc.DocNumber, &doc.ExpiryDate,
+		&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
+		&doc.ScrapedData,
+		&doc.LegalName, &doc.TradeName, &doc.Status, &doc.BusinessType, &doc.RegisteredDate,
+		&doc.FirstIssueDate, &doc.Address, &doc.TechPersonName, &doc.TechPersonRegNo,
+		&doc.CreatedAt, &doc.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = updateUserOnboardingStep(ctx, db, userID)
+
+	return &doc, nil
+}
+
+// UpdateLicense replaces an existing dynamic license's details (re-upload /
+// resubmit after rejection), archiving the previous version to history and
+// resetting its verification status — same pattern as CreateOrUpdateDocument
+// but scoped to one row by id rather than by (user_id, doc_type).
+func UpdateLicense(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID, docID uuid.UUID,
+	label string,
+	docNumber string,
+	expiryDate *time.Time,
+	photoURL string,
+	scrapedData json.RawMessage,
+	fields DocumentScrapedFields,
+) (*PartnerDocument, error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO partner_document_history (
+			document_id, user_id, doc_type, license_label, doc_number, expiry_date, photo_url,
+			is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date,
+			first_issue_date, address, tech_person_name, tech_person_reg_no,
+			original_created_at, original_updated_at
+		)
+		SELECT id, user_id, doc_type, license_label, doc_number, expiry_date, photo_url,
+			is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date,
+			first_issue_date, address, tech_person_name, tech_person_reg_no,
+			created_at, updated_at
+		FROM partner_documents
+		WHERE id = $1 AND user_id = $2
+	`, docID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var scrapedDataParam interface{}
+	if len(scrapedData) > 0 {
+		scrapedDataParam = scrapedData
+	}
+
+	query := `
+		UPDATE partner_documents
+		SET license_label = $3, doc_number = $4, expiry_date = $5, photo_url = $6, scraped_data = $7,
+			legal_name = $8, trade_name = $9, status = $10, business_type = $11,
+			registered_date = $12, first_issue_date = $13, address = $14,
+			tech_person_name = $15, tech_person_reg_no = $16, updated_at = NOW(),
+			is_verified = FALSE, verified_by = NULL, verified_at = NULL, rejection_reason = NULL
+		WHERE id = $1 AND user_id = $2 AND doc_type <> 'GST'
+		RETURNING id, user_id, doc_type, license_label, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+			legal_name, trade_name, status, business_type, registered_date, first_issue_date, address, tech_person_name, tech_person_reg_no,
+			created_at, updated_at
+	`
+
+	var doc PartnerDocument
+	err = tx.QueryRow(ctx, query, docID, userID, label, docNumber, expiryDate, photoURL, scrapedDataParam,
+		fields.LegalName, fields.TradeName, fields.Status, fields.BusinessType, fields.RegisteredDate,
+		fields.FirstIssueDate, fields.Address, fields.TechPersonName, fields.TechPersonRegNo,
+	).Scan(
+		&doc.ID, &doc.UserID, &doc.DocType, &doc.LicenseLabel, &doc.DocNumber, &doc.ExpiryDate,
+		&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
+		&doc.ScrapedData,
+		&doc.LegalName, &doc.TradeName, &doc.Status, &doc.BusinessType, &doc.RegisteredDate,
+		&doc.FirstIssueDate, &doc.Address, &doc.TechPersonName, &doc.TechPersonRegNo,
+		&doc.CreatedAt, &doc.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	_ = updateUserOnboardingStep(ctx, db, userID)
+
+	return &doc, nil
+}
+
+// DeleteLicense removes one of a partner's own dynamic license rows — lets
+// them retract one they added by mistake. Restricted to DRUG_LICENSE rows
+// so this can't be used to delete a GST document or a legacy fixed-type row.
+func DeleteLicense(ctx context.Context, db *pgxpool.Pool, userID, docID uuid.UUID) error {
+	tag, err := db.Exec(ctx,
+		`DELETE FROM partner_documents WHERE id = $1 AND user_id = $2 AND doc_type = 'DRUG_LICENSE'`,
+		docID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return sql.ErrNoRows
+	}
+	_ = updateUserOnboardingStep(ctx, db, userID)
+	return nil
+}
+
 func GetUserDocuments(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	userID uuid.UUID,
 ) ([]PartnerDocument, error) {
 	query := `
-		SELECT id, user_id, doc_type, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, scraped_data,
+		SELECT id, user_id, doc_type, license_label, doc_number, expiry_date, photo_url, is_verified, verified_by, verified_at, rejection_reason, scraped_data,
 			legal_name, trade_name, status, business_type, registered_date, first_issue_date, address, tech_person_name, tech_person_reg_no,
 			created_at, updated_at
 		FROM partner_documents
@@ -219,7 +378,7 @@ func GetUserDocuments(
 	for rows.Next() {
 		var doc PartnerDocument
 		err := rows.Scan(
-			&doc.ID, &doc.UserID, &doc.DocType, &doc.DocNumber, &doc.ExpiryDate,
+			&doc.ID, &doc.UserID, &doc.DocType, &doc.LicenseLabel, &doc.DocNumber, &doc.ExpiryDate,
 			&doc.PhotoURL, &doc.IsVerified, &doc.VerifiedBy, &doc.VerifiedAt, &doc.RejectionReason,
 			&doc.ScrapedData,
 			&doc.LegalName, &doc.TradeName, &doc.Status, &doc.BusinessType, &doc.RegisteredDate,
@@ -264,35 +423,37 @@ func GetOnboardingStatus(
 	}, nil
 }
 
-func VerifyDocument(
+// VerifyDocumentByID verifies or rejects a single document row by its own
+// id — used for every doc_type, including dynamic licenses where multiple
+// rows can share the same doc_type and so can't be targeted by
+// (user_id, doc_type) alone.
+func VerifyDocumentByID(
 	ctx context.Context,
 	db *pgxpool.Pool,
-	userID uuid.UUID,
-	docType string,
+	docID uuid.UUID,
 	isVerified bool,
 	rejectionReason *string,
 	adminID uuid.UUID,
 ) error {
+	var userID uuid.UUID
+	var err error
 	if isVerified {
-		query := `
+		err = db.QueryRow(ctx, `
 			UPDATE partner_documents
 			SET is_verified = TRUE, verified_by = $1, verified_at = NOW(), rejection_reason = NULL
-			WHERE user_id = $2 AND doc_type = $3
-		`
-		_, err := db.Exec(ctx, query, adminID, userID, docType)
-		if err != nil {
-			return err
-		}
+			WHERE id = $2
+			RETURNING user_id
+		`, adminID, docID).Scan(&userID)
 	} else {
-		query := `
+		err = db.QueryRow(ctx, `
 			UPDATE partner_documents
 			SET is_verified = FALSE, rejection_reason = $1, verified_by = NULL, verified_at = NULL
-			WHERE user_id = $2 AND doc_type = $3
-		`
-		_, err := db.Exec(ctx, query, rejectionReason, userID, docType)
-		if err != nil {
-			return err
-		}
+			WHERE id = $2
+			RETURNING user_id
+		`, rejectionReason, docID).Scan(&userID)
+	}
+	if err != nil {
+		return err
 	}
 
 	// Update user's onboarding step
@@ -326,7 +487,7 @@ func updateUserOnboardingStep(ctx context.Context, db *pgxpool.Pool, userID uuid
 	err = db.QueryRow(
 		ctx,
 		`SELECT
-			COALESCE((SELECT bool_or(is_verified) FROM partner_documents WHERE user_id = $1 AND doc_type IN ('LICENSE', 'LICENSE_20B', 'LICENSE_21B')), FALSE),
+			COALESCE((SELECT bool_or(is_verified) FROM partner_documents WHERE user_id = $1 AND doc_type IN ('LICENSE', 'LICENSE_20B', 'LICENSE_21B', 'DRUG_LICENSE')), FALSE),
 			COALESCE((SELECT is_verified FROM partner_documents WHERE user_id = $1 AND doc_type = 'GST'), FALSE)`,
 		userID,
 	).Scan(&licenseVerified, &gstVerified)
@@ -368,7 +529,9 @@ func GetPendingOnboardingPartners(
 			json_agg(json_build_object(
 				'id', cd.id,
 				'doc_type', cd.doc_type,
+				'license_label', cd.license_label,
 				'doc_number', cd.doc_number,
+				'photo_url', cd.photo_url,
 				'is_verified', cd.is_verified,
 				'rejection_reason', cd.rejection_reason,
 				'created_at', cd.created_at
@@ -426,24 +589,32 @@ type DocStatus struct {
 	Photo    bool   `json:"photo_uploaded"`
 }
 
+// LabeledDocStatus is a DocStatus for one dynamic license row, tagged with
+// the label the partner gave it (or a fallback for old fixed-type rows).
+type LabeledDocStatus struct {
+	Label string `json:"label"`
+	DocStatus
+}
+
 // PartnerDocSummary is the per-partner rollup shown in the partners list —
-// one row per document type a partner can hold (GST, and each drug-license
-// form). A legacy 'LICENSE' row (from before the 20B/21B split) counts
-// toward License20B so old partners still show correctly.
+// GST (still a single slot) plus every license the partner has added, of
+// which there can now be any number. Legacy LICENSE/LICENSE_20B/LICENSE_21B
+// rows (from before the dynamic-license change) are folded into Licenses
+// too, using their migrated label, so old partners still show correctly.
 type PartnerDocSummary struct {
-	GST         DocStatus `json:"gst"`
-	License20B  DocStatus `json:"license_20b"`
-	License21B  DocStatus `json:"license_21b"`
+	GST      DocStatus          `json:"gst"`
+	Licenses []LabeledDocStatus `json:"licenses"`
 }
 
 // GetPartnerDocSummaries returns the doc summary for every partner in one
 // query, keyed by user id, so the partners list doesn't do an N+1 lookup.
 func GetPartnerDocSummaries(ctx context.Context, db *pgxpool.Pool) (map[uuid.UUID]PartnerDocSummary, error) {
 	rows, err := db.Query(ctx, `
-		SELECT pd.user_id, pd.doc_type, pd.photo_url, pd.is_verified, pd.rejection_reason
+		SELECT pd.user_id, pd.doc_type, pd.license_label, pd.photo_url, pd.is_verified, pd.rejection_reason
 		FROM partner_documents pd
 		JOIN users u ON u.id = pd.user_id
 		WHERE u.role = 'partner'
+		ORDER BY pd.created_at ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -454,9 +625,9 @@ func GetPartnerDocSummaries(ctx context.Context, db *pgxpool.Pool) (map[uuid.UUI
 	for rows.Next() {
 		var userID uuid.UUID
 		var docType string
-		var photoURL, rejectionReason *string
+		var licenseLabel, photoURL, rejectionReason *string
 		var isVerified bool
-		if err := rows.Scan(&userID, &docType, &photoURL, &isVerified, &rejectionReason); err != nil {
+		if err := rows.Scan(&userID, &docType, &licenseLabel, &photoURL, &isVerified, &rejectionReason); err != nil {
 			return nil, err
 		}
 
@@ -472,10 +643,16 @@ func GetPartnerDocSummaries(ctx context.Context, db *pgxpool.Pool) (map[uuid.UUI
 		switch docType {
 		case string(DocumentTypeGST):
 			s.GST = doc
-		case string(DocumentTypeLicense), string(DocumentTypeLicense20B):
-			s.License20B = doc
-		case string(DocumentTypeLicense21B):
-			s.License21B = doc
+		case string(DocumentTypeLicense), string(DocumentTypeLicense20B), string(DocumentTypeLicense21B), string(DocumentTypeDrugLicense):
+			label := "License"
+			if licenseLabel != nil && *licenseLabel != "" {
+				label = *licenseLabel
+			} else if docType == string(DocumentTypeLicense21B) {
+				label = "Form 21B"
+			} else if docType == string(DocumentTypeLicense) || docType == string(DocumentTypeLicense20B) {
+				label = "Form 20B"
+			}
+			s.Licenses = append(s.Licenses, LabeledDocStatus{Label: label, DocStatus: doc})
 		}
 		result[userID] = s
 	}

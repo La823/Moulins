@@ -15,11 +15,14 @@ async function uploadFileToS3(file) {
   return public_url;
 }
 
-// A partner can hold both a Form 20B and a Form 21B wholesale drug license
-// at once, so each form gets its own independent card/upload flow — matched
-// doc types are fixed per instance rather than auto-detected from the
-// scrape, since two cards exist side by side now.
-function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, setSuccess }) {
+// A partner can add any number of drug licenses now (not just a fixed
+// 20B/21B pair) — each one gets its own label chosen by the partner (e.g.
+// "Form 20B", "Wholesale License") instead of a fixed doc_type slot. `doc`
+// is null when this card is being used to add a brand new license; when set,
+// the card edits/displays that specific document by id.
+function DrugLicenseCard({ doc, onUploaded, setError, setSuccess, onCancel }) {
+  const isNew = !doc;
+  const [label, setLabel] = useState(doc?.license_label || "");
   const [licenseNumber, setLicenseNumber] = useState("");
   const [licenseExpiry, setLicenseExpiry] = useState("");
   const [licensePhotoFile, setLicensePhotoFile] = useState(null);
@@ -27,9 +30,12 @@ function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, 
   const [showDlVerify, setShowDlVerify] = useState(false);
   const [dlScrapedData, setDlScrapedData] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const licenseFileRef = useRef(null);
 
+  const title = doc?.license_label || "New Drug License";
   const isLicenseExpired = !!(doc?.expiry_date && new Date(doc.expiry_date) < new Date());
+  const canDelete = doc?.doc_type === "DRUG_LICENSE";
 
   const handleDlConfirm = (details) => {
     setDlScrapedData(details);
@@ -42,6 +48,7 @@ function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, 
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    if (!label.trim()) { setError("Please give this license a name, e.g. \"Form 20B\"."); return; }
     if (!licenseExpiry) { setError("Please verify your license first — the expiry date is fetched automatically."); return; }
     if (!licensePhotoFile) { setError("Please select a photo"); return; }
 
@@ -55,22 +62,41 @@ function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, 
       }
 
       const payload = {
-        doc_type: docType,
+        label: label.trim(),
         doc_number: licenseNumber,
         expiry_date: licenseExpiry,
         photo_url: photoUrl,
         scraped_data: dlScrapedData || undefined,
         ...dlFieldsPayload(dlScrapedData),
       };
-      await apiFetch("/onboarding/documents", { method: "POST", body: JSON.stringify(payload) });
-      setSuccess(`${title} submitted for verification.`);
+      if (isNew) {
+        await apiFetch("/onboarding/licenses", { method: "POST", body: JSON.stringify(payload) });
+      } else {
+        await apiFetch(`/onboarding/licenses/${doc.id}`, { method: "PUT", body: JSON.stringify(payload) });
+      }
+      setSuccess(`${label.trim()} submitted for verification.`);
       setLicenseNumber(""); setLicenseExpiry(""); setLicensePhotoFile(null);
-      licenseFileRef.current.value = ""; setUpdatingLicense(false); setDlScrapedData(null);
+      if (licenseFileRef.current) licenseFileRef.current.value = "";
+      setUpdatingLicense(false); setDlScrapedData(null);
       onUploaded();
     } catch (err) {
       setError(err.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Remove "${title}"?`)) return;
+    setError(null);
+    setDeleting(true);
+    try {
+      await apiFetch(`/onboarding/licenses/${doc.id}`, { method: "DELETE" });
+      onUploaded();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -94,12 +120,24 @@ function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, 
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-semibold text-gray-900">{title}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
         </div>
-        {doc?.is_verified && !isLicenseExpired && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">✓ Verified</span>}
-        {doc && !doc.is_verified && !doc.rejection_reason && !isLicenseExpired && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full">⏳ Pending</span>}
-        {doc?.rejection_reason && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">✗ Rejected</span>}
-        {isLicenseExpired && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">⚠ Expired</span>}
+        <div className="flex items-center gap-2">
+          {doc?.is_verified && !isLicenseExpired && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">✓ Verified</span>}
+          {doc && !doc.is_verified && !doc.rejection_reason && !isLicenseExpired && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full">⏳ Pending</span>}
+          {doc?.rejection_reason && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">✗ Rejected</span>}
+          {isLicenseExpired && <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">⚠ Expired</span>}
+          {canDelete && !updatingLicense && (
+            <button type="button" onClick={handleDelete} disabled={deleting}
+              className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50">
+              {deleting ? "Removing..." : "Remove"}
+            </button>
+          )}
+          {isNew && onCancel && (
+            <button type="button" onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       {doc?.rejection_reason && (
@@ -127,6 +165,12 @@ function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, 
         </div>
       ) : (
         <form onSubmit={handleUpload} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">License Name *</label>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} required
+              placeholder="e.g. Form 20B, Wholesale License, Retail License..."
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A6A4]" />
+          </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">License Number *</label>
             <div className="flex gap-2">
@@ -179,7 +223,7 @@ function DrugLicenseCard({ title, subtitle, docType, doc, onUploaded, setError, 
           <button type="submit" disabled={uploading || !licenseExpiry}
             className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50"
             style={{ backgroundColor: "#00A6A4" }}>
-            {uploading ? "Uploading..." : updatingLicense ? "Update License" : "Submit License"}
+            {uploading ? "Uploading..." : isNew ? "Add License" : "Update License"}
           </button>
         </form>
       )}
@@ -363,8 +407,8 @@ export default function ProfilePage() {
   const [showGstVerify, setShowGstVerify] = useState(false);
   const [gstScrapedData, setGstScrapedData] = useState(null);
   const [updatingGst, setUpdatingGst] = useState(false);
-  const license20BDoc = status?.documents?.find((d) => ["LICENSE", "LICENSE_20B"].includes(d.doc_type));
-  const license21BDoc = status?.documents?.find((d) => d.doc_type === "LICENSE_21B");
+  const [addingLicense, setAddingLicense] = useState(false);
+  const licenseDocs = status?.documents?.filter((d) => ["LICENSE", "LICENSE_20B", "LICENSE_21B", "DRUG_LICENSE"].includes(d.doc_type)) || [];
   const gstDoc = status?.documents?.find((d) => d.doc_type === "GST");
 
   const handleGstConfirm = (details) => {
@@ -575,27 +619,34 @@ export default function ProfilePage() {
       {error && <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
       {success && <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{success}</div>}
 
-      {/* Drug License — Form 20B */}
-      <DrugLicenseCard
-        title="Drug License (Form 20B)"
-        subtitle="Wholesale license — required for order processing"
-        docType="LICENSE_20B"
-        doc={license20BDoc}
-        onUploaded={fetchStatus}
-        setError={setError}
-        setSuccess={setSuccess}
-      />
+      {/* Drug Licenses — any number, each labeled by the partner */}
+      {licenseDocs.map((doc) => (
+        <DrugLicenseCard
+          key={doc.id}
+          doc={doc}
+          onUploaded={fetchStatus}
+          setError={setError}
+          setSuccess={setSuccess}
+        />
+      ))}
 
-      {/* Drug License — Form 21B */}
-      <DrugLicenseCard
-        title="Drug License (Form 21B)"
-        subtitle="Wholesale license for Schedule X drugs, if applicable"
-        docType="LICENSE_21B"
-        doc={license21BDoc}
-        onUploaded={fetchStatus}
-        setError={setError}
-        setSuccess={setSuccess}
-      />
+      {addingLicense ? (
+        <DrugLicenseCard
+          doc={null}
+          onUploaded={() => { setAddingLicense(false); fetchStatus(); }}
+          setError={setError}
+          setSuccess={setSuccess}
+          onCancel={() => setAddingLicense(false)}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAddingLicense(true)}
+          className="w-full bg-white rounded-xl border-2 border-dashed border-gray-300 p-6 text-sm font-medium text-gray-500 hover:border-[#00A6A4] hover:text-[#00A6A4] transition"
+        >
+          + Add Drug License
+        </button>
+      )}
 
       {/* GST Certificate */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">

@@ -28,15 +28,14 @@ export default function OnboardingAdminPage() {
     }
   };
 
-  const handleVerifyDocument = async (userId, docType, isVerified, rejectionReason) => {
-    setVerifyingDoc(`${userId}-${docType}`);
+  const handleVerifyDocument = async (docId, isVerified, rejectionReason) => {
+    setVerifyingDoc(docId);
     try {
       const token = localStorage.getItem("token");
       await axios.patch(
         "/api/admin/onboarding/verify",
         {
-          user_id: userId,
-          doc_type: docType,
+          doc_id: docId,
           is_verified: isVerified,
           rejection_reason: rejectionReason,
         },
@@ -152,14 +151,9 @@ export default function OnboardingAdminPage() {
                         key={doc.id}
                         doc={doc}
                         onVerify={(isVerified, reason) =>
-                          handleVerifyDocument(
-                            selectedPartner.id,
-                            doc.doc_type,
-                            isVerified,
-                            reason
-                          )
+                          handleVerifyDocument(doc.id, isVerified, reason)
                         }
-                        isVerifying={verifyingDoc === `${selectedPartner.id}-${doc.doc_type}`}
+                        isVerifying={verifyingDoc === doc.id}
                         teal={TEAL}
                       />
                     ))}
@@ -213,7 +207,9 @@ function DocumentReviewCard({ doc, onVerify, isVerifying, teal }) {
     }`}>
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h4 className="font-bold">{doc.doc_type === "LICENSE" ? "Drug License" : "GST Certificate"}</h4>
+          <h4 className="font-bold">
+            {doc.doc_type === "GST" ? "GST Certificate" : doc.license_label ? `Drug License (${doc.license_label})` : "Drug License"}
+          </h4>
           <p className="text-sm text-gray-600 mt-1">
             {doc.doc_number && `Number: ${doc.doc_number}`}
           </p>

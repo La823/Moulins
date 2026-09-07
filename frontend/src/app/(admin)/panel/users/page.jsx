@@ -84,7 +84,7 @@ export default function PartnersPage() {
   };
 
   const hasPendingDoc = (c) =>
-    [c.doc_summary?.gst, c.doc_summary?.license_20b, c.doc_summary?.license_21b].some((d) => d?.status === "pending");
+    [c.doc_summary?.gst, ...(c.doc_summary?.licenses || [])].some((d) => d?.status === "pending");
 
   const filtered = partners
     .filter((c) => {
@@ -296,8 +296,7 @@ export default function PartnersPage() {
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Partner</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Journey</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">GST</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">License 20B</th>
-                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">License 21B</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Licenses</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Last Login</th>
               </tr>
@@ -319,8 +318,7 @@ export default function PartnersPage() {
                   </td>
                   <td className="px-5 py-3"><JourneyBadge step={c.onboarding_step || 1} /></td>
                   <td className="px-5 py-3"><DocBadge doc={c.doc_summary?.gst} /></td>
-                  <td className="px-5 py-3"><DocBadge doc={c.doc_summary?.license_20b} /></td>
-                  <td className="px-5 py-3"><DocBadge doc={c.doc_summary?.license_21b} /></td>
+                  <td className="px-5 py-3"><LicensesBadge licenses={c.doc_summary?.licenses} /></td>
                   <td className="px-5 py-3 text-gray-500 text-xs">
                     {new Date(c.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </td>
@@ -341,6 +339,32 @@ export default function PartnersPage() {
         </div>
       )}
     </>
+  );
+}
+
+// Summarizes a partner's whole set of dynamic licenses into one badge —
+// count plus a status dot reflecting the worst-off one (rejected beats
+// pending beats verified), since a partner can now have any number of them
+// and the list table has no room for a column per license.
+function LicensesBadge({ licenses }) {
+  if (!licenses || licenses.length === 0) {
+    return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-400">Not uploaded</span>;
+  }
+  const worst = licenses.some((l) => l.status === "rejected") ? "rejected"
+    : licenses.some((l) => l.status === "pending") ? "pending"
+    : "verified";
+  const statusStyle = {
+    verified: "bg-green-100 text-green-700",
+    pending: "bg-yellow-100 text-yellow-700",
+    rejected: "bg-red-100 text-red-700",
+  }[worst];
+  const verifiedCount = licenses.filter((l) => l.status === "verified").length;
+  const title = licenses.map((l) => `${l.label}: ${l.status}`).join(", ");
+
+  return (
+    <span title={title} className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusStyle}`}>
+      {verifiedCount}/{licenses.length} verified
+    </span>
   );
 }
 

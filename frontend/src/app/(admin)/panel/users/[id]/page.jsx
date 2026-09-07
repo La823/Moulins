@@ -91,7 +91,7 @@ export default function PartnerDetailPage() {
   const [phoneSuccess, setPhoneSuccess] = useState("");
   const [uploadingTileImage, setUploadingTileImage] = useState(false);
   const [tileImageError, setTileImageError] = useState("");
-  const [verifying, setVerifying] = useState(null); // "LICENSE" | "GST"
+  const [verifying, setVerifying] = useState(null); // doc id currently being verified
   const [scraperCheckDoc, setScraperCheckDoc] = useState(null); // the doc_type currently being cross-checked
   const [rejectingDoc, setRejectingDoc] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -398,12 +398,12 @@ export default function PartnerDetailPage() {
   const orders = partner.orders || [];
   const documents = partner.documents || [];
 
-  const handleVerifyDoc = async (docType, isVerified, reason) => {
-    setVerifying(docType);
+  const handleVerifyDoc = async (docId, isVerified, reason) => {
+    setVerifying(docId);
     try {
       await apiFetch("/admin/partners/verify-document", {
         method: "POST",
-        body: JSON.stringify({ user_id: partner.id, doc_type: docType, is_verified: isVerified, rejection_reason: reason || null }),
+        body: JSON.stringify({ doc_id: docId, is_verified: isVerified, rejection_reason: reason || null }),
       });
       const updated = await apiFetch(`/admin/partners/${id}`);
       setPartner(updated);
@@ -858,10 +858,13 @@ export default function PartnerDetailPage() {
             <div className="space-y-2">
               {[
                 { step: 1, label: "Account Created", always: true },
-                { step: 2, label: "Drug License", docType: "LICENSE" },
+                { step: 2, label: "Drug License", isLicenseStep: true },
                 { step: 3, label: "GST Certificate", docType: "GST" },
-              ].map(({ step, label, docType, always }) => {
-                const doc = documents.find((d) => d.doc_type === docType);
+              ].map(({ step, label, docType, isLicenseStep, always }) => {
+                const doc = isLicenseStep
+                  ? documents.find((d) => ["LICENSE", "LICENSE_20B", "LICENSE_21B", "DRUG_LICENSE"].includes(d.doc_type) && d.is_verified)
+                    || documents.find((d) => ["LICENSE", "LICENSE_20B", "LICENSE_21B", "DRUG_LICENSE"].includes(d.doc_type))
+                  : documents.find((d) => d.doc_type === docType);
                 const done = always || (partner.onboarding_step || 1) >= step;
                 return (
                   <div key={step} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${done ? "bg-gray-50" : "opacity-40"}`}>
@@ -919,10 +922,9 @@ export default function PartnerDetailPage() {
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Documents</h3>
               <div className="space-y-4">
                 {documents.map((doc) => {
-                  const isLicense = doc.doc_type === "LICENSE" || doc.doc_type.startsWith("LICENSE_");
+                  const isLicense = doc.doc_type === "LICENSE" || doc.doc_type.startsWith("LICENSE_") || doc.doc_type === "DRUG_LICENSE";
                   const docLabel = doc.doc_type === "GST" ? "GST Certificate"
-                    : doc.doc_type === "LICENSE_21B" ? "Drug License (Form 21B)"
-                    : doc.doc_type === "LICENSE_20B" ? "Drug License (Form 20B)"
+                    : doc.license_label ? `Drug License (${doc.license_label})`
                     : "Drug License";
                   return (
                   <div key={doc.id} className="bg-white rounded-xl border border-gray-200 p-5">
@@ -975,30 +977,30 @@ export default function PartnerDetailPage() {
                     )}
 
                     {/* Action buttons */}
-                    {!doc.is_verified && rejectingDoc !== doc.doc_type && (
+                    {!doc.is_verified && rejectingDoc !== doc.id && (
                       <div className="flex gap-2">
-                        <button onClick={() => handleVerifyDoc(doc.doc_type, true, null)}
-                          disabled={verifying === doc.doc_type}
+                        <button onClick={() => handleVerifyDoc(doc.id, true, null)}
+                          disabled={verifying === doc.id}
                           className="px-3 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
-                          {verifying === doc.doc_type ? "..." : "✓ Approve"}
+                          {verifying === doc.id ? "..." : "✓ Approve"}
                         </button>
-                        <button onClick={() => setRejectingDoc(doc.doc_type)}
+                        <button onClick={() => setRejectingDoc(doc.id)}
                           className="px-3 py-1.5 text-xs font-semibold bg-red-100 text-red-700 rounded-lg hover:bg-red-200">
                           ✗ Reject
                         </button>
                       </div>
                     )}
 
-                    {rejectingDoc === doc.doc_type && (
+                    {rejectingDoc === doc.id && (
                       <div className="space-y-2 mt-2">
                         <input type="text" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
                           placeholder="Reason for rejection..." autoFocus
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900" />
                         <div className="flex gap-2">
-                          <button onClick={() => handleVerifyDoc(doc.doc_type, false, rejectReason)}
-                            disabled={!rejectReason || verifying === doc.doc_type}
+                          <button onClick={() => handleVerifyDoc(doc.id, false, rejectReason)}
+                            disabled={!rejectReason || verifying === doc.id}
                             className="px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
-                            {verifying === doc.doc_type ? "..." : "Confirm Reject"}
+                            {verifying === doc.id ? "..." : "Confirm Reject"}
                           </button>
                           <button onClick={() => { setRejectingDoc(null); setRejectReason(""); }}
                             className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900">Cancel</button>
@@ -1007,8 +1009,8 @@ export default function PartnerDetailPage() {
                     )}
 
                     {doc.is_verified && (
-                      <button onClick={() => handleVerifyDoc(doc.doc_type, false, "Needs re-verification")}
-                        disabled={verifying === doc.doc_type}
+                      <button onClick={() => handleVerifyDoc(doc.id, false, "Needs re-verification")}
+                        disabled={verifying === doc.id}
                         className="text-xs text-gray-400 hover:text-gray-600 mt-2">
                         Revoke verification
                       </button>

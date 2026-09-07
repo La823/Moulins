@@ -140,8 +140,7 @@ func VerifyPartnerDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var body struct {
-			UserID          uuid.UUID `json:"user_id"`
-			DocType         string    `json:"doc_type"`
+			DocID           uuid.UUID `json:"doc_id"`
 			IsVerified      bool      `json:"is_verified"`
 			RejectionReason *string   `json:"rejection_reason"`
 		}
@@ -149,8 +148,12 @@ func VerifyPartnerDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
+		if body.DocID == uuid.Nil {
+			http.Error(w, "doc_id is required", http.StatusBadRequest)
+			return
+		}
 
-		if err := models.VerifyDocument(r.Context(), db, body.UserID, body.DocType, body.IsVerified, body.RejectionReason, adminID); err != nil {
+		if err := models.VerifyDocumentByID(r.Context(), db, body.DocID, body.IsVerified, body.RejectionReason, adminID); err != nil {
 			log.Printf("verify document error: %v", err)
 			http.Error(w, "could not verify document", http.StatusInternalServerError)
 			return

@@ -239,6 +239,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// onboarding routes (any authenticated user)
 	onboardingHandler := handlers.NewOnboardingHandler(db)
 	protected.HandleFunc("/onboarding/documents", onboardingHandler.UploadDocument).Methods("POST")
+	protected.HandleFunc("/onboarding/licenses", onboardingHandler.CreateLicense).Methods("POST")
+	protected.HandleFunc("/onboarding/licenses/{id}", onboardingHandler.UpdateLicense).Methods("PUT")
+	protected.HandleFunc("/onboarding/licenses/{id}", onboardingHandler.DeleteLicense).Methods("DELETE")
 	protected.HandleFunc("/onboarding/upload-url", onboardingHandler.GetUploadURL).Methods("POST")
 	protected.HandleFunc("/onboarding/status", onboardingHandler.GetStatus).Methods("GET")
 
