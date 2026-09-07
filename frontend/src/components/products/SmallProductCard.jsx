@@ -4,16 +4,18 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { visibleImages } from "@/lib/productImages";
+import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 // Same visual style as ProductCard, sized down for horizontal-scroll rows
 // (Recently Viewed / Explore More on the product detail page) — the
 // listing page keeps using the original ProductCard unchanged.
 export default function SmallProductCard({ product: p }) {
   const router = useRouter();
-  const { addToCart } = useCart();
+  const { items } = useCart();
   const { user } = useAuth();
   const canOrder = user?.role !== "doctor";
   const images = visibleImages(p.images);
+  const inCart = items.some((i) => i.product.id === p.id);
 
   return (
     <div
@@ -61,31 +63,21 @@ export default function SmallProductCard({ product: p }) {
           </div>
         )}
 
-        {/* Add to cart bar — slides up from the bottom edge of the image on hover */}
+        {/* Add to cart bar — once a quantity is in the cart, the +/- stepper
+            stays visible; otherwise the plain bar only slides up on hover. */}
         {canOrder && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              addToCart(p);
-            }}
-            style={{ backgroundColor: "#AC2528" }}
-            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 py-2 text-[10px] font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
+          <div
+            className={`absolute inset-x-0 bottom-0 flex items-center justify-center py-1.5 transition-transform duration-300 ease-out ${
+              inCart ? "bg-white/95" : "translate-y-full group-hover:translate-y-0"
+            }`}
+            style={inCart ? undefined : { backgroundColor: "#AC2528" }}
           >
-            <svg
-              className="w-3 h-3"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 4.5v15m7.5-7.5h-15"
-              />
-            </svg>
-            Add to Cart
-          </button>
+            <CartQuantityControl
+              product={p}
+              editable={false}
+              className="w-full flex items-center justify-center gap-1.5 text-[10px] font-medium text-white tracking-wide"
+            />
+          </div>
         )}
       </div>
 
@@ -94,6 +86,11 @@ export default function SmallProductCard({ product: p }) {
         <h3 className="text-xs font-normal text-gray-900 leading-snug line-clamp-2 mt-2">
           {p.name}
         </h3>
+        {(p.mrp ?? p.price) != null && (
+          <p className="text-[11px] font-semibold mt-0.5" style={{ color: "#00A6A4" }}>
+            MRP Rs. {Number(p.mrp ?? p.price).toFixed(2)}
+          </p>
+        )}
         {p.description && (
           <p className="text-[11px] text-gray-400 mt-1 line-clamp-1 group-hover:line-clamp-none transition-all duration-300">
             {p.description}

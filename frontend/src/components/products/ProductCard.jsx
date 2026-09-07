@@ -5,18 +5,20 @@ import { useCart } from "@/context/CartContext";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useAuth } from "@/context/AuthContext";
 import { visibleImages } from "@/lib/productImages";
+import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 // Shared product card — used on the products listing page and the
 // Recently Viewed / Explore More sections on the product detail page, so
 // they all look and behave identically.
 export default function ProductCard({ product: p, basePath = "/products" }) {
   const router = useRouter();
-  const { addToCart } = useCart();
+  const { items } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { user } = useAuth();
   const canOrder = user?.role !== "doctor";
   const favorite = isFavorite(p.id);
   const images = visibleImages(p.images);
+  const inCart = items.some((i) => i.product.id === p.id);
 
   const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
 
@@ -84,31 +86,22 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
           </div>
         )}
 
-        {/* Add to cart bar — slides up from the bottom edge of the image on hover */}
+        {/* Add to cart bar — once a quantity is in the cart, the +/- stepper
+            stays visible so the shopper can see/adjust it without hovering;
+            otherwise the plain "Add to Cart" bar only slides up on hover. */}
         {canOrder && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              addToCart(p);
-            }}
-            style={{ backgroundColor: "#AC2528" }}
-            className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3 text-xs font-medium text-white tracking-wide translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"
+          <div
+            className={`absolute inset-x-0 bottom-0 flex items-center justify-center py-2.5 transition-transform duration-300 ease-out ${
+              inCart ? "bg-white/95" : "translate-y-full group-hover:translate-y-0"
+            }`}
+            style={inCart ? undefined : { backgroundColor: "#AC2528" }}
           >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 4.5v15m7.5-7.5h-15"
-              />
-            </svg>
-            Add to Cart
-          </button>
+            <CartQuantityControl
+              product={p}
+              editable={false}
+              className="w-full flex items-center justify-center gap-2 py-0.5 text-xs font-medium text-white tracking-wide"
+            />
+          </div>
         )}
       </div>
 
@@ -117,6 +110,11 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
         <h3 className="text-sm font-normal text-gray-900 leading-snug line-clamp-2 mt-3">
           {p.name}
         </h3>
+        {(p.mrp ?? p.price) != null && (
+          <p className="text-xs font-semibold mt-1" style={{ color: "#00A6A4" }}>
+            MRP Rs. {Number(p.mrp ?? p.price).toFixed(2)}
+          </p>
+        )}
         {p.description && (
           <p className="text-xs text-gray-400 mt-1 line-clamp-1 group-hover:line-clamp-none transition-all duration-300">
             {p.description}
