@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import AuthGuard from "@/components/AuthGuard";
 
 // Ported from the standalone warehouse_layout_editor project's index.html —
 // the static 2D/3D warehouse layout editor (ES modules + vendored three.js),
@@ -11,7 +12,20 @@ import { useEffect, useRef } from "react";
 // screen space, so this opens in its own tab from the admin nav instead.
 // See frontend/public/warehouse-editor/js/store.js for the save/load calls
 // against the Go backend's /admin/warehouse/layouts API.
+//
+// Being top-level (not under (admin)/panel) also means it never got the
+// AuthGuard the rest of admin gets — an expired/missing token used to just
+// fail every API call inside the editor with a raw "HTTP 401" alert instead
+// of bouncing to /login. Wrapped below to match panel/layout.jsx's guard.
 export default function WarehouseLayoutPage() {
+  return (
+    <AuthGuard allowedRoles={["admin", "employee"]}>
+      <WarehouseEditor />
+    </AuthGuard>
+  );
+}
+
+function WarehouseEditor() {
   const mountedRef = useRef(false);
 
   useEffect(() => {

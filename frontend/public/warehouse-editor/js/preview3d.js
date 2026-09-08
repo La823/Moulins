@@ -254,11 +254,17 @@ export function createPreview3D(wrap) {
     state.nodes.forEach((n) => {
       const zone = zoneOf(state.zones, n.x, n.y);
       const elev = zone ? zone.elev : 0;
+      // Sphere radius scales with opening width for door/dock nodes so the
+      // marker's size reflects n.w, but the shape always stays a sphere.
+      const sized = (n.kind === 'door' || n.kind === 'dock') && n.w;
+      const radius = sized ? n.w / 2 : 0.5;
       const m = new THREE.Mesh(
-        nGeo,
-        new THREE.MeshLambertMaterial({ color: n.kind === 'ramp' ? 0xe8a33d : 0xd4453a }),
+        radius === 0.5 ? nGeo : new THREE.SphereGeometry(radius, 16, 12),
+        new THREE.MeshLambertMaterial({
+          color: n.kind === 'dock' ? 0x3d8fe8 : n.kind === 'ramp' ? 0xe8a33d : 0xd4453a,
+        }),
       );
-      m.position.copy(W(n.x, n.y, elev + 0.5));
+      m.position.copy(W(n.x, n.y, elev + radius));
       scene.add(m);
       if (showLabels) {
         const lb = makeLabel(n.id, 5, '#ff9d94');

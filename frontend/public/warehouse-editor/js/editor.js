@@ -25,6 +25,17 @@ import { fromDbConnect, toDbConnect } from './dbconnect.js';
 import { createLabelState } from './labels.js';
 import { getUnit, setUnit, formatLength, displayValue, parseLength } from './units.js';
 
+// Quick-fill presets for door-kind nodes — sets w (opening width, metres)
+// and h (clear height, metres). Purely a UI convenience; w/h stay freely
+// editable afterward and 'custom' just means "user typed their own".
+const DOOR_PRESETS = {
+  personnel: { label: 'Personnel door', w: 0.9, h: 2.1 },
+  roller: { label: 'Roller shutter', w: 3, h: 3.5 },
+  dock: { label: 'Dock door', w: 2.4, h: 3 },
+  sliding: { label: 'Sliding door', w: 4, h: 3.5 },
+  custom: { label: 'Custom', w: null, h: null },
+};
+
 let state;
 let preview;
 const labelState = createLabelState(); // 3D-only now — see hover below for 2D
@@ -293,6 +304,12 @@ function drawPallet(p, selected, z) {
       x + 4,
       y + Math.max(24, z * 5),
     );
+    const assigned = findAssignment('pallet', p.id, 'A');
+    ctx.fillText(
+      assigned ? assigned.product_name : 'No product linked',
+      x + 4,
+      y + Math.max(36, z * 7.4),
+    );
   }
 }
 
@@ -507,11 +524,15 @@ function draw() {
   state.nodes.forEach((n) => {
     const seld = sel && sel.kind === 'node' && sel.obj === n;
     const pend = pendingEdgeNode === n;
-    ctx.fillStyle = n.kind === 'ramp' ? '#e8a33d' : '#d4453a';
+    const sized = (n.kind === 'door' || n.kind === 'dock') && n.w;
+    ctx.fillStyle = n.kind === 'dock' ? '#3d8fe8' : n.kind === 'ramp' ? '#e8a33d' : '#d4453a';
     ctx.strokeStyle = seld || pend ? '#5fa8e8' : '#10141a';
     ctx.lineWidth = seld || pend ? 3 : 1.5;
     ctx.beginPath();
-    ctx.arc(sx(n.x), sy(n.y), Math.max(5, z * 1.0), 0, 7);
+    // Radius scales with opening width for door/dock nodes so the marker's
+    // size actually reflects n.w, but it stays a circle (never a rectangle).
+    const r = sized ? Math.max(5, (n.w / 2) * z) : Math.max(5, z * 1.0);
+    ctx.arc(sx(n.x), sy(n.y), r, 0, 7);
     ctx.fill();
     ctx.stroke();
     if (isHovered(n)) {
@@ -742,6 +763,8 @@ function renderProps() {
     document.getElementById('p_del').onclick = deleteSelected;
   }
   if (sel.kind === 'node') {
+    const sized = o.kind === 'door' || o.kind === 'dock';
+    if (sized && o.dir !== 'E' && o.dir !== 'N') o.dir = 'E';
     props.innerHTML =
       `<h2>Node</h2>` +
       f('ID', `<input type="text" id="p_id" value="${o.id}">`) +
@@ -754,12 +777,35 @@ function renderProps() {
       ) +
       f('x', `<input type="text" id="p_x" value="${displayValue(o.x)}">`) +
       f('y', `<input type="text" id="p_y" value="${displayValue(o.y)}">`) +
+      (sized
+        ? f(
+            'Door type',
+            `<select id="p_doortype">
+            ${Object.entries(DOOR_PRESETS)
+              .map(([k, p]) => `<option value="${k}" ${o.doorType === k ? 'selected' : ''}>${p.label}</option>`)
+              .join('')}</select>`,
+          ) +
+          f('Opening width', `<input type="text" id="p_w" value="${displayValue(o.w ?? 3)}">`) +
+          f('Clear height', `<input type="text" id="p_h" value="${displayValue(o.h ?? 3)}">`) +
+          f(
+            'Orientation',
+            `<select id="p_dir">
+            <option ${o.dir === 'E' ? 'selected' : ''} value="E">Faces E/W (opening runs N/S)</option>
+            <option ${o.dir === 'N' ? 'selected' : ''} value="N">Faces N/S (opening runs E/W)</option></select>`,
+          )
+        : '') +
       `<div class="hintline">Zone is auto-detected from position at export time.</div>` +
       `<div class="btnrow"><button class="btn small" id="p_del">Delete node</button></div>`;
     bindLength('p_x', 'x', o);
     bindLength('p_y', 'y', o);
     bind('p_kind', (v) => {
       o.kind = v;
+      if ((v === 'door' || v === 'dock') && o.w == null) {
+        o.w = DOOR_PRESETS[o.doorType ?? 'roller']?.w ?? 3;
+        o.h = DOOR_PRESETS[o.doorType ?? 'roller']?.h ?? 3;
+        o.dir = o.dir ?? 'E';
+      }
+      renderProps();
     });
     bind('p_id', (v) => {
       state.edges.forEach((ed) => {
@@ -768,6 +814,24 @@ function renderProps() {
       });
       o.id = v;
     });
+    if (sized) {
+      bindLength('p_w', 'w', o);
+      bindLength('p_h', 'h', o);
+      bind('p_dir', (v) => {
+        o.dir = v;
+      });
+      document.getElementById('p_doortype').onchange = (e) => {
+        o.doorType = e.target.value;
+        const preset = DOOR_PRESETS[o.doorType];
+        if (preset && preset.w != null) {
+          o.w = preset.w;
+          o.h = preset.h;
+        }
+        save();
+        renderProps();
+        draw();
+      };
+    }
     document.getElementById('p_del').onclick = deleteSelected;
   }
   if (sel.kind === 'edge') {
@@ -1439,7 +1503,7 @@ function wirePointer() {
     }
     if (tool === 'node') {
       const id = nextNodeId('door');
-      const n = { id, kind: 'door', x: snap(x), y: snap(y) };
+      const n = { id, kind: 'door', x: snap(x), y: snap(y), w: 3, h: 3, dir: 'E', doorType: 'roller' };
       state.nodes.push(n);
       sel = { kind: 'node', obj: n };
       save();
