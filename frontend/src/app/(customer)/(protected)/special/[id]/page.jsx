@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
+import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 // Detail view for a single special product. Mirrors the regular product
 // detail page but talks to /special-products/{id} and drops all the
@@ -12,7 +13,7 @@ import { useCart } from "@/context/CartContext";
 export default function SpecialProductDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { addToCart } = useCart();
+  const { addToCart, items } = useCart();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
@@ -183,13 +184,20 @@ export default function SpecialProductDetailPage() {
             </p>
           )}
 
-          <button
-            onClick={handleAddToCart}
-            className="w-full py-4 text-sm font-medium transition-all duration-200"
-            style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
-          >
-            {added ? "Added to Cart ✓" : "Add to Cart"}
-          </button>
+          {items.some((i) => i.product.id === product.id) ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">Quantity in cart</span>
+              <CartQuantityControl product={product} />
+            </div>
+          ) : (
+            <button
+              onClick={handleAddToCart}
+              className="w-full py-4 text-sm font-medium transition-all duration-200"
+              style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
+            >
+              {added ? "Added to Cart ✓" : "Add to Cart"}
+            </button>
+          )}
 
           {/* Documents */}
           {product.documents && product.documents.length > 0 && (

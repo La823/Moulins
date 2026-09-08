@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/cart_provider.dart';
 
 class ProductCard extends ConsumerWidget {
   final Product product;
@@ -17,10 +18,47 @@ class ProductCard extends ConsumerWidget {
     required this.onAddToCart,
   });
 
+  Widget _stepper(WidgetRef ref, int quantity) {
+    final step = product.moq > 0 ? product.moq : 1;
+    return Container(
+      width: double.infinity,
+      height: 26,
+      decoration: BoxDecoration(
+        color: const Color(0xFF00A6A4).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(
+            onTap: () => ref.read(cartProvider.notifier).updateQty(product.id, quantity - step),
+            child: Container(
+              width: 26, height: 26,
+              alignment: Alignment.center,
+              child: const Icon(Icons.remove, color: Color(0xFF00A6A4), size: 15),
+            ),
+          ),
+          Text('$quantity', textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A))),
+          GestureDetector(
+            onTap: () => ref.read(cartProvider.notifier).updateQty(product.id, quantity + step),
+            child: Container(
+              width: 26, height: 26,
+              alignment: Alignment.center,
+              child: const Icon(Icons.add, color: Color(0xFF00A6A4), size: 15),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isFavorite = ref.watch(favoritesProvider).contains(product.id);
     final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final cartItems = ref.watch(cartProvider);
+    final cartIdx = cartItems.indexWhere((e) => e.product.id == product.id);
+    final inCartQty = cartIdx >= 0 ? cartItems[cartIdx].quantity : 0;
 
     return GestureDetector(
       onTap: onTap,
@@ -99,7 +137,7 @@ class ProductCard extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (canOrder)
+                      if (canOrder && inCartQty == 0)
                         GestureDetector(
                           onTap: onAddToCart,
                           child: Container(
@@ -110,6 +148,10 @@ class ProductCard extends ConsumerWidget {
                         ),
                     ],
                   ),
+                  if (canOrder && inCartQty > 0) ...[
+                    const SizedBox(height: 6),
+                    _stepper(ref, inCartQty),
+                  ],
                 ],
               ),
             ),

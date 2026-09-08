@@ -63,6 +63,7 @@ class _TeamScreenState extends State<TeamScreen> {
     final phoneCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
     bool submitting = false;
     String? error;
 
@@ -80,6 +81,8 @@ class _TeamScreenState extends State<TeamScreen> {
               const Text('Add Team Member', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               _field(nameCtrl, 'Name'),
+              const SizedBox(height: 12),
+              _field(emailCtrl, 'Email', type: TextInputType.emailAddress),
               const SizedBox(height: 12),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,6 +165,7 @@ class _TeamScreenState extends State<TeamScreen> {
                               phoneNumber: phone,
                               password: passwordCtrl.text.trim(),
                               username: nameCtrl.text.trim(),
+                              email: emailCtrl.text.trim(),
                             );
                             if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                             _load();
@@ -214,6 +218,11 @@ class _TeamScreenState extends State<TeamScreen> {
             icon: const Icon(Icons.event_available_outlined, color: _teal),
             tooltip: 'Team Attendance',
             onPressed: () => context.push('/team-attendance'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.description_outlined, color: _teal),
+            tooltip: 'Team Logs',
+            onPressed: () => context.push('/team-logs'),
           ),
           IconButton(icon: const Icon(Icons.add, color: _teal), onPressed: _showAddDialog),
           const SizedBox(width: 4),

@@ -8,13 +8,14 @@ import { visibleImages } from "@/lib/productImages";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import SmallProductCard from "@/components/products/SmallProductCard";
+import CartQuantityControl from "@/components/products/CartQuantityControl";
 import { divisionRouteForCategory } from "@/lib/divisionRoutes";
 import { DIVISIONS } from "@/lib/divisions";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { addToCart, itemCount } = useCart();
+  const { addToCart, items, itemCount } = useCart();
   const { user } = useAuth();
   const canOrder = user?.role !== "doctor";
   const [product, setProduct] = useState(null);
@@ -244,13 +245,20 @@ export default function ProductDetailPage() {
           </p>
 
           {canOrder && (
-            <button
-              onClick={handleAddToCart}
-              className="w-full py-4 text-sm font-medium transition-all duration-200"
-              style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
-            >
-              {added ? "Added to Cart ✓" : "Add to Cart"}
-            </button>
+            items.some((i) => i.product.id === product.id) ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-500">Quantity in cart</span>
+                <CartQuantityControl product={product} />
+              </div>
+            ) : (
+              <button
+                onClick={handleAddToCart}
+                className="w-full py-4 text-sm font-medium transition-all duration-200"
+                style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
+              >
+                {added ? "Added to Cart ✓" : "Add to Cart"}
+              </button>
+            )
           )}
 
           {/* Documents */}

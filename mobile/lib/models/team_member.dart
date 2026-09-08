@@ -3,8 +3,9 @@ class TeamMember {
   final String phoneNumber;
   final String? username;
   final String? plainPassword;
+  final String? email;
 
-  TeamMember({required this.id, required this.phoneNumber, this.username, this.plainPassword});
+  TeamMember({required this.id, required this.phoneNumber, this.username, this.plainPassword, this.email});
 
   String get displayName => username ?? phoneNumber;
 
@@ -13,6 +14,7 @@ class TeamMember {
         phoneNumber: json['phone_number'] ?? '',
         username: json['username'],
         plainPassword: json['plain_password'],
+        email: json['email'],
       );
 }
 
@@ -43,6 +45,39 @@ class AttendanceRecord {
         checkInTime: json['check_in_time'] ?? '',
         status: json['status'] ?? 'present',
         description: json['description'],
+      );
+}
+
+// TeamDailyLog is a daily log annotated with whose it is — used for the
+// partner's team-wide logs view (as opposed to DailyLog, which is scoped to
+// one member's own history).
+class TeamDailyLog {
+  final String id;
+  final String memberName;
+  final String date;
+  final String notes;
+  final double? latitude;
+  final double? longitude;
+  final String? address;
+
+  TeamDailyLog({
+    required this.id,
+    required this.memberName,
+    required this.date,
+    required this.notes,
+    this.latitude,
+    this.longitude,
+    this.address,
+  });
+
+  factory TeamDailyLog.fromJson(Map<String, dynamic> json) => TeamDailyLog(
+        id: json['id'] ?? '',
+        memberName: json['member_name'] ?? '',
+        date: json['date'] ?? '',
+        notes: json['notes'] ?? '',
+        latitude: (json['latitude'] as num?)?.toDouble(),
+        longitude: (json['longitude'] as num?)?.toDouble(),
+        address: json['address'],
       );
 }
 

@@ -50,29 +50,37 @@ func qdrantRequest(ctx context.Context, cfg Config, method, path string, body an
 	return respBody, nil
 }
 
-func upsertPoint(ctx context.Context, cfg Config, id string, vector []float32, payload map[string]any) error {
+func upsertPoint(ctx context.Context, cfg Config, collection, id string, vector []float32, payload map[string]any) error {
 	body := map[string]any{
 		"points": []map[string]any{
 			{"id": id, "vector": vector, "payload": payload},
 		},
 	}
-	_, err := qdrantRequest(ctx, cfg, http.MethodPut, "/collections/products/points", body)
+	_, err := qdrantRequest(ctx, cfg, http.MethodPut, "/collections/"+collection+"/points", body)
 	return err
 }
 
-func deletePoint(ctx context.Context, cfg Config, id string) error {
+func deletePoint(ctx context.Context, cfg Config, collection, id string) error {
 	body := map[string]any{"points": []string{id}}
-	_, err := qdrantRequest(ctx, cfg, http.MethodPost, "/collections/products/points/delete", body)
+	_, err := qdrantRequest(ctx, cfg, http.MethodPost, "/collections/"+collection+"/points/delete", body)
 	return err
 }
 
-func searchPoints(ctx context.Context, cfg Config, vector []float32, limit int) ([]SearchResult, error) {
+// searchPoints runs a vector similarity search against the given
+// collection. filter, when non-nil, is passed through verbatim as
+// Qdrant's payload filter (e.g. a {"must": [...]} owner_id scope) — every
+// caller that searches owned data (doctors, meetings) MUST supply one;
+// nil is only valid for global/unowned data like products.
+func searchPoints(ctx context.Context, cfg Config, collection string, vector []float32, limit int, filter map[string]any) ([]SearchResult, error) {
 	body := map[string]any{
 		"vector":       vector,
 		"limit":        limit,
 		"with_payload": true,
 	}
-	respBody, err := qdrantRequest(ctx, cfg, http.MethodPost, "/collections/products/points/search", body)
+	if filter != nil {
+		body["filter"] = filter
+	}
+	respBody, err := qdrantRequest(ctx, cfg, http.MethodPost, "/collections/"+collection+"/points/search", body)
 	if err != nil {
 		return nil, err
 	}

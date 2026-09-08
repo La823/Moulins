@@ -10,7 +10,7 @@ import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 import SpecialProductsPanel from "@/components/admin/SpecialProductsPanel";
-import { GstVerifyModal, DlVerifyModal } from "@/components/shared/DocVerifyModals";
+import { GstVerifyModal, DlVerifyModal, ScrapedDetails } from "@/components/shared/DocVerifyModals";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -950,10 +950,15 @@ export default function PartnerDetailPage() {
                       </a>
                     )}
 
-                    {/* Details the partner's own scraper check saved at upload time,
-                        if any — lets the admin compare against the photo without
-                        necessarily re-running the scraper. */}
-                    {(doc.legal_name || doc.address || doc.status || doc.tech_person_name) && (
+                    {/* Every field the scraper saved at verification time — not
+                        just the handful pulled into discrete columns — so the
+                        admin can compare the full government record against
+                        the uploaded photo without re-running the scraper. */}
+                    {doc.scraped_data ? (
+                      <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mb-3 space-y-0.5">
+                        <ScrapedDetails data={doc.scraped_data} />
+                      </div>
+                    ) : (doc.legal_name || doc.address || doc.status || doc.tech_person_name) && (
                       <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mb-3 space-y-0.5">
                         {doc.legal_name && <p><span className="font-medium">Name:</span> {doc.legal_name}</p>}
                         {doc.trade_name && <p><span className="font-medium">Trade Name:</span> {doc.trade_name}</p>}

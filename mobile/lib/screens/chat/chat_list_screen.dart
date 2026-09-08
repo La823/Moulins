@@ -8,7 +8,10 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
-  const ChatListScreen({super.key});
+  // Set when opened via a "/chat?conversation=<id>" notification deep
+  // link — auto-opens that thread once the conversation list has loaded.
+  final String? initialConversationId;
+  const ChatListScreen({super.key, this.initialConversationId});
 
   @override
   ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
@@ -53,11 +56,27 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         _conversations = results[0] as List<ChatConversation>;
         _contacts = results[1] as List<ChatContact>;
       });
+      _openInitialConversationIfNeeded();
     } catch (_) {
       // keep whatever was loaded before
     } finally {
       if (mounted && showSpinner) setState(() => _loading = false);
     }
+  }
+
+  bool _openedInitial = false;
+
+  void _openInitialConversationIfNeeded() {
+    final targetId = widget.initialConversationId;
+    if (targetId == null || _openedInitial) return;
+    final match = _conversations.where((c) => c.id == targetId);
+    if (match.isEmpty) return;
+    _openedInitial = true;
+    final myId = ref.read(authProvider).user?.id;
+    final c = match.first;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openThread(id: c.id, isThread: c.isThread, displayName: c.labelFor(myId));
+    });
   }
 
   // Conversation-list name color: black for group threads, green for a

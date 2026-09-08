@@ -29,6 +29,87 @@ export function gstFieldsPayload(details) {
   } : {};
 }
 
+// Human-readable labels for the government portals' raw field names —
+// covers both the GST response (lgnm, tradeNam, ctj, ...) and the
+// drug-license response (str_ondls_licence_no, dt_curr_validity_date, ...).
+// Anything not listed here still renders, just title-cased from its key.
+const SCRAPED_FIELD_LABELS = {
+  gstin: "GSTIN",
+  lgnm: "Legal Name",
+  tradeNam: "Trade Name",
+  sts: "Status",
+  ctb: "Constitution of Business",
+  rgdt: "Registered Date",
+  ctj: "Center Jurisdiction",
+  ctjCd: "Center Jurisdiction Code",
+  stj: "State Jurisdiction",
+  stjCd: "State Jurisdiction Code",
+  dty: "Taxpayer Type",
+  cxdt: "Cancellation Date",
+  lstupdt: "Last Updated (Portal)",
+  adadr: "Additional Places of Business",
+  nba: "Nature of Business Activities",
+  num_licence_id: "License ID",
+  str_ondls_licence_no: "License No",
+  licence_form_no: "License Form",
+  institute_name: "Firm Name",
+  licence_status: "Status",
+  dt_curr_validity_date: "Valid Until",
+  dt_first_issue_date: "First Issued",
+  dt_first_reg_date: "First Registered",
+  full_address: "Address",
+  tech_persons: "Technical Person(s)",
+  str_work_role_desc: "Role",
+};
+
+const SCRAPED_FIELD_SKIP = new Set(["products", "num_is_tech_person_applicable"]);
+
+function labelForScrapedKey(key) {
+  if (SCRAPED_FIELD_LABELS[key]) return SCRAPED_FIELD_LABELS[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function formatScrapedValue(value) {
+  if (value == null || value === "") return null;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    if (typeof value[0] === "object") {
+      return value
+        .map((item) => item.techname || item.bzsdtl || Object.values(item).filter(Boolean).join(" "))
+        .filter(Boolean)
+        .join(", ");
+    }
+    return value.join(", ");
+  }
+  if (typeof value === "object") {
+    // e.g. GST's pradr: { adr, addr: {...} } — surface just the address line.
+    return value.adr || null;
+  }
+  return String(value);
+}
+
+// Renders every field present in a doc's saved scraped_data (the full raw
+// government-portal response), not just the handful pulled into discrete
+// columns — so nothing captured at verification time is hidden from view.
+export function ScrapedDetails({ data }) {
+  if (!data || typeof data !== "object") return null;
+  const rows = Object.entries(data)
+    .filter(([key]) => !SCRAPED_FIELD_SKIP.has(key))
+    .map(([key, value]) => [labelForScrapedKey(key), formatScrapedValue(value)])
+    .filter(([, value]) => value);
+  if (rows.length === 0) return null;
+  return (
+    <>
+      {rows.map(([label, value]) => (
+        <p key={label}><span className="font-medium">{label}:</span> {value}</p>
+      ))}
+    </>
+  );
+}
+
 export function dlFieldsPayload(details) {
   return details ? {
     legal_name: details.institute_name || null,

@@ -15,6 +15,7 @@ import '../../models/learning.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/quantity_stepper.dart';
 import '../../data/divisions.dart';
 
 // Falls back to the filtered products list for any category that isn't one
@@ -141,7 +142,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
 
     final p = _product!;
     final cart = ref.watch(cartProvider);
-    final inCart = cart.any((e) => e.product.id == p.id);
+    final cartIdx = cart.indexWhere((e) => e.product.id == p.id);
+    final inCart = cartIdx >= 0;
+    final cartQty = inCart ? cart[cartIdx].quantity : 0;
     final canOrder = ref.watch(authProvider).user?.role != 'doctor';
 
     return Scaffold(
@@ -467,21 +470,34 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
         ),
         child: SizedBox(
           height: 52,
-          child: ElevatedButton(
-            onPressed: () {
+          child: inCart
+              ? Row(
+                  children: [
+                    const Text('Quantity in cart', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const Spacer(),
+                    QuantityStepper(
+                      quantity: cartQty,
+                      step: p.moq > 0 ? p.moq : 1,
+                      onDecrement: () => ref.read(cartProvider.notifier).updateQty(p.id, cartQty - (p.moq > 0 ? p.moq : 1)),
+                      onIncrement: () => ref.read(cartProvider.notifier).updateQty(p.id, cartQty + (p.moq > 0 ? p.moq : 1)),
+                    ),
+                  ],
+                )
+              : ElevatedButton(
+                  onPressed: () {
                     ref.read(cartProvider.notifier).add(p);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('${p.name} added to cart'), backgroundColor: const Color(0xFF00A6A4), behavior: SnackBarBehavior.floating),
                     );
                   },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: inCart ? const Color(0xFF00A6A4).withValues(alpha: 0.8) : const Color(0xFF00A6A4),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 0,
-            ),
-            child: Text(inCart ? 'Add More' : 'Add to Cart', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00A6A4),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: const Text('Add to Cart', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                ),
         ),
       ),
     );

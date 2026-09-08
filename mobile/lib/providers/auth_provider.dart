@@ -130,11 +130,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> updateAddress({String? billingAddress, String? shippingAddress}) async {
+  Future<bool> updateAddress({String? shippingAddress}) async {
     final current = state.user;
     if (current == null) return false;
     try {
-      await _service.updateAddress(billingAddress: billingAddress, shippingAddress: shippingAddress);
+      await _service.updateAddress(shippingAddress: shippingAddress);
       final user = User(
         id: current.id,
         phoneNumber: current.phoneNumber,
@@ -143,8 +143,34 @@ class AuthNotifier extends StateNotifier<AuthState> {
         customerType: current.customerType,
         permissions: current.permissions,
         defaultTransportMode: current.defaultTransportMode,
-        billingAddress: billingAddress ?? current.billingAddress,
+        billingAddress: current.billingAddress,
         shippingAddress: shippingAddress ?? current.shippingAddress,
+      );
+      await saveCachedUser(jsonEncode(user.toJson()));
+      state = state.copyWith(user: user);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Billing address can only be pulled from the partner's verified GST
+  // record — never typed in freely.
+  Future<bool> pullBillingAddressFromGst() async {
+    final current = state.user;
+    if (current == null) return false;
+    try {
+      final billingAddress = await _service.pullBillingAddressFromGst();
+      final user = User(
+        id: current.id,
+        phoneNumber: current.phoneNumber,
+        username: current.username,
+        role: current.role,
+        customerType: current.customerType,
+        permissions: current.permissions,
+        defaultTransportMode: current.defaultTransportMode,
+        billingAddress: billingAddress,
+        shippingAddress: current.shippingAddress,
       );
       await saveCachedUser(jsonEncode(user.toJson()));
       state = state.copyWith(user: user);

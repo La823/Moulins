@@ -43,6 +43,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transports"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/warehouse"
 	vectorsearchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/vectorsearch"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
@@ -313,6 +314,26 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterStaff.HandleFunc("/marg-products", margmaster.ListProductsHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-parties", margmaster.ListPartiesHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/status", margsyncHandlers.StatusHandler(db)).Methods("GET")
+
+	// staff routes — warehouse layout editor (ported from the standalone
+	// editor's Python persistence layer; see backend/warehouse_layout_editor)
+	warehouseViewStaff := protected.PathPrefix("/admin").Subrouter()
+	warehouseViewStaff.Use(middleware.StaffOnly)
+	warehouseViewStaff.Use(middleware.RequirePermission(db, "warehouse_view", rdb))
+	warehouseViewStaff.HandleFunc("/warehouse/layouts", warehouse.ListLayoutsHandler(db)).Methods("GET")
+	warehouseViewStaff.HandleFunc("/warehouse/layouts/{name}", warehouse.GetLayoutHandler(db)).Methods("GET")
+	warehouseViewStaff.HandleFunc("/warehouse/bin-types", warehouse.ListBinTypesHandler(db)).Methods("GET")
+	warehouseViewStaff.HandleFunc("/warehouse/layouts/{name}/assignments", warehouse.ListAssignmentsHandler(db)).Methods("GET")
+
+	warehouseEditStaff := protected.PathPrefix("/admin").Subrouter()
+	warehouseEditStaff.Use(middleware.StaffOnly)
+	warehouseEditStaff.Use(middleware.RequirePermission(db, "warehouse_edit", rdb))
+	warehouseEditStaff.HandleFunc("/warehouse/layouts/{name}", warehouse.SaveLayoutHandler(db)).Methods("PUT")
+	warehouseEditStaff.HandleFunc("/warehouse/layouts/{name}", warehouse.DeleteLayoutHandler(db)).Methods("DELETE")
+	warehouseEditStaff.HandleFunc("/warehouse/bin-types/{name}", warehouse.SaveBinTypeHandler(db)).Methods("PUT")
+	warehouseEditStaff.HandleFunc("/warehouse/bin-types/{name}", warehouse.DeleteBinTypeHandler(db)).Methods("DELETE")
+	warehouseEditStaff.HandleFunc("/warehouse/layouts/{name}/assignments/{locationType}/{locationKey}/{slot}", warehouse.SaveAssignmentHandler(db)).Methods("PUT")
+	warehouseEditStaff.HandleFunc("/warehouse/layouts/{name}/assignments/{locationType}/{locationKey}/{slot}", warehouse.DeleteAssignmentHandler(db)).Methods("DELETE")
 
 	// staff routes — client-employee assignments
 	assignmentsViewStaff := protected.PathPrefix("/admin").Subrouter()

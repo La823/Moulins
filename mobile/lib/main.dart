@@ -16,6 +16,7 @@ import 'screens/products/special_product_detail_screen.dart';
 import 'screens/orders/orders_screen.dart';
 import 'screens/orders/order_detail_screen.dart';
 import 'screens/doctors/doctors_screen.dart';
+import 'screens/doctors/doctor_detail_resolver.dart';
 import 'screens/presentations/presentations_screen.dart';
 import 'screens/presentations/presentation_builder_screen.dart';
 import 'screens/cart/cart_screen.dart';
@@ -26,6 +27,7 @@ import 'screens/notifications/notifications_screen.dart';
 import 'screens/meetings/meetings_screen.dart';
 import 'screens/requests/requests_screen.dart';
 import 'screens/chat/chat_list_screen.dart';
+import 'screens/chat/chat_thread_resolver.dart';
 import 'screens/products/favorites_screen.dart';
 import 'screens/learning/learning_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
@@ -33,9 +35,11 @@ import 'screens/divisions/division_landing_screen.dart';
 import 'screens/team/team_screen.dart';
 import 'screens/team/team_member_detail_screen.dart';
 import 'screens/team/team_attendance_screen.dart';
+import 'screens/team/team_logs_screen.dart';
 import 'screens/team/my_attendance_screen.dart';
 import 'screens/team/my_daily_log_screen.dart';
 import 'screens/payments/payments_screen.dart';
+import 'screens/dashboard/dashboard_screen.dart';
 import 'models/team_member.dart';
 import 'data/divisions.dart';
 import 'widgets/fullscreen_image_gallery.dart';
@@ -107,6 +111,7 @@ class MoulinsApp extends ConsumerWidget {
               _AppShell(child: child, location: state.uri.path),
           routes: [
             GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+            GoRoute(path: '/dashboard', builder: (_, __) => const DashboardScreen()),
             GoRoute(
               path: '/products',
               builder: (_, state) => ProductsScreen(
@@ -145,6 +150,10 @@ class MoulinsApp extends ConsumerWidget {
             ),
             GoRoute(path: '/doctors', builder: (_, __) => const DoctorsScreen()),
             GoRoute(
+              path: '/doctors/:id',
+              builder: (_, state) => DoctorDetailResolver(doctorId: state.pathParameters['id']!),
+            ),
+            GoRoute(
               path: '/presentations',
               builder: (_, __) => const PresentationsScreen(),
               routes: [
@@ -161,6 +170,7 @@ class MoulinsApp extends ConsumerWidget {
               builder: (_, state) => TeamMemberDetailScreen(member: state.extra as TeamMember),
             ),
             GoRoute(path: '/team-attendance', builder: (_, __) => const TeamAttendanceScreen()),
+            GoRoute(path: '/team-logs', builder: (_, __) => const TeamLogsScreen()),
             GoRoute(path: '/my-attendance', builder: (_, __) => const MyAttendanceScreen()),
             GoRoute(path: '/my-daily-log', builder: (_, __) => const MyDailyLogScreen()),
             GoRoute(
@@ -169,8 +179,19 @@ class MoulinsApp extends ConsumerWidget {
                 preselectedDoctorId: state.uri.queryParameters['doctor_id'],
               ),
             ),
+            // No per-meeting detail screen exists — meetings are only ever
+            // viewed inline in the list — so a meeting-reminder deep link
+            // (/meetings/:id) just lands on the list instead of 404ing.
+            GoRoute(path: '/meetings/:id', redirect: (_, __) => '/meetings'),
             GoRoute(path: '/requests', builder: (_, __) => const RequestsScreen()),
-            GoRoute(path: '/chat', builder: (_, __) => const ChatListScreen()),
+            GoRoute(
+              path: '/chat',
+              builder: (_, state) => ChatListScreen(initialConversationId: state.uri.queryParameters['conversation']),
+            ),
+            GoRoute(
+              path: '/chat/:id',
+              builder: (_, state) => ChatThreadResolver(id: state.pathParameters['id']!),
+            ),
             GoRoute(path: '/favorites', builder: (_, __) => const FavoritesScreen()),
             GoRoute(path: '/payments', builder: (_, __) => const PaymentsScreen()),
             GoRoute(path: '/learning', builder: (_, __) => const LearningScreen()),

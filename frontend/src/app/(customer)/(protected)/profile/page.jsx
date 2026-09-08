@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
-import { GstVerifyModal, DlVerifyModal, parseGovDate, gstFieldsPayload, dlFieldsPayload } from "@/components/shared/DocVerifyModals";
+import { GstVerifyModal, DlVerifyModal, parseGovDate, gstFieldsPayload, dlFieldsPayload, ScrapedDetails } from "@/components/shared/DocVerifyModals";
 
 async function uploadFileToS3(file) {
   const { upload_url, public_url } = await apiFetch("/onboarding/upload-url", {
@@ -104,12 +104,18 @@ function DrugLicenseCard({ doc, onUploaded, setError, setSuccess, onCancel }) {
     <>
       <p><span className="font-medium">License No:</span> {d.doc_number}</p>
       {d.expiry_date && <p><span className="font-medium">Expiry:</span> {new Date(d.expiry_date).toLocaleDateString("en-IN")}</p>}
-      {d.legal_name && <p><span className="font-medium">Firm Name:</span> {d.legal_name}</p>}
-      {d.status && <p><span className="font-medium">Status (govt. portal):</span> {d.status}</p>}
-      {d.address && <p><span className="font-medium">Address:</span> {d.address}</p>}
-      {d.first_issue_date && <p><span className="font-medium">First Issued:</span> {new Date(d.first_issue_date).toLocaleDateString("en-IN")}</p>}
-      {d.tech_person_name && (
-        <p><span className="font-medium">Technical Person:</span> {d.tech_person_name}{d.tech_person_reg_no ? ` (Reg. No: ${d.tech_person_reg_no})` : ""}</p>
+      {d.scraped_data ? (
+        <ScrapedDetails data={d.scraped_data} />
+      ) : (
+        <>
+          {d.legal_name && <p><span className="font-medium">Firm Name:</span> {d.legal_name}</p>}
+          {d.status && <p><span className="font-medium">Status (govt. portal):</span> {d.status}</p>}
+          {d.address && <p><span className="font-medium">Address:</span> {d.address}</p>}
+          {d.first_issue_date && <p><span className="font-medium">First Issued:</span> {new Date(d.first_issue_date).toLocaleDateString("en-IN")}</p>}
+          {d.tech_person_name && (
+            <p><span className="font-medium">Technical Person:</span> {d.tech_person_name}{d.tech_person_reg_no ? ` (Reg. No: ${d.tech_person_reg_no})` : ""}</p>
+          )}
+        </>
       )}
       {d.photo_url && <a href={d.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
     </>
@@ -152,17 +158,20 @@ function DrugLicenseCard({ doc, onUploaded, setError, setSuccess, onCancel }) {
         </div>
       )}
 
-      {doc && !doc.rejection_reason && !isLicenseExpired ? (
-        <div className="space-y-1 text-sm text-gray-600">{detailRows(doc)}</div>
-      ) : isLicenseExpired && !updatingLicense ? (
-        <div className="space-y-3">
-          <div className="space-y-1 text-sm text-gray-600">{detailRows(doc)}</div>
-          <button type="button" onClick={() => setUpdatingLicense(true)}
-            className="px-4 py-2 text-sm font-semibold text-white rounded-lg"
-            style={{ backgroundColor: "#00A6A4" }}>
-            Update License
-          </button>
-        </div>
+      {/* Previously-saved details — shown regardless of state (including
+          rejected/expired), since a saved license number/scraped detail
+          shouldn't vanish just because it needs resubmitting. */}
+      {doc && (doc.rejection_reason || isLicenseExpired || !updatingLicense) && (
+        <div className="space-y-1 text-sm text-gray-600 mb-3">{detailRows(doc)}</div>
+      )}
+
+      {doc && !doc.rejection_reason && !isLicenseExpired ? null
+      : isLicenseExpired && !updatingLicense ? (
+        <button type="button" onClick={() => setUpdatingLicense(true)}
+          className="px-4 py-2 text-sm font-semibold text-white rounded-lg"
+          style={{ backgroundColor: "#00A6A4" }}>
+          Update License
+        </button>
       ) : (
         <form onSubmit={handleUpload} className="space-y-4">
           <div>
@@ -666,18 +675,30 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {/* Previously-saved details — shown regardless of verification
+            state (including rejected), since a saved GST number/scraped
+            detail shouldn't vanish just because it needs resubmitting. */}
+        {gstDoc && (gstDoc.rejection_reason || !updatingGst) && (
+          <div className="space-y-1 text-sm text-gray-600 mb-3">
+            <p><span className="font-medium">GST No:</span> {gstDoc.doc_number}</p>
+            {gstDoc.scraped_data ? (
+              <ScrapedDetails data={gstDoc.scraped_data} />
+            ) : (
+              <>
+                {gstDoc.legal_name && <p><span className="font-medium">Legal Name:</span> {gstDoc.legal_name}</p>}
+                {gstDoc.trade_name && <p><span className="font-medium">Trade Name:</span> {gstDoc.trade_name}</p>}
+                {gstDoc.status && <p><span className="font-medium">Status:</span> {gstDoc.status}</p>}
+                {gstDoc.business_type && <p><span className="font-medium">Business Type:</span> {gstDoc.business_type}</p>}
+                {gstDoc.registered_date && <p><span className="font-medium">Registered:</span> {new Date(gstDoc.registered_date).toLocaleDateString("en-IN")}</p>}
+                {gstDoc.address && <p><span className="font-medium">Address:</span> {gstDoc.address}</p>}
+              </>
+            )}
+            {gstDoc.photo_url && <a href={gstDoc.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
+          </div>
+        )}
+
         {gstDoc && !gstDoc.rejection_reason && !updatingGst ? (
           <div className="space-y-3">
-            <div className="space-y-1 text-sm text-gray-600">
-              <p><span className="font-medium">GST No:</span> {gstDoc.doc_number}</p>
-              {gstDoc.legal_name && <p><span className="font-medium">Legal Name:</span> {gstDoc.legal_name}</p>}
-              {gstDoc.trade_name && <p><span className="font-medium">Trade Name:</span> {gstDoc.trade_name}</p>}
-              {gstDoc.status && <p><span className="font-medium">Status:</span> {gstDoc.status}</p>}
-              {gstDoc.business_type && <p><span className="font-medium">Business Type:</span> {gstDoc.business_type}</p>}
-              {gstDoc.registered_date && <p><span className="font-medium">Registered:</span> {new Date(gstDoc.registered_date).toLocaleDateString("en-IN")}</p>}
-              {gstDoc.address && <p><span className="font-medium">Address:</span> {gstDoc.address}</p>}
-              {gstDoc.photo_url && <a href={gstDoc.photo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">View uploaded photo →</a>}
-            </div>
             {!gstDoc.legal_name && (
               <p className="text-xs text-gray-400">
                 This certificate was submitted before we started fetching details automatically — click below to re-verify and fill them in.

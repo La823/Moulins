@@ -20,7 +20,10 @@ class OnboardingStatus {
 
 class PartnerDocument {
   final String id;
-  final String docType; // LICENSE (legacy) / LICENSE_20B / LICENSE_21B / GST
+  final String docType; // LICENSE (legacy) / LICENSE_20B / LICENSE_21B / DRUG_LICENSE / GST
+  // The partner's own name for a dynamically-added license (e.g. "Form
+  // 20B", "Wholesale License") — only meaningful for license doc types.
+  final String? licenseLabel;
   final String? docNumber;
   final DateTime? expiryDate;
   final String? photoUrl;
@@ -42,10 +45,14 @@ class PartnerDocument {
   final String? address;
   final String? techPersonName;
   final String? techPersonRegNo;
+  // The full raw scraper response, saved at verification time — the
+  // discrete fields above are only a curated subset of this.
+  final Map<String, dynamic>? scrapedData;
 
   PartnerDocument({
     required this.id,
     required this.docType,
+    this.licenseLabel,
     this.docNumber,
     this.expiryDate,
     this.photoUrl,
@@ -61,6 +68,7 @@ class PartnerDocument {
     this.address,
     this.techPersonName,
     this.techPersonRegNo,
+    this.scrapedData,
   });
 
   factory PartnerDocument.fromJson(Map<String, dynamic> json) {
@@ -68,6 +76,7 @@ class PartnerDocument {
     return PartnerDocument(
       id: json['id'] ?? '',
       docType: json['doc_type'] ?? '',
+      licenseLabel: json['license_label'],
       docNumber: json['doc_number'],
       expiryDate: parseDate(json['expiry_date']),
       photoUrl: json['photo_url'],
@@ -83,6 +92,7 @@ class PartnerDocument {
       address: json['address'],
       techPersonName: json['tech_person_name'],
       techPersonRegNo: json['tech_person_reg_no'],
+      scrapedData: json['scraped_data'] is Map ? Map<String, dynamic>.from(json['scraped_data']) : null,
     );
   }
 }

@@ -7,6 +7,8 @@ class Meeting {
   final String? notes;
   final String? mom;
   final String status;
+  final String? assignedTo;
+  final String? assignedToName;
 
   Meeting({
     required this.id,
@@ -17,6 +19,8 @@ class Meeting {
     this.notes,
     this.mom,
     required this.status,
+    this.assignedTo,
+    this.assignedToName,
   });
 
   // What to actually show as the meeting's "who/what" — the doctor's name
@@ -37,5 +41,7 @@ class Meeting {
         notes: json['notes'],
         mom: json['mom'],
         status: json['status'] ?? 'upcoming',
+        assignedTo: json['assigned_to'],
+        assignedToName: json['assigned_to_name'],
       );
 }

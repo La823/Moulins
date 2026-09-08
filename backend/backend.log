@@ -1,1 +1,62 @@
-fork/exec C:\Users\lavan\AppData\Local\go-build\1f\1f1cde3eab91afa3a350156084b96d8c26c65c01255b6abbfa87118a7c548490-d\api.exe: An Application Control policy has blocked this file.
+2026/07/18 00:32:59 Connected to Supabase DB successfully
+2026/07/18 00:32:59 DB pool initialized
+2026/07/18 00:33:00 ✓ Migration already applied: 001_create_auth_table.sql
+2026/07/18 00:33:00 ✓ Migration already applied: 002_add_role_column.sql
+2026/07/18 00:33:00 ✓ Migration already applied: 003_create_products_table.sql
+2026/07/18 00:33:01 ✓ Migration already applied: 004_categories_array_and_documents.sql
+2026/07/18 00:33:01 ✓ Migration already applied: 005_product_images_table.sql
+2026/07/18 00:33:01 ✓ Migration already applied: 006_add_product_detail_columns.sql
+2026/07/18 00:33:01 ✓ Migration already applied: 007_create_orders_tables.sql
+2026/07/18 00:33:02 ✓ Migration already applied: 008_create_order_events_table.sql
+2026/07/18 00:33:02 ✓ Migration already applied: 009_add_delivery_details.sql
+2026/07/18 00:33:02 ✓ Migration already applied: 010_create_employee_permissions.sql
+2026/07/18 00:33:02 ✓ Migration already applied: 011_add_plain_password.sql
+2026/07/18 00:33:02 ✓ Migration already applied: 012_create_doctors_tables.sql
+2026/07/18 00:33:03 ✓ Migration already applied: 013_create_attendance_tables.sql
+2026/07/18 00:33:03 ✓ Migration already applied: 014_create_manufacturers_and_po_tables.sql
+2026/07/18 00:33:03 ✓ Migration already applied: 015_restructure_purchase_orders.sql
+2026/07/18 00:33:03 ✓ Migration already applied: 016_widen_po_specifications.sql
+2026/07/18 00:33:04 ✓ Migration already applied: 017_create_onboarding_system.sql
+2026/07/18 00:33:04 ✓ Migration already applied: 018_create_categories_table.sql
+2026/07/18 00:33:04 ✓ Migration already applied: 019_product_categories_join_table.sql
+2026/07/18 00:33:04 ✓ Migration already applied: 020_create_notifications_tables.sql
+2026/07/18 00:33:04 ✓ Migration already applied: 021_create_home_highlights.sql
+2026/07/18 00:33:05 ✓ Migration already applied: 022_create_home_carousel.sql
+2026/07/18 00:33:05 ✓ Migration already applied: 023_create_areas_of_focus.sql
+2026/07/18 00:33:05 ✓ Migration already applied: 024_dynamic_home_carousel.sql
+2026/07/18 00:33:05 ✓ Migration already applied: 025_create_meetings_and_requests.sql
+2026/07/18 00:33:05 ✓ Migration already applied: 026_add_meeting_mom.sql
+2026/07/18 00:33:06 ✓ Migration already applied: 027_create_client_employee_assignments.sql
+2026/07/18 00:33:06 ✓ Migration already applied: 028_create_messages.sql
+2026/07/18 00:33:06 ✓ Migration already applied: 029_purge_chat_notifications.sql
+2026/07/18 00:33:06 ✓ Migration already applied: 030_create_order_photos.sql
+2026/07/18 00:33:06 ✓ Migration already applied: 031_create_customer_ledgers.sql
+2026/07/18 00:33:07 ✓ Migration already applied: 032_create_product_favorites.sql
+2026/07/18 00:33:07 ✓ Migration already applied: 033_create_learning_platform.sql
+2026/07/18 00:33:07 ✓ Migration already applied: 034_add_doctor_last_meeting.sql
+2026/07/18 00:33:07 ✓ Migration already applied: 035_meetings_optional_doctor.sql
+2026/07/18 00:33:08 ✓ Migration already applied: 036_learning_videos_product_link.sql
+2026/07/18 00:33:08 ✓ Migration already applied: 037_add_customer_pincode_location.sql
+2026/07/18 00:33:08 ✅ Migration applied: 038_add_customer_city_state.sql
+2026/07/18 00:33:08 🎉 All migrations completed successfully
+2026/07/18 00:33:08 S3 client initialized
+2026/07/18 00:33:08 FCM client initialized
+redis: 2026/07/18 00:33:09 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connectex: No connection could be made because the target machine actively refused it.
+redis: 2026/07/18 00:33:09 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connectex: No connection could be made because the target machine actively refused it.
+redis: 2026/07/18 00:33:10 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connectex: No connection could be made because the target machine actively refused it.
+redis: 2026/07/18 00:33:10 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connectex: No connection could be made because the target machine actively refused it.
+2026/07/18 00:33:10 WARNING: redis unreachable: dial tcp [::1]:6379: connectex: No connection could be made because the target machine actively refused it. — caching disabled
+2026/07/18 00:33:10 🚀 Server listening on :8080
+2026/07/19 18:15:42 scheduler: failed to fetch 1day-due meetings: failed to connect to `user=postgres.atihtczweflgkvzwalxn database=postgres`:
+	hostname resolving error: lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+	lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+2026/07/19 18:15:42 scheduler: failed to fetch 1hour-due meetings: failed to connect to `user=postgres.atihtczweflgkvzwalxn database=postgres`:
+	hostname resolving error: lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+	lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+2026/07/19 22:18:15 scheduler: failed to fetch 1day-due meetings: failed to connect to `user=postgres.atihtczweflgkvzwalxn database=postgres`:
+	hostname resolving error: lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+	lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+2026/07/19 22:18:15 scheduler: failed to fetch 1hour-due meetings: failed to connect to `user=postgres.atihtczweflgkvzwalxn database=postgres`:
+	hostname resolving error: lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+	lookup aws-1-ap-southeast-2.pooler.supabase.com: no such host
+2026/07/20 18:31:54 scheduler: failed to fetch 1hour-due meetings: read tcp 192.168.1.3:59505->13.239.87.90:6543: wsarecv: An existing connection was forcibly closed by the remote host.

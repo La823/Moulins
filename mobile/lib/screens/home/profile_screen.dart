@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,6 +19,7 @@ import '../../models/doctor.dart';
 import '../../models/transport_mode.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/scraped_details.dart';
 import 'account_deletion_screen.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
@@ -262,11 +264,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildVerificationSection(BuildContext context, OnboardingStatus status) {
-    // A partner can hold both a Form 20B and a Form 21B wholesale drug
-    // license — the legacy generic 'LICENSE' type (from before this split)
-    // is treated as 20B so old data still shows up correctly.
-    final license20BDoc = status.documents.where((d) => d.docType == 'LICENSE' || d.docType == 'LICENSE_20B').firstOrNull;
-    final license21BDoc = status.documents.where((d) => d.docType == 'LICENSE_21B').firstOrNull;
+    // A partner can add any number of drug licenses now — each one is its
+    // own document row, distinguished by a label the partner chose rather
+    // than a fixed doc_type slot (old LICENSE/LICENSE_20B/LICENSE_21B rows
+    // still show up here too, alongside new DRUG_LICENSE ones).
+    const licenseDocTypes = {'LICENSE', 'LICENSE_20B', 'LICENSE_21B', 'DRUG_LICENSE'};
+    final licenseDocs = status.documents.where((d) => licenseDocTypes.contains(d.docType)).toList();
     final gstDoc = status.documents.where((d) => d.docType == 'GST').firstOrNull;
     final step = status.onboardingStep;
 
@@ -310,24 +313,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Drug License Card — Form 20B
-        _DrugLicenseCard(
-          title: 'Drug License (Form 20B)',
-          subtitle: 'Wholesale license — verify to auto-fill expiry & details',
-          doc: license20BDoc,
-          docType: 'LICENSE_20B',
-          onUploaded: () => ref.read(onboardingProvider.notifier).loadStatus(),
-        ),
-        const SizedBox(height: 12),
-
-        // Drug License Card — Form 21B
-        _DrugLicenseCard(
-          title: 'Drug License (Form 21B)',
-          subtitle: 'Wholesale license for Schedule X drugs, if applicable',
-          doc: license21BDoc,
-          docType: 'LICENSE_21B',
-          onUploaded: () => ref.read(onboardingProvider.notifier).loadStatus(),
-        ),
+        // One card per drug license the partner has added, plus an
+        // "Add Drug License" affordance to add another.
+        for (final doc in licenseDocs) ...[
+          _DrugLicenseCard(
+            key: ValueKey(doc.id),
+            doc: doc,
+            onUploaded: () => ref.read(onboardingProvider.notifier).loadStatus(),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _AddDrugLicenseSection(onUploaded: () => ref.read(onboardingProvider.notifier).loadStatus()),
         const SizedBox(height: 12),
 
         // GST Card
@@ -568,19 +564,17 @@ class _AddressCardState extends ConsumerState<_AddressCard> {
   static const teal = Color(0xFF00A6A4);
   bool _editing = false;
   bool _saving = false;
-  late final TextEditingController _billingCtrl;
+  bool _pullingBilling = false;
   late final TextEditingController _shippingCtrl;
 
   @override
   void initState() {
     super.initState();
-    _billingCtrl = TextEditingController(text: widget.billingAddress ?? '');
     _shippingCtrl = TextEditingController(text: widget.shippingAddress ?? '');
   }
 
   @override
   void dispose() {
-    _billingCtrl.dispose();
     _shippingCtrl.dispose();
     super.dispose();
   }
@@ -588,7 +582,6 @@ class _AddressCardState extends ConsumerState<_AddressCard> {
   Future<void> _save() async {
     setState(() => _saving = true);
     final ok = await ref.read(authProvider.notifier).updateAddress(
-          billingAddress: _billingCtrl.text.trim(),
           shippingAddress: _shippingCtrl.text.trim(),
         );
     if (mounted) {
@@ -596,6 +589,22 @@ class _AddressCardState extends ConsumerState<_AddressCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(ok ? 'Address updated' : 'Failed to update address'),
+          backgroundColor: ok ? teal : Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Billing address is deliberately not editable here — it can only be
+  // pulled from the partner's verified GST record, or changed by an admin.
+  Future<void> _pullBillingFromGst() async {
+    setState(() => _pullingBilling = true);
+    final ok = await ref.read(authProvider.notifier).pullBillingAddressFromGst();
+    if (mounted) {
+      setState(() => _pullingBilling = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? 'Billing address pulled from your GST record' : 'No address on your GST record yet — verify your GSTIN first.'),
           backgroundColor: ok ? teal : Colors.red,
         ),
       );
@@ -622,18 +631,27 @@ class _AddressCardState extends ConsumerState<_AddressCard> {
             ],
           ),
           const SizedBox(height: 8),
-          if (_editing) ...[
-            TextField(
-              controller: _billingCtrl,
-              maxLines: 2,
-              decoration: InputDecoration(
-                labelText: 'Billing address',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+
+          // Billing address is always read-only — it can only be pulled from
+          // the verified GST record, or changed by an admin.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Billing', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+              TextButton(
+                onPressed: _pullingBilling ? null : _pullBillingFromGst,
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                child: Text(_pullingBilling ? 'Pulling...' : 'Pull from GST', style: const TextStyle(color: teal, fontSize: 11, fontWeight: FontWeight.w600)),
               ),
-            ),
-            const SizedBox(height: 10),
+            ],
+          ),
+          Text(
+            widget.billingAddress?.isNotEmpty == true ? widget.billingAddress! : 'Not set',
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+
+          if (_editing) ...[
             TextField(
               controller: _shippingCtrl,
               maxLines: 2,
@@ -666,12 +684,6 @@ class _AddressCardState extends ConsumerState<_AddressCard> {
               ],
             ),
           ] else ...[
-            Text('Billing', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-            Text(
-              widget.billingAddress?.isNotEmpty == true ? widget.billingAddress! : 'Not set',
-              style: const TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 10),
             Text('Shipping', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
             Text(
               widget.shippingAddress?.isNotEmpty == true ? widget.shippingAddress! : 'Not set',
@@ -874,6 +886,31 @@ class _DocumentCardState extends ConsumerState<_DocumentCard> {
             ),
           ),
 
+          // Previously-saved details — shown regardless of verification
+          // state (including while pending) since a saved GST/license
+          // number and any scraped detail shouldn't disappear just
+          // because it hasn't been reviewed yet.
+          if (doc != null && (!_expanded || (isVerified && !_forceEdit)))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (doc.docNumber != null && doc.docNumber!.isNotEmpty)
+                    Text('${widget.docType == "LICENSE" ? "License" : "GST"} No: ${doc.docNumber}', style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                  if (doc.scrapedData != null)
+                    ScrapedDetails(data: doc.scrapedData)
+                  else ...[
+                    if (doc.legalName != null) Text('Legal Name: ${doc.legalName}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.tradeName != null) Text('Trade Name: ${doc.tradeName}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.status != null) Text('Status (govt. portal): ${doc.status}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.businessType != null) Text('Business Type: ${doc.businessType}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.address != null) Text('Address: ${doc.address}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ],
+              ),
+            ),
+
           // Expansion form
           if (_expanded && !isPending && (!isVerified || _forceEdit)) ...[
             const Divider(height: 1),
@@ -1072,7 +1109,7 @@ class _GstVerifyDialogState extends State<_GstVerifyDialog> {
         _step = 'captcha';
       });
     } catch (e) {
-      setState(() { _error = 'Could not load captcha. Please try again.'; _step = 'error'; });
+      setState(() { _error = _describeGstError(e, 'Could not load captcha.'); _step = 'error'; });
     }
   }
 
@@ -1089,10 +1126,27 @@ class _GstVerifyDialogState extends State<_GstVerifyDialog> {
       if (data['error'] != null) throw Exception(data['error']);
       setState(() { _details = data; _step = 'result'; });
     } catch (e) {
-      setState(() { _error = 'Could not verify this GSTIN. Please check the captcha and try again.'; _step = 'error'; });
+      setState(() { _error = _describeGstError(e, 'Could not verify this GSTIN. Please check the captcha and try again.'); _step = 'error'; });
     } finally {
       setState(() => _submitting = false);
     }
+  }
+
+  // Surfaces the real reason a GST lookup call failed instead of always
+  // showing the same generic message — a live scrape against the
+  // government portal can time out, get rate-limited, or come back with a
+  // specific error from the portal itself, and "captcha was wrong" was
+  // previously indistinguishable from all of those.
+  String _describeGstError(Object e, String fallback) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout || e.type == DioExceptionType.sendTimeout) {
+        return 'The GST portal is taking too long to respond. Please try again.';
+      }
+      final serverError = e.response?.data is Map ? (e.response?.data as Map)['error'] : null;
+      if (serverError is String && serverError.isNotEmpty) return serverError;
+      if (e.response?.statusCode == 502) return 'The GST lookup service is temporarily unavailable. Please try again shortly.';
+    }
+    return fallback;
   }
 
   Uint8List? get _captchaBytes {
@@ -1286,20 +1340,13 @@ class _DlVerifyDialogState extends State<_DlVerifyDialog> {
 // at once, so each form gets its own card/upload flow with a fixed docType
 // (mirrors the web DrugLicenseCard). Expiry date is fetched from the
 // verify-license lookup only — there is no manual expiry input.
+// A single existing drug license — shown, updated (re-verified/resubmitted),
+// or deleted (if it's a dynamically-added one, not a legacy fixed-slot row).
 class _DrugLicenseCard extends ConsumerStatefulWidget {
-  final String title;
-  final String subtitle;
-  final PartnerDocument? doc;
-  final String docType;
+  final PartnerDocument doc;
   final VoidCallback onUploaded;
 
-  const _DrugLicenseCard({
-    required this.title,
-    required this.subtitle,
-    required this.doc,
-    required this.docType,
-    required this.onUploaded,
-  });
+  const _DrugLicenseCard({super.key, required this.doc, required this.onUploaded});
 
   @override
   ConsumerState<_DrugLicenseCard> createState() => _DrugLicenseCardState();
@@ -1310,17 +1357,49 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
   bool _expanded = false;
   bool _forceEdit = false;
   bool _uploading = false;
+  bool _deleting = false;
   String? _error;
 
+  final _labelCtrl = TextEditingController();
   final _numberCtrl = TextEditingController();
   XFile? _pickedFile;
   Map<String, dynamic>? _dlScraped;
   String? _fetchedExpiryIso;
 
   @override
+  void initState() {
+    super.initState();
+    _labelCtrl.text = widget.doc.licenseLabel ?? '';
+  }
+
+  @override
   void dispose() {
+    _labelCtrl.dispose();
     _numberCtrl.dispose();
     super.dispose();
+  }
+
+  bool get _canDelete => widget.doc.docType == 'DRUG_LICENSE';
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove this license?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _deleting = true);
+    try {
+      await createDio().delete('$baseUrl/onboarding/licenses/${widget.doc.id}');
+      widget.onUploaded();
+    } catch (e) {
+      if (mounted) setState(() { _deleting = false; _error = 'Failed: $e'; });
+    }
   }
 
   Future<void> _pickImage() async {
@@ -1343,6 +1422,10 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
   }
 
   Future<void> _submit() async {
+    if (_labelCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please give this license a name, e.g. "Form 20B"');
+      return;
+    }
     if (_numberCtrl.text.isEmpty) {
       setState(() => _error = 'Please enter the license number');
       return;
@@ -1369,7 +1452,7 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
       final dl = _dlScraped;
       final techPersons = (dl?['tech_persons'] as List?) ?? [];
       final payload = {
-        'doc_type': widget.docType,
+        'label': _labelCtrl.text.trim(),
         'doc_number': _numberCtrl.text,
         'expiry_date': _fetchedExpiryIso,
         'photo_url': publicUrl,
@@ -1383,13 +1466,13 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
           if (techPersons.isNotEmpty) 'tech_person_reg_no': techPersons.first['techregno']?.toString(),
         },
       };
-      await createDio().post('$baseUrl/onboarding/documents', data: payload);
+      await createDio().put('$baseUrl/onboarding/licenses/${widget.doc.id}', data: payload);
 
       if (mounted) {
         setState(() { _uploading = false; _expanded = false; _forceEdit = false; _pickedFile = null; _dlScraped = null; _fetchedExpiryIso = null; });
         widget.onUploaded();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${widget.title} submitted for verification'), backgroundColor: Colors.green),
+          SnackBar(content: Text('${_labelCtrl.text.trim()} submitted for verification'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -1400,10 +1483,10 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
   @override
   Widget build(BuildContext context) {
     final doc = widget.doc;
-    final isExpired = doc?.expiryDate != null && doc!.expiryDate!.isBefore(DateTime.now());
-    final isVerified = (doc?.isVerified ?? false) && !isExpired;
-    final isPending = doc != null && !doc.isVerified && doc.rejectionReason == null && !isExpired;
-    final isRejected = doc?.rejectionReason != null;
+    final isExpired = doc.expiryDate != null && doc.expiryDate!.isBefore(DateTime.now());
+    final isVerified = doc.isVerified && !isExpired;
+    final isPending = !doc.isVerified && doc.rejectionReason == null && !isExpired;
+    final isRejected = doc.rejectionReason != null;
 
     return Container(
       color: Colors.white,
@@ -1418,22 +1501,31 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
               ),
               child: Icon(Icons.badge_outlined, color: isVerified ? Colors.green : isPending ? Colors.orange : teal, size: 22),
             ),
-            title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            title: Text(doc.licenseLabel ?? 'Drug License', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
             subtitle: Text(
               isExpired
                   ? 'Expired on ${doc.expiryDate!.day}/${doc.expiryDate!.month}/${doc.expiryDate!.year} — please update'
-                  : isVerified ? 'Verified' : isPending ? 'Pending review' : isRejected ? 'Rejected: ${doc!.rejectionReason}' : widget.subtitle,
+                  : isVerified ? 'Verified' : isPending ? 'Pending review' : isRejected ? 'Rejected: ${doc.rejectionReason}' : 'Tap to view/update',
               style: TextStyle(fontSize: 12, color: isExpired ? Colors.red : isVerified ? Colors.green : isPending ? Colors.orange : isRejected ? Colors.red : Colors.grey),
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (doc?.photoUrl != null && doc!.photoUrl!.isNotEmpty)
+                if (doc.photoUrl != null && doc.photoUrl!.isNotEmpty)
                   IconButton(
                     icon: const Icon(Icons.visibility_outlined, size: 20),
                     color: Colors.grey.shade600,
                     tooltip: 'View uploaded photo',
                     onPressed: () => launchUrl(Uri.parse(doc.photoUrl!), mode: LaunchMode.externalApplication),
+                  ),
+                if (_canDelete && !_expanded)
+                  IconButton(
+                    icon: _deleting
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.delete_outline, size: 20),
+                    color: Colors.red.shade400,
+                    tooltip: 'Remove license',
+                    onPressed: _deleting ? null : _delete,
                   ),
                 if (isVerified && !isExpired)
                   TextButton(
@@ -1455,16 +1547,21 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
             ),
           ),
 
-          if (doc != null && !isPending && (!_expanded || (isVerified && !_forceEdit)))
+          if (!_expanded || (isVerified && !_forceEdit))
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (doc.legalName != null) Text('Firm Name: ${doc.legalName}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  if (doc.status != null) Text('Status (govt. portal): ${doc.status}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  if (doc.address != null) Text('Address: ${doc.address}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  if (doc.techPersonName != null) Text('Technical Person: ${doc.techPersonName}${doc.techPersonRegNo != null ? ' (Reg. No: ${doc.techPersonRegNo})' : ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  if (doc.docNumber != null && doc.docNumber!.isNotEmpty) Text('License No: ${doc.docNumber}', style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                  if (doc.scrapedData != null)
+                    ScrapedDetails(data: doc.scrapedData)
+                  else ...[
+                    if (doc.legalName != null) Text('Firm Name: ${doc.legalName}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.status != null) Text('Status (govt. portal): ${doc.status}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.address != null) Text('Address: ${doc.address}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (doc.techPersonName != null) Text('Technical Person: ${doc.techPersonName}${doc.techPersonRegNo != null ? ' (Reg. No: ${doc.techPersonRegNo})' : ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
                 ],
               ),
             ),
@@ -1482,7 +1579,7 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
                       padding: const EdgeInsets.all(10),
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
-                      child: Text('Rejected: ${doc!.rejectionReason}', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                      child: Text('Rejected: ${doc.rejectionReason}', style: const TextStyle(color: Colors.red, fontSize: 12)),
                     ),
                   if (isExpired)
                     Container(
@@ -1491,6 +1588,18 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
                       decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
                       child: const Text('Your license has expired. Please verify again and submit an updated photo.', style: TextStyle(color: Colors.red, fontSize: 12)),
                     ),
+
+                  TextField(
+                    controller: _labelCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'License Name',
+                      hintText: 'e.g. Form 20B, Wholesale License...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
 
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1589,13 +1698,276 @@ class _DrugLicenseCardState extends ConsumerState<_DrugLicenseCard> {
                       ),
                       child: _uploading
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : Text('Submit ${widget.title}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          : const Text('Update License', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+// The "+ Add Drug License" affordance below the existing-license cards —
+// collapsed to a single button until tapped, then shows the same
+// label/number/verify/photo form as an existing card, but posts to
+// POST /onboarding/licenses (always a new row) instead of updating one.
+class _AddDrugLicenseSection extends ConsumerStatefulWidget {
+  final VoidCallback onUploaded;
+  const _AddDrugLicenseSection({required this.onUploaded});
+
+  @override
+  ConsumerState<_AddDrugLicenseSection> createState() => _AddDrugLicenseSectionState();
+}
+
+class _AddDrugLicenseSectionState extends ConsumerState<_AddDrugLicenseSection> {
+  static const teal = Color(0xFF00A6A4);
+  bool _expanded = false;
+  bool _uploading = false;
+  String? _error;
+
+  final _labelCtrl = TextEditingController();
+  final _numberCtrl = TextEditingController();
+  XFile? _pickedFile;
+  Map<String, dynamic>? _dlScraped;
+  String? _fetchedExpiryIso;
+
+  @override
+  void dispose() {
+    _labelCtrl.dispose();
+    _numberCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (file != null) setState(() => _pickedFile = file);
+  }
+
+  Future<void> _verifyLicense() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _DlVerifyDialog(licenseNo: _numberCtrl.text.trim()),
+    );
+    if (result != null) {
+      setState(() {
+        _dlScraped = result;
+        _fetchedExpiryIso = _govDateToIso(result['dt_curr_validity_date'] as String?);
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_labelCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please give this license a name, e.g. "Form 20B"');
+      return;
+    }
+    if (_numberCtrl.text.isEmpty) {
+      setState(() => _error = 'Please enter the license number');
+      return;
+    }
+    if (_fetchedExpiryIso == null) {
+      setState(() => _error = 'Please verify your license first — the expiry date is fetched automatically.');
+      return;
+    }
+    if (_pickedFile == null) {
+      setState(() => _error = 'Please select a photo');
+      return;
+    }
+
+    setState(() { _uploading = true; _error = null; });
+
+    try {
+      final urlResp = await createDio().post('$baseUrl/onboarding/upload-url', data: {'filename': _pickedFile!.name});
+      final uploadUrl = urlResp.data['upload_url'] as String;
+      final publicUrl = urlResp.data['public_url'] as String;
+
+      final bytes = await File(_pickedFile!.path).readAsBytes();
+      await http.put(Uri.parse(uploadUrl), body: bytes, headers: {'Content-Type': 'image/jpeg'});
+
+      final dl = _dlScraped;
+      final techPersons = (dl?['tech_persons'] as List?) ?? [];
+      final payload = {
+        'label': _labelCtrl.text.trim(),
+        'doc_number': _numberCtrl.text,
+        'expiry_date': _fetchedExpiryIso,
+        'photo_url': publicUrl,
+        if (dl != null) ...{
+          'scraped_data': dl,
+          'legal_name': dl['institute_name'],
+          'status': dl['licence_status'],
+          'first_issue_date': _govDateToIso(dl['dt_first_issue_date'] as String?),
+          'address': dl['full_address'],
+          if (techPersons.isNotEmpty) 'tech_person_name': techPersons.first['techname'],
+          if (techPersons.isNotEmpty) 'tech_person_reg_no': techPersons.first['techregno']?.toString(),
+        },
+      };
+      await createDio().post('$baseUrl/onboarding/licenses', data: payload);
+
+      if (mounted) {
+        final label = _labelCtrl.text.trim();
+        setState(() {
+          _uploading = false; _expanded = false; _pickedFile = null; _dlScraped = null; _fetchedExpiryIso = null;
+        });
+        _labelCtrl.clear();
+        _numberCtrl.clear();
+        widget.onUploaded();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label submitted for verification'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() { _uploading = false; _error = 'Failed: $e'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_expanded) {
+      return OutlinedButton.icon(
+        onPressed: () => setState(() => _expanded = true),
+        icon: const Icon(Icons.add, color: teal),
+        label: const Text('Add Drug License', style: TextStyle(color: teal)),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: teal),
+          minimumSize: const Size(double.infinity, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Add Drug License', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              TextButton(
+                onPressed: () => setState(() { _expanded = false; _error = null; }),
+                child: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _labelCtrl,
+            decoration: InputDecoration(
+              labelText: 'License Name',
+              hintText: 'e.g. Form 20B, Wholesale License...',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _numberCtrl,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'License Number',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: teal)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _numberCtrl.text.trim().isEmpty ? null : _verifyLicense,
+                style: OutlinedButton.styleFrom(foregroundColor: teal, side: const BorderSide(color: teal)),
+                child: const Text('Verify', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Verifying fetches your registered details from the government drug-license portal, including the expiry date — no need to enter it manually.',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+          ),
+          if (_dlScraped != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: teal.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(8), border: Border.all(color: teal.withValues(alpha: 0.3))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Details fetched — will be saved with this submission:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: teal)),
+                  if (_dlScraped!['licence_form_no'] != null) Text('Form: ${_dlScraped!['licence_form_no']}', style: const TextStyle(fontSize: 12)),
+                  if (_dlScraped!['institute_name'] != null) Text('Firm Name: ${_dlScraped!['institute_name']}', style: const TextStyle(fontSize: 12)),
+                  if (_dlScraped!['licence_status'] != null) Text('Status: ${_dlScraped!['licence_status']}', style: const TextStyle(fontSize: 12)),
+                  if (_dlScraped!['dt_curr_validity_date'] != null) Text('Valid Until: ${_dlScraped!['dt_curr_validity_date']}', style: const TextStyle(fontSize: 12)),
+                  if (_dlScraped!['full_address'] != null) Text('Address: ${_dlScraped!['full_address']}', style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('Expiry date will be fetched automatically once you verify.', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+            ),
+          const SizedBox(height: 12),
+
+          GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: _pickedFile != null ? teal : Colors.grey.shade300, style: BorderStyle.solid),
+                borderRadius: BorderRadius.circular(8),
+                color: _pickedFile != null ? teal.withValues(alpha: 0.05) : Colors.grey.shade50,
+              ),
+              child: Column(
+                children: [
+                  Icon(_pickedFile != null ? Icons.check_circle_outline : Icons.add_photo_alternate_outlined,
+                      color: _pickedFile != null ? teal : Colors.grey, size: 28),
+                  const SizedBox(height: 6),
+                  Text(
+                    _pickedFile != null ? _pickedFile!.name : 'Tap to add photo',
+                    style: TextStyle(fontSize: 13, color: _pickedFile != null ? teal : Colors.grey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ],
+
+          const SizedBox(height: 16),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _uploading ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: teal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: _uploading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Add License', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
         ],
       ),
     );

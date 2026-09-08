@@ -5,10 +5,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/doctor.dart';
 import '../../models/meeting.dart';
 import '../../models/meeting_visit_log.dart';
+import '../../models/team_member.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/request_service.dart';
+import '../../services/team_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
@@ -162,6 +164,13 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
           if (m.notes != null && m.notes!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(m.notes!, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+          ],
+          if (ref.read(authProvider).user?.role == 'partner' &&
+              m.assignedToName != null &&
+              m.assignedToName!.isNotEmpty &&
+              m.assignedTo != ref.read(authProvider).user?.id) ...[
+            const SizedBox(height: 4),
+            Text('Assigned to ${m.assignedToName}', style: const TextStyle(fontSize: 12, color: Colors.purple)),
           ],
           const SizedBox(height: 10),
           Row(
@@ -467,6 +476,11 @@ class _DaySheetState extends State<_DaySheet> {
   bool _submitting = false;
   String? _error;
 
+  // Assign-to-team-member — only relevant for partners who actually have a
+  // team; defaults to unset (meaning "myself", same as the web).
+  List<TeamMember> _teamMembers = [];
+  String? _selectedAssignee;
+
   // Visit-log capture/display — collapsed by default, loaded eagerly per
   // meeting so viewing existing history doesn't require clicking "+ Log
   // Visit" first (that button is only for adding a new entry).
@@ -550,6 +564,9 @@ class _DaySheetState extends State<_DaySheet> {
     }).catchError((_) {
       if (mounted) setState(() => _loadingDoctors = false);
     });
+    TeamService().getTeamMembers().then((m) {
+      if (mounted) setState(() => _teamMembers = m);
+    }).catchError((_) {});
   }
 
   Future<void> _submit() async {
@@ -574,6 +591,7 @@ class _DaySheetState extends State<_DaySheet> {
         scheduledAt: scheduledAt,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         mom: _momCtrl.text.trim().isEmpty ? null : _momCtrl.text.trim(),
+        assignedTo: _selectedAssignee,
       );
 
       if (widget.isPartner && _requestCtrl.text.trim().isNotEmpty) {
@@ -634,6 +652,8 @@ class _DaySheetState extends State<_DaySheet> {
                                 Text(_formatTime(m.scheduledAt), style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                                 if (m.notes != null && m.notes!.isNotEmpty)
                                   Text(m.notes!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                if (widget.isPartner && m.assignedToName != null && m.assignedToName!.isNotEmpty)
+                                  Text('Assigned to ${m.assignedToName}', style: const TextStyle(fontSize: 11.5, color: Colors.purple)),
                               ],
                             ),
                           ),
@@ -809,6 +829,31 @@ class _DaySheetState extends State<_DaySheet> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
                 ),
               ),
+            if (widget.isPartner && _teamMembers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String?>(
+                initialValue: _selectedAssignee,
+                decoration: InputDecoration(
+                  labelText: 'Assign to (optional)',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('Myself')),
+                  for (final m in _teamMembers)
+                    DropdownMenuItem<String?>(value: m.id, child: Text(m.displayName, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (v) => setState(() => _selectedAssignee = v),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Assigning it to a team member puts it on their portal instead of yours.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: () async {

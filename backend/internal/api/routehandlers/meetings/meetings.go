@@ -1,16 +1,42 @@
 package meetings
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
+	vectorsearch "github.com/lavanyaarora/server/internal/vectorsearch"
 )
+
+// syncMeetingVectorAsync re-embeds a meeting in the background after a
+// create/update — uses a fresh context since r.Context() is cancelled the
+// moment the handler returns, and never fails the actual API response.
+func syncMeetingVectorAsync(db *pgxpool.Pool, id uuid.UUID) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := vectorsearch.SyncMeetingByID(ctx, db, id); err != nil {
+			log.Printf("vector sync error for meeting %s: %v", id, err)
+		}
+	}()
+}
+
+func deleteMeetingVectorAsync(id uuid.UUID) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := vectorsearch.DeleteMeetingVector(ctx, id); err != nil {
+			log.Printf("vector delete error for meeting %s: %v", id, err)
+		}
+	}()
+}
 
 // getUserID returns the requesting user's effective partner id — for a
 // team member this resolves to their owning partner's id, so meetings are
@@ -103,6 +129,7 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not create meeting", http.StatusInternalServerError)
 			return
 		}
+		syncMeetingVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -215,6 +242,7 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not update meeting", http.StatusInternalServerError)
 			return
 		}
+		syncMeetingVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
@@ -253,6 +281,7 @@ func UpdateMomHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not update meeting notes", http.StatusInternalServerError)
 			return
 		}
+		syncMeetingVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
@@ -414,6 +443,7 @@ func DeleteHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not delete meeting", http.StatusInternalServerError)
 			return
 		}
+		deleteMeetingVectorAsync(id)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})

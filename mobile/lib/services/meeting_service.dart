@@ -34,6 +34,7 @@ class MeetingService {
     required DateTime scheduledAt,
     String? notes,
     String? mom,
+    String? assignedTo,
   }) async {
     await _dio.post('/meetings', data: {
       if (doctorId != null) 'doctor_id': doctorId,
@@ -41,6 +42,7 @@ class MeetingService {
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       if (notes != null) 'notes': notes,
       if (mom != null) 'mom': mom,
+      if (assignedTo != null) 'assigned_to': assignedTo,
     });
   }
 

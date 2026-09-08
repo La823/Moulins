@@ -52,7 +52,7 @@ func Ask(ctx context.Context, db *pgxpool.Pool, question string) (string, error)
 		return "", fmt.Errorf("vectorsearch: embed question: %w", err)
 	}
 
-	results, err := searchPoints(ctx, cfg, qVector, 5)
+	results, err := searchPoints(ctx, cfg, "products", qVector, 5, nil)
 	if err != nil {
 		return "", fmt.Errorf("vectorsearch: search products: %w", err)
 	}
@@ -73,6 +73,21 @@ func Ask(ctx context.Context, db *pgxpool.Pool, question string) (string, error)
 		"do not invent products, prices, or details that aren't present in the context. " +
 		"If the context doesn't contain a relevant answer, say so plainly.\n\n" +
 		"Product context:\n" + context_.String()
+
+	return callBedrock(ctx, cfg, systemPrompt, question)
+}
+
+// callBedrock sends a system-prompt-grounded chat completion request to
+// Bedrock and returns the model's answer — shared by every Ask* entry
+// point (products, and the owner-scoped doctors/meetings variant), which
+// differ only in how they build the system prompt/context.
+func callBedrock(ctx context.Context, cfg Config, systemPrompt, question string) (string, error) {
+	if cfg.BedrockAPIKey == "" {
+		return "", fmt.Errorf("vectorsearch: BEDROCK_API_KEY not configured")
+	}
+	if cfg.BedrockRegion == "" {
+		return "", fmt.Errorf("vectorsearch: BEDROCK_REGION not configured")
+	}
 
 	reqBody, err := json.Marshal(bedrockChatRequest{
 		Model: bedrockModel,

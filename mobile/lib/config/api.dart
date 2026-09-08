@@ -14,8 +14,13 @@ FlutterSecureStorage get _storage => const FlutterSecureStorage(
 Dio createDio() {
   final dio = Dio(BaseOptions(
     baseUrl: baseUrl,
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 15),
+    connectTimeout: const Duration(seconds: 15),
+    // The GST/drug-license lookups proxy a live scrape against the
+    // government portal (multiple sequential requests on the backend) —
+    // 15s was too tight for that round trip and made the mobile GST
+    // verifier fail with a timeout on slower connections while the web
+    // client (no default fetch timeout) sailed through the same call.
+    receiveTimeout: const Duration(seconds: 40),
     headers: {'Content-Type': 'application/json'},
   ));
 

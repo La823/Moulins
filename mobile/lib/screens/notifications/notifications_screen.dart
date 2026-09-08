@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/notification_item.dart';
 import '../../providers/notification_provider.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import 'notification_detail_screen.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -25,35 +25,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     if (!n.isRead) {
       ref.read(notificationsProvider.notifier).markAsRead(n.recipientId);
     }
-    if (n.deepLink != null && n.deepLink!.isNotEmpty) {
-      context.push(n.deepLink!);
-    } else if (n.imageUrl != null && n.imageUrl!.isNotEmpty) {
-      _openImage(n.imageUrl!);
-    }
-  }
-
-  void _openImage(String url) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black,
-      builder: (ctx) => GestureDetector(
-        onTap: () => Navigator.of(ctx).pop(),
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.black,
-            iconTheme: const IconThemeData(color: Colors.white),
-            elevation: 0,
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4,
-              child: Image.network(url, fit: BoxFit.contain),
-            ),
-          ),
-        ),
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => NotificationDetailScreen(item: n)),
     );
   }
 
@@ -111,12 +84,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                 // Full width, whole photo visible (no cropping) — the
                                 // container sizes to whatever the image's aspect ratio is.
                                 GestureDetector(
-                                  onTap: () {
-                                    if (!n.isRead) {
-                                      ref.read(notificationsProvider.notifier).markAsRead(n.recipientId);
-                                    }
-                                    _openImage(n.imageUrl!);
-                                  },
+                                  onTap: () => _onTap(n),
                                   child: ColoredBox(
                                     color: Colors.grey.shade100,
                                     child: Image.network(

@@ -209,6 +209,8 @@ const NAV_ITEMS = [
       { label: "Broadcast Lists", href: "/panel/broadcast-lists", permission: "broadcast_lists_view" },
       { label: "Careers", href: "/panel/careers", permission: "careers_view" },
       { label: "Product Assistant", href: "/panel/product-assistant", adminOnly: true },
+      { label: "Warehouse Layout", href: "/warehouse", permission: "warehouse_view", newTab: true },
+      { label: "Warehouse Inventory", href: "/panel/warehouse-inventory", permission: "warehouse_view" },
     ],
   },
 ];
@@ -302,6 +304,7 @@ export default function AdminLayout({ children }) {
                             <Link
                               key={child.href}
                               href={child.href}
+                              {...(child.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                               className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 childActive
                                   ? "bg-white/10 text-white"

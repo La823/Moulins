@@ -89,7 +89,7 @@ func SyncProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) error 
 		return fmt.Errorf("vectorsearch: embed product: %w", err)
 	}
 
-	if err := upsertPoint(ctx, cfg, id.String(), vector, buildPayload(product)); err != nil {
+	if err := upsertPoint(ctx, cfg, "products", id.String(), vector, buildPayload(product)); err != nil {
 		return fmt.Errorf("vectorsearch: upsert point: %w", err)
 	}
 	return nil
@@ -102,7 +102,7 @@ func DeleteProductVector(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if err := deletePoint(ctx, cfg, id.String()); err != nil {
+	if err := deletePoint(ctx, cfg, "products", id.String()); err != nil {
 		return fmt.Errorf("vectorsearch: delete point: %w", err)
 	}
 	return nil

@@ -9,11 +9,12 @@ class TeamService {
     return (res.data as List<dynamic>).map((e) => TeamMember.fromJson(e)).toList();
   }
 
-  Future<void> createTeamMember({required String phoneNumber, required String password, String? username}) async {
+  Future<void> createTeamMember({required String phoneNumber, required String password, String? username, String? email}) async {
     await _dio.post('/team', data: {
       'phone_number': phoneNumber,
       'password': password,
       if (username != null && username.isNotEmpty) 'username': username,
+      if (email != null && email.isNotEmpty) 'email': email,
     });
   }
 
@@ -23,6 +24,10 @@ class TeamService {
 
   Future<void> updateTeamMemberPassword(String id, String password) async {
     await _dio.put('/team/$id', data: {'password': password});
+  }
+
+  Future<void> updateTeamMemberEmail(String id, String email) async {
+    await _dio.put('/team/$id', data: {'email': email});
   }
 
   // Attendance — partner marking/viewing their team.
@@ -60,6 +65,12 @@ class TeamService {
   Future<List<DailyLog>> getMemberDailyLogs(String memberId, int year, int month) async {
     final res = await _dio.get('/team/$memberId/daily-logs', queryParameters: {'year': year, 'month': month});
     return (res.data as List<dynamic>).map((e) => DailyLog.fromJson(e)).toList();
+  }
+
+  // Daily logs — partner reviewing every team member's logs together.
+  Future<List<TeamDailyLog>> getTeamDailyLogs(int year, int month) async {
+    final res = await _dio.get('/team/daily-logs', queryParameters: {'year': year, 'month': month});
+    return (res.data as List<dynamic>).map((e) => TeamDailyLog.fromJson(e)).toList();
   }
 }
 

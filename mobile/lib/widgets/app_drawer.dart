@@ -35,6 +35,15 @@ class AppDrawer extends ConsumerWidget {
               ),
             ),
 
+            if (user?.role == 'partner' || user?.role == 'team_member')
+              ListTile(
+                leading: const Icon(Icons.dashboard_outlined, color: _teal),
+                title: const Text('Dashboard'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/dashboard');
+                },
+              ),
             // Special-type customers get a tile into their own private catalog.
             if (user?.isSpecial ?? false)
               ListTile(

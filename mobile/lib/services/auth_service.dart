@@ -21,10 +21,17 @@ class AuthService {
     await _dio.put('/profile/transport-mode', data: {'default_transport_mode': mode});
   }
 
-  Future<void> updateAddress({String? billingAddress, String? shippingAddress}) async {
+  // Billing address is deliberately not settable here — the backend ignores
+  // it on this endpoint. It can only be pulled from the partner's verified
+  // GST record (pullBillingAddressFromGst) or changed by an admin.
+  Future<void> updateAddress({String? shippingAddress}) async {
     await _dio.put('/profile/address', data: {
-      'billing_address': billingAddress,
       'shipping_address': shippingAddress,
     });
+  }
+
+  Future<String> pullBillingAddressFromGst() async {
+    final res = await _dio.post('/profile/address/billing-from-gst');
+    return res.data['billing_address'] as String;
   }
 }

@@ -31,6 +31,8 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _dirty = false;
+  bool _isDefault = false;
+  bool _regenerating = false;
 
   List<Product> _searchResults = [];
   Product? _activeProduct;
@@ -59,6 +61,7 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
       setState(() {
         _nameCtrl.text = detail.presentation.name;
         _doctorId = detail.presentation.doctorId;
+        _isDefault = detail.presentation.isDefaultForDoctor;
         _slides = detail.slides;
         _loading = false;
       });
@@ -137,6 +140,27 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
     }
   }
 
+  // Default decks are auto-populated from every visual-aid image of the
+  // doctor's currently assigned products, but only at creation time —
+  // assigning more products afterward doesn't touch the deck already
+  // saved here, so this re-runs the same generation and reloads it.
+  Future<void> _regenerate() async {
+    if (_doctorId == null) return;
+    setState(() => _regenerating = true);
+    try {
+      await _service.generateDefaultForDoctor(_doctorId!);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not regenerate: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _regenerating = false);
+    }
+  }
+
   void _present() {
     if (_slides.isEmpty) return;
     context.push('/gallery', extra: {
@@ -163,6 +187,14 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A)),
         ),
         actions: [
+          if (_isDefault && _doctorId != null)
+            IconButton(
+              icon: _regenerating
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh, color: Color(0xFF00A6A4)),
+              tooltip: 'Regenerate from assigned products',
+              onPressed: _regenerating ? null : _regenerate,
+            ),
           TextButton(
             onPressed: _dirty && !_saving ? _save : null,
             child: _saving
