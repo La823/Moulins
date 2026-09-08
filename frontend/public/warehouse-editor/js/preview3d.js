@@ -4,7 +4,7 @@
 // zoom). It is rebuilt from a layout snapshot each time the user opens 3D.
 
 import * as THREE from '../vendor/three.module.js';
-import { zoneOf, levelBaseZ } from './geometry.js';
+import { zoneOf, levelBaseZ, expandBins } from './geometry.js';
 
 export function createPreview3D(wrap) {
   let ctx = null; // { renderer, raf }
@@ -48,7 +48,42 @@ export function createPreview3D(wrap) {
     return sp;
   }
 
-  function build(state, showLabels = true) {
+  // Multi-line bin hover text, drawn as a flat plane instead of a
+  // camera-facing Sprite billboard — vertical by default (PlaneGeometry's
+  // own XY plane, facing +Z), matching an E-W rack's face. Callers rotate it
+  // about Y for an N-S rack's face — see the rotationY param there.
+  function makeFlatLabel(lines, size, color) {
+    const pad = 8;
+    const fp = 40;
+    const lineGap = 6;
+    const c = document.createElement('canvas');
+    let g = c.getContext('2d');
+    g.font = `600 ${fp}px Consolas`;
+    const w = Math.ceil(Math.max(...lines.map((t) => g.measureText(t).width))) + pad * 2;
+    const h = lines.length * (fp + lineGap) + pad * 2;
+    c.width = w;
+    c.height = h;
+    g = c.getContext('2d');
+    g.font = `600 ${fp}px Consolas`;
+    g.fillStyle = color;
+    g.textBaseline = 'middle';
+    lines.forEach((t, i) => g.fillText(t, pad, pad + (fp + lineGap) * i + fp / 2));
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    const geo = new THREE.PlaneGeometry((size * c.width) / c.height, size);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: false,
+      side: THREE.DoubleSide,
+    });
+    return new THREE.Mesh(geo, mat);
+  }
+
+  // getBinProduct(whseLocation, slot) -> product name or null. Passed in
+  // from editor.js since assignmentsList is private there — keeps this
+  // module ignorant of the assignment API, just a lookup callback.
+  function build(state, showLabels = true, getBinProduct = null) {
     teardown();
 
     const scene = new THREE.Scene();
@@ -147,6 +182,13 @@ export function createPreview3D(wrap) {
       }
     });
 
+    // override_key -> whse_location, so hovered bin meshes (tagged below with
+    // rack/bay/level, matching override_key's shape) can resolve the same
+    // human-readable label the 2D panel keys its bin-product assignments by.
+    const binLabelByKey = new Map();
+    expandBins(state).forEach((bn) => binLabelByKey.set(bn.override_key, bn.whse_location));
+    const binMeshes = [];
+
     state.racks.forEach((r) => {
       const t = state.binTypes[r.type];
       if (!t) return;
@@ -178,6 +220,13 @@ export function createPreview3D(wrap) {
             }),
           );
           m.position.copy(W(bx, by, elev + levelBaseZ(levelHeights, l) + lh / 2));
+          m.userData = {
+            kind: 'bin',
+            whseLocation: binLabelByKey.get(`${r.id}|${b}|${l + 1}`),
+            binH: lh,
+            rackDir: r.dir,
+          };
+          binMeshes.push(m);
           scene.add(m);
           const eg = new THREE.LineSegments(
             new THREE.EdgesGeometry(geo),
@@ -197,6 +246,10 @@ export function createPreview3D(wrap) {
     // the footprint (and slats with it) 90° visually. Same helper logic as
     // editor.js's palletRenderDims, kept local since this module doesn't
     // import the 2D editor.
+    // Pallets are several small meshes (blocks + slats), not one — so for
+    // search-highlight lookup we just record each pallet's center/height
+    // here rather than tagging a mesh like the raycast-picked bin boxes.
+    const palletAnchors = new Map();
     (state.pallets || []).forEach((p) => {
       const rw = p.dir === 'N' ? p.d : p.w;
       const rd = p.dir === 'N' ? p.w : p.d;
@@ -210,6 +263,7 @@ export function createPreview3D(wrap) {
       const elev = (zone ? zone.elev : 0) + 0.2;
       const cx = p.x + rw / 2;
       const cy = p.y + rd / 2;
+      palletAnchors.set(p.id, { x: cx, y: cy, h: elev + p.h + 0.3, rw, rd, ph: p.h, elev });
 
       const blockH = p.h * 0.6;
       const deckH = Math.max(p.h - blockH, 0.01);
@@ -336,6 +390,46 @@ export function createPreview3D(wrap) {
       if (panMode) el.style.cursor = 'grab';
     });
     el.style.cursor = panMode ? 'grab' : 'default';
+
+    // Hover a bin -> show its linked product(s) right at that bin, small and
+    // only while pointed at — not a persistent overlay, mirrors the 2D plan's
+    // hover behavior. One reusable flat label, re-textured per hovered bin.
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
+    let hoverMesh = null;
+    let hoverLabel = null;
+    el.addEventListener('pointermove', (e) => {
+      if (drag || !getBinProduct || binMeshes.length === 0) return;
+      const rect = el.getBoundingClientRect();
+      pointerNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointerNdc, camera);
+      const hit = raycaster.intersectObjects(binMeshes, false)[0];
+      const m = hit ? hit.object : null;
+      if (m === hoverMesh) return;
+      hoverMesh = m;
+      if (hoverLabel) {
+        scene.remove(hoverLabel);
+        hoverLabel = null;
+      }
+      if (m && m.userData.whseLocation) {
+        const l = getBinProduct(m.userData.whseLocation, 'L');
+        const rt = getBinProduct(m.userData.whseLocation, 'R');
+        // Small and anchored right at the bin — sized off the bin's own
+        // height, not a fixed size, so it never dwarfs the bin.
+        hoverLabel = makeFlatLabel(
+          [m.userData.whseLocation, `L: ${l ?? '—'}  R: ${rt ?? '—'}`],
+          Math.max(0.5, Math.min(1.2, m.userData.binH * 1.6)),
+          '#ffe580',
+        );
+        // Face the aisle, same as the rack itself: an E-W rack's face needs
+        // no rotation (default plane already spans X/height), an N-S rack's
+        // face is turned 90° so the label spans Z/height instead.
+        if (m.userData.rackDir === 'N') hoverLabel.rotation.y = Math.PI / 2;
+        hoverLabel.position.copy(m.position);
+        scene.add(hoverLabel);
+      }
+    });
     el.addEventListener(
       'wheel',
       (e) => {
@@ -352,7 +446,84 @@ export function createPreview3D(wrap) {
       renderer.render(scene, camera);
     };
     loop();
+
+    // Exposed for the read-only viewer's product search — "jump to" a plan
+    // (x, y) at height h without rebuilding the scene. Not used by the main
+    // editor's own 3D view.
+    ctx.focusOn = (x, y, h = 4) => {
+      target.set(x, h, -y);
+      radius = Math.max(20, Math.min(radius, 60));
+      applyCam();
+    };
+
+    // Search-result highlight: the matched bin/pallet itself lights up
+    // bright green (not just a label), plus a small tag with its id — both
+    // independent of the hover label above and of the camera (no
+    // target/applyCam call here at all, by design).
+    const HIGHLIGHT_COLOR = 0x39ff14;
+    let highlightLabel = null;
+    let highlightedBinMesh = null;
+    let highlightedBinOrigColor = null;
+    let highlightBox = null;
+    ctx.setHighlight = (kind, key, slot) => {
+      if (highlightLabel) {
+        scene.remove(highlightLabel);
+        highlightLabel = null;
+      }
+      if (highlightedBinMesh) {
+        highlightedBinMesh.material.color.setHex(highlightedBinOrigColor);
+        highlightedBinMesh.material.opacity = 0.55;
+        highlightedBinMesh = null;
+      }
+      if (highlightBox) {
+        scene.remove(highlightBox);
+        highlightBox = null;
+      }
+      if (kind === 'pallet') {
+        const a = palletAnchors.get(key);
+        if (!a) return;
+        highlightLabel = makeFlatLabel([key], 1, '#39ff14');
+        highlightLabel.position.set(a.x, a.h, a.y);
+        scene.add(highlightLabel);
+        // Pallets are several meshes (blocks + slats), not one — so instead
+        // of recoloring each, wrap the whole thing in a bright wireframe box.
+        const boxGeo = new THREE.BoxGeometry(a.rw + 0.06, a.ph + 0.06, a.rd + 0.06);
+        highlightBox = new THREE.Mesh(
+          boxGeo,
+          new THREE.MeshBasicMaterial({ color: HIGHLIGHT_COLOR, wireframe: true, depthTest: false }),
+        );
+        highlightBox.position.set(a.x, a.elev + a.ph / 2, a.y);
+        scene.add(highlightBox);
+      } else if (kind === 'bin') {
+        const m = binMeshes.find((mm) => mm.userData.whseLocation === key);
+        if (!m) return;
+        highlightedBinMesh = m;
+        highlightedBinOrigColor = m.material.color.getHex();
+        m.material.color.setHex(HIGHLIGHT_COLOR);
+        m.material.opacity = 0.9;
+        highlightLabel = makeFlatLabel(
+          [key, slot ? `Slot ${slot}` : ''],
+          Math.max(0.7, Math.min(1.4, m.userData.binH * 1.8)),
+          '#39ff14',
+        );
+        if (m.userData.rackDir === 'N') highlightLabel.rotation.y = Math.PI / 2;
+        highlightLabel.position.copy(m.position);
+        scene.add(highlightLabel);
+      }
+    };
   }
 
-  return { build, teardown, setPanMode };
+  function focusOn(x, y, h) {
+    ctx?.focusOn?.(x, y, h);
+  }
+
+  function highlight(kind, key, slot) {
+    ctx?.setHighlight?.(kind, key, slot);
+  }
+
+  function clearHighlight() {
+    ctx?.setHighlight?.(null);
+  }
+
+  return { build, teardown, setPanMode, focusOn, highlight, clearHighlight };
 }

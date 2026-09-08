@@ -211,6 +211,7 @@ const NAV_ITEMS = [
       { label: "Product Assistant", href: "/panel/product-assistant", adminOnly: true },
       { label: "Warehouse Layout", href: "/warehouse", permission: "warehouse_view", newTab: true },
       { label: "Warehouse Inventory", href: "/panel/warehouse-inventory", permission: "warehouse_view" },
+      { label: "Warehouse View", href: "/warehouse/view", permission: "warehouse_view", newTab: true },
     ],
   },
 ];

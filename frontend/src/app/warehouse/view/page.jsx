@@ -1,0 +1,264 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import AuthGuard from "@/components/AuthGuard";
+
+// A read-only sibling of /warehouse (the full 2D/3D editor): loads a saved
+// layout and renders it in the same read-only 3D preview the editor itself
+// uses (frontend/public/warehouse-editor/js/preview3d.js — orbit/pan/zoom
+// only, no mutation), plus a product search that jumps the camera to a
+// match. Deliberately NOT built on top of editor.js — that module wires up
+// its whole toolbar/canvas as one big stateful machine with no "read-only"
+// mode, and retrofitting one there risks the real editor. This page instead
+// mirrors the pattern already used by (admin)/panel/warehouse-inventory:
+// a plain React shell that dynamically imports the same vendored geometry
+// helpers so bin/bay numbering always matches the editor exactly.
+export default function WarehouseViewPage() {
+  return (
+    <AuthGuard allowedRoles={["admin", "employee"]}>
+      <WarehouseViewer />
+    </AuthGuard>
+  );
+}
+
+function WarehouseViewer() {
+  const wrapRef = useRef(null);
+  const previewRef = useRef(null);
+  const modulesRef = useRef(null);
+
+  const [layouts, setLayouts] = useState([]);
+  const [layoutName, setLayoutName] = useState("");
+  const [layoutState, setLayoutState] = useState(null);
+  const [assignments, setAssignments] = useState([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showLabels, setShowLabels] = useState(true);
+  const [panMode, setPanMode] = useState(false);
+  const [selected, setSelected] = useState(null); // the highlighted assignment, or null
+
+  function togglePan() {
+    const next = !panMode;
+    setPanMode(next);
+    previewRef.current?.setPanMode(next);
+  }
+
+  function makeGetBinProduct(list) {
+    return (whseLocation, slot) => {
+      const a = list.find(
+        (x) => x.location_type === "bin" && x.location_key === whseLocation && x.slot === slot,
+      );
+      return a?.product_name ?? null;
+    };
+  }
+
+  // Load the vendored modules once, then the layout list.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [geometry, dbconnect, migrations, preview3d] = await Promise.all([
+          import(/* webpackIgnore: true */ "/warehouse-editor/js/geometry.js"),
+          import(/* webpackIgnore: true */ "/warehouse-editor/js/dbconnect.js"),
+          import(/* webpackIgnore: true */ "/warehouse-editor/js/migrations.js"),
+          import(/* webpackIgnore: true */ "/warehouse-editor/js/preview3d.js"),
+        ]);
+        if (cancelled) return;
+        modulesRef.current = {
+          expandBins: geometry.expandBins,
+          fromDbConnect: dbconnect.fromDbConnect,
+          migrate: migrations.migrate,
+        };
+        previewRef.current = preview3d.createPreview3D(wrapRef.current);
+      } catch (err) {
+        if (!cancelled) setError("Could not load the layout engine: " + err.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      previewRef.current?.teardown();
+    };
+  }, []);
+
+  useEffect(() => {
+    apiFetch("/admin/warehouse/layouts")
+      .then((list) => {
+        setLayouts(list || []);
+        if (list && list.length > 0) setLayoutName(list[0].name);
+      })
+      .catch((err) => setError("Could not load layouts: " + err.message));
+  }, []);
+
+  useEffect(() => {
+    if (!layoutName || !modulesRef.current) return;
+    let cancelled = false;
+    setSelected(null);
+    previewRef.current?.clearHighlight();
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const [raw, assigns] = await Promise.all([
+          apiFetch(`/admin/warehouse/layouts/${encodeURIComponent(layoutName)}`),
+          apiFetch(`/admin/warehouse/layouts/${encodeURIComponent(layoutName)}/assignments`),
+        ]);
+        if (cancelled) return;
+        const state = modulesRef.current.fromDbConnect(modulesRef.current.migrate(raw));
+        setLayoutState(state);
+        setAssignments(assigns || []);
+        previewRef.current?.build(state, showLabels, makeGetBinProduct(assigns || []));
+      } catch (err) {
+        if (!cancelled) {
+          setError("Could not load that layout: " + err.message);
+          setLayoutState(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // previewRef/modulesRef are refs, not reactive state — safe to omit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutName]);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return assignments.filter((a) => a.product_name?.toLowerCase().includes(q));
+  }, [query, assignments]);
+
+  // Highlights the matched bin/pallet with a bright label right where it is
+  // — deliberately does NOT move the camera, so it doesn't yank the view
+  // away from wherever the person is currently looking.
+  function locate(a) {
+    if (!previewRef.current) return;
+    setSelected(a);
+    previewRef.current.highlight(a.location_type, a.location_key, a.slot);
+  }
+
+  useEffect(() => {
+    if (results.length === 0) {
+      setSelected(null);
+      previewRef.current?.clearHighlight();
+    }
+  }, [results]);
+
+  // Toggling "3D Labels" rebuilds the scene (that's how preview3d.js's
+  // build() takes the flag) — reapply any active search highlight after,
+  // since a rebuild tears down and recreates every mesh/label.
+  useEffect(() => {
+    if (!layoutState) return;
+    previewRef.current?.build(layoutState, showLabels, makeGetBinProduct(assignments));
+    if (selected) previewRef.current?.highlight(selected.location_type, selected.location_key, selected.slot);
+    // Only meant to react to the toggle itself — layoutState/assignments
+    // changes are already handled by the load effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLabels]);
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-gray-950 text-gray-100">
+      <div className="w-80 shrink-0 border-r border-gray-800 bg-gray-900 flex flex-col">
+        <div className="p-4 border-b border-gray-800">
+          <h1 className="text-sm font-semibold text-gray-100">Warehouse — view only</h1>
+          <a href="/warehouse" className="text-xs text-blue-400 hover:text-blue-300">
+            Open the editor →
+          </a>
+        </div>
+
+        <div className="p-4 border-b border-gray-800">
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">Layout</label>
+          <select
+            value={layoutName}
+            onChange={(e) => setLayoutName(e.target.value)}
+            className="w-full px-2.5 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100"
+          >
+            {layouts.length === 0 && <option value="">No layouts saved</option>}
+            {layouts.map((l) => (
+              <option key={l.name} value={l.name}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="p-4 border-b border-gray-800 flex gap-2">
+          <button
+            onClick={() => setShowLabels((v) => !v)}
+            className={`flex-1 px-2.5 py-1.5 rounded-md text-sm border ${
+              showLabels
+                ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
+                : "bg-gray-800 border-gray-700 text-gray-300"
+            }`}
+          >
+            {showLabels ? "Hide Labels" : "Show Labels"}
+          </button>
+          <button
+            onClick={togglePan}
+            title="Drag to pan instead of orbit"
+            className={`flex-1 px-2.5 py-1.5 rounded-md text-sm border ${
+              panMode
+                ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
+                : "bg-gray-800 border-gray-700 text-gray-300"
+            }`}
+          >
+            ✋ Pan{panMode ? " (on)" : ""}
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-gray-800">
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">Search product</label>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Product name…"
+            className="w-full px-2.5 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100 placeholder:text-gray-500"
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {query && results.length === 0 && (
+            <p className="text-xs text-gray-500 px-2 py-3">No matches in this layout.</p>
+          )}
+          {results.map((a, i) => {
+            const key = `${a.location_type}-${a.location_key}-${a.slot}`;
+            return (
+              <button
+                key={`${key}-${i}`}
+                onClick={() => locate(a)}
+                className={`w-full text-left px-3 py-2 rounded-md hover:bg-gray-800 mb-1 ${
+                  selected === a ? "bg-gray-800 ring-1 ring-lime-400/60" : ""
+                }`}
+              >
+                <div className="text-sm text-gray-100">{a.product_name}</div>
+                <div className="text-xs text-gray-400 font-mono">
+                  {a.location_type === "pallet" ? "Pallet" : "Bin"} {a.location_key}
+                  {a.location_type === "bin" ? ` (${a.slot})` : ""}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {error && <p className="text-xs text-red-400 p-4 border-t border-gray-800">{error}</p>}
+      </div>
+
+      <div className="relative flex-1">
+        <div ref={wrapRef} className="absolute inset-0" />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm bg-gray-950/60">
+            Loading…
+          </div>
+        )}
+        {!loading && !layoutState && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+            Select a layout to view it.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

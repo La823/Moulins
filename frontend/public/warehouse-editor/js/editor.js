@@ -63,6 +63,12 @@ function findAssignment(locationType, locationKey, slot) {
   );
 }
 
+// Passed into preview3d.js's build() so the 3D view can resolve a bin's
+// linked product on hover without needing access to assignmentsList itself.
+function getBinProduct(whseLocation, slot) {
+  return findAssignment('bin', whseLocation, slot)?.product_name ?? null;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
@@ -134,6 +140,9 @@ let sel = null; // { kind, obj }
 let hover = null; // { kind, obj } — whatever's under the mouse right now; 2D
 // labels only render for this object instead of being drawn for everything
 // all the time, so the plan stays uncluttered until you point at something.
+let hoverBay = null; // bay index under the mouse when hover.obj is a rack —
+// tracked separately from `hover` since the rack itself doesn't change as
+// the mouse moves between bays, but the tooltip content should.
 let pendingEdgeNode = null;
 let dragDraw = null;
 let dragMove = null;
@@ -498,11 +507,26 @@ function draw() {
       ctx.fillStyle = seld ? '#5fa8e8' : '#cfd8e2';
       ctx.font = `600 ${Math.max(11, z * 2.6)}px Consolas`;
       const dOff = r.dir === 'E' ? z * (state.binTypes[r.type]?.d || 4) : 0;
-      ctx.fillText(
-        `${r.id} ×${r.bays} L${r.levels} ${r.type}`,
-        sx(r.x),
-        sy(r.y) + Math.max(13, z * 3.2) + dOff + 12,
-      );
+      let ty = sy(r.y) + Math.max(13, z * 3.2) + dOff + 12;
+      if (hoverBay != null) {
+        ctx.fillText(`${resolveBayLabel(state, r, hoverBay)} — ${r.type}`, sx(r.x), ty);
+        ctx.font = `${Math.max(9, z * 2)}px Consolas`;
+        ctx.fillStyle = '#9aa6b3';
+        binsInBay(r, hoverBay).forEach((b) => {
+          // Keyed by whse_location, not override_key — matches how the rack
+          // panel's bin-product-sel dropdowns save assignments (see data-loc).
+          const l = findAssignment('bin', b.whse_location, 'L');
+          const rt = findAssignment('bin', b.whse_location, 'R');
+          ty += Math.max(12, z * 2.6);
+          ctx.fillText(
+            `L${b.level}: ${l ? l.product_name : '—'} / ${rt ? rt.product_name : '—'}`,
+            sx(r.x),
+            ty,
+          );
+        });
+      } else {
+        ctx.fillText(`${r.id} ×${r.bays} L${r.levels} ${r.type}`, sx(r.x), ty);
+      }
     }
   });
 
@@ -1402,7 +1426,7 @@ function setMode3d(on) {
   document.getElementById('view3d').classList.toggle('active', on);
   document.getElementById('view2d').classList.toggle('active', !on);
   if (on) {
-    preview.build(state, labelState.get());
+    preview.build(state, labelState.get(), getBinProduct);
     preview.setPanMode(tool === 'pan');
   } else {
     preview.teardown();
@@ -1415,7 +1439,7 @@ function toggleLabels() {
   labelState.toggle();
   const btn = document.getElementById('toggleLabels');
   if (btn) btn.classList.toggle('active', labelState.get());
-  if (mode3d) preview.build(state, labelState.get());
+  if (mode3d) preview.build(state, labelState.get(), getBinProduct);
   draw();
 }
 
@@ -1425,6 +1449,7 @@ function wirePointer() {
   cv.addEventListener('pointerleave', () => {
     if (hover) {
       hover = null;
+      hoverBay = null;
       draw();
     }
   });
@@ -1563,14 +1588,17 @@ function wirePointer() {
     if (panning || dragDraw || dragMovePending || dragMove) {
       if (hover) {
         hover = null;
+        hoverBay = null;
         draw();
       }
     } else {
       const h = hitTest(x, y);
       const nextObj = h ? h.obj : null;
       const prevObj = hover ? hover.obj : null;
-      if (nextObj !== prevObj) {
+      const nextBay = h && h.kind === 'rack' ? bayOf(h.obj, state.binTypes, x, y) : null;
+      if (nextObj !== prevObj || nextBay !== hoverBay) {
         hover = h;
+        hoverBay = nextBay;
         draw();
       }
     }
