@@ -180,11 +180,14 @@ export default function WarehouseInventoryPage() {
                           {p.w}×{p.d}×{p.h} m
                         </div>
                       </div>
-                      <ProductSelect
-                        value={a?.product_id}
-                        products={products}
-                        onChange={(pid) => updateAssignment("pallet", p.id, "A", pid)}
-                      />
+                      <div className="flex items-center gap-2">
+                        <ProductSelect
+                          value={a?.product_id}
+                          products={products}
+                          onChange={(pid) => updateAssignment("pallet", p.id, "A", pid)}
+                        />
+                        <QRThumb layoutName={layoutName} locationType="pallet" locationKey={p.id} />
+                      </div>
                     </div>
                   );
                 })}
@@ -245,6 +248,11 @@ export default function WarehouseInventoryPage() {
                                       onChange={(pid) => updateAssignment("bin", b.whse_location, "R", pid)}
                                     />
                                   </div>
+                                  <QRThumb
+                                    layoutName={layoutName}
+                                    locationType="bin"
+                                    locationKey={b.whse_location}
+                                  />
                                 </div>
                               );
                             })}
@@ -281,5 +289,50 @@ function ProductSelect({ value, products, onChange }) {
         </option>
       ))}
     </select>
+  );
+}
+
+// Fetches (and, on the backend, caches to S3) the QR label for one bin or
+// pallet as soon as this row mounts, and keeps it showing inline — the
+// backend caches each code to S3 on first generation, so re-visiting the
+// page only re-fetches the already-generated URL, not a fresh render.
+function QRThumb({ layoutName, locationType, locationKey }) {
+  const [url, setUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    setUrl(null);
+    const path = `/admin/warehouse/layouts/${encodeURIComponent(layoutName)}/qrcode/${locationType}/${encodeURIComponent(locationKey)}`;
+    apiFetch(path)
+      .then((data) => {
+        if (!cancelled) setUrl(data.url);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [layoutName, locationType, locationKey]);
+
+  return (
+    <a
+      href={url || undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={url ? "Open full size" : undefined}
+      className="w-10 h-10 shrink-0 border border-gray-200 rounded-md flex items-center justify-center bg-white overflow-hidden"
+    >
+      {loading && <span className="text-[9px] text-gray-400">…</span>}
+      {error && <span className="text-[9px] text-red-500">!</span>}
+      {url && <img src={url} alt={`QR code for ${locationKey}`} className="w-full h-full object-contain" />}
+    </a>
   );
 }

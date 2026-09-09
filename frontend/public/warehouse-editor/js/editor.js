@@ -328,7 +328,7 @@ function save() {
   saveTimer = setTimeout(() => {
     try {
       saveLayout(state);
-      flagSaved('saved');
+      flagSaved('draft saved locally');
     } catch {
       flagSaved('not saved — export!', true);
     }
@@ -677,10 +677,20 @@ function nextZoneId() {
   }
   return 'Z' + state.zones.length;
 }
+// Spreadsheet-column-style letters: 1->A, 2->B, ..., 26->Z, 27->AA, 28->AB...
+function letterSeq(n) {
+  let s = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    s = String.fromCharCode(65 + rem) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
 function nextRackId() {
   let i = 1;
-  while (state.racks.some((r) => r.id === 'ROW-' + i)) i++;
-  return 'ROW-' + i;
+  while (state.racks.some((r) => r.id === letterSeq(i))) i++;
+  return letterSeq(i);
 }
 function nextPalletId() {
   let i = 1;
@@ -1301,6 +1311,9 @@ async function saveLayoutToServer() {
   if (!name) return;
   try {
     await saveToServer(name, state);
+    state.meta = { ...state.meta, name };
+    saveLayout(state);
+    loadProductsAndAssignments();
     flagSaved(`saved "${name}" to server`);
   } catch (err) {
     alert('Could not save to server: ' + err.message);
@@ -1721,7 +1734,7 @@ function wirePointer() {
       const px = wx(mx);
       const py = wy(my);
       view.zoom *= e.deltaY > 0 ? 0.88 : 1.14;
-      view.zoom = Math.max(0.4, Math.min(40, view.zoom));
+      view.zoom = Math.max(0.4, Math.min(200, view.zoom));
       view.cx = px - (mx * devicePixelRatio - cv.width / 2) / (view.zoom * devicePixelRatio);
       view.cy = py + (my * devicePixelRatio - cv.height / 2) / (view.zoom * devicePixelRatio);
       draw();

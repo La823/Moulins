@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import AuthGuard from "@/components/AuthGuard";
 
@@ -17,7 +18,9 @@ import AuthGuard from "@/components/AuthGuard";
 export default function WarehouseViewPage() {
   return (
     <AuthGuard allowedRoles={["admin", "employee"]}>
-      <WarehouseViewer />
+      <Suspense fallback={null}>
+        <WarehouseViewer />
+      </Suspense>
     </AuthGuard>
   );
 }
@@ -26,8 +29,17 @@ function WarehouseViewer() {
   const wrapRef = useRef(null);
   const previewRef = useRef(null);
   const modulesRef = useRef(null);
+  const appliedLocateRef = useRef(false);
+
+  // A QR code on a printed bin/pallet label links here as
+  // /warehouse/view?layout=<name>&locate=bin:<key> (or pallet:<id>) — see
+  // the backend's QRCodeHandler. Consumed once, on first load, below.
+  const searchParams = useSearchParams();
+  const initialLayout = searchParams.get("layout");
+  const locateParam = searchParams.get("locate");
 
   const [layouts, setLayouts] = useState([]);
+  const [engineReady, setEngineReady] = useState(false);
   const [layoutName, setLayoutName] = useState("");
   const [layoutState, setLayoutState] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -71,6 +83,7 @@ function WarehouseViewer() {
           migrate: migrations.migrate,
         };
         previewRef.current = preview3d.createPreview3D(wrapRef.current);
+        setEngineReady(true);
       } catch (err) {
         if (!cancelled) setError("Could not load the layout engine: " + err.message);
       }
@@ -85,13 +98,28 @@ function WarehouseViewer() {
     apiFetch("/admin/warehouse/layouts")
       .then((list) => {
         setLayouts(list || []);
-        if (list && list.length > 0) setLayoutName(list[0].name);
+        let preferred = initialLayout;
+        if (!preferred) {
+          try {
+            preferred = JSON.parse(localStorage.getItem("warehouse_layout_editor_v1"))?.meta?.name;
+          } catch { /* Ignore an unreadable local draft. */ }
+        }
+        if (initialLayout && !(list || []).some((l) => l.name === initialLayout)) {
+          setError(`Layout "${initialLayout}" was not found.`);
+          return;
+        }
+        const wanted = preferred && (list || []).some((l) => l.name === preferred);
+        if (wanted) setLayoutName(preferred);
+        else if (list && list.length > 0) setLayoutName(list[0].name);
       })
       .catch((err) => setError("Could not load layouts: " + err.message));
+    // Only meant to run once on mount — initialLayout is read from the URL
+    // a single time, not re-applied if it changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!layoutName || !modulesRef.current) return;
+    if (!layoutName || !engineReady) return;
     let cancelled = false;
     setSelected(null);
     previewRef.current?.clearHighlight();
@@ -99,15 +127,33 @@ function WarehouseViewer() {
       setLoading(true);
       setError("");
       try {
-        const [raw, assigns] = await Promise.all([
+        const [raw, assigns, library] = await Promise.all([
           apiFetch(`/admin/warehouse/layouts/${encodeURIComponent(layoutName)}`),
           apiFetch(`/admin/warehouse/layouts/${encodeURIComponent(layoutName)}/assignments`),
+          apiFetch("/admin/warehouse/bin-types").catch(() => []),
         ]);
         if (cancelled) return;
         const state = modulesRef.current.fromDbConnect(modulesRef.current.migrate(raw));
+        // Match the editor's shared bin-type overrides, which affect geometry.
+        for (const type of library || []) {
+          state.binTypes[type.name] = { w: type.w, d: type.d, h: type.h, color: type.color };
+        }
         setLayoutState(state);
         setAssignments(assigns || []);
         previewRef.current?.build(state, showLabels, makeGetBinProduct(assigns || []));
+
+        // Apply the QR-linked highlight exactly once, only when this load
+        // is the one the link actually pointed at (not a later manual
+        // layout switch by the viewer).
+        if (locateParam && !appliedLocateRef.current && layoutName === initialLayout) {
+          appliedLocateRef.current = true;
+          const sep = locateParam.indexOf(":");
+          if (sep > 0) {
+            const locType = locateParam.slice(0, sep);
+            const locKey = locateParam.slice(sep + 1);
+            previewRef.current?.highlight(locType, locKey);
+          }
+        }
       } catch (err) {
         if (!cancelled) {
           setError("Could not load that layout: " + err.message);
@@ -122,7 +168,7 @@ function WarehouseViewer() {
     };
     // previewRef/modulesRef are refs, not reactive state — safe to omit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutName]);
+  }, [layoutName, engineReady]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -163,9 +209,10 @@ function WarehouseViewer() {
       <div className="w-80 shrink-0 border-r border-gray-800 bg-gray-900 flex flex-col">
         <div className="p-4 border-b border-gray-800">
           <h1 className="text-sm font-semibold text-gray-100">Warehouse — view only</h1>
-          <a href="/warehouse" className="text-xs text-blue-400 hover:text-blue-300">
+          <a href={layoutName ? `/warehouse?layout=${encodeURIComponent(layoutName)}` : "/warehouse"} className="text-xs text-blue-400 hover:text-blue-300">
             Open the editor →
           </a>
+          <p className="mt-2 text-xs text-gray-400">Showing the server-saved layout. Use Save to Server in the editor to publish draft changes here.</p>
         </div>
 
         <div className="p-4 border-b border-gray-800">

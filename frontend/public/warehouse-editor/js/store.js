@@ -1,8 +1,9 @@
 // store.js — where a layout comes from and where the working draft is cached.
 //
 // Source of truth at startup:
-//   1. If the browser has a saved draft in localStorage, use it (migrated).
-//   2. Otherwise fetch the shipped default from data/default_layout.json.
+//   1. An explicit layout link opens that server-saved layout.
+//   2. Otherwise preserve the browser's local draft, if present.
+//   3. Open the first server layout; use the sample only for an empty server.
 //
 // The localStorage copy is a convenience draft cache so a reload doesn't lose
 // in-progress edits. It is NOT a substitute for Export JSON (or, later, the
@@ -51,17 +52,20 @@ export async function fetchBlankLayout() {
   return layout;
 }
 
-// Returns { layout, fromCache }. Throws only if BOTH localStorage and the
-// default fetch fail (e.g. opened from a file:// URL).
+// Returns { layout, fromCache }. Server failures are surfaced instead of
+// silently displaying a different warehouse.
 export async function loadInitialLayout() {
+  const requested = new URLSearchParams(window.location.search).get('layout');
+  if (requested) return { layout: await loadFromServer(requested), fromCache: false };
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) return { layout: fromDbConnect(migrate(JSON.parse(raw))), fromCache: true };
   } catch (err) {
-    // Corrupt cache shouldn't be fatal — fall through to the default.
+    // Corrupt cache shouldn't be fatal — fall through to the server.
     console.warn('Ignoring unreadable localStorage draft:', err);
   }
-  return { layout: await fetchDefaultLayout(), fromCache: false };
+  const layouts = await listServerLayouts();
+  return { layout: layouts.length ? await loadFromServer(layouts[0].name) : await fetchDefaultLayout(), fromCache: false };
 }
 
 // Synchronously write the working draft. Saves in db_connect format so the
@@ -89,7 +93,7 @@ export async function saveToServer(name, state) {
   const res = await fetch(`${API_BASE}/admin/warehouse/layouts/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(toDbConnect(state)),
+    body: JSON.stringify(toDbConnect({ ...state, meta: { ...state.meta, name } })),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -116,7 +120,9 @@ export async function loadFromServer(name) {
     const text = await res.text();
     throw new Error(text || `Could not load layout (HTTP ${res.status})`);
   }
-  return fromDbConnect(migrate(await res.json()));
+  const layout = fromDbConnect(migrate(await res.json()));
+  layout.meta = { ...layout.meta, name };
+  return layout;
 }
 
 // Persistent bin-type library — shared across every layout (including brand

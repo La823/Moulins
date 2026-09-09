@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 )
 
@@ -279,6 +282,29 @@ func GeneratePresignedOrderTrackingUploadURL(orderID, filename string) (uploadUR
 	}
 
 	return req.URL, key, nil
+}
+
+// ObjectExists reports whether key is already present in the bucket, so
+// callers that generate-then-cache a derived asset (e.g. a QR code SVG) can
+// skip regenerating it on every request.
+func ObjectExists(key string) (bool, error) {
+	bucket := os.Getenv("S3_BUCKET")
+	_, err := s3Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		var nf *s3types.NotFound
+		if errors.As(err, &nf) {
+			return false, nil
+		}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound" {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func UploadToS3(key string, data []byte, contentType string) error {

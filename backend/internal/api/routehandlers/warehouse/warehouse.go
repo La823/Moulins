@@ -8,15 +8,22 @@ package warehouse
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
+
+	go_qr "github.com/piglig/go-qr"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 // GET /admin/warehouse/layouts
@@ -215,6 +222,110 @@ func SaveAssignmentHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func frontendBaseURL() string {
+	if u := os.Getenv("FRONTEND_URL"); u != "" {
+		return u
+	}
+	return "https://moulinspharma.com"
+}
+
+// s3KeySegment makes a string safe to use as one path segment of an S3 key —
+// layout names and bin labels can contain spaces ("OUTLET WAREHOUSE") which
+// would otherwise need percent-encoding everywhere the resulting URL is used.
+func s3KeySegment(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
+// GET /admin/warehouse/layouts/{name}/qrcode/{locationType}/{locationKey}
+// — a printable label for one physical bin or pallet: an SVG QR code
+// encoding a deep link into the read-only viewer (/warehouse/view) that
+// opens straight to that layout with the bin/pallet highlighted. One QR per
+// bin (not per L/R slot) since that's what's physically stuck on the shelf.
+//
+// Generated once and cached in S3 (same public bucket product images etc.
+// already live in) — repeat requests for the same bin/pallet just return the
+// existing object's URL instead of re-rendering. Response is JSON ({url}),
+// not the image itself, since the actual <img> tag then loads directly from
+// S3 without needing an Authorization header.
+func QRCodeHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		layoutName := vars["name"]
+		locationType := vars["locationType"]
+		locationKey := vars["locationKey"]
+
+		if locationType != "bin" && locationType != "pallet" {
+			http.Error(w, `location type must be "bin" or "pallet"`, http.StatusBadRequest)
+			return
+		}
+
+		key := fmt.Sprintf("warehouse-qrcodes/%s/%s/%s.svg",
+			s3KeySegment(layoutName), locationType, s3KeySegment(locationKey))
+
+		if exists, err := utils.ObjectExists(key); err != nil {
+			log.Printf("qrcode: S3 head error: %v", err)
+			http.Error(w, "could not check for existing QR code", http.StatusInternalServerError)
+			return
+		} else if exists {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"url": utils.GetPublicURL(key)})
+			return
+		}
+
+		// Confirm the layout actually exists before minting a link to it —
+		// a QR code for a typo'd/deleted layout would otherwise print fine
+		// and only fail when someone scans it on the floor.
+		if _, err := models.GetWarehouseLayout(r.Context(), db, layoutName); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "layout not found", http.StatusNotFound)
+				return
+			}
+			log.Printf("qrcode: get warehouse layout error: %v", err)
+			http.Error(w, "could not fetch layout", http.StatusInternalServerError)
+			return
+		}
+
+		link := fmt.Sprintf("%s/warehouse/view?layout=%s&locate=%s:%s",
+			frontendBaseURL(),
+			url.QueryEscape(layoutName),
+			locationType,
+			url.QueryEscape(locationKey),
+		)
+
+		qr, err := go_qr.EncodeText(link, go_qr.Medium)
+		if err != nil {
+			log.Printf("qrcode: encode error: %v", err)
+			http.Error(w, "could not generate QR code", http.StatusInternalServerError)
+			return
+		}
+		cfg := go_qr.NewQrCodeImgConfig(10, 4, go_qr.WithOptimalSVG())
+		svg, err := qr.ToSVGBytes(cfg)
+		if err != nil {
+			log.Printf("qrcode: render error: %v", err)
+			http.Error(w, "could not render QR code", http.StatusInternalServerError)
+			return
+		}
+
+		if err := utils.UploadToS3(key, svg, "image/svg+xml"); err != nil {
+			log.Printf("qrcode: S3 upload error: %v", err)
+			http.Error(w, "could not store QR code", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"url": utils.GetPublicURL(key)})
 	}
 }
 

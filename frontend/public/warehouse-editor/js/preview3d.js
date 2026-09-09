@@ -88,7 +88,7 @@ export function createPreview3D(wrap) {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x14181d);
-    const camera = new THREE.PerspectiveCamera(50, wrap.clientWidth / wrap.clientHeight, 1, 4000);
+    const camera = new THREE.PerspectiveCamera(50, wrap.clientWidth / wrap.clientHeight, 0.1, 4000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(wrap.clientWidth, wrap.clientHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -346,7 +346,7 @@ export function createPreview3D(wrap) {
     let radius = span * 1.1;
     function applyCam() {
       phi = Math.max(0.12, Math.min(1.45, phi));
-      radius = Math.max(30, Math.min(3000, radius));
+      radius = Math.max(2, Math.min(3000, radius));
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
         target.y + radius * Math.cos(phi),

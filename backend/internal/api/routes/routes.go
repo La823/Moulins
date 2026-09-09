@@ -324,6 +324,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	warehouseViewStaff.HandleFunc("/warehouse/layouts/{name}", warehouse.GetLayoutHandler(db)).Methods("GET")
 	warehouseViewStaff.HandleFunc("/warehouse/bin-types", warehouse.ListBinTypesHandler(db)).Methods("GET")
 	warehouseViewStaff.HandleFunc("/warehouse/layouts/{name}/assignments", warehouse.ListAssignmentsHandler(db)).Methods("GET")
+	warehouseViewStaff.HandleFunc("/warehouse/layouts/{name}/qrcode/{locationType}/{locationKey}", warehouse.QRCodeHandler(db)).Methods("GET")
 
 	warehouseEditStaff := protected.PathPrefix("/admin").Subrouter()
 	warehouseEditStaff.Use(middleware.StaffOnly)
