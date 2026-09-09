@@ -6,6 +6,7 @@
 package warehouse
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,6 +99,12 @@ func SaveLayoutHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Editor struct {
 				SchemaVersion int `json:"schemaVersion"`
 			} `json:"editor"`
+			Bins []struct {
+				WhseLocation string `json:"whse_location"`
+			} `json:"bins"`
+			Pallets []struct {
+				ID string `json:"id"`
+			} `json:"pallets"`
 		}
 		if err := json.Unmarshal(body, &meta); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -109,7 +116,77 @@ func SaveLayoutHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not save layout", http.StatusInternalServerError)
 			return
 		}
+
+		validBinKeys := make([]string, 0, len(meta.Bins))
+		for _, b := range meta.Bins {
+			validBinKeys = append(validBinKeys, b.WhseLocation)
+		}
+		validPalletKeys := make([]string, 0, len(meta.Pallets))
+		for _, p := range meta.Pallets {
+			validPalletKeys = append(validPalletKeys, p.ID)
+		}
+		cleanupOrphanedWarehouseData(r.Context(), db, name, validBinKeys, validPalletKeys)
+
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// cleanupOrphanedWarehouseData removes product assignments and cached QR
+// codes left over from a rack or pallet that's no longer in the layout
+// (deleted in the editor, then saved) — both keyed by location, both with no
+// other way to notice their location disappeared. Errors are logged, not
+// returned: a cleanup hiccup shouldn't fail the save the user is waiting on.
+func cleanupOrphanedWarehouseData(ctx context.Context, db *pgxpool.Pool, layoutName string, validBinKeys, validPalletKeys []string) {
+	// pgx encodes a nil slice as SQL NULL, and `x = ANY(NULL)` is NULL (not
+	// false) — which would make the NOT(...) clause below NULL too and match
+	// nothing, silently skipping cleanup entirely. Force a real empty array.
+	if validBinKeys == nil {
+		validBinKeys = []string{}
+	}
+	if validPalletKeys == nil {
+		validPalletKeys = []string{}
+	}
+	removedBins, removedPallets, err := models.DeleteOrphanedWarehouseBinAssignments(ctx, db, layoutName, validBinKeys, validPalletKeys)
+	if err != nil {
+		log.Printf("cleanup: delete orphaned assignments for %q: %v", layoutName, err)
+	} else if len(removedBins) > 0 || len(removedPallets) > 0 {
+		log.Printf("cleanup: removed %d orphaned bin + %d orphaned pallet assignment(s) for %q", len(removedBins), len(removedPallets), layoutName)
+	}
+
+	validBinSet := make(map[string]bool, len(validBinKeys))
+	for _, k := range validBinKeys {
+		validBinSet[k] = true
+	}
+	validPalletSet := make(map[string]bool, len(validPalletKeys))
+	for _, k := range validPalletKeys {
+		validPalletSet[k] = true
+	}
+
+	seg := s3KeySegment(layoutName)
+	sweepQRPrefix(fmt.Sprintf("warehouse-qrcodes/%s/bin/", seg), validBinSet)
+	sweepQRPrefix(fmt.Sprintf("warehouse-qrcodes/%s/pallet/", seg), validPalletSet)
+}
+
+// sweepQRPrefix deletes any cached QR .svg under prefix whose location key
+// (its filename minus the extension) isn't in valid — catches a QR that was
+// generated for a bin/pallet that got deleted before ever having a product
+// assigned to it, which the assignments-table cleanup above wouldn't see.
+func sweepQRPrefix(prefix string, valid map[string]bool) {
+	keys, err := utils.ListObjectKeys(prefix)
+	if err != nil {
+		log.Printf("cleanup: list %s: %v", prefix, err)
+		return
+	}
+	for _, key := range keys {
+		base := strings.TrimSuffix(strings.TrimPrefix(key, prefix), ".svg")
+		if valid[base] {
+			continue
+		}
+		if err := utils.DeleteObject(key); err != nil {
+			log.Printf("cleanup: delete orphaned QR %s: %v", key, err)
+		} else {
+			log.Printf("cleanup: deleted orphaned QR %s", key)
+		}
 	}
 }
 
@@ -126,6 +203,10 @@ func DeleteLayoutHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not delete layout", http.StatusInternalServerError)
 			return
 		}
+		// The whole layout is gone, so every assignment and cached QR under
+		// it is now orphaned too — same cleanup as a partial save, just with
+		// nothing left counting as "valid".
+		cleanupOrphanedWarehouseData(r.Context(), db, name, nil, nil)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

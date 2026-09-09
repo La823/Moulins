@@ -357,3 +357,37 @@ func GetPublicURL(key string) string {
 	region := os.Getenv("AWS_REGION")
 	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucket, region, key)
 }
+
+// ListObjectKeys returns every object key under prefix — used to find
+// derived assets (e.g. cached QR codes) that need cleaning up when their
+// source data (a rack, a pallet) is deleted, since S3 keeps no back-link to
+// what generated them.
+func ListObjectKeys(prefix string) ([]string, error) {
+	bucket := os.Getenv("S3_BUCKET")
+	var keys []string
+	paginator := s3.NewListObjectsV2Paginator(s3Client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+		Prefix: aws.String(prefix),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range page.Contents {
+			keys = append(keys, *obj.Key)
+		}
+	}
+	return keys, nil
+}
+
+// DeleteObject removes one object from the bucket. A delete of a key that
+// doesn't exist is not an error (S3's own behavior).
+func DeleteObject(key string) error {
+	bucket := os.Getenv("S3_BUCKET")
+	_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	return err
+}

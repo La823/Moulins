@@ -76,3 +76,44 @@ func DeleteWarehouseBinAssignment(ctx context.Context, db *pgxpool.Pool, layoutN
 	}
 	return nil
 }
+
+// DeleteOrphanedWarehouseBinAssignments removes any assignment row for the
+// layout whose location no longer exists in it — called after a layout save
+// so deleting a rack or pallet in the editor also clears out the product
+// assignments (and, separately, cached QR codes) that pointed at it, instead
+// of leaving dead rows behind. Returns the location keys that were removed,
+// grouped by type, so the caller can clean up matching S3 objects too.
+func DeleteOrphanedWarehouseBinAssignments(ctx context.Context, db *pgxpool.Pool, layoutName string, validBinKeys, validPalletKeys []string) (removedBins, removedPallets []string, err error) {
+	rows, err := db.Query(ctx, `
+		DELETE FROM warehouse_bin_assignments
+		WHERE layout_name = $1
+		  AND (
+		    (location_type = 'bin' AND NOT (location_key = ANY($2::text[])))
+		    OR (location_type = 'pallet' AND NOT (location_key = ANY($3::text[])))
+		  )
+		RETURNING location_type, location_key
+	`, layoutName, validBinKeys, validPalletKeys)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	seen := map[string]bool{}
+	for rows.Next() {
+		var locType, locKey string
+		if err := rows.Scan(&locType, &locKey); err != nil {
+			return nil, nil, err
+		}
+		dedupeKey := locType + "|" + locKey
+		if seen[dedupeKey] {
+			continue
+		}
+		seen[dedupeKey] = true
+		if locType == "bin" {
+			removedBins = append(removedBins, locKey)
+		} else if locType == "pallet" {
+			removedPallets = append(removedPallets, locKey)
+		}
+	}
+	return removedBins, removedPallets, rows.Err()
+}
