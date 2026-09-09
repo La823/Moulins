@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	go_qr "github.com/piglig/go-qr"
 
@@ -22,9 +25,27 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/assets"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
+
+// Moulins brand teal (#00A6A4), used across the customer/admin frontends —
+// decoded once and reused for every QR code rather than re-decoding the
+// embedded logo PNG on each request.
+var (
+	qrDark     = color.RGBA{R: 0x00, G: 0xa6, B: 0xa4, A: 0xff}
+	qrLogoOnce sync.Once
+	qrLogoImg  image.Image
+	qrLogoErr  error
+)
+
+func moulinsQRLogo() (image.Image, error) {
+	qrLogoOnce.Do(func() {
+		qrLogoImg, qrLogoErr = assets.MoulinsLogo()
+	})
+	return qrLogoImg, qrLogoErr
+}
 
 // GET /admin/warehouse/layouts
 func ListLayoutsHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -304,13 +325,21 @@ func QRCodeHandler(db *pgxpool.Pool) http.HandlerFunc {
 			url.QueryEscape(locationKey),
 		)
 
-		qr, err := go_qr.EncodeText(link, go_qr.Medium)
+		// High ECC leaves enough recovery budget for the centered logo
+		// (piglig/go-qr rejects a logo ratio this large under Medium).
+		qr, err := go_qr.EncodeText(link, go_qr.High)
 		if err != nil {
 			log.Printf("qrcode: encode error: %v", err)
 			http.Error(w, "could not generate QR code", http.StatusInternalServerError)
 			return
 		}
-		cfg := go_qr.NewQrCodeImgConfig(10, 4, go_qr.WithOptimalSVG())
+		opts := []go_qr.Option{go_qr.WithOptimalSVG(), go_qr.WithDark(qrDark), go_qr.WithLight(color.White)}
+		if logo, err := moulinsQRLogo(); err == nil {
+			opts = append(opts, go_qr.WithLogo(logo, 0.2))
+		} else {
+			log.Printf("qrcode: logo unavailable, generating without it: %v", err)
+		}
+		cfg := go_qr.NewQrCodeImgConfig(10, 4, opts...)
 		svg, err := qr.ToSVGBytes(cfg)
 		if err != nil {
 			log.Printf("qrcode: render error: %v", err)
