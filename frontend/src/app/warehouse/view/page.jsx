@@ -195,11 +195,15 @@ function WarehouseViewer() {
   }
 
   useEffect(() => {
-    if (results.length === 0) {
+    // Only auto-clear when an actual search query stopped matching anything
+    // — `results` is a fresh (empty) array from useMemo whenever assignments
+    // load too, even with an empty search box, which used to wipe out a
+    // QR-code highlight the instant it was applied.
+    if (query && results.length === 0) {
       setSelected(null);
       previewRef.current?.clearHighlight();
     }
-  }, [results]);
+  }, [results, query]);
 
   // Toggling "3D Labels" rebuilds the scene (that's how preview3d.js's
   // build() takes the flag) — reapply any active search highlight after,
