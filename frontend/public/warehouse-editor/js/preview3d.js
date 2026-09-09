@@ -346,7 +346,7 @@ export function createPreview3D(wrap) {
     let radius = span * 1.1;
     function applyCam() {
       phi = Math.max(0.12, Math.min(1.45, phi));
-      radius = Math.max(2, Math.min(3000, radius));
+      radius = Math.max(0.5, Math.min(8000, radius));
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
         target.y + radius * Math.cos(phi),

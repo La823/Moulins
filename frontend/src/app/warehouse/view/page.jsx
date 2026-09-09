@@ -49,6 +49,15 @@ function WarehouseViewer() {
   const [showLabels, setShowLabels] = useState(true);
   const [panMode, setPanMode] = useState(false);
   const [selected, setSelected] = useState(null); // the highlighted assignment, or null
+  // Sidebar is an overlay on top of the always-full-screen 3D view (not a
+  // flex column) so it can slide fully off-screen on phones without
+  // squeezing the canvas into a sliver. Starts closed on narrow screens so
+  // the 3D view is what greets a phone user, open on desktop.
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 768px)").matches) setSidebarOpen(false);
+  }, []);
 
   function togglePan() {
     const next = !panMode;
@@ -205,9 +214,35 @@ function WarehouseViewer() {
   }, [showLabels]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-950 text-gray-100">
-      <div className="w-80 shrink-0 border-r border-gray-800 bg-gray-900 flex flex-col">
-        <div className="p-4 border-b border-gray-800">
+    <div className="relative h-screen w-screen overflow-hidden bg-gray-950 text-gray-100">
+      <div className="absolute inset-0">
+        <div ref={wrapRef} className="absolute inset-0" />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm bg-gray-950/60">
+            Loading…
+          </div>
+        )}
+        {!loading && !layoutState && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+            Select a layout to view it.
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={() => setSidebarOpen((v) => !v)}
+        title={sidebarOpen ? "Hide panel" : "Show panel"}
+        className="absolute top-3 left-3 z-30 w-9 h-9 flex items-center justify-center rounded-md bg-gray-900/90 border border-gray-700 text-gray-200 shadow-lg"
+      >
+        {sidebarOpen ? "✕" : "☰"}
+      </button>
+
+      <div
+        className={`absolute inset-y-0 left-0 z-20 w-80 max-w-[88vw] border-r border-gray-800 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="p-4 pl-14 border-b border-gray-800">
           <h1 className="text-sm font-semibold text-gray-100">Warehouse — view only</h1>
           <a href={layoutName ? `/warehouse?layout=${encodeURIComponent(layoutName)}` : "/warehouse"} className="text-xs text-blue-400 hover:text-blue-300">
             Open the editor →
@@ -291,20 +326,6 @@ function WarehouseViewer() {
         </div>
 
         {error && <p className="text-xs text-red-400 p-4 border-t border-gray-800">{error}</p>}
-      </div>
-
-      <div className="relative flex-1">
-        <div ref={wrapRef} className="absolute inset-0" />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm bg-gray-950/60">
-            Loading…
-          </div>
-        )}
-        {!loading && !layoutState && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-            Select a layout to view it.
-          </div>
-        )}
       </div>
     </div>
   );
