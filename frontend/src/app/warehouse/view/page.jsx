@@ -160,7 +160,7 @@ function WarehouseViewer() {
           if (sep > 0) {
             const locType = locateParam.slice(0, sep);
             const locKey = locateParam.slice(sep + 1);
-            previewRef.current?.highlight(locType, locKey);
+            previewRef.current?.highlight(locType, locKey, undefined, true);
           }
         }
       } catch (err) {

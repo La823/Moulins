@@ -520,7 +520,7 @@ export function createPreview3D(wrap) {
     let highlightedBinMesh = null;
     let highlightedBinOrigColor = null;
     let highlightBox = null;
-    ctx.setHighlight = (kind, key, slot) => {
+    ctx.setHighlight = (kind, key, slot, focus) => {
       if (highlightLabel) {
         scene.remove(highlightLabel);
         highlightLabel = null;
@@ -549,6 +549,15 @@ export function createPreview3D(wrap) {
         );
         highlightBox.position.set(a.x, a.elev + a.ph / 2, a.y);
         scene.add(highlightBox);
+        // A QR scan lands you on a fresh view of the whole layout with no
+        // idea where this one pallet is in it — unlike a manual search
+        // (which deliberately never yanks the camera), so here we do move
+        // the camera to it.
+        if (focus) {
+          target.set(a.x, a.h, a.y);
+          radius = Math.max(6, Math.min(radius, 22));
+          applyCam();
+        }
       } else if (kind === 'bin') {
         const m = binMeshes.find((mm) => mm.userData.whseLocation === key);
         if (!m) return;
@@ -564,6 +573,11 @@ export function createPreview3D(wrap) {
         if (m.userData.rackDir === 'N') highlightLabel.rotation.y = Math.PI / 2;
         highlightLabel.position.copy(m.position);
         scene.add(highlightLabel);
+        if (focus) {
+          target.copy(m.position);
+          radius = Math.max(6, Math.min(radius, 22));
+          applyCam();
+        }
       }
     };
   }
@@ -572,8 +586,12 @@ export function createPreview3D(wrap) {
     ctx?.focusOn?.(x, y, h);
   }
 
-  function highlight(kind, key, slot) {
-    ctx?.setHighlight?.(kind, key, slot);
+  // focus=true also moves the camera to the highlighted bin/pallet — used
+  // for a QR-code scan (you land with no idea where in the layout you are),
+  // left false for manual product search (never yanks the camera away from
+  // wherever the person is currently looking).
+  function highlight(kind, key, slot, focus) {
+    ctx?.setHighlight?.(kind, key, slot, focus);
   }
 
   function clearHighlight() {
