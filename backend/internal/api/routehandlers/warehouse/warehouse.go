@@ -6,19 +6,21 @@
 package warehouse
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
 	"image/color"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	go_qr "github.com/piglig/go-qr"
@@ -35,19 +37,53 @@ import (
 // Moulins brand teal (#00A6A4), used across the customer/admin frontends —
 // decoded once and reused for every QR code rather than re-decoding the
 // embedded logo PNG on each request.
-var (
-	qrDark     = color.RGBA{R: 0x00, G: 0xa6, B: 0xa4, A: 0xff}
-	qrLogoOnce sync.Once
-	qrLogoImg  image.Image
-	qrLogoErr  error
-)
+var qrDark = color.RGBA{R: 0x00, G: 0xa6, B: 0xa4, A: 0xff}
 
-func moulinsQRLogo() (image.Image, error) {
-	qrLogoOnce.Do(func() {
-		qrLogoImg, qrLogoErr = assets.MoulinsLogo()
-	})
-	return qrLogoImg, qrLogoErr
+// embedCenteredLogo injects the Moulins mark into the center of an
+// already-rendered QR SVG. Parses the real emitted viewBox rather than
+// recomputing it, so this stays correct even if go_qr's own canvas-sizing
+// formula changes — see the long comment where this is called for why we
+// don't use go_qr's built-in WithLogo for SVG output.
+func embedCenteredLogo(svg []byte) ([]byte, error) {
+	m := viewBoxRe.FindSubmatch(svg)
+	if m == nil {
+		return nil, fmt.Errorf("could not find viewBox in generated SVG")
+	}
+	n, err := strconv.Atoi(string(m[1]))
+	if err != nil {
+		return nil, fmt.Errorf("invalid viewBox width: %w", err)
+	}
+
+	// ~22% of the QR's total side, matching the visual size used before —
+	// a round pixel box centered on the real canvas, no module-grid
+	// alignment needed since this is purely a decorative overlay.
+	box := int(float64(n) * 0.22)
+	inset := box / 10 // thin white margin between logo and QR modules
+	x := (n - box) / 2
+	logoX := x + inset
+	logoSide := box - 2*inset
+
+	encoded := base64.StdEncoding.EncodeToString(assets.MoulinsLogoPNGBytes())
+	fragment := fmt.Sprintf(
+		"\t<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#FFFFFF\"/>\n"+
+			"\t<image x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" href=\"data:image/png;base64,%s\"/>\n",
+		x, x, box, box,
+		logoX, logoX, logoSide, logoSide, encoded,
+	)
+
+	const closing = "</svg>"
+	idx := bytes.LastIndex(svg, []byte(closing))
+	if idx < 0 {
+		return append(svg, []byte(fragment)...), nil
+	}
+	out := make([]byte, 0, len(svg)+len(fragment))
+	out = append(out, svg[:idx]...)
+	out = append(out, fragment...)
+	out = append(out, svg[idx:]...)
+	return out, nil
 }
+
+var viewBoxRe = regexp.MustCompile(`viewBox="0 0 (\d+) \d+"`)
 
 // GET /admin/warehouse/layouts
 func ListLayoutsHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -415,18 +451,27 @@ func QRCodeHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not generate QR code", http.StatusInternalServerError)
 			return
 		}
-		opts := []go_qr.Option{go_qr.WithOptimalSVG(), go_qr.WithDark(qrDark), go_qr.WithLight(color.White)}
-		if logo, err := moulinsQRLogo(); err == nil {
-			opts = append(opts, go_qr.WithLogo(logo, 0.2))
-		} else {
-			log.Printf("qrcode: logo unavailable, generating without it: %v", err)
-		}
-		cfg := go_qr.NewQrCodeImgConfig(10, 4, opts...)
+		// Deliberately NOT using go_qr's own WithLogo here: its logo-centering
+		// math (border*scale + qrSize*scale/2) disagrees with the SVG
+		// renderer's own canvas size (qrSize*scale + border*2 — border used
+		// as raw pixels, not scaled) whenever border > 0, so the logo lands
+		// off-center in the actual SVG (confirmed against a real generated
+		// file: image center 285 vs true viewBox center 249, a 36px miss).
+		// The logo renders fine in PNG output, where the two are consistent
+		// — it's specifically an SVG-vs-logo-placement mismatch in the
+		// library. Centering it ourselves from the real emitted viewBox
+		// sidesteps the bug regardless of which internal formula changes.
+		cfg := go_qr.NewQrCodeImgConfig(10, 4, go_qr.WithOptimalSVG(), go_qr.WithDark(qrDark), go_qr.WithLight(color.White))
 		svg, err := qr.ToSVGBytes(cfg)
 		if err != nil {
 			log.Printf("qrcode: render error: %v", err)
 			http.Error(w, "could not render QR code", http.StatusInternalServerError)
 			return
+		}
+		if withLogo, err := embedCenteredLogo(svg); err != nil {
+			log.Printf("qrcode: logo embed skipped: %v", err)
+		} else {
+			svg = withLogo
 		}
 
 		if err := utils.UploadToS3(key, svg, "image/svg+xml"); err != nil {

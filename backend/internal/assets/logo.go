@@ -19,3 +19,10 @@ func MoulinsLogo() (image.Image, error) {
 	img, _, err := image.Decode(bytes.NewReader(moulinsLogoPNG))
 	return img, err
 }
+
+// MoulinsLogoPNGBytes returns the raw embedded PNG bytes, for callers that
+// want to base64-embed the file as-is (e.g. into an SVG <image> tag) rather
+// than decode-then-re-encode it.
+func MoulinsLogoPNGBytes() []byte {
+	return moulinsLogoPNG
+}
