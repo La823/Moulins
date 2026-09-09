@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	go_qr "github.com/piglig/go-qr"
 
@@ -295,13 +296,13 @@ func QRCodeHandler(db *pgxpool.Pool) http.HandlerFunc {
 		key := fmt.Sprintf("warehouse-qrcodes/%s/%s/%s.svg",
 			s3KeySegment(layoutName), locationType, s3KeySegment(locationKey))
 
-		if exists, err := utils.ObjectExists(key); err != nil {
+		if exists, lastModified, err := utils.ObjectLastModified(key); err != nil {
 			log.Printf("qrcode: S3 head error: %v", err)
 			http.Error(w, "could not check for existing QR code", http.StatusInternalServerError)
 			return
 		} else if exists {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"url": utils.GetPublicURL(key)})
+			json.NewEncoder(w).Encode(map[string]string{"url": qrURLWithCacheBust(key, lastModified)})
 			return
 		}
 
@@ -354,8 +355,16 @@ func QRCodeHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"url": utils.GetPublicURL(key)})
+		json.NewEncoder(w).Encode(map[string]string{"url": qrURLWithCacheBust(key, time.Now())})
 	}
+}
+
+// qrURLWithCacheBust appends ?v=<unix-ts> to the QR's public S3 URL. The
+// object's S3 key never changes when it's regenerated (same bin, same
+// layout), so without this a browser that already loaded the old styling
+// for that URL keeps showing it from its image cache indefinitely.
+func qrURLWithCacheBust(key string, t time.Time) string {
+	return fmt.Sprintf("%s?v=%d", utils.GetPublicURL(key), t.Unix())
 }
 
 // DELETE /admin/warehouse/layouts/{name}/assignments/{locationType}/{locationKey}/{slot}

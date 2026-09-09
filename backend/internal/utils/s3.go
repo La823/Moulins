@@ -288,23 +288,37 @@ func GeneratePresignedOrderTrackingUploadURL(orderID, filename string) (uploadUR
 // callers that generate-then-cache a derived asset (e.g. a QR code SVG) can
 // skip regenerating it on every request.
 func ObjectExists(key string) (bool, error) {
+	exists, _, err := ObjectLastModified(key)
+	return exists, err
+}
+
+// ObjectLastModified is ObjectExists plus the object's LastModified time —
+// used to cache-bust a public URL (e.g. ?v=<unix-ts>) so that regenerating a
+// derived asset under the same key (a re-styled QR code, say) actually shows
+// up in browsers instead of being served from their image cache forever,
+// since the S3 key itself never changes.
+func ObjectLastModified(key string) (bool, time.Time, error) {
 	bucket := os.Getenv("S3_BUCKET")
-	_, err := s3Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+	out, err := s3Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
 		var nf *s3types.NotFound
 		if errors.As(err, &nf) {
-			return false, nil
+			return false, time.Time{}, nil
 		}
 		var apiErr smithy.APIError
 		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NotFound" {
-			return false, nil
+			return false, time.Time{}, nil
 		}
-		return false, err
+		return false, time.Time{}, err
 	}
-	return true, nil
+	var lm time.Time
+	if out.LastModified != nil {
+		lm = *out.LastModified
+	}
+	return true, lm, nil
 }
 
 func UploadToS3(key string, data []byte, contentType string) error {
