@@ -343,7 +343,13 @@ export function createPreview3D(wrap) {
     const target = new THREE.Vector3(cx0, 4, -cy0);
     let theta = -0.55;
     let phi = 0.95;
-    let radius = span * 1.1;
+    // On a narrow/portrait screen the same distance shows less of a wide
+    // layout (horizontal FOV = vertical FOV * aspect), so pull back further
+    // by default the narrower the viewport is, instead of always framing as
+    // if the canvas were square/landscape.
+    const aspect = wrap.clientWidth / wrap.clientHeight;
+    const portraitPullback = aspect < 1 ? Math.min(2.4, 1 / aspect) : 1;
+    let radius = span * 1.1 * portraitPullback;
     function applyCam() {
       phi = Math.max(0.12, Math.min(1.45, phi));
       radius = Math.max(0.5, Math.min(8000, radius));
@@ -358,13 +364,55 @@ export function createPreview3D(wrap) {
 
     const el = renderer.domElement;
     let drag = null;
+    // Active touch pointers, tracked by pointerId, so two simultaneous
+    // touches can be told apart from a single mouse drag — pointer events
+    // alone don't carry "how many fingers", so this is built by hand rather
+    // than relying on a gesture library.
+    const touches = new Map();
+    let pinch = null; // { dist, midX, midY } — set once 2 touches are down
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('pointerdown', (e) => {
-      drag = { x: e.clientX, y: e.clientY, btn: e.button };
       el.setPointerCapture(e.pointerId);
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          pinch = {
+            dist: Math.hypot(a.x - b.x, a.y - b.y),
+            midX: (a.x + b.x) / 2,
+            midY: (a.y + b.y) / 2,
+          };
+          drag = null;
+          return;
+        }
+      }
+      drag = { x: e.clientX, y: e.clientY, btn: e.button };
       if (panMode) el.style.cursor = 'grabbing';
     });
     el.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      if (touches.size === 2) {
+        // Two-finger pinch = zoom, two-finger drag (midpoint moving) = pan —
+        // the standard mobile map-view gesture pair, so no separate "pan
+        // mode" toggle is needed on a phone.
+        const [a, b] = [...touches.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        if (pinch) {
+          radius *= pinch.dist / Math.max(1, dist);
+          const ps = radius / 700;
+          const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+          const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+          target.addScaledVector(right, -(midX - pinch.midX) * ps);
+          target.addScaledVector(up, (midY - pinch.midY) * ps);
+          applyCam();
+        }
+        pinch = { dist, midX, midY };
+        return;
+      }
       if (!drag) return;
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
@@ -385,10 +433,17 @@ export function createPreview3D(wrap) {
       drag.y = e.clientY;
       applyCam();
     });
-    el.addEventListener('pointerup', () => {
+    function endTouch(e) {
+      touches.delete(e.pointerId);
+      if (touches.size < 2) pinch = null;
+      if (touches.size === 0) drag = null;
+    }
+    el.addEventListener('pointerup', (e) => {
+      endTouch(e);
       drag = null;
       if (panMode) el.style.cursor = 'grab';
     });
+    el.addEventListener('pointercancel', endTouch);
     el.style.cursor = panMode ? 'grab' : 'default';
 
     // Hover a bin -> show its linked product(s) right at that bin, small and
