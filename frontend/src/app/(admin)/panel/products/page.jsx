@@ -58,7 +58,6 @@ function AdminProductsInner() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const catRef = useRef(null);
-  const searchTimer = useRef(null);
 
   const [categoryOptions, setCategoryOptions] = useState([]);
 
@@ -113,13 +112,14 @@ function AdminProductsInner() {
   }, [page, search, categoryFilter]);
 
   const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setSearchInput(val);
-    clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
+    setSearchInput(e.target.value);
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "Enter") {
       setPage(1);
-      setSearch(val);
-    }, 300);
+      setSearch(searchInput);
+    }
   };
 
   // Close category/tag dropdowns on outside click
@@ -396,13 +396,25 @@ function AdminProductsInner() {
         </button>
       </div>
 
-      <input
-        type="text"
-        value={searchInput}
-        onChange={handleSearchChange}
-        placeholder="Search products by name..."
-        className="w-full px-3 py-2 mb-4 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
-      />
+      <div className="flex items-center gap-2 mb-4">
+        <input
+          type="text"
+          value={searchInput}
+          onChange={handleSearchChange}
+          onKeyDown={handleSearchKeyDown}
+          placeholder="Search products by name… (press Enter)"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        />
+        <button
+          onClick={() => {
+            setPage(1);
+            setSearch(searchInput);
+          }}
+          className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+        >
+          Search
+        </button>
+      </div>
 
       {/* Add Product Form */}
       {showForm && (

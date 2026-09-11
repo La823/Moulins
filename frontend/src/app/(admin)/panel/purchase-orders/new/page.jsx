@@ -6,22 +6,11 @@ import { apiFetch } from "@/lib/api";
 
 const CATEGORIES = ["Ortho", "Neuro", "Gastro", "Respiratory", "Dema", "Gynae", "General", "Misc", "Cardio", "Diabetic"];
 const TYPES = ["TABLET", "CAPSULE", "SOFTGEL CAPSULE", "SACHET", "DRY SYRUP", "SYRUP", "OINTMENT", "SPRAY", "ROLL ON", "INJECTION", "DROPS"];
-const STATUSES = [
-  { v: "mail_done", l: "Mail Done" },
-  { v: "rate_ok", l: "Rate OK" },
-  { v: "mock_up_received", l: "Mock Up Received" },
-  { v: "design_ok", l: "Design OK" },
-  { v: "received", l: "Received" },
-  { v: "hold", l: "Hold" },
-  { v: "cancelled", l: "Cancelled" },
-  { v: "repeat", l: "Repeat" },
-];
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
   const [manufacturers, setManufacturers] = useState([]);
-  const [poProductNames, setPoProductNames] = useState([]); // unique names from previous POs
-  const [productSearch, setProductSearch] = useState("");
+  const [masterProductNames, setMasterProductNames] = useState([]); // matches from the PO master list
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -36,33 +25,23 @@ export default function NewPurchaseOrderPage() {
     type: "",
     manufacturer_id: "",
     category: "",
-    status: "mail_done",
     remarks: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [prefillNotice, setPrefillNotice] = useState("");
-  const skipPrefillByName = useRef(false);
+
+  // Live preview of the last PO for the typed product name — searched only
+  // against past purchase orders, never the product catalog. Read-only:
+  // nothing here touches the form automatically, the user copies values in
+  // with a button.
+  const [lastPoPreview, setLastPoPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      apiFetch("/admin/manufacturers"),
-      apiFetch("/admin/purchase-orders"),
-    ]).then(([mfrs, pos]) => {
-      setManufacturers(Array.isArray(mfrs) ? mfrs : []);
-      const list = Array.isArray(pos) ? pos : [];
-      // Unique product names from all previous POs, preserving most-recent-first order
-      const seen = new Set();
-      const names = [];
-      for (const po of list) {
-        const name = po.product_name?.trim();
-        if (name && !seen.has(name.toLowerCase())) {
-          seen.add(name.toLowerCase());
-          names.push(name);
-        }
-      }
-      setPoProductNames(names);
-    });
+    apiFetch("/admin/manufacturers")
+      .then((mfrs) => setManufacturers(Array.isArray(mfrs) ? mfrs : []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -75,68 +54,75 @@ export default function NewPurchaseOrderPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const filteredProducts = productSearch.trim()
-    ? poProductNames.filter((name) => name.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 15)
-    : [];
-
-  const prefillFromLastPO = async (productID, productName) => {
-    setPrefillNotice("");
-    try {
-      const params = new URLSearchParams();
-      if (productID) params.set("product_id", productID);
-      if (productName) params.set("product_name", productName);
-      const last = await apiFetch(`/admin/purchase-orders/last-by-product?${params.toString()}`);
-      if (!last) return null;
-      return last;
-    } catch {
-      return null;
+  // Debounced: the last PO for this exact name (exact match only), plus
+  // name matches from the PO master list (searched server-side — it's
+  // 1800+ rows, too many to load client-side — a name suggestion list,
+  // not autofill of other fields).
+  useEffect(() => {
+    const name = form.product_name.trim();
+    if (!name) {
+      setLastPoPreview(null);
+      setMasterProductNames([]);
+      return;
     }
+    const timer = setTimeout(() => {
+      setPreviewLoading(true);
+      Promise.all([
+        apiFetch(`/admin/purchase-orders/last-by-product?product_name=${encodeURIComponent(name)}`).catch(() => null),
+        apiFetch(`/admin/purchase-order-master/product-names?search=${encodeURIComponent(name)}&limit=15`).catch(() => []),
+      ]).then(([lastPo, masterNames]) => {
+        setLastPoPreview(lastPo || null);
+        setMasterProductNames(Array.isArray(masterNames) ? masterNames : []);
+      }).finally(() => setPreviewLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [form.product_name]);
+
+  // The master list stores manufacturer as a plain `company` name (no FK) —
+  // resolve it to an id the <select> can use.
+  const resolveManufacturerId = (last) => {
+    if (last.company) {
+      const match = manufacturers.find((m) => m.name.toLowerCase() === last.company.toLowerCase());
+      if (match) return match.id;
+    }
+    return null;
   };
 
+  const buildPrefillPatch = (last, prev) => ({
+    quantity: last.quantity != null ? String(last.quantity) : prev.quantity,
+    mrp: last.mrp != null ? String(last.mrp) : prev.mrp,
+    rate: last.rate != null ? String(last.rate) : prev.rate,
+    specifications: last.specifications || prev.specifications,
+    type: last.type || prev.type,
+    manufacturer_id: resolveManufacturerId(last) || prev.manufacturer_id,
+    category: last.category || prev.category,
+  });
+
+  const applyLastPoValues = () => {
+    if (!lastPoPreview) return;
+    setForm((prev) => ({ ...prev, ...buildPrefillPatch(lastPoPreview, prev) }));
+    setPrefillNotice(`po:Copied values from ${lastPoPreview.po_number}`);
+  };
+
+  // Prefill only fires when the user explicitly picks a name from the
+  // dropdown — never on free-typed text, and only on an exact product_id or
+  // exact-name match server-side. A fuzzy/partial match used to run on
+  // every blur and could silently pull in fields from an unrelated,
+  // similarly-named product.
   const selectProduct = async (name) => {
-    skipPrefillByName.current = true;
-    setForm({ ...form, product_id: null, product_name: name });
-    setProductSearch(name);
+    setForm((prev) => ({ ...prev, product_id: null, product_name: name }));
     setShowProductDropdown(false);
     setPrefillNotice("");
 
-    const last = await prefillFromLastPO(null, name);
-    if (last) {
-      setForm((prev) => ({
-        ...prev,
-        product_name: name,
-        quantity: last.quantity != null ? String(last.quantity) : prev.quantity,
-        mrp: last.mrp != null ? String(last.mrp) : prev.mrp,
-        rate: last.rate != null ? String(last.rate) : prev.rate,
-        specifications: last.specifications || prev.specifications,
-        type: last.type || prev.type,
-        manufacturer_id: last.manufacturer_id ? last.manufacturer_id.toString() : prev.manufacturer_id,
-        category: last.category || prev.category,
-      }));
-      setPrefillNotice(`po:Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
-    } else {
-      setPrefillNotice("none:No previous PO found for this product");
-    }
-  };
-
-  // Also try prefill on free-typed product names when the user blurs the field
-  const tryPrefillByName = async () => {
-    if (skipPrefillByName.current) { skipPrefillByName.current = false; return; }
-    if (form.product_id || !form.product_name.trim()) return;
-    const last = await prefillFromLastPO(null, form.product_name.trim());
-    if (last) {
-      setForm((prev) => ({
-        ...prev,
-        quantity: last.quantity != null ? String(last.quantity) : prev.quantity,
-        mrp: last.mrp != null ? String(last.mrp) : prev.mrp,
-        rate: last.rate != null ? String(last.rate) : prev.rate,
-        specifications: last.specifications || prev.specifications,
-        type: last.type || prev.type,
-        manufacturer_id: last.manufacturer_id || prev.manufacturer_id,
-        category: last.category || prev.category,
-      }));
-      setPrefillNotice(`po:Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
-    } else {
+    try {
+      const last = await apiFetch(`/admin/purchase-orders/last-by-product?product_name=${encodeURIComponent(name)}`);
+      if (last) {
+        setForm((prev) => ({ ...prev, product_name: name, ...buildPrefillPatch(last, prev) }));
+        setPrefillNotice(`po:Prefilled from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`);
+      } else {
+        setPrefillNotice("none:No previous PO found for this product");
+      }
+    } catch {
       setPrefillNotice("none:No previous PO found for this product");
     }
   };
@@ -152,11 +138,12 @@ export default function NewPurchaseOrderPage() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await apiFetch("/admin/purchase-orders", {
+      // Goes straight into the PO master list now (not a separate
+      // purchase_orders table) — see purchaseOrderMasterModel.go.
+      const res = await apiFetch("/admin/purchase-order-master", {
         method: "POST",
         body: JSON.stringify({
           po_date: form.po_date,
-          product_id: form.product_id || undefined,
           product_name: form.product_name.trim(),
           quantity: parseInt(form.quantity) || 0,
           mrp: form.mrp ? parseFloat(form.mrp) : null,
@@ -165,11 +152,10 @@ export default function NewPurchaseOrderPage() {
           type: form.type || null,
           manufacturer_id: form.manufacturer_id,
           category: form.category || null,
-          status: form.status,
           remarks: form.remarks.trim() || null,
         }),
       });
-      router.push(`/panel/purchase-orders/${res.id}`);
+      router.push(`/panel/purchase-order-master?highlight=${res.id}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -217,21 +203,19 @@ export default function NewPurchaseOrderPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Product *</label>
             <input
               type="text" required
-              value={form.product_id ? form.product_name : productSearch}
+              value={form.product_name}
               onChange={(e) => {
-                setProductSearch(e.target.value);
                 setForm({ ...form, product_name: e.target.value, product_id: null });
                 setShowProductDropdown(true);
                 setPrefillNotice("");
               }}
               onFocus={() => setShowProductDropdown(true)}
-              onBlur={() => setTimeout(tryPrefillByName, 200)}
               placeholder="Search or type product name..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
-            {showProductDropdown && filteredProducts.length > 0 && (
-              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                {filteredProducts.map((name) => (
+            {showProductDropdown && masterProductNames.length > 0 && (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                {masterProductNames.map((name) => (
                   <button
                     key={name} type="button"
                     onClick={() => selectProduct(name)}
@@ -242,7 +226,9 @@ export default function NewPurchaseOrderPage() {
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-gray-400 mt-1">Search from previous POs or type a custom name</p>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Pick a name from the list to prefill from its last PO, or type a new product name
+            </p>
             {prefillNotice && (() => {
               const [type, ...rest] = prefillNotice.split(":");
               const msg = rest.join(":");
@@ -250,6 +236,42 @@ export default function NewPurchaseOrderPage() {
               if (type === "catalog") return <p className="text-[11px] mt-1 text-gray-400">{msg}</p>;
               return <p className="text-[11px] mt-1 text-gray-400">{msg}</p>;
             })()}
+
+            {/* Live preview: last PO for this exact name (searched only against past POs) */}
+            {form.product_name.trim() && (
+              <div className="mt-3 space-y-2">
+                {previewLoading && <p className="text-[11px] text-gray-400">Searching...</p>}
+
+                {!previewLoading && lastPoPreview && (
+                  <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">
+                        Last PO for &quot;{form.product_name.trim()}&quot;
+                      </p>
+                      <button
+                        type="button"
+                        onClick={applyLastPoValues}
+                        className="text-[11px] text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Use these values
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
+                      <span>{lastPoPreview.po_number} &middot; {new Date(lastPoPreview.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                      <span>{lastPoPreview.manufacturer_name || lastPoPreview.company || "\u2014"}</span>
+                      <span>Qty: {lastPoPreview.quantity}</span>
+                      <span>Rate: {lastPoPreview.rate != null ? `\u20b9${Number(lastPoPreview.rate).toFixed(2)}` : "\u2014"}</span>
+                      <span>MRP: {lastPoPreview.mrp != null && Number.isFinite(Number(lastPoPreview.mrp)) ? `\u20b9${Number(lastPoPreview.mrp).toFixed(2)}` : (lastPoPreview.mrp || "\u2014")}</span>
+                      <span>Status: {lastPoPreview.status}</span>
+                    </div>
+                  </div>
+                )}
+
+                {!previewLoading && !lastPoPreview && (
+                  <p className="text-[11px] text-gray-400">No previous PO found for this name.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Specs + type */}
@@ -314,29 +336,17 @@ export default function NewPurchaseOrderPage() {
             </div>
           </div>
 
-          {/* Category + status */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <select
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-              >
-                <option value="">Select category</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-              >
-                {STATUSES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
-              </select>
-            </div>
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <select
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+            >
+              <option value="">Select category</option>
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
 
           {/* Remarks */}

@@ -201,6 +201,7 @@ const NAV_ITEMS = [
       { label: "Learning", href: "/panel/learning", permission: "learning_view" },
       { label: "Assignments", href: "/panel/assignments", permission: "assignments_view" },
       { label: "Purchase Orders", href: "/panel/purchase-orders", permission: "purchase_orders_view" },
+      { label: "PO Master List", href: "/panel/purchase-order-master", permission: "purchase_orders_view" },
       { label: "Attendance", href: "/panel/attendance", permission: "attendance_view" },
       { label: "My Attendance", href: "/panel/my-attendance", employeeOnly: true },
       { label: "Meetings", href: "/panel/meetings", permission: "meetings_view" },

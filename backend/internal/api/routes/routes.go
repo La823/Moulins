@@ -34,6 +34,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseordermaster"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
@@ -412,25 +413,38 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	manufacturersDeleteStaff.Use(middleware.RequirePermission(db, "manufacturers_delete", rdb))
 	manufacturersDeleteStaff.HandleFunc("/manufacturers/{id}", manufacturers.DeleteHandler(db, rdb)).Methods("DELETE")
 
-	// staff routes — purchase orders
+	// staff routes — "last PO for this product" lookup, used by the
+	// new-PO form's preview/prefill. purchase_orders (the table this
+	// package used to CRUD against) has been dropped — see migration 114
+	// and purchase order master below, which is where POs actually live.
 	purchaseOrdersViewStaff := protected.PathPrefix("/admin").Subrouter()
 	purchaseOrdersViewStaff.Use(middleware.StaffOnly)
 	purchaseOrdersViewStaff.Use(middleware.RequirePermission(db, "purchase_orders_view", rdb))
-	purchaseOrdersViewStaff.HandleFunc("/purchase-orders", purchaseorders.ListHandler(db, rdb)).Methods("GET")
 	purchaseOrdersViewStaff.HandleFunc("/purchase-orders/last-by-product", purchaseorders.LastByProductHandler(db)).Methods("GET")
-	purchaseOrdersViewStaff.HandleFunc("/purchase-orders/{id}", purchaseorders.GetHandler(db, rdb)).Methods("GET")
 
-	purchaseOrdersEditStaff := protected.PathPrefix("/admin").Subrouter()
-	purchaseOrdersEditStaff.Use(middleware.StaffOnly)
-	purchaseOrdersEditStaff.Use(middleware.RequirePermission(db, "purchase_orders_edit", rdb))
-	purchaseOrdersEditStaff.HandleFunc("/purchase-orders", purchaseorders.CreateHandler(db, rdb)).Methods("POST")
-	purchaseOrdersEditStaff.HandleFunc("/purchase-orders/{id}", purchaseorders.UpdateHandler(db, rdb)).Methods("PUT")
-	purchaseOrdersEditStaff.HandleFunc("/purchase-orders/{id}/status", purchaseorders.UpdateStatusHandler(db, rdb)).Methods("PUT")
+	// staff routes — purchase order master. Originally a read-only import
+	// of the old spreadsheet (migration 108); this is now the single
+	// table new POs are created into (see CreateHandler) — the separate
+	// purchase_orders table has been dropped (migration 114).
+	purchaseOrderMasterViewStaff := protected.PathPrefix("/admin").Subrouter()
+	purchaseOrderMasterViewStaff.Use(middleware.StaffOnly)
+	purchaseOrderMasterViewStaff.Use(middleware.RequirePermission(db, "purchase_orders_view", rdb))
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master", purchaseordermaster.ListHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/product-names", purchaseordermaster.SearchProductNamesHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/active", purchaseordermaster.ListActiveHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/emails", purchaseordermaster.GetEmailsHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/logs", purchaseordermaster.LogsHandler(db)).Methods("GET")
 
-	purchaseOrdersDeleteStaff := protected.PathPrefix("/admin").Subrouter()
-	purchaseOrdersDeleteStaff.Use(middleware.StaffOnly)
-	purchaseOrdersDeleteStaff.Use(middleware.RequirePermission(db, "purchase_orders_delete", rdb))
-	purchaseOrdersDeleteStaff.HandleFunc("/purchase-orders/{id}", purchaseorders.DeleteHandler(db, rdb)).Methods("DELETE")
+	purchaseOrderMasterEditStaff := protected.PathPrefix("/admin").Subrouter()
+	purchaseOrderMasterEditStaff.Use(middleware.StaffOnly)
+	purchaseOrderMasterEditStaff.Use(middleware.RequirePermission(db, "purchase_orders_edit", rdb))
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master", purchaseordermaster.CreateHandler(db)).Methods("POST")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/mrp-unit", purchaseordermaster.UpdateMrpUnitHandler(db)).Methods("PATCH")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/product-code", purchaseordermaster.UpdateProductCodeHandler(db)).Methods("PATCH")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/product-name", purchaseordermaster.UpdateProductNameHandler(db)).Methods("PATCH")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/composition", purchaseordermaster.UpdateCompositionHandler(db)).Methods("PATCH")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/send-mail", purchaseordermaster.SendMailHandler(db)).Methods("POST")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/emails/reply", purchaseordermaster.ReplyToEmailHandler(db)).Methods("POST")
 
 	// staff routes — onboarding review (folded into partners view/edit,
 	// since it's reviewing partner documents)

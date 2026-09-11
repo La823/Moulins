@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 
 export default function ManufacturersPage() {
@@ -11,6 +11,8 @@ export default function ManufacturersPage() {
   const [form, setForm] = useState({ name: "", emails: [""], phone: "", address: "", gst_number: "", notes: "" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const formRef = useRef(null);
 
   const fetchData = () => {
     apiFetch("/admin/manufacturers")
@@ -39,6 +41,12 @@ export default function ManufacturersPage() {
     });
     setEditing(m.id);
     setShowForm(true);
+    // The form renders above the list — without this, clicking Edit on a
+    // row further down the page opens it off-screen and looks like nothing
+    // happened.
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -101,7 +109,7 @@ export default function ManufacturersPage() {
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="mb-6 p-5 bg-white rounded-xl border border-gray-200 space-y-4 max-w-xl">
+        <form ref={formRef} onSubmit={handleSubmit} className="mb-6 p-5 bg-white rounded-xl border border-gray-200 space-y-4 max-w-xl">
           <h3 className="text-sm font-semibold text-gray-700">{editing ? "Edit Manufacturer" : "New Manufacturer"}</h3>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -161,36 +169,68 @@ export default function ManufacturersPage() {
           <p className="text-sm text-gray-400">No manufacturers yet</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {manufacturers.map((m) => (
-            <div key={m.id} className="bg-white rounded-xl border border-gray-200 p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{m.name}</p>
-                  {m.emails?.length > 0 && (
-                    <p className="text-xs text-gray-500 mt-1">{m.emails.join(", ")}</p>
-                  )}
-                  <div className="flex items-center gap-4 mt-1">
-                    {m.phone && <p className="text-xs text-gray-400">{m.phone}</p>}
-                    {m.gst_number && <p className="text-xs text-gray-400">GST: {m.gst_number}</p>}
+        <div className="space-y-2">
+          {manufacturers.map((m) => {
+            const isExpanded = expandedId === m.id;
+            const hasDetails = m.emails?.length > 0 || m.phone || m.address || m.gst_number || m.notes;
+            return (
+              <div key={m.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : m.id)}
+                  className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-gray-50"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-gray-400 text-xs">{isExpanded ? "▾" : "▸"}</span>
+                    {m.code && (
+                      <span className="text-[11px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        {m.code}
+                      </span>
+                    )}
+                    <span className="font-medium text-gray-900">{m.name}</span>
+                    {!hasDetails && (
+                      <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                        No details yet
+                      </span>
+                    )}
+                  </span>
+                </button>
+
+                {isExpanded && (
+                  <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                      <Field label="Code" value={m.code} />
+                      <Field label="Emails" value={m.emails?.length ? m.emails.join(", ") : null} />
+                      <Field label="Phone" value={m.phone} />
+                      <Field label="GST Number" value={m.gst_number} />
+                      <Field label="Address" value={m.address} />
+                      <Field label="Notes" value={m.notes} full />
+                    </div>
+                    <div className="flex items-center gap-2 mt-4">
+                      <button onClick={() => startEdit(m)}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete(m.id)}
+                        className="px-3 py-1.5 text-xs text-red-500 hover:text-red-700">
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  {m.address && <p className="text-xs text-gray-400 mt-1">{m.address}</p>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => startEdit(m)}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
-                    Edit
-                  </button>
-                  <button onClick={() => handleDelete(m.id)}
-                    className="px-3 py-1.5 text-xs text-red-500 hover:text-red-700">
-                    Delete
-                  </button>
-                </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>
+  );
+}
+
+function Field({ label, value, full }) {
+  return (
+    <div className={full ? "col-span-2" : ""}>
+      <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-0.5">{label}</p>
+      <p className={value ? "text-gray-800" : "text-gray-300 italic"}>{value || "Not set"}</p>
+    </div>
   );
 }
