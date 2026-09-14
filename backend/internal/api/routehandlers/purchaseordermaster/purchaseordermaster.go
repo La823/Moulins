@@ -66,6 +66,68 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/purchase-order-master/specifications?page=1&pageSize=40&search=
+// Backs the PO Specifications page — a trimmed row set (id/po_number/
+// product_name/company/pms_type_id/specifications) rather than the full
+// master-list columns.
+func ListSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+		if pageSize < 1 || pageSize > 200 {
+			pageSize = defaultPageSize
+		}
+		search := r.URL.Query().Get("search")
+
+		rows, total, err := models.ListPOSpecifications(r.Context(), db, pageSize, (page-1)*pageSize, search)
+		if err != nil {
+			log.Printf("list PO specifications error: %v", err)
+			http.Error(w, "could not fetch PO specifications", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"rows":     rows,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		})
+	}
+}
+
+// PATCH /admin/purchase-order-master/{id}/specifications
+// { "pms_type_id": 1, "specifications": { "3": "Red", "4": true } }
+// specifications is keyed by pms_fields.id (as a string, since JSON object
+// keys are always strings) — the frontend renders whichever fields belong
+// to the chosen pms_type_id and reads/writes this blob by field id.
+func UpdateSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			PMSTypeID      *int            `json:"pms_type_id"`
+			Specifications json.RawMessage `json:"specifications"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := models.UpdatePOSpecifications(r.Context(), db, id, req.PMSTypeID, req.Specifications); err != nil {
+			log.Printf("update PO specifications error: %v", err)
+			http.Error(w, "could not save specifications", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // GET /admin/purchase-order-master/active?limit=10
 // Used by the /panel/purchase-orders overview page to show what's currently
 // open — every PO defaults to status "Active" on creation.

@@ -47,12 +47,17 @@ type UpdateOrderDetailsRequest struct {
 }
 
 type OrderItem struct {
-	ID          uuid.UUID `json:"id"`
-	OrderID     uuid.UUID `json:"order_id"`
-	ProductID   uuid.UUID `json:"product_id"`
-	ProductName string    `json:"product_name"`
-	Quantity    int       `json:"quantity"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID                uuid.UUID `json:"id"`
+	OrderID           uuid.UUID `json:"order_id"`
+	ProductID         uuid.UUID `json:"product_id"`
+	ProductName       string    `json:"product_name"`
+	Quantity          int       `json:"quantity"`
+	CreatedAt         time.Time `json:"created_at"`
+	// SelectedBatchCode is a staff-only pick of which Marg batch to fulfil
+	// this line from — set via the order's inline batch dropdown, read by
+	// PushToMargHandler. Never logged as an order_event, so it never shows
+	// up in the partner-visible history.
+	SelectedBatchCode *string `json:"selected_batch_code,omitempty"`
 }
 
 type OrderEvent struct {
@@ -79,7 +84,24 @@ type CreateOrderItemRequest struct {
 	Quantity    int       `json:"quantity"`
 }
 
+// CreateOrder places an order for userID as the customer's own action —
+// actor_id on the order.created event is the same userID, and the
+// customer's cart (whatever it happened to contain) is cleared on commit,
+// matching the checkout flow's assumption that req.Items came from it.
 func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
+	return createOrder(ctx, db, userID, userID, "Order was placed", req)
+}
+
+// CreateOrderForCustomer lets a staff member place an order on behalf of a
+// customer (userID) — order_events.actor_id records the staff member
+// (staffID) rather than the customer, for the "placed by staff" audit
+// trail, and the customer's cart is left untouched since these items didn't
+// come from it.
+func CreateOrderForCustomer(ctx context.Context, db *pgxpool.Pool, userID, staffID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
+	return createOrder(ctx, db, userID, staffID, "Order was placed by staff on behalf of the customer", req)
+}
+
+func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUID, eventDescription string, req CreateOrderRequest) (uuid.UUID, error) {
 	transportMode := ""
 	if req.TransportMode != nil {
 		transportMode = *req.TransportMode
@@ -126,7 +148,7 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 	// Log order.created event
 	_, err = tx.Exec(ctx,
 		`INSERT INTO order_events (order_id, event_type, description, actor_id) VALUES ($1, $2, $3, $4)`,
-		orderID, "order.created", "Order was placed", userID,
+		orderID, "order.created", eventDescription, actorID,
 	)
 	if err != nil {
 		return uuid.Nil, err
@@ -134,8 +156,13 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 
 	// Cart clears only when the order actually commits — if anything above
 	// fails, the rollback restores the cart along with everything else.
-	if err = ClearCart(ctx, tx, userID); err != nil {
-		return uuid.Nil, err
+	// Only clear it for the customer's own checkout flow (actorID ==
+	// userID) — a staff-placed order's items didn't come from the
+	// customer's cart, so their cart shouldn't be touched.
+	if actorID == userID {
+		if err = ClearCart(ctx, tx, userID); err != nil {
+			return uuid.Nil, err
+		}
 	}
 
 	if err = tx.Commit(ctx); err != nil {
@@ -276,7 +303,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	itemRows, err := db.Query(ctx,
 		`SELECT oi.id, oi.order_id, oi.product_id,
 		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
-		        oi.quantity, oi.created_at
+		        oi.quantity, oi.created_at, oi.selected_batch_code
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1`,
@@ -290,7 +317,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	o.Items = []OrderItem{}
 	for itemRows.Next() {
 		var item OrderItem
-		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt); err != nil {
+		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode); err != nil {
 			return nil, err
 		}
 		o.Items = append(o.Items, item)
@@ -439,6 +466,19 @@ func UpdateOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID, qu
 		`UPDATE order_items SET quantity = $1 WHERE id = $2`,
 		quantity, itemID,
 	)
+	return err
+}
+
+// UpdateOrderItemBatch sets (or clears, if code is empty) which Marg batch
+// staff have picked to fulfil this line from. Deliberately not paired with
+// an order_events insert — this is an internal fulfilment detail, not
+// something the partner should see in their order history.
+func UpdateOrderItemBatch(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID, batchCode string) error {
+	var code *string
+	if batchCode != "" {
+		code = &batchCode
+	}
+	_, err := db.Exec(ctx, `UPDATE order_items SET selected_batch_code = $1 WHERE id = $2`, code, itemID)
 	return err
 }
 

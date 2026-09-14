@@ -27,6 +27,20 @@ const STATUS_STYLES = {
   refunded: "bg-orange-50 text-orange-700",
 };
 
+// Marg batch expiry comes back as raw "YYYYMMDD" (e.g. "20270701") —
+// render it as a readable date, falling back to the raw string if it
+// doesn't parse (e.g. the placeholder all-spaces value for empty batches).
+function formatBatchExpiry(raw) {
+  const trimmed = raw?.trim();
+  if (!trimmed || trimmed.length !== 8) return trimmed || "";
+  const year = trimmed.slice(0, 4);
+  const month = trimmed.slice(4, 6);
+  const day = trimmed.slice(6, 8);
+  const d = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return trimmed;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 export default function AdminOrderDetail() {
   const { id } = useParams();
   const router = useRouter();
@@ -56,6 +70,7 @@ export default function AdminOrderDetail() {
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [whatsAppError, setWhatsAppError] = useState("");
   const [sendLog, setSendLog] = useState([]);
+  const [batchInfoByItem, setBatchInfoByItem] = useState({}); // { [order_item_id]: {curbatch, exp, marg_linked} }
 
   const loadSendLog = () =>
     apiFetch(`/admin/orders/${id}/send-log`)
@@ -105,6 +120,43 @@ export default function AdminOrderDetail() {
       .finally(() => setLoading(false));
     loadSendLog();
   }, [id]);
+
+  // Live Marg batches per item (earliest expiry first, FEFO) — powers the
+  // inline batch dropdown. The dropdown's own value is item.selected_batch_code
+  // (persisted server-side, defaulting to the earliest-expiry batch here if
+  // nothing's been picked yet).
+  const loadBatchOptions = () =>
+    apiFetch(`/admin/orders/${id}/marg-batch-options`)
+      .then((data) => {
+        const map = {};
+        (data.items || []).forEach((it) => {
+          map[it.order_item_id] = {
+            batches: it.batches || [],
+            defaultCode: it.default_code || "",
+            margLinked: !!it.marg_linked,
+          };
+        });
+        setBatchInfoByItem(map);
+      })
+      .catch(() => {});
+
+  useEffect(() => {
+    loadBatchOptions();
+  }, [id]);
+
+  const handleSelectBatch = async (item, batchCode) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, selected_batch_code: batchCode } : i))
+    );
+    try {
+      await apiFetch(`/admin/orders/${id}/items/${item.id}/batch`, {
+        method: "PUT",
+        body: JSON.stringify({ batch_code: batchCode }),
+      });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   // Clear alerts after 4s
   useEffect(() => {
@@ -157,9 +209,10 @@ export default function AdminOrderDetail() {
   };
 
   // --- Update item quantity ---
-  const handleUpdateItem = async (itemId, newQty, itemName) => {
-    if (newQty < 1) return;
-    if (!confirm(`Change quantity of "${itemName}" to ${newQty}?`)) return;
+  const [qtyDrafts, setQtyDrafts] = useState({}); // { [itemId]: string } — pending textbox edits, not yet saved
+
+  const handleUpdateItem = async (itemId, newQty) => {
+    if (!Number.isInteger(newQty) || newQty < 1) return;
     try {
       await apiFetch(`/admin/orders/${id}/items/${itemId}`, {
         method: "PUT",
@@ -173,6 +226,19 @@ export default function AdminOrderDetail() {
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const commitQtyDraft = (item) => {
+    const raw = qtyDrafts[item.id];
+    setQtyDrafts((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    if (raw === undefined) return;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed === item.quantity) return;
+    handleUpdateItem(item.id, parsed);
   };
 
   // --- Delete item ---
@@ -498,6 +564,12 @@ export default function AdminOrderDetail() {
                   <th className="text-center py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-32">
                     Quantity
                   </th>
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Batch
+                  </th>
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Expiry
+                  </th>
                   <th className="text-right py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-16">
                     &nbsp;
                   </th>
@@ -512,21 +584,28 @@ export default function AdminOrderDetail() {
                     <td className="py-3">
                       <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() =>
-                            handleUpdateItem(item.id, item.quantity - 1, item.product_name)
-                          }
+                          onClick={() => handleUpdateItem(item.id, item.quantity - 1)}
                           disabled={!canEdit || item.quantity <= 1}
                           className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           &minus;
                         </button>
-                        <span className="w-8 text-center font-medium text-gray-900">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() =>
-                            handleUpdateItem(item.id, item.quantity + 1, item.product_name)
+                        <input
+                          type="number"
+                          min={1}
+                          value={qtyDrafts[item.id] ?? item.quantity}
+                          disabled={!canEdit}
+                          onChange={(e) =>
+                            setQtyDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
                           }
+                          onBlur={() => commitQtyDraft(item)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                          }}
+                          className="w-14 text-center font-medium text-gray-900 border border-gray-200 rounded-md py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <button
+                          onClick={() => handleUpdateItem(item.id, item.quantity + 1)}
                           disabled={!canEdit}
                           className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
@@ -534,6 +613,47 @@ export default function AdminOrderDetail() {
                         </button>
                       </div>
                     </td>
+                    {(() => {
+                      const info = batchInfoByItem[item.id];
+                      const batches = info?.batches || [];
+                      const currentCode = item.selected_batch_code || info?.defaultCode || "";
+                      const currentBatch = batches.find((b) => b.code === currentCode);
+                      if (!info || !info.margLinked) {
+                        return (
+                          <td colSpan={2} className="py-3 pl-4 text-gray-300">
+                            {info?.margLinked === false ? "not Marg-linked" : "—"}
+                          </td>
+                        );
+                      }
+                      if (batches.length === 0) {
+                        return (
+                          <td colSpan={2} className="py-3 pl-4 text-amber-600 text-xs">
+                            No live batches
+                          </td>
+                        );
+                      }
+                      return (
+                        <>
+                          <td className="py-3 pl-4">
+                            <select
+                              value={currentCode}
+                              disabled={!canEdit}
+                              onChange={(e) => handleSelectBatch(item, e.target.value)}
+                              className="text-blue-600 font-medium border border-gray-200 rounded-md py-1 px-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+                            >
+                              {batches.map((b) => (
+                                <option key={b.code} value={b.code}>
+                                  {b.curbatch || "—"}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="py-3 text-red-600 font-medium">
+                            {formatBatchExpiry(currentBatch?.exp) || <span className="text-gray-300 font-normal">—</span>}
+                          </td>
+                        </>
+                      );
+                    })()}
                     <td className="py-3 text-right">
                       {canEdit && (
                       <button

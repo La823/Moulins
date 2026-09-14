@@ -34,6 +34,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/productspec"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseordermaster"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
@@ -432,6 +433,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master", purchaseordermaster.ListHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/product-names", purchaseordermaster.SearchProductNamesHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/active", purchaseordermaster.ListActiveHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/specifications", purchaseordermaster.ListSpecificationsHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/emails", purchaseordermaster.GetEmailsHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/logs", purchaseordermaster.LogsHandler(db)).Methods("GET")
 
@@ -443,8 +445,28 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/product-code", purchaseordermaster.UpdateProductCodeHandler(db)).Methods("PATCH")
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/product-name", purchaseordermaster.UpdateProductNameHandler(db)).Methods("PATCH")
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/composition", purchaseordermaster.UpdateCompositionHandler(db)).Methods("PATCH")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/specifications", purchaseordermaster.UpdateSpecificationsHandler(db)).Methods("PATCH")
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/send-mail", purchaseordermaster.SendMailHandler(db)).Methods("POST")
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/emails/reply", purchaseordermaster.ReplyToEmailHandler(db)).Methods("POST")
+
+	// staff routes — Product Manufacturer Specification (PMS) config: define
+	// product types, their specification fields, and dropdown field options.
+	// Reuses the purchase_orders permissions since this configures a
+	// PO-page feature, rather than introducing new permission codes.
+	productSpecViewStaff := protected.PathPrefix("/admin").Subrouter()
+	productSpecViewStaff.Use(middleware.StaffOnly)
+	productSpecViewStaff.Use(middleware.RequirePermission(db, "purchase_orders_view", rdb))
+	productSpecViewStaff.HandleFunc("/product-specs/types", productspec.ListTypesHandler(db)).Methods("GET")
+
+	productSpecEditStaff := protected.PathPrefix("/admin").Subrouter()
+	productSpecEditStaff.Use(middleware.StaffOnly)
+	productSpecEditStaff.Use(middleware.RequirePermission(db, "purchase_orders_edit", rdb))
+	productSpecEditStaff.HandleFunc("/product-specs/types", productspec.CreateTypeHandler(db)).Methods("POST")
+	productSpecEditStaff.HandleFunc("/product-specs/types/{id}", productspec.DeleteTypeHandler(db)).Methods("DELETE")
+	productSpecEditStaff.HandleFunc("/product-specs/types/{id}/fields", productspec.CreateFieldHandler(db)).Methods("POST")
+	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}", productspec.DeleteFieldHandler(db)).Methods("DELETE")
+	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}/options", productspec.CreateFieldOptionHandler(db)).Methods("POST")
+	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.DeleteFieldOptionHandler(db)).Methods("DELETE")
 
 	// staff routes — onboarding review (folded into partners view/edit,
 	// since it's reviewing partner documents)
@@ -563,6 +585,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderStaff.HandleFunc("/orders/{id}/whatsapp-message", orders.OrderWhatsAppMessageHandler(db)).Methods("GET")
 	orderStaff.HandleFunc("/orders/{id}/whatsapp-sent", orders.MarkOrderWhatsAppSentHandler(db)).Methods("POST")
 	orderStaff.HandleFunc("/orders/{id}/send-log", orders.OrderSendLogHandler(db)).Methods("GET")
+	orderStaff.HandleFunc("/orders/customers/search", orders.SearchCustomersHandler(db)).Methods("GET")
 
 	// staff routes — order management (edit: status, quantities, delivery
 	// details, photos, and pushing to Marg), gated separately so "view
@@ -571,9 +594,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.Use(middleware.StaffOnly)
 	orderEditStaff.Use(middleware.RequirePermission(db, "orders_edit", rdb))
 
+	orderEditStaff.HandleFunc("/orders", orders.CreateOrderForCustomerHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/details", orders.UpdateOrderDetailsHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/status", orders.UpdateOrderStatusHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.UpdateOrderItemHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}/batch", orders.UpdateOrderItemBatchHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.DeleteOrderItemHandler(db)).Methods("DELETE")
 	orderEditStaff.HandleFunc("/orders/upload-url", orders.UploadURLHandler()).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/tracking-upload-url", orders.TrackingUploadURLHandler()).Methods("POST")

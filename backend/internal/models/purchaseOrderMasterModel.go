@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -65,6 +66,7 @@ type PurchaseOrderMasterRow struct {
 	TimeStampRaw   *string    `json:"time_stamp_raw"`
 	DaysDiff       *string    `json:"days_diff"`
 	BillNumber     *string    `json:"bill_number"`
+	LastMailSentAt *time.Time `json:"last_mail_sent_at"`
 }
 
 // CountMissingProductCode returns how many rows in the master list have no
@@ -133,7 +135,8 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 	query := fmt.Sprintf(`
 		SELECT id, sr_no, po_date, po_date_raw, po_number, product_name, product_code, composition, quantity, mrp, mrp_unit_id, rate, estimate,
 		       specifications, type, company, qty_received, remarks, category, status,
-		       time_stamp_date, time_stamp_time, time_stamp_raw, days_diff, bill_number
+		       time_stamp_date, time_stamp_time, time_stamp_raw, days_diff, bill_number,
+		       (SELECT MAX(e.sent_at) FROM purchase_order_emails e WHERE e.po_id = purchase_order_master.id AND e.in_reply_to_message_id IS NULL) AS last_mail_sent_at
 		FROM purchase_order_master
 		%s
 		ORDER BY %s %s NULLS LAST, id
@@ -153,7 +156,7 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 			&r.ID, &r.SrNo, &r.PoDate, &r.PoDateRaw, &r.PoNumber, &r.ProductName, &r.ProductCode, &r.Composition, &r.Quantity, &r.Mrp, &r.MrpUnitID,
 			&r.Rate, &r.Estimate, &r.Specifications, &r.Type, &r.Company, &r.QtyReceived,
 			&r.Remarks, &r.Category, &r.Status, &r.TimeStampDate, &r.TimeStampTime, &r.TimeStampRaw,
-			&r.DaysDiff, &r.BillNumber,
+			&r.DaysDiff, &r.BillNumber, &r.LastMailSentAt,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -261,6 +264,79 @@ func UpdatePurchaseOrderMasterComposition(ctx context.Context, db *pgxpool.Pool,
 		composition = nil
 	}
 	_, err := db.Exec(ctx, "UPDATE purchase_order_master SET composition = $1 WHERE id = $2", composition, id)
+	return err
+}
+
+// POSpecificationRow is the trimmed view the PO Specifications page needs —
+// just enough to identify the row and show/edit its assigned PMS type and
+// field values, without the full master-list column set.
+type POSpecificationRow struct {
+	ID             int             `json:"id"`
+	PoNumber       *string         `json:"po_number"`
+	ProductName    *string         `json:"product_name"`
+	Company        *string         `json:"company"`
+	PMSTypeID      *int            `json:"pms_type_id"`
+	Specifications json.RawMessage `json:"specifications"`
+}
+
+// ListPOSpecifications returns one page of rows for the PO Specifications
+// page, optionally filtered by product-name search, most recent first.
+func ListPOSpecifications(ctx context.Context, db *pgxpool.Pool, limit, offset int, search string) ([]POSpecificationRow, int, error) {
+	var conditions []string
+	var args []interface{}
+	if search != "" {
+		args = append(args, "%"+search+"%")
+		conditions = append(conditions, fmt.Sprintf("product_name ILIKE $%d", len(args)))
+	}
+	var where string
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var total int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM purchase_order_master "+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	limitPos := len(args) + 1
+	offsetPos := len(args) + 2
+	query := fmt.Sprintf(`
+		SELECT id, po_number, product_name, company, pms_type_id, pms_specifications
+		FROM purchase_order_master
+		%s
+		ORDER BY sr_no DESC NULLS LAST, id DESC
+		LIMIT $%d OFFSET $%d
+	`, where, limitPos, offsetPos)
+	args = append(args, limit, offset)
+	rows, err := db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	result := make([]POSpecificationRow, 0, limit)
+	for rows.Next() {
+		var r POSpecificationRow
+		if err := rows.Scan(&r.ID, &r.PoNumber, &r.ProductName, &r.Company, &r.PMSTypeID, &r.Specifications); err != nil {
+			return nil, 0, err
+		}
+		result = append(result, r)
+	}
+	return result, total, rows.Err()
+}
+
+// UpdatePOSpecifications sets the PMS type and/or field values for one PO.
+// specs may be nil to clear it (e.g. when switching to a different type).
+// Stored in pms_specifications — distinct from the pre-existing free-text
+// "specifications" column (legacy packaging notes, unrelated data).
+func UpdatePOSpecifications(ctx context.Context, db *pgxpool.Pool, id int, pmsTypeID *int, specs json.RawMessage) error {
+	if len(specs) == 0 {
+		specs = nil
+	}
+	_, err := db.Exec(ctx,
+		"UPDATE purchase_order_master SET pms_type_id = $1, pms_specifications = $2 WHERE id = $3",
+		pmsTypeID, specs, id,
+	)
 	return err
 }
 

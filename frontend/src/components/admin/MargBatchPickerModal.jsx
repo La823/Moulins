@@ -3,46 +3,36 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 
+// Read-only preview of what "Send Order to Marg" will actually push — batch
+// selection itself now happens inline on the order page (a dropdown per
+// item), not here. This just confirms the final picture before sending.
 export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
-  const [selected, setSelected] = useState({}); // order_item_id -> batch_code
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     apiFetch(`/admin/orders/${orderId}/marg-batch-options`)
       .then((data) => {
-        const list = Array.isArray(data.items) ? data.items : [];
-        setItems(list);
-        const initial = {};
-        list.forEach((it) => {
-          if (it.default_code) initial[it.order_item_id] = it.default_code;
-        });
-        setSelected(initial);
+        setItems(Array.isArray(data.items) ? data.items : []);
       })
       .catch((err) => setError(err.message || "Could not load batch options"))
       .finally(() => setLoading(false));
   }, [orderId]);
 
+  const selectedBatch = (it) => it.batches.find((b) => b.code === it.selected_code);
+
   const allBlocked = items.length > 0 && items.every((it) => !it.marg_linked);
-  const canSubmit =
-    items.length > 0 &&
-    items.every((it) => it.marg_linked && selected[it.order_item_id]);
+  const missingSelection = items.filter((it) => it.marg_linked && !selectedBatch(it));
+  const canSubmit = items.length > 0 && items.every((it) => !it.marg_linked || selectedBatch(it));
 
   const handleSubmit = async () => {
     setSubmitting(true);
     setError("");
     try {
-      const body = {
-        items: items.map((it) => ({
-          order_item_id: it.order_item_id,
-          batch_code: selected[it.order_item_id],
-        })),
-      };
       const result = await apiFetch(`/admin/orders/${orderId}/push-to-marg`, {
         method: "POST",
-        body: JSON.stringify(body),
       });
       onPushed?.(result);
     } catch (err) {
@@ -61,7 +51,9 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
             <h3 className="text-base font-semibold text-gray-900">Send Order to Marg</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Pick a batch for each line — earliest expiry pre-selected</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Preview of what will be sent — change a batch from the order page if needed
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -72,43 +64,55 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
 
         <div className="px-6 py-5 space-y-4">
           {loading ? (
-            <p className="text-sm text-gray-400">Loading batch options...</p>
+            <p className="text-sm text-gray-400">Loading preview...</p>
           ) : items.length === 0 ? (
             <p className="text-sm text-gray-400">No items on this order</p>
           ) : (
-            <div className="space-y-4">
-              {items.map((it) => (
-                <div key={it.order_item_id} className="border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm font-medium text-gray-900 mb-2">{it.product_name}</p>
-                  {!it.marg_linked ? (
-                    <p className="text-xs text-amber-600">
-                      Not linked to a Marg product — link it on the product&apos;s edit page first.
-                    </p>
-                  ) : it.batches.length === 0 ? (
-                    <p className="text-xs text-amber-600">No live Marg batches found for this product.</p>
-                  ) : (
-                    <select
-                      value={selected[it.order_item_id] || ""}
-                      onChange={(e) =>
-                        setSelected((prev) => ({ ...prev, [it.order_item_id]: e.target.value }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-                    >
-                      {it.batches.map((b) => (
-                        <option key={b.code} value={b.code}>
-                          {b.curbatch || "—"} — exp {b.exp?.trim() || "unknown"}, stock {Number(b.stock).toLocaleString("en-IN")}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              ))}
-            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Product</th>
+                  <th className="text-center py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Qty</th>
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Batch</th>
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Expiry</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {items.map((it) => {
+                  const batch = selectedBatch(it);
+                  return (
+                    <tr key={it.order_item_id}>
+                      <td className="py-2.5 text-gray-900">{it.product_name}</td>
+                      <td className="py-2.5 text-center text-gray-700">{it.quantity}</td>
+                      {!it.marg_linked ? (
+                        <td colSpan={2} className="py-2.5 text-amber-600 text-xs">
+                          Not linked to a Marg product
+                        </td>
+                      ) : !batch ? (
+                        <td colSpan={2} className="py-2.5 text-amber-600 text-xs">
+                          No batch selected on the order page
+                        </td>
+                      ) : (
+                        <>
+                          <td className="py-2.5 text-blue-600 font-medium">{batch.curbatch || "—"}</td>
+                          <td className="py-2.5 text-red-600 font-medium">{batch.exp?.trim() || "—"}</td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
 
           {allBlocked && (
             <p className="text-sm text-red-600">
               None of this order&apos;s products are linked to Marg — nothing can be pushed.
+            </p>
+          )}
+          {!allBlocked && missingSelection.length > 0 && (
+            <p className="text-sm text-amber-600">
+              Pick a batch on the order page for: {missingSelection.map((it) => it.product_name).join(", ")}
             </p>
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}

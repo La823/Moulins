@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
 const STATUS_STYLES = {
@@ -105,11 +106,19 @@ export default function AdminOrdersPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-gray-800">Orders</h2>
-        {!loading && (
-          <span className="text-sm text-gray-400">
-            {total} {statusFilter ? statusFilter : "total"}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {!loading && (
+            <span className="text-sm text-gray-400">
+              {total} {statusFilter ? statusFilter : "total"}
+            </span>
+          )}
+          <Link
+            href="/panel/orders/new"
+            className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+          >
+            Create Order
+          </Link>
+        </div>
       </div>
 
       {/* Filters bar */}

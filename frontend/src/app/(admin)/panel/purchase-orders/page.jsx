@@ -197,6 +197,9 @@ export default function PurchaseOrdersPage() {
       });
       const sentTo = (res.sent_to || []).join(", ");
       setMailStatus((prev) => ({ ...prev, [rowId]: { type: "ok", text: `Sent to ${sentTo}` } }));
+      setActiveRows((prev) =>
+        prev.map((r) => (r.id === rowId ? { ...r, last_mail_sent_at: new Date().toISOString() } : r))
+      );
       if (expandedId === rowId) loadEmails(rowId);
     } catch (err) {
       setMailStatus((prev) => ({ ...prev, [rowId]: { type: "error", text: err.message } }));
@@ -253,6 +256,7 @@ export default function PurchaseOrdersPage() {
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Product Name</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Company</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Status</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Last Mail Sent</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Mail</th>
                 </tr>
               </thead>
@@ -279,6 +283,9 @@ export default function PurchaseOrdersPage() {
                             {r.status}
                           </span>
                         </td>
+                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                          {formatDateTime(r.last_mail_sent_at) || "—"}
+                        </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <button
@@ -302,7 +309,7 @@ export default function PurchaseOrdersPage() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-gray-50">
-                          <td colSpan={6} className="px-6 py-4">
+                          <td colSpan={7} className="px-6 py-4">
                             {emails === "loading" && <p className="text-xs text-gray-400">Loading mail history…</p>}
                             {emails && emails.error && (
                               <p className="text-xs text-red-600">Could not load mail history: {emails.error}</p>

@@ -32,6 +32,7 @@ const COLUMNS = [
   { key: "time_stamp_time", label: "Time Stamp Time" },
   { key: "days_diff", label: "Days Diff" },
   { key: "bill_number", label: "Bill Number", sortKey: "bill_number" },
+  { key: "last_mail_sent_at", label: "Last Mail Sent" },
 ];
 
 function formatDate(value) {
@@ -51,9 +52,23 @@ function formatTime(value) {
   return value.slice(0, 5);
 }
 
+function formatDateTime(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function cellValue(row, key) {
   if (key === "po_date" || key === "time_stamp_date") return formatDate(row[key]);
   if (key === "time_stamp_time") return formatTime(row[key]);
+  if (key === "last_mail_sent_at") return formatDateTime(row[key]) || "—";
   return row[key] ?? "";
 }
 

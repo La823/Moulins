@@ -269,6 +269,29 @@ func OrderSendLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/orders/customers/search?q=... — customer picker for the
+// "place order on behalf of a customer" admin form. Scoped to the orders
+// package (rather than reusing /admin/users/search) so it's gated purely by
+// orders_view, not the notifications/broadcast-list permissions that
+// endpoint happens to require.
+func SearchCustomersHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		limit := 20
+		if q == "" {
+			limit = 300
+		}
+		users, err := models.SearchUsers(r.Context(), db, q, limit)
+		if err != nil {
+			log.Printf("search customers error: %v", err)
+			http.Error(w, "could not search customers", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}
+}
+
 // POST /orders — partner places an order from their cart
 func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +346,86 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 		orderID, err := models.CreateOrder(r.Context(), db, userID, req)
 		if err != nil {
 			log.Printf("create order error: %v", err)
+			http.Error(w, "could not create order", http.StatusInternalServerError)
+			return
+		}
+		notifyOrderPlacedEmail(db, orderID)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]uuid.UUID{"order_id": orderID})
+	}
+}
+
+// POST /admin/orders — staff places an order on behalf of a customer.
+// Mirrors CreateOrderHandler's validation, but the customer is named
+// explicitly in the body (customer_id) instead of being taken from the
+// caller's own JWT, and the acting staff member's id is recorded as the
+// order.created event's actor rather than the customer's.
+func CreateOrderForCustomerHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		staffIDStr, ok := r.Context().Value("user_id").(string)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		staffID, err := uuid.Parse(staffIDStr)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var req struct {
+			CustomerID uuid.UUID `json:"customer_id"`
+			models.CreateOrderRequest
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if req.CustomerID == uuid.Nil {
+			http.Error(w, "customer_id is required", http.StatusBadRequest)
+			return
+		}
+		customer, err := models.GetUserByID(r.Context(), db, req.CustomerID)
+		if err != nil || customer == nil {
+			http.Error(w, "customer not found", http.StatusBadRequest)
+			return
+		}
+		if customer.Role != "partner" {
+			http.Error(w, "customer_id must belong to a partner account", http.StatusBadRequest)
+			return
+		}
+
+		if len(req.Items) == 0 {
+			http.Error(w, "order must have at least one item", http.StatusBadRequest)
+			return
+		}
+		for _, item := range req.Items {
+			if item.Quantity < 1 {
+				http.Error(w, "quantity must be at least 1", http.StatusBadRequest)
+				return
+			}
+		}
+
+		if req.TransportID != nil {
+			transport, err := models.GetTransportByID(r.Context(), db, *req.TransportID)
+			if err != nil {
+				http.Error(w, "invalid transport_id", http.StatusBadRequest)
+				return
+			}
+			if req.TransportMode != nil && *req.TransportMode != transport.Mode {
+				http.Error(w, "transport_id does not belong to the given transport_mode", http.StatusBadRequest)
+				return
+			}
+			req.TransportMode = &transport.Mode
+		}
+
+		orderID, err := models.CreateOrderForCustomer(r.Context(), db, req.CustomerID, staffID, req.CreateOrderRequest)
+		if err != nil {
+			log.Printf("create order for customer error: %v", err)
 			http.Error(w, "could not create order", http.StatusInternalServerError)
 			return
 		}
@@ -679,6 +782,37 @@ func UpdateOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// PUT /admin/orders/{id}/items/{itemId}/batch — staff-only pick of which
+// Marg batch to fulfil this line from (shown as a dropdown inline on the
+// order). Deliberately does not log an order_event — this is an internal
+// fulfilment detail the partner never sees.
+func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		itemID, err := uuid.Parse(mux.Vars(r)["itemId"])
+		if err != nil {
+			http.Error(w, "invalid item id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			BatchCode string `json:"batch_code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateOrderItemBatch(r.Context(), db, itemID, body.BatchCode); err != nil {
+			log.Printf("update order item batch error: %v", err)
+			http.Error(w, "could not update batch selection", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
+	}
+}
+
 // DELETE /admin/orders/{id}/items/{itemId} — remove item from order (staff)
 func DeleteOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -711,11 +845,13 @@ type margBatchOption struct {
 }
 
 type margBatchOptionsItem struct {
-	OrderItemID string            `json:"order_item_id"`
-	ProductName string            `json:"product_name"`
-	MargLinked  bool              `json:"marg_linked"`
-	Batches     []margBatchOption `json:"batches"`
-	DefaultCode string            `json:"default_code,omitempty"`
+	OrderItemID  string            `json:"order_item_id"`
+	ProductName  string            `json:"product_name"`
+	Quantity     int               `json:"quantity"`
+	MargLinked   bool              `json:"marg_linked"`
+	Batches      []margBatchOption `json:"batches"`
+	DefaultCode  string            `json:"default_code,omitempty"`
+	SelectedCode string            `json:"selected_code,omitempty"`
 }
 
 // GET /admin/orders/{id}/marg-batch-options — for each order item, every
@@ -738,7 +874,10 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		items := make([]margBatchOptionsItem, 0, len(order.Items))
 		for _, oi := range order.Items {
-			out := margBatchOptionsItem{OrderItemID: oi.ID.String(), ProductName: oi.ProductName, Batches: []margBatchOption{}}
+			out := margBatchOptionsItem{OrderItemID: oi.ID.String(), ProductName: oi.ProductName, Quantity: oi.Quantity, Batches: []margBatchOption{}}
+			if oi.SelectedBatchCode != nil {
+				out.SelectedCode = *oi.SelectedBatchCode
+			}
 
 			product, err := models.GetProductByID(r.Context(), db, oi.ProductID)
 			if err != nil || product.MargCode == nil {
@@ -769,24 +908,15 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 // POST /admin/orders/{id}/push-to-marg — pushes a confirmed order's lines to
 // Marg ERP via InsertOrderDetail, one call per line reusing the same
-// Marg-side OrderID. body: {"items": [{"order_item_id": "...", "batch_code": "..."}]},
-// one entry per order item (from the batch-options endpoint above).
+// Marg-side OrderID. Batch selection is no longer taken from the request
+// body — it's read from each item's selected_batch_code, set ahead of time
+// via the inline batch dropdown on the order page (UpdateOrderItemBatchHandler).
+// This endpoint is now just "send whatever is currently selected."
 func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		orderID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
 			http.Error(w, "invalid order id", http.StatusBadRequest)
-			return
-		}
-
-		var body struct {
-			Items []struct {
-				OrderItemID string `json:"order_item_id"`
-				BatchCode   string `json:"batch_code"`
-			} `json:"items"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
 
@@ -814,15 +944,14 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		batchByItem := make(map[string]string, len(body.Items))
-		for _, it := range body.Items {
-			batchByItem[it.OrderItemID] = it.BatchCode
-		}
+		batchByItem := make(map[string]string, len(order.Items))
 		missing := []string{}
 		for _, oi := range order.Items {
-			if batchByItem[oi.ID.String()] == "" {
+			if oi.SelectedBatchCode == nil || *oi.SelectedBatchCode == "" {
 				missing = append(missing, oi.ProductName)
+				continue
 			}
+			batchByItem[oi.ID.String()] = *oi.SelectedBatchCode
 		}
 		if len(missing) > 0 {
 			http.Error(w, "missing a batch selection for: "+fmt.Sprint(missing), http.StatusBadRequest)
