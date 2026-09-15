@@ -67,6 +67,13 @@ type PurchaseOrderMasterRow struct {
 	DaysDiff       *string    `json:"days_diff"`
 	BillNumber     *string    `json:"bill_number"`
 	LastMailSentAt *time.Time `json:"last_mail_sent_at"`
+	// PMSTypeID/PMSSpecifications are copied from the ordered product's own
+	// assigned spec (products.pms_type_id/pms_specifications, set on the
+	// "Set Product Specifications" page) at PO creation time — a snapshot,
+	// not a live link, so a PO keeps showing what was true when it was
+	// placed even if the product's specs change later.
+	PMSTypeID         *int            `json:"pms_type_id"`
+	PMSSpecifications json.RawMessage `json:"pms_specifications"`
 }
 
 // CountMissingProductCode returns how many rows in the master list have no
@@ -136,7 +143,8 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 		SELECT id, sr_no, po_date, po_date_raw, po_number, product_name, product_code, composition, quantity, mrp, mrp_unit_id, rate, estimate,
 		       specifications, type, company, qty_received, remarks, category, status,
 		       time_stamp_date, time_stamp_time, time_stamp_raw, days_diff, bill_number,
-		       (SELECT MAX(e.sent_at) FROM purchase_order_emails e WHERE e.po_id = purchase_order_master.id AND e.in_reply_to_message_id IS NULL) AS last_mail_sent_at
+		       (SELECT MAX(e.sent_at) FROM purchase_order_emails e WHERE e.po_id = purchase_order_master.id AND e.in_reply_to_message_id IS NULL) AS last_mail_sent_at,
+		       pms_type_id, pms_specifications
 		FROM purchase_order_master
 		%s
 		ORDER BY %s %s NULLS LAST, id
@@ -156,7 +164,7 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 			&r.ID, &r.SrNo, &r.PoDate, &r.PoDateRaw, &r.PoNumber, &r.ProductName, &r.ProductCode, &r.Composition, &r.Quantity, &r.Mrp, &r.MrpUnitID,
 			&r.Rate, &r.Estimate, &r.Specifications, &r.Type, &r.Company, &r.QtyReceived,
 			&r.Remarks, &r.Category, &r.Status, &r.TimeStampDate, &r.TimeStampTime, &r.TimeStampRaw,
-			&r.DaysDiff, &r.BillNumber, &r.LastMailSentAt,
+			&r.DaysDiff, &r.BillNumber, &r.LastMailSentAt, &r.PMSTypeID, &r.PMSSpecifications,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -417,15 +425,29 @@ func CreatePurchaseOrderInMaster(ctx context.Context, db *pgxpool.Pool, req Crea
 		estimate = &e
 	}
 
+	// Snapshot whatever PMS spec is currently assigned to the matching
+	// catalog product (by exact, case/whitespace-insensitive name match —
+	// the create-PO form has no product_id, only a free-typed name) onto
+	// this PO. A snapshot rather than a live link, so the PO keeps showing
+	// what was true when it was placed even if the product's specs
+	// change later. Silently skipped if no matching product is found or it
+	// has no spec assigned yet — that's not an error, just nothing to copy.
+	var pmsTypeID *int
+	var pmsSpecs json.RawMessage
+	_ = db.QueryRow(ctx,
+		`SELECT pms_type_id, pms_specifications FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))`,
+		req.ProductName,
+	).Scan(&pmsTypeID, &pmsSpecs)
+
 	var id int
 	err := db.QueryRow(ctx,
 		`INSERT INTO purchase_order_master (
 			sr_no, po_date, po_number, product_name, quantity, mrp, mrp_unit_id, rate, estimate,
-			specifications, type, company, remarks, category, status
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			specifications, type, company, remarks, category, status, pms_type_id, pms_specifications
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING id`,
 		nextSrNo, req.PODate, poNumber, req.ProductName, req.Quantity, mrpText, req.MrpUnitID, req.Rate, estimate,
-		req.Specifications, req.Type, manufacturerName, req.Remarks, req.Category, req.Status,
+		req.Specifications, req.Type, manufacturerName, req.Remarks, req.Category, req.Status, pmsTypeID, pmsSpecs,
 	).Scan(&id)
 	return id, poNumber, err
 }

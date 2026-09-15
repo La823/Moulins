@@ -201,6 +201,28 @@ func ListProductSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/product-specs/products/by-name?name=...
+// Exact (case/whitespace-insensitive) name lookup — used by the "New
+// Purchase Order" form to preview a product's assigned spec before it's
+// snapshotted onto the PO. Returns null if there's no matching product or
+// it has no spec assigned, not a 404 — that's the normal case for most
+// typed-in product names.
+func GetProductSpecByNameHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+		row, err := models.GetProductSpecByName(r.Context(), db, name)
+		if err != nil {
+			http.Error(w, "could not look up product specification", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, row)
+	}
+}
+
 // PATCH /admin/product-specs/products/{id}
 // { "pms_type_id": 1, "specifications": { "3": "Red", "4": true } }
 // specifications is keyed by pms_fields.id (as a string).

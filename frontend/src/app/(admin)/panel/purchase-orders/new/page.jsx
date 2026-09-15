@@ -38,9 +38,22 @@ export default function NewPurchaseOrderPage() {
   const [lastPoPreview, setLastPoPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Product Specifications preview — whatever spec type/values are already
+  // assigned to the matching catalog product (set on the "Set Product
+  // Specifications" page). Read-only here: it's shown so staff know what
+  // will get snapshotted onto the PO on submit, nothing to edit from here.
+  const [productSpecPreview, setProductSpecPreview] = useState(null);
+  const [pmsTypes, setPmsTypes] = useState([]);
+
   useEffect(() => {
     apiFetch("/admin/manufacturers")
       .then((mfrs) => setManufacturers(Array.isArray(mfrs) ? mfrs : []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch("/admin/product-specs/types")
+      .then((data) => setPmsTypes(data || []))
       .catch(() => {});
   }, []);
 
@@ -63,6 +76,7 @@ export default function NewPurchaseOrderPage() {
     if (!name) {
       setLastPoPreview(null);
       setMasterProductNames([]);
+      setProductSpecPreview(null);
       return;
     }
     const timer = setTimeout(() => {
@@ -70,9 +84,11 @@ export default function NewPurchaseOrderPage() {
       Promise.all([
         apiFetch(`/admin/purchase-orders/last-by-product?product_name=${encodeURIComponent(name)}`).catch(() => null),
         apiFetch(`/admin/purchase-order-master/product-names?search=${encodeURIComponent(name)}&limit=15`).catch(() => []),
-      ]).then(([lastPo, masterNames]) => {
+        apiFetch(`/admin/product-specs/products/by-name?name=${encodeURIComponent(name)}`).catch(() => null),
+      ]).then(([lastPo, masterNames, spec]) => {
         setLastPoPreview(lastPo || null);
         setMasterProductNames(Array.isArray(masterNames) ? masterNames : []);
+        setProductSpecPreview(spec || null);
       }).finally(() => setPreviewLoading(false));
     }, 300);
     return () => clearTimeout(timer);
@@ -270,6 +286,45 @@ export default function NewPurchaseOrderPage() {
                 {!previewLoading && !lastPoPreview && (
                   <p className="text-[11px] text-gray-400">No previous PO found for this name.</p>
                 )}
+
+                {!previewLoading && productSpecPreview && (() => {
+                  const pmsType = pmsTypes.find((t) => t.id === productSpecPreview.pms_type_id);
+                  const specs = productSpecPreview.specifications || {};
+                  return (
+                    <div className="border border-blue-200 rounded-lg p-3 bg-blue-50">
+                      <p className="text-[11px] font-medium text-blue-700 uppercase tracking-wider mb-2">
+                        Product Specifications{pmsType ? ` — ${pmsType.name}` : ""}
+                      </p>
+                      {pmsType && pmsType.fields.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
+                          {pmsType.fields.map((f) => {
+                            const raw = specs[f.id];
+                            const value =
+                              f.field_type === "boolean"
+                                ? raw === true
+                                  ? "Yes"
+                                  : raw === false
+                                  ? "No"
+                                  : "—"
+                                : raw ?? "—";
+                            return (
+                              <span key={f.id}>
+                                {f.field_name}: <span className="font-medium">{value}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-500">
+                          This product&apos;s assigned type has no specification fields defined.
+                        </p>
+                      )}
+                      <p className="text-[10px] text-blue-600 mt-2">
+                        This will be copied onto the PO automatically when created.
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

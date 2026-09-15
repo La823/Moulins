@@ -90,6 +90,7 @@ export default function PurchaseOrderMasterPage() {
   const [sortBy, setSortBy] = useState("sr_no");
   const [sortDir, setSortDir] = useState("desc");
   const [units, setUnits] = useState([]);
+  const [pmsTypes, setPmsTypes] = useState([]); // for showing the PMS spec snapshot copied onto a PO at creation
   // Pending, unsaved edits per row — { [rowId]: { product_name?, product_code?, mrp_unit_id? } }.
   // Nothing here is pushed to the server until the row's Save button is clicked;
   // navigating away / re-fetching the list just discards it.
@@ -108,6 +109,12 @@ export default function PurchaseOrderMasterPage() {
   useEffect(() => {
     apiFetch("/products/units")
       .then((data) => setUnits(data || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch("/admin/product-specs/types")
+      .then((data) => setPmsTypes(data || []))
       .catch(() => {});
   }, []);
 
@@ -558,6 +565,42 @@ export default function PurchaseOrderMasterPage() {
                   {isExpanded && (
                     <tr className="bg-gray-50">
                       <td colSpan={COLUMNS.length + 2} className="px-6 py-3">
+                        {r.pms_type_id != null && (() => {
+                          const pmsType = pmsTypes.find((t) => t.id === r.pms_type_id);
+                          const specs = r.pms_specifications || {};
+                          return (
+                            <div className="mb-3">
+                              <p className="text-xs font-semibold text-gray-600 mb-1">
+                                Product Specifications{pmsType ? ` — ${pmsType.name}` : ""}
+                              </p>
+                              {pmsType && pmsType.fields.length > 0 ? (
+                                <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                                  {pmsType.fields.map((f) => {
+                                    const raw = specs[f.id];
+                                    const value =
+                                      f.field_type === "boolean"
+                                        ? raw === true
+                                          ? "Yes"
+                                          : raw === false
+                                          ? "No"
+                                          : "—"
+                                        : raw ?? "—";
+                                    return (
+                                      <li key={f.id} className="text-xs text-gray-700">
+                                        <span className="text-gray-400">{f.field_name}:</span>{" "}
+                                        <span className="font-medium">{value}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : (
+                                <p className="text-xs text-gray-400">
+                                  This product's assigned type has no specification fields defined.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {!rowLogs && <p className="text-xs text-gray-400">Loading history…</p>}
                         {rowLogs && rowLogs.length === 0 && (
                           <p className="text-xs text-gray-400">No changes recorded for this row yet.</p>

@@ -306,6 +306,37 @@ func GetProductCategoriesBatch(ctx context.Context, db *pgxpool.Pool, productIDs
 	return result, rows.Err()
 }
 
+// GetProductMargCodesBatch is a lightweight batched lookup of just
+// marg_code for many products at once — for callers (like the Marg
+// batch-options endpoint) that only need the Marg linkage, not the full
+// Product row GetProductByID returns. Products with no marg_code (or not
+// found) are simply absent from the result map, not an error.
+func GetProductMargCodesBatch(ctx context.Context, db *pgxpool.Pool, productIDs []uuid.UUID) (map[uuid.UUID]string, error) {
+	result := make(map[uuid.UUID]string, len(productIDs))
+	if len(productIDs) == 0 {
+		return result, nil
+	}
+	ph, args := buildPlaceholders(productIDs)
+	rows, err := db.Query(ctx,
+		`SELECT id, marg_code FROM products WHERE id IN (`+ph+`) AND marg_code IS NOT NULL AND marg_code != ''`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id uuid.UUID
+		var margCode string
+		if err := rows.Scan(&id, &margCode); err != nil {
+			return nil, err
+		}
+		result[id] = margCode
+	}
+	return result, rows.Err()
+}
+
 // setProductTags resolves tag names against the tags table and replaces a
 // product's tag links — same shape as setProductCategories, and just like
 // categories, a product can carry a single tag or several at once.

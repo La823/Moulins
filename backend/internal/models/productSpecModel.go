@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -247,4 +248,28 @@ func UpdateProductSpecifications(ctx context.Context, db *pgxpool.Pool, id uuid.
 		pmsTypeID, specs, id,
 	)
 	return err
+}
+
+// GetProductSpecByName finds the catalog product whose name exactly matches
+// (case/whitespace-insensitive) and returns its assigned PMS type/values —
+// used by the "New Purchase Order" form to preview a product's spec before
+// it gets snapshotted onto the PO at creation time. Returns (nil, nil) if
+// there's no matching product or it has no spec assigned — not an error.
+func GetProductSpecByName(ctx context.Context, db *pgxpool.Pool, name string) (*ProductSpecRow, error) {
+	var r ProductSpecRow
+	err := db.QueryRow(ctx,
+		`SELECT id, product_id, name, marg_code, pms_type_id, pms_specifications
+		 FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))`,
+		name,
+	).Scan(&r.ID, &r.ProductID, &r.Name, &r.MargCode, &r.PMSTypeID, &r.Specifications)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if r.PMSTypeID == nil {
+		return nil, nil
+	}
+	return &r, nil
 }

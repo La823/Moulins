@@ -50,6 +50,41 @@ func GetLiveMargBatchesByBaseCode(ctx context.Context, db *pgxpool.Pool, baseCod
 	return batches, rows.Err()
 }
 
+// GetLiveMargBatchesByBaseCodes is the batched form of
+// GetLiveMargBatchesByBaseCode — one query for every base code instead of
+// one query per code, for callers (like the Marg batch-options endpoint)
+// that need this for many order items at once. Returns a map keyed by
+// base_code, each value already sorted FEFO (earliest expiry first) same
+// as the single-code version.
+func GetLiveMargBatchesByBaseCodes(ctx context.Context, db *pgxpool.Pool, baseCodes []string) (map[string][]MargProductBatch, error) {
+	result := make(map[string][]MargProductBatch, len(baseCodes))
+	if len(baseCodes) == 0 {
+		return result, nil
+	}
+	rows, err := db.Query(ctx, `
+		SELECT p.base_code, b.id, b.code, b.curbatch, b.exp, b.stock, b.mrp, b.rate, b.prate, b.is_deleted
+		FROM margmaster_product_batches b
+		JOIN margmaster_products p ON p.id = b.margmaster_product_id
+		WHERE p.base_code = ANY($1) AND b.is_deleted = FALSE
+		ORDER BY p.base_code, NULLIF(trim(b.exp), '') ASC NULLS LAST, b.curbatch`,
+		baseCodes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var baseCode string
+		var b MargProductBatch
+		if err := rows.Scan(&baseCode, &b.ID, &b.Code, &b.CurBatch, &b.Exp, &b.Stock, &b.MRP, &b.Rate, &b.PRate, &b.IsDeleted); err != nil {
+			return nil, err
+		}
+		result[baseCode] = append(result[baseCode], b)
+	}
+	return result, rows.Err()
+}
+
 // MargProductWithBatches is one deduped Marg product plus every batch
 // row that rolls up into it (the "batchwise clubbed, stock per batch"
 // view the admin/employee Marg-master page shows).

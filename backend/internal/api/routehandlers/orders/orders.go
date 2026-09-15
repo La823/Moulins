@@ -563,16 +563,41 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			customerName = *user.Username
 		}
 
+		// Batched product/batch lookups instead of one pair of queries per
+		// item — see the same optimization in MargBatchOptionsHandler.
+		productIDs := make([]uuid.UUID, len(order.Items))
+		for i, oi := range order.Items {
+			productIDs[i] = oi.ProductID
+		}
+		margCodeByProduct, err := models.GetProductMargCodesBatch(r.Context(), db, productIDs)
+		if err != nil {
+			log.Printf("order pdf marg batch lookup error: %v", err)
+			margCodeByProduct = map[uuid.UUID]string{}
+		}
+		baseCodeSet := make(map[string]struct{}, len(margCodeByProduct))
+		for _, code := range margCodeByProduct {
+			baseCodeSet[code] = struct{}{}
+		}
+		baseCodes := make([]string, 0, len(baseCodeSet))
+		for code := range baseCodeSet {
+			baseCodes = append(baseCodes, code)
+		}
+		batchesByBaseCode, err := models.GetLiveMargBatchesByBaseCodes(r.Context(), db, baseCodes)
+		if err != nil {
+			log.Printf("order pdf batch lookup error: %v", err)
+			batchesByBaseCode = map[string][]models.MargProductBatch{}
+		}
+
 		items := make([]utils.OrderPDFItem, 0, len(order.Items))
 		for _, oi := range order.Items {
 			pdfItem := utils.OrderPDFItem{ProductName: oi.ProductName, Quantity: oi.Quantity}
-			if product, err := models.GetProductByID(r.Context(), db, oi.ProductID); err == nil && product.MargCode != nil {
-				if batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, *product.MargCode); err == nil && len(batches) > 0 {
+			if baseCode, ok := margCodeByProduct[oi.ProductID]; ok {
+				if batches := batchesByBaseCode[baseCode]; len(batches) > 0 {
 					// Prefer the explicitly saved selection; if none was ever
 					// made, fall back to the same earliest-expiry (FEFO)
 					// default the order page's dropdown shows before any
-					// pick is saved — batches[0], since GetLiveMargBatchesByBaseCode
-					// already sorts by expiry ascending.
+					// pick is saved — batches[0], since the batch list is
+					// already sorted by expiry ascending.
 					chosen := batches[0]
 					if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
 						for _, b := range batches {
@@ -1039,9 +1064,41 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		handlerStart := time.Now()
 		order, err := models.GetOrderByID(r.Context(), db, orderID)
 		if err != nil {
 			http.Error(w, "order not found", http.StatusNotFound)
+			return
+		}
+
+		// Batched instead of one product lookup + one batch-list query per
+		// item — the per-item version was 2 sequential round-trips per
+		// line (each ~300ms against the hosted DB), so a 42-item order
+		// took ~27s end to end. Two queries total fixes that regardless of
+		// order size.
+		productIDs := make([]uuid.UUID, len(order.Items))
+		for i, oi := range order.Items {
+			productIDs[i] = oi.ProductID
+		}
+		margCodeByProduct, err := models.GetProductMargCodesBatch(r.Context(), db, productIDs)
+		if err != nil {
+			log.Printf("marg-batch-options[%s]: product marg_code batch lookup error: %v", orderID, err)
+			http.Error(w, "could not fetch marg batches", http.StatusInternalServerError)
+			return
+		}
+
+		baseCodeSet := make(map[string]struct{}, len(margCodeByProduct))
+		for _, code := range margCodeByProduct {
+			baseCodeSet[code] = struct{}{}
+		}
+		baseCodes := make([]string, 0, len(baseCodeSet))
+		for code := range baseCodeSet {
+			baseCodes = append(baseCodes, code)
+		}
+		batchesByBaseCode, err := models.GetLiveMargBatchesByBaseCodes(r.Context(), db, baseCodes)
+		if err != nil {
+			log.Printf("marg-batch-options[%s]: batch lookup error: %v", orderID, err)
+			http.Error(w, "could not fetch marg batches", http.StatusInternalServerError)
 			return
 		}
 
@@ -1052,20 +1109,14 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 				out.SelectedCode = *oi.SelectedBatchCode
 			}
 
-			product, err := models.GetProductByID(r.Context(), db, oi.ProductID)
-			if err != nil || product.MargCode == nil {
+			baseCode, marglinked := margCodeByProduct[oi.ProductID]
+			if !marglinked {
 				items = append(items, out)
 				continue
 			}
-
 			out.MargLinked = true
-			batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, *product.MargCode)
-			if err != nil {
-				log.Printf("marg batch options error: %v", err)
-				http.Error(w, "could not fetch marg batches", http.StatusInternalServerError)
-				return
-			}
-			for _, b := range batches {
+
+			for _, b := range batchesByBaseCode[baseCode] {
 				out.Batches = append(out.Batches, margBatchOption{Code: b.Code, CurBatch: b.CurBatch, Exp: b.Exp, Stock: b.Stock})
 			}
 			if len(out.Batches) > 0 {
@@ -1073,6 +1124,7 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 			items = append(items, out)
 		}
+		log.Printf("marg-batch-options[%s]: %d items resolved in %s", orderID, len(items), time.Since(handlerStart))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"items": items})
@@ -1123,24 +1175,54 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 		// what the "Send to Marg" preview displays, so the push always
 		// sends exactly what staff saw on screen. Only genuinely blocks on
 		// items with no live batches to fall back to at all.
+		// Batched lookups (not one product+batch query per item) — see the
+		// same optimization/reasoning in MargBatchOptionsHandler.
+		needsFallback := make([]models.OrderItem, 0, len(order.Items))
 		batchByItem := make(map[string]string, len(order.Items))
-		missing := []string{}
 		for _, oi := range order.Items {
 			if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
 				batchByItem[oi.ID.String()] = *oi.SelectedBatchCode
 				continue
 			}
-			product, err := models.GetProductByID(r.Context(), db, oi.ProductID)
-			if err != nil || product.MargCode == nil {
-				missing = append(missing, oi.ProductName)
-				continue
+			needsFallback = append(needsFallback, oi)
+		}
+
+		missing := []string{}
+		if len(needsFallback) > 0 {
+			productIDs := make([]uuid.UUID, len(needsFallback))
+			for i, oi := range needsFallback {
+				productIDs[i] = oi.ProductID
 			}
-			batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, *product.MargCode)
-			if err != nil || len(batches) == 0 {
-				missing = append(missing, oi.ProductName)
-				continue
+			margCodeByProduct, err := models.GetProductMargCodesBatch(r.Context(), db, productIDs)
+			if err != nil {
+				log.Printf("push-to-marg[%s]: product marg_code batch lookup error: %v", orderID, err)
+				http.Error(w, "could not fetch marg batches", http.StatusInternalServerError)
+				return
 			}
-			batchByItem[oi.ID.String()] = batches[0].Code
+			baseCodeSet := make(map[string]struct{}, len(margCodeByProduct))
+			for _, code := range margCodeByProduct {
+				baseCodeSet[code] = struct{}{}
+			}
+			baseCodes := make([]string, 0, len(baseCodeSet))
+			for code := range baseCodeSet {
+				baseCodes = append(baseCodes, code)
+			}
+			batchesByBaseCode, err := models.GetLiveMargBatchesByBaseCodes(r.Context(), db, baseCodes)
+			if err != nil {
+				log.Printf("push-to-marg[%s]: batch lookup error: %v", orderID, err)
+				http.Error(w, "could not fetch marg batches", http.StatusInternalServerError)
+				return
+			}
+
+			for _, oi := range needsFallback {
+				baseCode, marglinked := margCodeByProduct[oi.ProductID]
+				batches := batchesByBaseCode[baseCode]
+				if !marglinked || len(batches) == 0 {
+					missing = append(missing, oi.ProductName)
+					continue
+				}
+				batchByItem[oi.ID.String()] = batches[0].Code
+			}
 		}
 		if len(missing) > 0 {
 			http.Error(w, "no live Marg batch available for: "+fmt.Sprint(missing), http.StatusBadRequest)

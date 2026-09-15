@@ -458,6 +458,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecViewStaff.Use(middleware.RequirePermission(db, "purchase_orders_view", rdb))
 	productSpecViewStaff.HandleFunc("/product-specs/types", productspec.ListTypesHandler(db)).Methods("GET")
 	productSpecViewStaff.HandleFunc("/product-specs/products", productspec.ListProductSpecificationsHandler(db)).Methods("GET")
+	productSpecViewStaff.HandleFunc("/product-specs/products/by-name", productspec.GetProductSpecByNameHandler(db)).Methods("GET")
 
 	productSpecEditStaff := protected.PathPrefix("/admin").Subrouter()
 	productSpecEditStaff.Use(middleware.StaffOnly)
