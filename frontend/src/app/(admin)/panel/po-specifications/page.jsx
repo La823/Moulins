@@ -5,10 +5,10 @@ import { apiFetch } from "@/lib/api";
 
 const PAGE_SIZE = 20;
 
-// For each PO, lets staff assign a product type (defined in Product
-// Specifications) and fill in that type's fields — stored as a JSON blob
-// keyed by field id on purchase_order_master.specifications.
-export default function POSpecificationsPage() {
+// For each catalog product, lets staff assign a product type (defined under
+// Product Specifications) and fill in that type's fields — stored as a JSON
+// blob keyed by field id on products.pms_specifications.
+export default function ProductSpecAssignmentPage() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -16,6 +16,8 @@ export default function POSpecificationsPage() {
   const [error, setError] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [hasSpec, setHasSpec] = useState(""); // "", "true", "false"
+  const [sortDir, setSortDir] = useState("desc"); // "desc" (newest serial first) | "asc"
 
   const [types, setTypes] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
@@ -42,9 +44,10 @@ export default function POSpecificationsPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE), sortDir });
     if (search) params.set("search", search);
-    apiFetch(`/admin/purchase-order-master/specifications?${params.toString()}`)
+    if (hasSpec) params.set("hasSpec", hasSpec);
+    apiFetch(`/admin/product-specs/products?${params.toString()}`)
       .then((data) => {
         if (cancelled) return;
         setRows(data.rows || []);
@@ -59,7 +62,7 @@ export default function POSpecificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [page, search]);
+  }, [page, search, hasSpec, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -69,12 +72,16 @@ export default function POSpecificationsPage() {
 
   function draftFor(row) {
     if (drafts[row.id]) return drafts[row.id];
-    const values = {};
+    let values = {};
     if (row.specifications) {
+      // The API returns specifications as a JSON object already (it's
+      // json.RawMessage server-side, embedded directly into the response,
+      // not a JSON-encoded string) — only parse it if it somehow does come
+      // back as a string, otherwise use it as-is.
       try {
-        Object.assign(values, JSON.parse(row.specifications));
+        values = typeof row.specifications === "string" ? JSON.parse(row.specifications) : row.specifications;
       } catch {
-        // ignore malformed stored blob, start fresh
+        values = {};
       }
     }
     return { pms_type_id: row.pms_type_id ?? null, values };
@@ -104,7 +111,7 @@ export default function POSpecificationsPage() {
     setSavingFor(row.id);
     setError("");
     try {
-      await apiFetch(`/admin/purchase-order-master/${row.id}/specifications`, {
+      await apiFetch(`/admin/product-specs/products/${row.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           pms_type_id: draft.pms_type_id,
@@ -117,7 +124,7 @@ export default function POSpecificationsPage() {
             ? {
                 ...r,
                 pms_type_id: draft.pms_type_id,
-                specifications: draft.pms_type_id ? JSON.stringify(draft.values) : null,
+                specifications: draft.pms_type_id ? draft.values : null,
               }
             : r
         )
@@ -138,19 +145,44 @@ export default function POSpecificationsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4 gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">PO Specifications</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Set Product Specifications</h2>
           <p className="text-sm text-gray-500">
-            {total.toLocaleString()} entries. Assign a product type per PO, then fill in that type's specification
-            fields — defined under Product Specifications.
+            {total.toLocaleString()} products. Assign a product type per product, then fill in that type's
+            specification fields — defined under Product Specifications.
           </p>
         </div>
-        <input
-          type="text"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search product name…"
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:outline-none focus:ring-1 focus:ring-gray-400"
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search product name…"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:outline-none focus:ring-1 focus:ring-gray-400"
+          />
+          <select
+            value={hasSpec}
+            onChange={(e) => {
+              setHasSpec(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+          >
+            <option value="">All products</option>
+            <option value="true">Has specs assigned</option>
+            <option value="false">No specs assigned</option>
+          </select>
+          <select
+            value={sortDir}
+            onChange={(e) => {
+              setSortDir(e.target.value);
+              setPage(1);
+            }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+          >
+            <option value="desc">Serial ID: High to Low</option>
+            <option value="asc">Serial ID: Low to High</option>
+          </select>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
@@ -170,9 +202,9 @@ export default function POSpecificationsPage() {
               >
                 <div className="flex items-center gap-3">
                   <span className="text-gray-400 text-xs">{isExpanded ? "▾" : "▸"}</span>
-                  <span className="font-medium text-gray-900 text-sm">{row.po_number}</span>
-                  <span className="text-sm text-gray-600">{row.product_name}</span>
-                  <span className="text-xs text-gray-400">{row.company}</span>
+                  <span className="text-xs text-gray-400 font-mono">#{row.product_id}</span>
+                  <span className="font-medium text-gray-900 text-sm">{row.name}</span>
+                  {row.marg_code && <span className="text-xs text-gray-400">{row.marg_code}</span>}
                 </div>
                 <span className="text-xs text-gray-400">
                   {type ? type.name : row.pms_type_id ? "Unknown type" : "No type assigned"}
@@ -275,7 +307,7 @@ export default function POSpecificationsPage() {
             </div>
           );
         })}
-        {!loading && rows.length === 0 && <p className="text-sm text-gray-500 px-2 py-6">No entries.</p>}
+        {!loading && rows.length === 0 && <p className="text-sm text-gray-500 px-2 py-6">No products found.</p>}
       </div>
 
       <div className="flex items-center justify-between mt-4">

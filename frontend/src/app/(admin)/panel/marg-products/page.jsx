@@ -19,6 +19,7 @@ export default function MargProductsPage() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [company, setCompany] = useState("");
+  const [catalogStatus, setCatalogStatus] = useState(""); // "", "uncatalogued", "catalogued"
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState(() => new Set());
   const [refreshKey, setRefreshKey] = useState(0);
@@ -32,6 +33,7 @@ export default function MargProductsPage() {
     const params = new URLSearchParams({ page: String(page) });
     if (search) params.set("search", search);
     if (company) params.set("company", company);
+    if (catalogStatus) params.set("catalogStatus", catalogStatus);
     apiFetch(`/admin/marg-products?${params.toString()}`)
       .then((data) => {
         setProducts(Array.isArray(data.products) ? data.products : []);
@@ -40,7 +42,7 @@ export default function MargProductsPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, company, page, refreshKey]);
+  }, [search, company, catalogStatus, page, refreshKey]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -51,6 +53,11 @@ export default function MargProductsPage() {
   const handleCompanyChange = (e) => {
     setPage(1);
     setCompany(e.target.value);
+  };
+
+  const handleCatalogStatusChange = (e) => {
+    setPage(1);
+    setCatalogStatus(e.target.value);
   };
 
   const toggle = (id) => {
@@ -89,6 +96,15 @@ export default function MargProductsPage() {
             {companies.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
+          </select>
+          <select
+            value={catalogStatus}
+            onChange={handleCatalogStatusChange}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+          >
+            <option value="">All products</option>
+            <option value="uncatalogued">Not yet in catalog</option>
+            <option value="catalogued">Already in catalog</option>
           </select>
           <form onSubmit={handleSearch} className="flex gap-2">
             <input

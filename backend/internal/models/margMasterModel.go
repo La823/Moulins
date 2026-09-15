@@ -86,15 +86,27 @@ type MargProductPage struct {
 // GetMargProductsWithBatches returns one page of deduped Marg products
 // (ordered by name) with their batch rows nested. search filters on
 // name/base_code (case-insensitive substring); company filters to an
-// exact company match; either pass "" for no filter. limit/offset page
-// the *deduped product* rows, not batches.
-func GetMargProductsWithBatches(ctx context.Context, db *pgxpool.Pool, search, company string, limit, offset int) (MargProductPage, error) {
+// exact company match; either pass "" for no filter. catalogStatus filters
+// on whether a catalog product (products.marg_code) already exists for
+// each row: "" no filter, "uncatalogued" only rows with no linked product
+// yet, "catalogued" only rows that already have one. limit/offset page the
+// *deduped product* rows, not batches.
+func GetMargProductsWithBatches(ctx context.Context, db *pgxpool.Pool, search, company, catalogStatus string, limit, offset int) (MargProductPage, error) {
 	var page MargProductPage
 
+	catalogCondition := ""
+	switch catalogStatus {
+	case "uncatalogued":
+		catalogCondition = "AND NOT EXISTS (SELECT 1 FROM products pr WHERE pr.marg_code = mp.base_code)"
+	case "catalogued":
+		catalogCondition = "AND EXISTS (SELECT 1 FROM products pr WHERE pr.marg_code = mp.base_code)"
+	}
+
 	if err := db.QueryRow(ctx, `
-		SELECT COUNT(*) FROM margmaster_products
+		SELECT COUNT(*) FROM margmaster_products mp
 		WHERE ($1 = '' OR name ILIKE '%' || $1 || '%' OR base_code ILIKE '%' || $1 || '%')
-		  AND ($2 = '' OR company = $2)`,
+		  AND ($2 = '' OR company = $2)
+		  `+catalogCondition,
 		search, company,
 	).Scan(&page.Total); err != nil {
 		return page, err
@@ -121,6 +133,14 @@ func GetMargProductsWithBatches(ctx context.Context, db *pgxpool.Pool, search, c
 		return page, err
 	}
 
+	joinCatalogCondition := ""
+	switch catalogStatus {
+	case "uncatalogued":
+		joinCatalogCondition = "AND pr.id IS NULL"
+	case "catalogued":
+		joinCatalogCondition = "AND pr.id IS NOT NULL"
+	}
+
 	rows, err := db.Query(ctx, `
 		SELECT mp.id, mp.base_code, mp.name, mp.company, mp.salt, mp.gcode, mp.mrp, mp.rate, mp.prate,
 		       mp.total_stock, mp.batch_count, mp.current_batch, mp.exp, mp.is_deleted, mp.synced_at, pr.id
@@ -128,6 +148,7 @@ func GetMargProductsWithBatches(ctx context.Context, db *pgxpool.Pool, search, c
 		LEFT JOIN products pr ON pr.marg_code = mp.base_code
 		WHERE ($1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.base_code ILIKE '%' || $1 || '%')
 		  AND ($2 = '' OR mp.company = $2)
+		  `+joinCatalogCondition+`
 		ORDER BY mp.name
 		LIMIT $3 OFFSET $4`,
 		search, company, limit, offset,

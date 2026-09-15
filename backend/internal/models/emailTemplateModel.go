@@ -82,6 +82,7 @@ type EmailSendLogEntry struct {
 	EntityID    uuid.UUID  `json:"entity_id"`
 	Recipient   string     `json:"recipient"`
 	SentBy      *uuid.UUID `json:"sent_by,omitempty"`
+	SentByName  *string    `json:"sent_by_name,omitempty"`
 	SentAt      time.Time  `json:"sent_at"`
 }
 
@@ -103,8 +104,10 @@ func LogEmailSend(ctx context.Context, db *pgxpool.Pool, templateKey, channel, e
 // which the caller can reduce client-side.
 func ListEmailSendLog(ctx context.Context, db *pgxpool.Pool, entityType string, entityID uuid.UUID) ([]EmailSendLogEntry, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id, template_key, channel, entity_type, entity_id, recipient, sent_by, sent_at
-		 FROM email_send_log WHERE entity_type = $1 AND entity_id = $2 ORDER BY sent_at DESC`,
+		`SELECT l.id, l.template_key, l.channel, l.entity_type, l.entity_id, l.recipient, l.sent_by, u.username, l.sent_at
+		 FROM email_send_log l
+		 LEFT JOIN users u ON u.id = l.sent_by
+		 WHERE l.entity_type = $1 AND l.entity_id = $2 ORDER BY l.sent_at DESC`,
 		entityType, entityID,
 	)
 	if err != nil {
@@ -115,7 +118,7 @@ func ListEmailSendLog(ctx context.Context, db *pgxpool.Pool, entityType string, 
 	entries := []EmailSendLogEntry{}
 	for rows.Next() {
 		var e EmailSendLogEntry
-		if err := rows.Scan(&e.ID, &e.TemplateKey, &e.Channel, &e.EntityType, &e.EntityID, &e.Recipient, &e.SentBy, &e.SentAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.TemplateKey, &e.Channel, &e.EntityType, &e.EntityID, &e.Recipient, &e.SentBy, &e.SentByName, &e.SentAt); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)

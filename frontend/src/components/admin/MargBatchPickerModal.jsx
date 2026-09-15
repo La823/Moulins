@@ -21,7 +21,11 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
       .finally(() => setLoading(false));
   }, [orderId]);
 
-  const selectedBatch = (it) => it.batches.find((b) => b.code === it.selected_code);
+  // Mirrors the backend's push fallback: prefer the explicitly saved
+  // selection, else the earliest-expiry (FEFO) default — same as what the
+  // order page's dropdown shows before any pick is ever saved, and exactly
+  // what push-to-marg will actually send.
+  const selectedBatch = (it) => it.batches.find((b) => b.code === (it.selected_code || it.default_code));
 
   const allBlocked = items.length > 0 && items.every((it) => !it.marg_linked);
   const missingSelection = items.filter((it) => it.marg_linked && !selectedBatch(it));
@@ -90,7 +94,7 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
                         </td>
                       ) : !batch ? (
                         <td colSpan={2} className="py-2.5 text-amber-600 text-xs">
-                          No batch selected on the order page
+                          No live Marg batches available for this product
                         </td>
                       ) : (
                         <>
@@ -112,7 +116,7 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
           )}
           {!allBlocked && missingSelection.length > 0 && (
             <p className="text-sm text-amber-600">
-              Pick a batch on the order page for: {missingSelection.map((it) => it.product_name).join(", ")}
+              No live Marg batches available for: {missingSelection.map((it) => it.product_name).join(", ")}
             </p>
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}

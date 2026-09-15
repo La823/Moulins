@@ -2,7 +2,11 @@ package models
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -153,5 +157,94 @@ func CreatePMSFieldOption(ctx context.Context, db *pgxpool.Pool, fieldID int, op
 // DeletePMSFieldOption removes one dropdown option.
 func DeletePMSFieldOption(ctx context.Context, db *pgxpool.Pool, id int) error {
 	_, err := db.Exec(ctx, "DELETE FROM pms_field_options WHERE id = $1", id)
+	return err
+}
+
+// ProductSpecRow is the trimmed view the "assign specs to products" page
+// needs — just enough to identify the product and show/edit its assigned
+// PMS type and field values.
+type ProductSpecRow struct {
+	ID             uuid.UUID       `json:"id"`
+	ProductID      int             `json:"product_id"`
+	Name           string          `json:"name"`
+	MargCode       *string         `json:"marg_code"`
+	PMSTypeID      *int            `json:"pms_type_id"`
+	Specifications json.RawMessage `json:"specifications"`
+}
+
+// ListProductSpecifications returns one page of products for the spec
+// assignment page, optionally filtered by name search and/or whether a spec
+// type has been assigned yet, sorted by serial id (product_id) in either
+// direction. hasSpec: "" no filter, "true" only rows with a pms_type_id
+// assigned, "false" only rows without one. sortDir: "asc" or anything else
+// (defaults to "desc", most recently added first).
+func ListProductSpecifications(ctx context.Context, db *pgxpool.Pool, limit, offset int, search, hasSpec, sortDir string) ([]ProductSpecRow, int, error) {
+	var conditions []string
+	var args []interface{}
+	if search != "" {
+		args = append(args, "%"+search+"%")
+		conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", len(args)))
+	}
+	if hasSpec == "true" {
+		conditions = append(conditions, "pms_type_id IS NOT NULL")
+	} else if hasSpec == "false" {
+		conditions = append(conditions, "pms_type_id IS NULL")
+	}
+	var where string
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var total int
+	if err := db.QueryRow(ctx, "SELECT count(*) FROM products "+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dir := "DESC"
+	if sortDir == "asc" {
+		dir = "ASC"
+	}
+
+	limitPos := len(args) + 1
+	offsetPos := len(args) + 2
+	query := fmt.Sprintf(`
+		SELECT id, product_id, name, marg_code, pms_type_id, pms_specifications
+		FROM products
+		%s
+		ORDER BY product_id %s
+		LIMIT $%d OFFSET $%d
+	`, where, dir, limitPos, offsetPos)
+	args = append(args, limit, offset)
+	rows, err := db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	result := make([]ProductSpecRow, 0, limit)
+	for rows.Next() {
+		var r ProductSpecRow
+		if err := rows.Scan(&r.ID, &r.ProductID, &r.Name, &r.MargCode, &r.PMSTypeID, &r.Specifications); err != nil {
+			return nil, 0, err
+		}
+		result = append(result, r)
+	}
+	return result, total, rows.Err()
+}
+
+// UpdateProductSpecifications sets the PMS type and/or field values for one
+// product. specs may be nil to clear it (e.g. when switching to a different
+// type).
+func UpdateProductSpecifications(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, pmsTypeID *int, specs json.RawMessage) error {
+	// A JSON body of "specifications": null decodes into RawMessage as the
+	// literal 4-byte "null", not an empty/nil slice — normalize both to nil
+	// so we store SQL NULL rather than the JSON value null.
+	if len(specs) == 0 || string(specs) == "null" {
+		specs = nil
+	}
+	_, err := db.Exec(ctx,
+		"UPDATE products SET pms_type_id = $1, pms_specifications = $2 WHERE id = $3",
+		pmsTypeID, specs, id,
+	)
 	return err
 }

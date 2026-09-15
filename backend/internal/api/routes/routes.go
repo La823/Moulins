@@ -457,6 +457,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecViewStaff.Use(middleware.StaffOnly)
 	productSpecViewStaff.Use(middleware.RequirePermission(db, "purchase_orders_view", rdb))
 	productSpecViewStaff.HandleFunc("/product-specs/types", productspec.ListTypesHandler(db)).Methods("GET")
+	productSpecViewStaff.HandleFunc("/product-specs/products", productspec.ListProductSpecificationsHandler(db)).Methods("GET")
 
 	productSpecEditStaff := protected.PathPrefix("/admin").Subrouter()
 	productSpecEditStaff.Use(middleware.StaffOnly)
@@ -466,6 +467,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecEditStaff.HandleFunc("/product-specs/types/{id}/fields", productspec.CreateFieldHandler(db)).Methods("POST")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}", productspec.DeleteFieldHandler(db)).Methods("DELETE")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}/options", productspec.CreateFieldOptionHandler(db)).Methods("POST")
+	productSpecEditStaff.HandleFunc("/product-specs/products/{id}", productspec.UpdateProductSpecificationsHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.DeleteFieldOptionHandler(db)).Methods("DELETE")
 
 	// staff routes — onboarding review (folded into partners view/edit,
@@ -586,6 +588,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderStaff.HandleFunc("/orders/{id}/whatsapp-sent", orders.MarkOrderWhatsAppSentHandler(db)).Methods("POST")
 	orderStaff.HandleFunc("/orders/{id}/send-log", orders.OrderSendLogHandler(db)).Methods("GET")
 	orderStaff.HandleFunc("/orders/customers/search", orders.SearchCustomersHandler(db)).Methods("GET")
+	orderStaff.HandleFunc("/orders/{id}/pdf", orders.OrderPDFHandler(db)).Methods("GET")
 
 	// staff routes — order management (edit: status, quantities, delivery
 	// details, photos, and pushing to Marg), gated separately so "view
@@ -597,6 +600,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.HandleFunc("/orders", orders.CreateOrderForCustomerHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/details", orders.UpdateOrderDetailsHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/status", orders.UpdateOrderStatusHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/orders/{id}/items", orders.AddOrderItemHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.UpdateOrderItemHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}/batch", orders.UpdateOrderItemBatchHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.DeleteOrderItemHandler(db)).Methods("DELETE")

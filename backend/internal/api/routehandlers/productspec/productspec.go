@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
 )
+
+const defaultPageSize = 40
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -160,6 +163,64 @@ func DeleteFieldOptionHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		if err := models.DeletePMSFieldOption(r.Context(), db, id); err != nil {
 			http.Error(w, "could not delete option", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// GET /admin/product-specs/products?page=1&pageSize=40&search=
+// Backs the "assign specs to products" page — every catalog product, with
+// whatever PMS type/values are already assigned.
+func ListProductSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+		if pageSize < 1 || pageSize > 200 {
+			pageSize = defaultPageSize
+		}
+		search := r.URL.Query().Get("search")
+		hasSpec := r.URL.Query().Get("hasSpec")
+		sortDir := r.URL.Query().Get("sortDir")
+
+		rows, total, err := models.ListProductSpecifications(r.Context(), db, pageSize, (page-1)*pageSize, search, hasSpec, sortDir)
+		if err != nil {
+			http.Error(w, "could not fetch product specifications", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"rows":     rows,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		})
+	}
+}
+
+// PATCH /admin/product-specs/products/{id}
+// { "pms_type_id": 1, "specifications": { "3": "Red", "4": true } }
+// specifications is keyed by pms_fields.id (as a string).
+func UpdateProductSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			PMSTypeID      *int            `json:"pms_type_id"`
+			Specifications json.RawMessage `json:"specifications"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := models.UpdateProductSpecifications(r.Context(), db, id, req.PMSTypeID, req.Specifications); err != nil {
+			http.Error(w, "could not save specifications", http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

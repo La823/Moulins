@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -485,4 +486,32 @@ func UpdateOrderItemBatch(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUI
 func DeleteOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID) error {
 	_, err := db.Exec(ctx, `DELETE FROM order_items WHERE id = $1`, itemID)
 	return err
+}
+
+// AddOrderItem adds a new line to an already-placed order — staff adding a
+// product the customer didn't originally order, or correcting an omission.
+// If the product is already on the order, bumps its quantity instead of
+// creating a duplicate line.
+func AddOrderItem(ctx context.Context, db *pgxpool.Pool, orderID, productID uuid.UUID, productName string, quantity int) (uuid.UUID, error) {
+	var existingID uuid.UUID
+	err := db.QueryRow(ctx,
+		`SELECT id FROM order_items WHERE order_id = $1 AND product_id = $2`,
+		orderID, productID,
+	).Scan(&existingID)
+	if err == nil {
+		if _, err := db.Exec(ctx, `UPDATE order_items SET quantity = quantity + $1 WHERE id = $2`, quantity, existingID); err != nil {
+			return uuid.Nil, err
+		}
+		return existingID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return uuid.Nil, err
+	}
+
+	var newID uuid.UUID
+	err = db.QueryRow(ctx,
+		`INSERT INTO order_items (order_id, product_id, product_name, quantity) VALUES ($1, $2, $3, $4) RETURNING id`,
+		orderID, productID, productName, quantity,
+	).Scan(&newID)
+	return newID, err
 }

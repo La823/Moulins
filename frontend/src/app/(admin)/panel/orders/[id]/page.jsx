@@ -99,6 +99,41 @@ export default function AdminOrderDetail() {
   const lastSent = (templateKey) =>
     sendLog.find((e) => e.template_key === templateKey);
 
+  const [printingPDF, setPrintingPDF] = useState(false);
+  const [printError, setPrintError] = useState("");
+
+  // apiFetch always parses JSON, so the PDF download uses a plain fetch
+  // with the same Bearer token, opening the resulting blob in a new tab.
+  // The tab is opened synchronously (before the await) so it's still tied
+  // to the click gesture — opening it only after the fetch resolves gets
+  // silently blocked as a popup by most browsers.
+  const handlePrintPDF = async () => {
+    const newTab = window.open("", "_blank");
+    setPrintingPDF(true);
+    setPrintError("");
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${apiUrl}/admin/orders/${id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(await res.text() || "Could not generate PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (newTab) {
+        newTab.location.href = url;
+      } else {
+        window.open(url, "_blank");
+      }
+      loadSendLog();
+    } catch (err) {
+      setPrintError(err.message);
+      newTab?.close();
+    } finally {
+      setPrintingPDF(false);
+    }
+  };
+
   const loadOrder = () =>
     apiFetch(`/orders/${id}`).then((data) => {
       setOrder(data);
@@ -253,6 +288,50 @@ export default function AdminOrderDetail() {
       setSuccess("Item removed from order");
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  // --- Add product to order ---
+  const [productQuery, setProductQuery] = useState("");
+  const [productResults, setProductResults] = useState([]);
+  const [showProductResults, setShowProductResults] = useState(false);
+  const [addingProduct, setAddingProduct] = useState(false);
+
+  useEffect(() => {
+    const q = productQuery.trim();
+    if (!q) {
+      setProductResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      apiFetch(`/admin/products?search=${encodeURIComponent(q)}&limit=15`)
+        .then((data) => setProductResults(data.products || []))
+        .catch(() => setProductResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [productQuery]);
+
+  const handleAddProduct = async (product) => {
+    setProductQuery("");
+    setProductResults([]);
+    setShowProductResults(false);
+    setAddingProduct(true);
+    setError("");
+    try {
+      await apiFetch(`/admin/orders/${id}/items`, {
+        method: "POST",
+        body: JSON.stringify({
+          product_id: product.id,
+          product_name: product.name,
+          quantity: Math.max(1, product.moq || 1),
+        }),
+      });
+      await loadOrder();
+      setSuccess(`${product.name} added to order`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAddingProduct(false);
     }
   };
 
@@ -419,6 +498,26 @@ export default function AdminOrderDetail() {
           </span>
         )}
         {whatsAppError && <p className="text-xs text-red-600">{whatsAppError}</p>}
+
+        {order.status !== "pending" && (
+          <button
+            onClick={handlePrintPDF}
+            disabled={printingPDF}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+            </svg>
+            {printingPDF ? "Preparing..." : "Print PDF"}
+          </button>
+        )}
+        {lastSent("order_pdf_printed") && (
+          <span className="text-xs text-gray-400">
+            Last printed by {lastSent("order_pdf_printed").sent_by_name || "staff"} on{" "}
+            {new Date(lastSent("order_pdf_printed").sent_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+          </span>
+        )}
+        {printError && <p className="text-xs text-red-600">{printError}</p>}
       </div>
 
       {/* Marg ERP push */}
@@ -683,6 +782,34 @@ export default function AdminOrderDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {canEdit && (
+            <div className="relative mt-4 max-w-sm">
+              <input
+                type="text"
+                value={productQuery}
+                onChange={(e) => setProductQuery(e.target.value)}
+                onFocus={() => setShowProductResults(true)}
+                onBlur={() => setTimeout(() => setShowProductResults(false), 150)}
+                disabled={addingProduct}
+                placeholder={addingProduct ? "Adding…" : "+ Add a product…"}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+              />
+              {showProductResults && productResults.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
+                  {productResults.map((p) => (
+                    <li
+                      key={p.id}
+                      onMouseDown={() => handleAddProduct(p)}
+                      className="px-3 py-2 cursor-pointer hover:bg-gray-50 text-gray-800"
+                    >
+                      {p.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
 

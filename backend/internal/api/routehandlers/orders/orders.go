@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -531,6 +532,128 @@ func GetOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/orders/{id}/pdf — printable PDF summary of a finalized order
+// (any status other than "pending"). Includes whichever Marg batch/expiry
+// is currently selected per item, same as the order page's inline dropdown.
+func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		order, err := models.GetOrderByID(r.Context(), db, id)
+		if err != nil {
+			http.Error(w, "order not found", http.StatusNotFound)
+			return
+		}
+		if order.Status == "pending" {
+			http.Error(w, "order is not finalized yet", http.StatusConflict)
+			return
+		}
+
+		user, err := models.GetUserByID(r.Context(), db, order.UserID)
+		if err != nil {
+			http.Error(w, "could not load the order's customer", http.StatusInternalServerError)
+			return
+		}
+		customerName := user.PhoneNumber
+		if user.Username != nil && *user.Username != "" {
+			customerName = *user.Username
+		}
+
+		items := make([]utils.OrderPDFItem, 0, len(order.Items))
+		for _, oi := range order.Items {
+			pdfItem := utils.OrderPDFItem{ProductName: oi.ProductName, Quantity: oi.Quantity}
+			if product, err := models.GetProductByID(r.Context(), db, oi.ProductID); err == nil && product.MargCode != nil {
+				if batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, *product.MargCode); err == nil && len(batches) > 0 {
+					// Prefer the explicitly saved selection; if none was ever
+					// made, fall back to the same earliest-expiry (FEFO)
+					// default the order page's dropdown shows before any
+					// pick is saved — batches[0], since GetLiveMargBatchesByBaseCode
+					// already sorts by expiry ascending.
+					chosen := batches[0]
+					if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
+						for _, b := range batches {
+							if b.Code == *oi.SelectedBatchCode {
+								chosen = b
+								break
+							}
+						}
+					}
+					pdfItem.Batch = chosen.CurBatch
+					pdfItem.Expiry = formatBatchExpiryForPDF(chosen.Exp)
+				}
+			}
+			items = append(items, pdfItem)
+		}
+
+		var transportName string
+		if order.TransportName != nil {
+			transportName = *order.TransportName
+		}
+
+		// Who's printing this — recorded both in the reusable send-log (so
+		// the order page can show "last printed by ... on ...") and baked
+		// into the PDF itself.
+		printerID := actorID(r)
+		printedBy := "Staff"
+		if printerID != nil {
+			if printer, err := models.GetUserByID(r.Context(), db, *printerID); err == nil {
+				if printer.Username != nil && *printer.Username != "" {
+					printedBy = *printer.Username
+				} else {
+					printedBy = printer.PhoneNumber
+				}
+			}
+		}
+		printedAt := time.Now()
+		if err := models.LogEmailSend(r.Context(), db, "order_pdf_printed", "pdf", "order", order.ID, "", printerID); err != nil {
+			log.Printf("order pdf print log error: %v", err)
+		}
+
+		pdfBytes, err := utils.GenerateOrderPDF(utils.OrderPDFData{
+			OrderNumber:   strings.ToUpper(order.ID.String()[:8]),
+			Date:          order.CreatedAt.Format("2006-01-02"),
+			Status:        order.Status,
+			CustomerName:  customerName,
+			CustomerPhone: user.PhoneNumber,
+			TransportMode: order.TransportMode,
+			TransportName: transportName,
+			Notes:         stringOrEmpty(order.Notes),
+			Items:         items,
+			PrintedBy:     printedBy,
+			PrintedAt:     printedAt.Format("02.01.2006 15:04"),
+		})
+		if err != nil {
+			log.Printf("order pdf generation error: %v", err)
+			http.Error(w, "could not generate PDF", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=order-%s.pdf", order.ID.String()[:8]))
+		w.Write(pdfBytes)
+	}
+}
+
+// formatBatchExpiryForPDF turns Marg's raw "YYYYMMDD" expiry into "DD.MM.YYYY".
+func formatBatchExpiryForPDF(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) != 8 {
+		return trimmed
+	}
+	return trimmed[6:8] + "." + trimmed[4:6] + "." + trimmed[0:4]
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // POST /admin/orders/upload-url — get a presigned S3 URL for a bill photo
 func UploadURLHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -745,6 +868,56 @@ func UpdateOrderDetailsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// POST /admin/orders/{id}/items — add a product to an already-placed order
+// (staff correcting an omission or adding something the customer didn't
+// originally order). If the product is already on the order, bumps its
+// quantity instead of creating a duplicate line.
+func AddOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		orderID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid order id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			ProductID   uuid.UUID `json:"product_id"`
+			ProductName string    `json:"product_name"`
+			Quantity    int       `json:"quantity"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if body.ProductID == uuid.Nil {
+			http.Error(w, "product_id is required", http.StatusBadRequest)
+			return
+		}
+		if body.ProductName == "" {
+			http.Error(w, "product_name is required", http.StatusBadRequest)
+			return
+		}
+		if body.Quantity < 1 {
+			http.Error(w, "quantity must be at least 1", http.StatusBadRequest)
+			return
+		}
+
+		itemID, err := models.AddOrderItem(r.Context(), db, orderID, body.ProductID, body.ProductName, body.Quantity)
+		if err != nil {
+			log.Printf("add order item error: %v", err)
+			http.Error(w, "could not add item", http.StatusInternalServerError)
+			return
+		}
+
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.added",
+			fmt.Sprintf("Added %s (qty %d)", body.ProductName, body.Quantity), actorID(r))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]uuid.UUID{"item_id": itemID})
+	}
+}
+
 // PUT /admin/orders/{id}/items/{itemId} — update item quantity (staff)
 func UpdateOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -944,17 +1117,33 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Prefer each item's explicitly saved selection; if none was ever
+		// made, fall back to the same earliest-expiry (FEFO) default the
+		// order page's dropdown shows before any pick is saved — matching
+		// what the "Send to Marg" preview displays, so the push always
+		// sends exactly what staff saw on screen. Only genuinely blocks on
+		// items with no live batches to fall back to at all.
 		batchByItem := make(map[string]string, len(order.Items))
 		missing := []string{}
 		for _, oi := range order.Items {
-			if oi.SelectedBatchCode == nil || *oi.SelectedBatchCode == "" {
+			if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
+				batchByItem[oi.ID.String()] = *oi.SelectedBatchCode
+				continue
+			}
+			product, err := models.GetProductByID(r.Context(), db, oi.ProductID)
+			if err != nil || product.MargCode == nil {
 				missing = append(missing, oi.ProductName)
 				continue
 			}
-			batchByItem[oi.ID.String()] = *oi.SelectedBatchCode
+			batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, *product.MargCode)
+			if err != nil || len(batches) == 0 {
+				missing = append(missing, oi.ProductName)
+				continue
+			}
+			batchByItem[oi.ID.String()] = batches[0].Code
 		}
 		if len(missing) > 0 {
-			http.Error(w, "missing a batch selection for: "+fmt.Sprint(missing), http.StatusBadRequest)
+			http.Error(w, "no live Marg batch available for: "+fmt.Sprint(missing), http.StatusBadRequest)
 			return
 		}
 

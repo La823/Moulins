@@ -21,13 +21,14 @@ func ListProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		search := r.URL.Query().Get("search")
 		company := r.URL.Query().Get("company")
+		catalogStatus := r.URL.Query().Get("catalogStatus")
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
 			page = 1
 		}
 		offset := (page - 1) * marginProductsPageSize
 
-		result, err := models.GetMargProductsWithBatches(r.Context(), db, search, company, marginProductsPageSize, offset)
+		result, err := models.GetMargProductsWithBatches(r.Context(), db, search, company, catalogStatus, marginProductsPageSize, offset)
 		if err != nil {
 			log.Printf("list marg products error: %v", err)
 			http.Error(w, "could not fetch marg products", http.StatusInternalServerError)
