@@ -210,29 +210,47 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	pdf.Ln(5)
 
 	// ── Items table ────────────────────────────────────────────────────────
+	// Page breaks are handled manually below (auto page-break disabled): the
+	// row is measured first, and if it doesn't fit in what's left of the
+	// page, a new page is started and the header redrawn before drawing the
+	// row — letting gofpdf's own auto-break fire mid-row here desyncs the
+	// manually-tracked x/y and previously produced dozens of broken pages
+	// for any order with more than a handful of items.
+	pdf.SetAutoPageBreak(false, 0)
+	const bottomLimit = 270.0
+
 	colProduct := 75.0
 	colQty := 20.0
 	colBatch := 40.0
 	colExp := pageW - colProduct - colQty - colBatch
 
-	pdf.SetFont("Arial", "B", 9)
-	x, y := pdf.GetX(), pdf.GetY()
-	pdf.Rect(x, y, colProduct, 8, "D")
-	pdf.CellFormat(colProduct, 8, "PRODUCT", "", 0, "L", false, 0, "")
-	pdf.Rect(x+colProduct, y, colQty, 8, "D")
-	pdf.CellFormat(colQty, 8, "QTY", "", 0, "C", false, 0, "")
-	pdf.Rect(x+colProduct+colQty, y, colBatch, 8, "D")
-	pdf.CellFormat(colBatch, 8, "BATCH", "", 0, "L", false, 0, "")
-	pdf.Rect(x+colProduct+colQty+colBatch, y, colExp, 8, "D")
-	pdf.CellFormat(colExp, 8, "EXPIRY", "", 1, "L", false, 0, "")
+	drawHeader := func() {
+		pdf.SetFont("Arial", "B", 9)
+		x, y := pdf.GetX(), pdf.GetY()
+		pdf.Rect(x, y, colProduct, 8, "D")
+		pdf.CellFormat(colProduct, 8, "PRODUCT", "", 0, "L", false, 0, "")
+		pdf.Rect(x+colProduct, y, colQty, 8, "D")
+		pdf.CellFormat(colQty, 8, "QTY", "", 0, "C", false, 0, "")
+		pdf.Rect(x+colProduct+colQty, y, colBatch, 8, "D")
+		pdf.CellFormat(colBatch, 8, "BATCH", "", 0, "L", false, 0, "")
+		pdf.Rect(x+colProduct+colQty+colBatch, y, colExp, 8, "D")
+		pdf.CellFormat(colExp, 8, "EXPIRY", "", 1, "L", false, 0, "")
+		pdf.SetFont("Arial", "", 9)
+	}
 
-	pdf.SetFont("Arial", "", 9)
+	drawHeader()
 	for _, item := range data.Items {
 		lines := pdf.SplitLines([]byte(item.ProductName), colProduct-4)
 		rowH := float64(len(lines)) * 5
 		if rowH < 8 {
 			rowH = 8
 		}
+
+		if pdf.GetY()+rowH > bottomLimit {
+			pdf.AddPage()
+			drawHeader()
+		}
+
 		x, y := pdf.GetX(), pdf.GetY()
 		pdf.Rect(x, y, colProduct, rowH, "D")
 		pdf.Rect(x+colProduct, y, colQty, rowH, "D")
@@ -259,6 +277,9 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.SetXY(x, y+rowH)
 	}
 
+	if pdf.GetY()+40 > bottomLimit {
+		pdf.AddPage()
+	}
 	pdf.Ln(6)
 
 	if data.TransportMode != "" {
@@ -302,7 +323,7 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	}
 	colW := pageW / 2
 	pdf.SetFont("Arial", "", 10)
-	x, y = pdf.GetX(), pdf.GetY()
+	x, y := pdf.GetX(), pdf.GetY()
 	pdf.Line(x, y+14, x+colW-10, y+14)
 	pdf.Line(x+colW+10, y+14, x+pageW, y+14)
 	pdf.SetXY(x, y+15)

@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/mailer"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 const defaultPageSize = 40
@@ -520,6 +521,93 @@ func fetchPOMailRow(ctx context.Context, db *pgxpool.Pool, id int) (*poMailRow, 
 		return nil, err
 	}
 	return &row, nil
+}
+
+// GET /admin/purchase-order-master/{id}/pdf — printable PDF of this
+// manufacturer PO, using the same GeneratePOPDF template already built for
+// this purpose (previously unused — this is its first caller).
+func PDFHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		var row struct {
+			PoNumber       *string
+			PoDate         *string
+			ProductName    *string
+			Composition    *string
+			Quantity       *float64
+			Mrp            *string
+			Rate           *float64
+			Specifications *string
+			Type           *string
+			Company        *string
+			Category       *string
+			Remarks        *string
+		}
+		err = db.QueryRow(r.Context(),
+			`SELECT po_number, po_date::text, product_name, composition, quantity, mrp, rate, specifications, type, company, category, remarks
+			 FROM purchase_order_master WHERE id = $1`, id,
+		).Scan(&row.PoNumber, &row.PoDate, &row.ProductName, &row.Composition, &row.Quantity, &row.Mrp,
+			&row.Rate, &row.Specifications, &row.Type, &row.Company, &row.Category, &row.Remarks)
+		if err != nil {
+			http.Error(w, "purchase order not found", http.StatusNotFound)
+			return
+		}
+
+		strVal := func(s *string) string {
+			if s == nil {
+				return ""
+			}
+			return *s
+		}
+		var quantity int
+		if row.Quantity != nil {
+			quantity = int(*row.Quantity)
+		}
+		var mrp float64
+		if row.Mrp != nil {
+			mrp, _ = strconv.ParseFloat(strings.TrimSpace(*row.Mrp), 64)
+		}
+		var rate float64
+		if row.Rate != nil {
+			rate = *row.Rate
+		}
+		// Specifications/packing falls back to composition when the
+		// free-text specifications field wasn't filled in — either is
+		// reasonable content for the "COMPOSITION"/"PACKING" table rows.
+		specs := strVal(row.Specifications)
+		if specs == "" {
+			specs = strVal(row.Composition)
+		}
+
+		pdfBytes, err := utils.GeneratePOPDF(utils.POPDFData{
+			PONumber:         strVal(row.PoNumber),
+			Date:             strVal(row.PoDate),
+			ManufacturerName: strVal(row.Company),
+			CompanyName:      strVal(row.Company),
+			ProductName:      strVal(row.ProductName),
+			Specifications:   specs,
+			Type:             strVal(row.Type),
+			Quantity:         quantity,
+			MRP:              mrp,
+			Rate:             rate,
+			Category:         strVal(row.Category),
+			Remarks:          strVal(row.Remarks),
+		})
+		if err != nil {
+			log.Printf("po pdf generation error: %v", err)
+			http.Error(w, "could not generate PDF", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=po-%s.pdf", strVal(row.PoNumber)))
+		w.Write(pdfBytes)
+	}
 }
 
 func mailField(label string, value *string) string {

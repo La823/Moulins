@@ -6,6 +6,7 @@ package productspec
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 const defaultPageSize = 40
@@ -95,8 +97,8 @@ func CreateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "field_name is required", http.StatusBadRequest)
 			return
 		}
-		if req.FieldType != "text" && req.FieldType != "boolean" && req.FieldType != "dropdown" {
-			http.Error(w, `field_type must be "text", "boolean", or "dropdown"`, http.StatusBadRequest)
+		if req.FieldType != "text" && req.FieldType != "boolean" && req.FieldType != "dropdown" && req.FieldType != "image" {
+			http.Error(w, `field_type must be "text", "boolean", "dropdown", or "image"`, http.StatusBadRequest)
 			return
 		}
 		id, err := models.CreatePMSField(r.Context(), db, typeID, req.FieldName, req.FieldType, req.SortOrder)
@@ -220,6 +222,37 @@ func GetProductSpecByNameHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, row)
+	}
+}
+
+// POST /admin/product-specs/upload-url  { "filename": "..." }
+// Presigned S3 URL for an "image" type specification field's value. The
+// client PUTs the file directly to S3 and stores the returned key as the
+// field's value (same JSON shape as any other field type).
+func UploadURLHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+		var req struct {
+			Filename string `json:"filename"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Filename == "" {
+			http.Error(w, "filename is required", http.StatusBadRequest)
+			return
+		}
+
+		uploadURL, key, err := utils.GeneratePresignedUploadURL(req.Filename)
+		if err != nil {
+			log.Printf("presign error: %v", err)
+			http.Error(w, "could not generate upload url", http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{
+			"upload_url": uploadURL,
+			"key":        key,
+			"image_url":  utils.GetPublicURL(key),
+		})
 	}
 }
 

@@ -34,9 +34,14 @@ type Order struct {
 	ItemCount          int     `json:"item_count,omitempty"`
 	TransportName      *string `json:"transport_name,omitempty"`
 	TransportGstNumber *string `json:"transport_gst_number,omitempty"`
-	// Marg ERP push tracking
-	MargOrderNo  *string    `json:"marg_order_no,omitempty"`
-	MargPushedAt *time.Time `json:"marg_pushed_at,omitempty"`
+	// Marg ERP push tracking. MargInsertOrderID is Marg's own internal
+	// grouping id for this order's lines (distinct from MargOrderNo, the
+	// human-facing order number) — persisted so a later resume (only
+	// remaining unpushed items) appends to the same Marg-side order
+	// instead of starting a new one.
+	MargOrderNo       *string    `json:"marg_order_no,omitempty"`
+	MargPushedAt      *time.Time `json:"marg_pushed_at,omitempty"`
+	MargInsertOrderID *string    `json:"marg_insert_order_id,omitempty"`
 }
 
 type UpdateOrderDetailsRequest struct {
@@ -48,17 +53,23 @@ type UpdateOrderDetailsRequest struct {
 }
 
 type OrderItem struct {
-	ID                uuid.UUID `json:"id"`
-	OrderID           uuid.UUID `json:"order_id"`
-	ProductID         uuid.UUID `json:"product_id"`
-	ProductName       string    `json:"product_name"`
-	Quantity          int       `json:"quantity"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID          uuid.UUID `json:"id"`
+	OrderID     uuid.UUID `json:"order_id"`
+	ProductID   uuid.UUID `json:"product_id"`
+	ProductName string    `json:"product_name"`
+	Quantity    int       `json:"quantity"`
+	CreatedAt   time.Time `json:"created_at"`
 	// SelectedBatchCode is a staff-only pick of which Marg batch to fulfil
 	// this line from — set via the order's inline batch dropdown, read by
 	// PushToMargHandler. Never logged as an order_event, so it never shows
 	// up in the partner-visible history.
 	SelectedBatchCode *string `json:"selected_batch_code,omitempty"`
+	// MargPushedAt marks that this specific line was successfully sent to
+	// Marg — set immediately after each individual InsertOrderDetail call
+	// succeeds, not batched at the end of the push, so a failure partway
+	// through an order leaves an accurate per-line record. A retry only
+	// resends items where this is still nil.
+	MargPushedAt *time.Time `json:"marg_pushed_at,omitempty"`
 }
 
 type OrderEvent struct {
@@ -281,7 +292,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone,
 			t.name, t.gst_number,
-			o.marg_order_no, o.marg_pushed_at
+			o.marg_order_no, o.marg_pushed_at, o.marg_insert_order_id
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
 		LEFT JOIN transports t ON t.id = o.transport_id
@@ -294,7 +305,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		&o.ExpectedDelivery, &o.DeliveryNotes, &o.EwayBillNumber,
 		&o.UserName, &o.UserPhone,
 		&o.TransportName, &o.TransportGstNumber,
-		&o.MargOrderNo, &o.MargPushedAt,
+		&o.MargOrderNo, &o.MargPushedAt, &o.MargInsertOrderID,
 	)
 	if err != nil {
 		return nil, err
@@ -304,7 +315,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	itemRows, err := db.Query(ctx,
 		`SELECT oi.id, oi.order_id, oi.product_id,
 		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
-		        oi.quantity, oi.created_at, oi.selected_batch_code
+		        oi.quantity, oi.created_at, oi.selected_batch_code, oi.marg_pushed_at
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1`,
@@ -318,7 +329,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	o.Items = []OrderItem{}
 	for itemRows.Next() {
 		var item OrderItem
-		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode); err != nil {
+		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt); err != nil {
 			return nil, err
 		}
 		o.Items = append(o.Items, item)
@@ -450,6 +461,30 @@ func MarkOrderPushedToMarg(ctx context.Context, db *pgxpool.Pool, orderID uuid.U
 	_, err := db.Exec(ctx,
 		`UPDATE orders SET marg_order_no = $1, marg_pushed_at = NOW(), updated_at = NOW() WHERE id = $2`,
 		margOrderNo, orderID,
+	)
+	return err
+}
+
+// MarkOrderItemPushedToMarg records that one specific line was successfully
+// sent to Marg — called immediately after each individual InsertOrderDetail
+// call succeeds (not batched until the whole order finishes), so a failure
+// partway through leaves an accurate per-line record instead of losing
+// track of what already went through. A later retry uses this to skip
+// already-sent lines rather than resending them.
+func MarkOrderItemPushedToMarg(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID) error {
+	_, err := db.Exec(ctx, `UPDATE order_items SET marg_pushed_at = NOW() WHERE id = $1`, itemID)
+	return err
+}
+
+// SetOrderMargInsertOrderID persists Marg's internal line-grouping OrderID
+// the first time it's seen for an order, so a later resume (pushing only
+// the items that failed/weren't reached last time) appends to the same
+// Marg-side order instead of starting a brand new one. A no-op if already
+// set — the first successful line "wins" for the life of the order.
+func SetOrderMargInsertOrderID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, insertOrderID string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE orders SET marg_insert_order_id = $1 WHERE id = $2 AND marg_insert_order_id IS NULL`,
+		insertOrderID, orderID,
 	)
 	return err
 }

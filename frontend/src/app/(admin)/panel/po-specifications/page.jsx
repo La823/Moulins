@@ -25,6 +25,7 @@ export default function ProductSpecAssignmentPage() {
   // Pending, unsaved edits per row — { [rowId]: { pms_type_id, values: { [fieldId]: value } } }
   const [drafts, setDrafts] = useState({});
   const [savingFor, setSavingFor] = useState(null);
+  const [uploadingFieldId, setUploadingFieldId] = useState(null);
 
   useEffect(() => {
     apiFetch("/admin/product-specs/types")
@@ -100,6 +101,24 @@ export default function ProductSpecAssignmentPage() {
 
   function setFieldValue(row, fieldId, value) {
     setDraft(row.id, (d) => ({ ...d, values: { ...d.values, [fieldId]: value } }));
+  }
+
+  async function uploadFieldImage(row, fieldId, file) {
+    if (!file) return;
+    setUploadingFieldId(fieldId);
+    setError("");
+    try {
+      const { upload_url, image_url } = await apiFetch("/admin/product-specs/upload-url", {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name }),
+      });
+      await fetch(upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      setFieldValue(row, fieldId, image_url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploadingFieldId(null);
+    }
   }
 
   function toggleRow(row) {
@@ -272,6 +291,25 @@ export default function ProductSpecAssignmentPage() {
                                 </option>
                               ))}
                             </select>
+                          )}
+                          {f.field_type === "image" && (
+                            <div className="space-y-1.5">
+                              {draft.values[f.id] && (
+                                <img
+                                  src={draft.values[f.id]}
+                                  alt={f.field_name}
+                                  className="h-16 w-16 object-cover rounded-md border border-gray-200"
+                                />
+                              )}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => uploadFieldImage(row, f.id, e.target.files?.[0])}
+                                disabled={uploadingFieldId === f.id}
+                                className="block w-full text-xs text-gray-500 file:mr-2 file:px-2 file:py-1 file:rounded-md file:border file:border-gray-300 file:text-xs file:bg-white hover:file:bg-gray-50"
+                              />
+                              {uploadingFieldId === f.id && <p className="text-xs text-gray-400">Uploading…</p>}
+                            </div>
                           )}
                         </div>
                       ))}

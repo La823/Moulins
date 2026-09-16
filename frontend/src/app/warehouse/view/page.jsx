@@ -233,20 +233,79 @@ function WarehouseViewer() {
         )}
       </div>
 
-      <button
-        onClick={() => setSidebarOpen((v) => !v)}
-        title={sidebarOpen ? "Hide panel" : "Show panel"}
-        className="absolute top-3 left-3 z-30 w-9 h-9 flex items-center justify-center rounded-md bg-gray-900/90 border border-gray-700 text-gray-200 shadow-lg"
-      >
-        {sidebarOpen ? "✕" : "☰"}
-      </button>
+      {/* Tapping anywhere outside the sidebar (the canvas) closes it — a
+          drawer you can only close via the same tiny corner button is
+          awkward on a phone, this is the standard "tap outside" pattern. */}
+      {sidebarOpen && (
+        <div className="absolute inset-0 z-10" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* Top bar: product search + pan always live here, not buried in the
+          sidebar — this is what you actually reach for while looking at
+          the 3D view, on phone most of all. */}
+      <div className="absolute top-0 inset-x-0 z-30 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 shadow-lg">
+        <div className="flex items-center gap-2 p-2">
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            title={sidebarOpen ? "Hide panel" : "Show panel"}
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-gray-800 border border-gray-700 text-gray-200"
+          >
+            {sidebarOpen ? "✕" : "☰"}
+          </button>
+          <div className="relative flex-1 min-w-0">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search product…"
+              className="w-full h-9 px-2.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100 placeholder:text-gray-500"
+            />
+            {query && (
+              <div className="absolute left-0 right-0 top-full mt-1 max-h-[60vh] overflow-y-auto bg-gray-900 border border-gray-800 rounded-md shadow-2xl">
+                {results.length === 0 && (
+                  <p className="text-xs text-gray-500 px-3 py-3">No matches in this layout.</p>
+                )}
+                {results.map((a, i) => {
+                  const key = `${a.location_type}-${a.location_key}-${a.slot}`;
+                  return (
+                    <button
+                      key={`${key}-${i}`}
+                      onClick={() => locate(a)}
+                      className={`w-full text-left px-3 py-2 hover:bg-gray-800 ${
+                        selected === a ? "bg-gray-800 ring-1 ring-inset ring-lime-400/60" : ""
+                      }`}
+                    >
+                      <div className="text-sm text-gray-100">{a.product_name}</div>
+                      <div className="text-xs text-gray-400 font-mono">
+                        {a.location_type === "pallet" ? "Pallet" : "Bin"} {a.location_key}
+                        {a.location_type === "bin" ? ` (${a.slot})` : ""}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={togglePan}
+            title="Drag to pan instead of orbit"
+            className={`shrink-0 px-3 h-9 rounded-md text-sm border ${
+              panMode
+                ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
+                : "bg-gray-800 border-gray-700 text-gray-300"
+            }`}
+          >
+            ✋ Pan
+          </button>
+        </div>
+      </div>
 
       <div
-        className={`absolute inset-y-0 left-0 z-20 w-80 max-w-[88vw] border-r border-gray-800 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-200 ${
+        className={`absolute left-0 top-14 bottom-0 z-20 w-80 max-w-[88vw] border-r border-gray-800 bg-gray-900 flex flex-col shadow-2xl transition-transform duration-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="p-4 pl-14 border-b border-gray-800">
+        <div className="p-4 border-b border-gray-800">
           <h1 className="text-sm font-semibold text-gray-100">Warehouse — view only</h1>
           <a href={layoutName ? `/warehouse?layout=${encodeURIComponent(layoutName)}` : "/warehouse"} className="text-xs text-blue-400 hover:text-blue-300">
             Open the editor →
@@ -270,10 +329,10 @@ function WarehouseViewer() {
           </select>
         </div>
 
-        <div className="p-4 border-b border-gray-800 flex gap-2">
+        <div className="p-4 border-b border-gray-800">
           <button
             onClick={() => setShowLabels((v) => !v)}
-            className={`flex-1 px-2.5 py-1.5 rounded-md text-sm border ${
+            className={`w-full px-2.5 py-1.5 rounded-md text-sm border ${
               showLabels
                 ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
                 : "bg-gray-800 border-gray-700 text-gray-300"
@@ -281,53 +340,9 @@ function WarehouseViewer() {
           >
             {showLabels ? "Hide Labels" : "Show Labels"}
           </button>
-          <button
-            onClick={togglePan}
-            title="Drag to pan instead of orbit"
-            className={`flex-1 px-2.5 py-1.5 rounded-md text-sm border ${
-              panMode
-                ? "bg-blue-600/20 border-blue-500/50 text-blue-300"
-                : "bg-gray-800 border-gray-700 text-gray-300"
-            }`}
-          >
-            ✋ Pan{panMode ? " (on)" : ""}
-          </button>
         </div>
 
-        <div className="p-4 border-b border-gray-800">
-          <label className="block text-xs font-medium text-gray-400 mb-1.5">Search product</label>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Product name…"
-            className="w-full px-2.5 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100 placeholder:text-gray-500"
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2">
-          {query && results.length === 0 && (
-            <p className="text-xs text-gray-500 px-2 py-3">No matches in this layout.</p>
-          )}
-          {results.map((a, i) => {
-            const key = `${a.location_type}-${a.location_key}-${a.slot}`;
-            return (
-              <button
-                key={`${key}-${i}`}
-                onClick={() => locate(a)}
-                className={`w-full text-left px-3 py-2 rounded-md hover:bg-gray-800 mb-1 ${
-                  selected === a ? "bg-gray-800 ring-1 ring-lime-400/60" : ""
-                }`}
-              >
-                <div className="text-sm text-gray-100">{a.product_name}</div>
-                <div className="text-xs text-gray-400 font-mono">
-                  {a.location_type === "pallet" ? "Pallet" : "Bin"} {a.location_key}
-                  {a.location_type === "bin" ? ` (${a.slot})` : ""}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <div className="flex-1" />
 
         {error && <p className="text-xs text-red-400 p-4 border-t border-gray-800">{error}</p>}
       </div>

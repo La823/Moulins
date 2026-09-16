@@ -7,6 +7,7 @@ const FIELD_TYPES = [
   { value: "text", label: "Text" },
   { value: "boolean", label: "Boolean (yes/no)" },
   { value: "dropdown", label: "Dropdown" },
+  { value: "image", label: "Image" },
 ];
 
 // Config UI for Product Manufacturer Specifications (PMS): define product
@@ -139,7 +140,7 @@ export default function ProductSpecificationsPage() {
         <h2 className="text-lg font-semibold text-gray-900">Product Specifications</h2>
         <p className="text-sm text-gray-500">
           Define a set of specification fields per product type (capsule, tablet, syrup, ...) — each field can be
-          text, a yes/no boolean, or a dropdown with its own persisted options.
+          text, a yes/no boolean, a dropdown with its own persisted options, or an image.
         </p>
       </div>
 

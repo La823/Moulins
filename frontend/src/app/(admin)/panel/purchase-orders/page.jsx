@@ -228,6 +228,13 @@ export default function PurchaseOrdersPage() {
           >
             Create PO
           </Link>
+          <Link
+            href="/panel/purchase-orders/new?blank=1"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+            title="For a product that's never had a PO before — every field starts blank"
+          >
+            New Product PO
+          </Link>
         </div>
       </div>
 

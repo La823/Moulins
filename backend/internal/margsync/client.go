@@ -251,6 +251,41 @@ func ParseMST2017JSON(jsonBytes []byte) (mst2017Details, error) {
 	return parsed.Details, nil
 }
 
+type liveOrderDispatchStatusRequest struct {
+	CompanyCode string `json:"CompanyCode"`
+	MargID      int    `json:"MargID"`
+	SalesmanID  string `json:"SalesmanID"`
+	Type        string `json:"Type"`
+	Datetime    string `json:"Datetime"`
+	Index       string `json:"index"`
+}
+
+// FetchLiveOrderDispatchStatusRaw calls LiveOrderDispatchStatus2017 and
+// returns the decrypted/decompressed JSON as-is, for inspecting the actual
+// response shape before committing to a parsed struct.
+func FetchLiveOrderDispatchStatusRaw(creds Credentials, salesmanID, datetime string) (string, error) {
+	return FetchLiveOrderDispatchStatusRawWithIndex(creds, salesmanID, datetime, "0")
+}
+
+// FetchLiveOrderDispatchStatusRawWithIndex is the same call with an
+// explicit index — the response's own "Index" field may be a pagination
+// cursor for a follow-up call rather than a fixed value, still being
+// verified.
+func FetchLiveOrderDispatchStatusRawWithIndex(creds Credentials, salesmanID, datetime, index string) (string, error) {
+	respText, err := post("LiveOrderDispatchStatus2017", liveOrderDispatchStatusRequest{
+		CompanyCode: creds.CompanyCode,
+		MargID:      creds.MargID,
+		SalesmanID:  salesmanID,
+		Type:        "S",
+		Datetime:    datetime,
+		Index:       index,
+	})
+	if err != nil {
+		return "", err
+	}
+	return unwrapResponse(respText, creds.APIKey)
+}
+
 // FetchMST2017 pulls master data (products + party ledgers). datetime blank
 // = full pull; a prior sync's DateTime = delta pull (only what changed).
 func FetchMST2017(creds Credentials, datetime string) (mst2017Details, error) {

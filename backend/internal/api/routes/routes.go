@@ -436,6 +436,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/specifications", purchaseordermaster.ListSpecificationsHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/emails", purchaseordermaster.GetEmailsHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/logs", purchaseordermaster.LogsHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/pdf", purchaseordermaster.PDFHandler(db)).Methods("GET")
 
 	purchaseOrderMasterEditStaff := protected.PathPrefix("/admin").Subrouter()
 	purchaseOrderMasterEditStaff.Use(middleware.StaffOnly)
@@ -470,6 +471,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}/options", productspec.CreateFieldOptionHandler(db)).Methods("POST")
 	productSpecEditStaff.HandleFunc("/product-specs/products/{id}", productspec.UpdateProductSpecificationsHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.DeleteFieldOptionHandler(db)).Methods("DELETE")
+	productSpecEditStaff.HandleFunc("/product-specs/upload-url", productspec.UploadURLHandler()).Methods("POST")
 
 	// staff routes — onboarding review (folded into partners view/edit,
 	// since it's reviewing partner documents)

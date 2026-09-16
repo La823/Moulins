@@ -1154,8 +1154,25 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "only confirmed orders can be pushed to Marg", http.StatusConflict)
 			return
 		}
-		if order.MargOrderNo != nil {
-			http.Error(w, "this order was already pushed to Marg", http.StatusConflict)
+
+		// Resume semantics: only items with no marg_pushed_at yet actually
+		// need sending. This is what makes a retry after a partial failure
+		// safe — previously a failure partway through an order (e.g. a
+		// sequence/OrderNo collision on line 19 of 42) left no record of
+		// which lines had already gone through, so any retry resent every
+		// line from scratch and duplicated whatever had already succeeded.
+		pending := make([]models.OrderItem, 0, len(order.Items))
+		for _, oi := range order.Items {
+			if oi.MargPushedAt == nil {
+				pending = append(pending, oi)
+			}
+		}
+		if len(pending) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"marg_order_no":  order.MargOrderNo,
+				"already_pushed": true,
+			})
 			return
 		}
 
@@ -1177,9 +1194,9 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 		// items with no live batches to fall back to at all.
 		// Batched lookups (not one product+batch query per item) — see the
 		// same optimization/reasoning in MargBatchOptionsHandler.
-		needsFallback := make([]models.OrderItem, 0, len(order.Items))
-		batchByItem := make(map[string]string, len(order.Items))
-		for _, oi := range order.Items {
+		needsFallback := make([]models.OrderItem, 0, len(pending))
+		batchByItem := make(map[string]string, len(pending))
+		for _, oi := range pending {
 			if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
 				batchByItem[oi.ID.String()] = *oi.SelectedBatchCode
 				continue
@@ -1236,17 +1253,24 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		// OrderID is Marg-assigned, not something we generate: the first
-		// line is sent with OrderID = "" (present, not omitted — the field
-		// has no `omitempty`), Marg returns the real order number as
-		// OrderNo, and every subsequent line reuses that returned value as
-		// its own OrderID to link all the lines into one Marg order.
+		// line of an order is sent with OrderID = "" (present, not
+		// omitted — the field has no `omitempty`), Marg returns the real
+		// order number as OrderNo, and every subsequent line reuses that
+		// returned value as its own OrderID to link all the lines into
+		// one Marg order. If this is a resume (some items already pushed
+		// in an earlier attempt), reuse the OrderID persisted from that
+		// attempt instead of starting a new Marg-side order.
 		//
 		// The request's own OrderNo field is documented as always "0" on
 		// insert, but Marg's live server rejects/collides on repeated "0"
 		// submissions (confirmed by hands-on testing) — use a local
 		// incrementing placeholder per line instead.
-		var margOrderNo string
-		for _, oi := range order.Items {
+		margOrderNo := ""
+		if order.MargInsertOrderID != nil {
+			margOrderNo = *order.MargInsertOrderID
+		}
+		marker := 0
+		for _, oi := range pending {
 			var reqOrderNo int
 			if err := db.QueryRow(r.Context(), `SELECT nextval('marg_order_no_seq')`).Scan(&reqOrderNo); err != nil {
 				log.Printf("marg order no sequence error: %v", err)
@@ -1275,12 +1299,22 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			result, err := margsync.InsertOrderDetail(creds, line)
 			if err != nil {
 				log.Printf("marg push failed for order %s, item %s: %v", orderID, oi.ProductName, err)
-				http.Error(w, fmt.Sprintf("failed pushing %q to Marg: %v", oi.ProductName, err), http.StatusBadGateway)
+				http.Error(w, fmt.Sprintf("failed pushing %q to Marg: %v — %d of %d lines in this attempt already went through and are marked sent; retrying will only resend what's left", oi.ProductName, err, marker, len(pending)), http.StatusBadGateway)
 				return
+			}
+			// Persisted immediately, not batched until the whole order
+			// finishes — this line is what makes the failure path above
+			// safe to retry instead of duplicating already-sent lines.
+			if err := models.MarkOrderItemPushedToMarg(r.Context(), db, oi.ID); err != nil {
+				log.Printf("mark order item pushed to marg error (order %s, item %s): %v", orderID, oi.ID, err)
 			}
 			if margOrderNo == "" {
 				margOrderNo = result.OrderNo
+				if err := models.SetOrderMargInsertOrderID(r.Context(), db, orderID, margOrderNo); err != nil {
+					log.Printf("set marg insert order id error: %v", err)
+				}
 			}
+			marker++
 		}
 
 		if err := models.MarkOrderPushedToMarg(r.Context(), db, orderID, margOrderNo); err != nil {

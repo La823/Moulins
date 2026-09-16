@@ -96,6 +96,7 @@ export default function PurchaseOrderMasterPage() {
   // navigating away / re-fetching the list just discards it.
   const [edits, setEdits] = useState({});
   const [savingRowFor, setSavingRowFor] = useState(null);
+  const [printingId, setPrintingId] = useState(null);
   const [expandedIds, setExpandedIds] = useState(() => (highlightId ? new Set([highlightId]) : new Set()));
   const [logsById, setLogsById] = useState({});
   const [searchInput, setSearchInput] = useState("");
@@ -323,6 +324,37 @@ export default function PurchaseOrderMasterPage() {
     });
   }
 
+  // apiFetch always parses JSON, so the PDF download uses a plain fetch
+  // with the same Bearer token. The tab is opened synchronously (before
+  // the await) so it's still tied to the click gesture — opening it only
+  // after the fetch resolves gets silently blocked as a popup by most
+  // browsers.
+  async function handlePrintPDF(rowId) {
+    const newTab = window.open("", "_blank");
+    setPrintingId(rowId);
+    setError("");
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${apiUrl}/admin/purchase-order-master/${rowId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error((await res.text()) || "Could not generate PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (newTab) {
+        newTab.location.href = url;
+      } else {
+        window.open(url, "_blank");
+      }
+    } catch (err) {
+      setError(err.message);
+      newTab?.close();
+    } finally {
+      setPrintingId(null);
+    }
+  }
+
   function handleSort(sortKey) {
     if (!sortKey) return;
     setPage(1);
@@ -422,6 +454,13 @@ export default function PurchaseOrderMasterPage() {
             className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
           >
             Create PO
+          </Link>
+          <Link
+            href="/panel/purchase-orders/new?blank=1"
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+            title="For a product that's never had a PO before — every field starts blank"
+          >
+            New Product PO
           </Link>
           <Pagination page={page} totalPages={totalPages} onChange={setPage} />
         </div>
@@ -565,6 +604,18 @@ export default function PurchaseOrderMasterPage() {
                   {isExpanded && (
                     <tr className="bg-gray-50">
                       <td colSpan={COLUMNS.length + 2} className="px-6 py-3">
+                        <div className="flex justify-end mb-3" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handlePrintPDF(r.id)}
+                            disabled={printingId === r.id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                            </svg>
+                            {printingId === r.id ? "Preparing..." : "Print PDF"}
+                          </button>
+                        </div>
                         {r.pms_type_id != null && (() => {
                           const pmsType = pmsTypes.find((t) => t.id === r.pms_type_id);
                           const specs = r.pms_specifications || {};
@@ -577,6 +628,18 @@ export default function PurchaseOrderMasterPage() {
                                 <ul className="flex flex-wrap gap-x-4 gap-y-1">
                                   {pmsType.fields.map((f) => {
                                     const raw = specs[f.id];
+                                    if (f.field_type === "image") {
+                                      return (
+                                        <li key={f.id} className="text-xs text-gray-700 flex items-center gap-1.5">
+                                          <span className="text-gray-400">{f.field_name}:</span>
+                                          {raw ? (
+                                            <img src={raw} alt={f.field_name} className="h-8 w-8 object-cover rounded border border-gray-200" />
+                                          ) : (
+                                            <span className="font-medium">—</span>
+                                          )}
+                                        </li>
+                                      );
+                                    }
                                     const value =
                                       f.field_type === "boolean"
                                         ? raw === true

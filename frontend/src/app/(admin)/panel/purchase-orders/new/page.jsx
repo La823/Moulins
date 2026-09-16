@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
 const CATEGORIES = ["Ortho", "Neuro", "Gastro", "Respiratory", "Dema", "Gynae", "General", "Misc", "Cardio", "Diabetic"];
@@ -9,6 +9,10 @@ const TYPES = ["TABLET", "CAPSULE", "SOFTGEL CAPSULE", "SACHET", "DRY SYRUP", "S
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
+  // ?blank=1 — a brand-new product with no PO history: skip every lookup
+  // (last PO, name suggestions, spec preview) and just leave every field
+  // for manual entry. Nothing to prefill from, so nothing to fetch.
+  const isBlank = useSearchParams().get("blank") === "1";
   const [manufacturers, setManufacturers] = useState([]);
   const [masterProductNames, setMasterProductNames] = useState([]); // matches from the PO master list
   const [showProductDropdown, setShowProductDropdown] = useState(false);
@@ -72,6 +76,7 @@ export default function NewPurchaseOrderPage() {
   // 1800+ rows, too many to load client-side — a name suggestion list,
   // not autofill of other fields).
   useEffect(() => {
+    if (isBlank) return;
     const name = form.product_name.trim();
     if (!name) {
       setLastPoPreview(null);
@@ -85,9 +90,17 @@ export default function NewPurchaseOrderPage() {
         apiFetch(`/admin/purchase-orders/last-by-product?product_name=${encodeURIComponent(name)}`).catch(() => null),
         apiFetch(`/admin/purchase-order-master/product-names?search=${encodeURIComponent(name)}&limit=15`).catch(() => []),
         apiFetch(`/admin/product-specs/products/by-name?name=${encodeURIComponent(name)}`).catch(() => null),
-      ]).then(([lastPo, masterNames, spec]) => {
+        // The spec preview (and the snapshot copied onto the PO at creation)
+        // only match on the *exact* catalog product name — mix in real
+        // catalog names here so picking a suggestion actually lands on a
+        // name that matches, instead of staff free-typing something close
+        // that silently never matches anything.
+        apiFetch(`/admin/products?search=${encodeURIComponent(name)}&limit=10`).catch(() => null),
+      ]).then(([lastPo, masterNames, spec, catalogRes]) => {
         setLastPoPreview(lastPo || null);
-        setMasterProductNames(Array.isArray(masterNames) ? masterNames : []);
+        const catalogNames = (catalogRes?.products || []).map((p) => p.name);
+        const merged = [...catalogNames, ...(Array.isArray(masterNames) ? masterNames : [])];
+        setMasterProductNames([...new Set(merged)]);
         setProductSpecPreview(spec || null);
       }).finally(() => setPreviewLoading(false));
     }, 300);
@@ -183,6 +196,11 @@ export default function NewPurchaseOrderPage() {
     <>
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800">New Purchase Order</h2>
+        {isBlank && (
+          <p className="text-xs text-gray-400 mt-0.5">
+            New product — all fields start blank, nothing gets looked up or prefilled.
+          </p>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 max-w-3xl">
@@ -222,14 +240,14 @@ export default function NewPurchaseOrderPage() {
               value={form.product_name}
               onChange={(e) => {
                 setForm({ ...form, product_name: e.target.value, product_id: null });
-                setShowProductDropdown(true);
+                if (!isBlank) setShowProductDropdown(true);
                 setPrefillNotice("");
               }}
-              onFocus={() => setShowProductDropdown(true)}
-              placeholder="Search or type product name..."
+              onFocus={() => !isBlank && setShowProductDropdown(true)}
+              placeholder={isBlank ? "Enter the new product's name..." : "Search or type product name..."}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
-            {showProductDropdown && masterProductNames.length > 0 && (
+            {!isBlank && showProductDropdown && masterProductNames.length > 0 && (
               <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
                 {masterProductNames.map((name) => (
                   <button
@@ -242,10 +260,16 @@ export default function NewPurchaseOrderPage() {
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-gray-400 mt-1">
-              Pick a name from the list to prefill from its last PO, or type a new product name
-            </p>
-            {prefillNotice && (() => {
+            {isBlank ? (
+              <p className="text-[11px] text-gray-400 mt-1">
+                New product \u2014 nothing to prefill, fill in every field below manually.
+              </p>
+            ) : (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Pick a name from the list to prefill from its last PO, or type a new product name
+              </p>
+            )}
+            {!isBlank && prefillNotice && (() => {
               const [type, ...rest] = prefillNotice.split(":");
               const msg = rest.join(":");
               if (type === "po") return <p className="text-[11px] mt-1 text-green-600">{"\u2713 "}{msg}</p>;
@@ -254,7 +278,7 @@ export default function NewPurchaseOrderPage() {
             })()}
 
             {/* Live preview: last PO for this exact name (searched only against past POs) */}
-            {form.product_name.trim() && (
+            {!isBlank && form.product_name.trim() && (
               <div className="mt-3 space-y-2">
                 {previewLoading && <p className="text-[11px] text-gray-400">Searching...</p>}
 
@@ -299,6 +323,18 @@ export default function NewPurchaseOrderPage() {
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700">
                           {pmsType.fields.map((f) => {
                             const raw = specs[f.id];
+                            if (f.field_type === "image") {
+                              return (
+                                <span key={f.id} className="flex items-center gap-1.5">
+                                  {f.field_name}:{" "}
+                                  {raw ? (
+                                    <img src={raw} alt={f.field_name} className="h-8 w-8 object-cover rounded border border-blue-200" />
+                                  ) : (
+                                    <span className="font-medium">—</span>
+                                  )}
+                                </span>
+                              );
+                            }
                             const value =
                               f.field_type === "boolean"
                                 ? raw === true
