@@ -194,6 +194,76 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// POST /admin/purchase-order-master/{id}/revise — create a revised PO that
+// supersedes {id}, keeping the same po_number but bumping revision_number,
+// instead of editing the row in place. Any field omitted from the body
+// carries over unchanged from the row being revised.
+func ReviseHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		var req models.ReviseMasterPORequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		newID, poNumber, revisionNumber, err := models.CreatePORevision(r.Context(), db, id, req, actorID(r))
+		if err != nil {
+			log.Printf("create PO revision error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		models.LogPOFieldChange(r.Context(), db, models.POSourceMaster, strconv.Itoa(newID), &poNumber, "revised", strPtr(fmt.Sprintf("revision %d (id %d)", revisionNumber-1, id)), strPtr(fmt.Sprintf("revision %d (id %d)", revisionNumber, newID)), actorID(r))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":              newID,
+			"po_number":       poNumber,
+			"revision_number": revisionNumber,
+		})
+	}
+}
+
+// GET /admin/purchase-order-master/{id}/revisions — every row sharing this
+// PO's po_number (oldest first), for a "Revision History" panel.
+func RevisionsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		var poNumber *string
+		if err := db.QueryRow(r.Context(), "SELECT po_number FROM purchase_order_master WHERE id = $1", id).Scan(&poNumber); err != nil {
+			http.Error(w, "purchase order not found", http.StatusNotFound)
+			return
+		}
+		if poNumber == nil || *poNumber == "" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode([]models.PurchaseOrderMasterRow{})
+			return
+		}
+
+		rows, err := models.GetPORevisionHistory(r.Context(), db, *poNumber)
+		if err != nil {
+			log.Printf("get PO revision history error: %v", err)
+			http.Error(w, "could not fetch revision history", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(rows)
+	}
+}
+
 // GET /admin/purchase-order-master/product-names?search=para&limit=15
 func SearchProductNamesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

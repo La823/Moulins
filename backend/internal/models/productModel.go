@@ -513,7 +513,7 @@ func titleCase(s string) string {
 // GetAllProducts. fuzzy swaps the search condition from a literal ILIKE
 // match to a pg_trgm similarity match (used as a fallback when the literal
 // search finds nothing, e.g. a misspelled salt/composition name).
-func buildProductConditions(activeOnly bool, search, category, form, tag string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
+func buildProductConditions(activeOnly bool, search, category, form, tag, imageCount string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
@@ -563,6 +563,14 @@ func buildProductConditions(activeOnly bool, search, category, form, tag string,
 			argIdx))
 		args = append(args, tag)
 		argIdx++
+	}
+	switch imageCount {
+	case "1":
+		conditions = append(conditions, `(SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = products.id) = 1`)
+	case "2":
+		conditions = append(conditions, `(SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = products.id) = 2`)
+	case "3plus":
+		conditions = append(conditions, `(SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = products.id) > 2`)
 	}
 	return conditions, args, argIdx
 }
@@ -652,7 +660,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 }
 
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
-	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, limit, offset, nameOnly, false)
+	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, "", limit, offset, nameOnly, false)
 	return products, total, err
 }
 
@@ -667,8 +675,8 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 // name+key_ingredients — used when the search term came from clicking a
 // "did you mean" salt suggestion, so the result list is the products that
 // actually contain that salt rather than a looser text match.
-func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly, saltOnly bool) ([]Product, int, []string, error) {
-	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, saltOnly, false)
+func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag, imageCount string, limit, offset int, nameOnly, saltOnly bool) ([]Product, int, []string, error) {
+	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, imageCount, nameOnly, saltOnly, false)
 	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search)
 	if err != nil || search == "" {
 		return products, total, nil, err
@@ -680,7 +688,7 @@ func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeO
 
 	// Literal search found nothing — fall back to a pg_trgm fuzzy match in
 	// case the term was misspelled (e.g. a salt/composition name).
-	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, nameOnly, saltOnly, true)
+	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, imageCount, nameOnly, saltOnly, true)
 	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search)
 	if err != nil || len(fuzzyProducts) == 0 {
 		return fuzzyProducts, fuzzyTotal, nil, err

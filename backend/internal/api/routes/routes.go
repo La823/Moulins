@@ -437,6 +437,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/emails", purchaseordermaster.GetEmailsHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/logs", purchaseordermaster.LogsHandler(db)).Methods("GET")
 	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/pdf", purchaseordermaster.PDFHandler(db)).Methods("GET")
+	purchaseOrderMasterViewStaff.HandleFunc("/purchase-order-master/{id}/revisions", purchaseordermaster.RevisionsHandler(db)).Methods("GET")
 
 	purchaseOrderMasterEditStaff := protected.PathPrefix("/admin").Subrouter()
 	purchaseOrderMasterEditStaff.Use(middleware.StaffOnly)
@@ -449,6 +450,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/specifications", purchaseordermaster.UpdateSpecificationsHandler(db)).Methods("PATCH")
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/send-mail", purchaseordermaster.SendMailHandler(db)).Methods("POST")
 	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/emails/reply", purchaseordermaster.ReplyToEmailHandler(db)).Methods("POST")
+	purchaseOrderMasterEditStaff.HandleFunc("/purchase-order-master/{id}/revise", purchaseordermaster.ReviseHandler(db)).Methods("POST")
 
 	// staff routes — Product Manufacturer Specification (PMS) config: define
 	// product types, their specification fields, and dropdown field options.

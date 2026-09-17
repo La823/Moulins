@@ -161,8 +161,18 @@ export default function PurchaseOrdersPage() {
   const [mailStatus, setMailStatus] = useState({}); // { [rowId]: {type: "ok"|"error", text} }
   const [expandedId, setExpandedId] = useState(null);
   const [emailsById, setEmailsById] = useState({}); // { [rowId]: emails[] | "loading" | {error} }
+  const [revisionHistoryById, setRevisionHistoryById] = useState({}); // { [rowId]: revisions[] }
+  const [manufacturers, setManufacturers] = useState([]);
+  // Revise: creates a new row under the same po_number instead of editing
+  // this one in place — only available while status is Active (both here
+  // and enforced server-side).
+  const [revisingId, setRevisingId] = useState(null);
+  const [revisionDraft, setRevisionDraft] = useState({});
+  const [savingRevisionFor, setSavingRevisionFor] = useState(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
+  function loadActive() {
+    setLoading(true);
     apiFetch("/admin/purchase-order-master/active?limit=10")
       .then((data) => {
         setActiveRows(data.rows || []);
@@ -170,13 +180,79 @@ export default function PurchaseOrdersPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadActive();
   }, []);
+
+  useEffect(() => {
+    apiFetch("/admin/manufacturers")
+      .then((data) => setManufacturers(data || []))
+      .catch(() => {});
+  }, []);
+
+  function openRevise(row) {
+    setRevisingId(row.id);
+    setRevisionDraft({
+      po_date: row.po_date ? row.po_date.slice(0, 10) : "",
+      product_name: row.product_name || "",
+      quantity: row.quantity ?? "",
+      mrp: row.mrp || "",
+      rate: row.rate ?? "",
+      type: row.type || "",
+      manufacturer_id: "",
+      status: "Active",
+    });
+  }
+
+  function cancelRevise() {
+    setRevisingId(null);
+    setRevisionDraft({});
+  }
+
+  async function saveRevision(rowId) {
+    setSavingRevisionFor(rowId);
+    setError("");
+    try {
+      await apiFetch(`/admin/purchase-order-master/${rowId}/revise`, {
+        method: "POST",
+        body: JSON.stringify({
+          po_date: revisionDraft.po_date || undefined,
+          product_name: revisionDraft.product_name?.trim() || undefined,
+          quantity: revisionDraft.quantity !== "" ? Number(revisionDraft.quantity) : undefined,
+          mrp: revisionDraft.mrp !== "" ? Number(revisionDraft.mrp) : undefined,
+          rate: revisionDraft.rate !== "" ? Number(revisionDraft.rate) : undefined,
+          type: revisionDraft.type?.trim() || undefined,
+          manufacturer_id: revisionDraft.manufacturer_id || undefined,
+          status: revisionDraft.status || undefined,
+        }),
+      });
+      cancelRevise();
+      setRevisionHistoryById((prev) => {
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
+      loadActive();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingRevisionFor(null);
+    }
+  }
 
   function loadEmails(rowId) {
     setEmailsById((prev) => ({ ...prev, [rowId]: "loading" }));
     apiFetch(`/admin/purchase-order-master/${rowId}/emails`)
       .then((data) => setEmailsById((prev) => ({ ...prev, [rowId]: data || [] })))
       .catch((err) => setEmailsById((prev) => ({ ...prev, [rowId]: { error: err.message } })));
+  }
+
+  function loadRevisionHistory(rowId) {
+    apiFetch(`/admin/purchase-order-master/${rowId}/revisions`)
+      .then((data) => setRevisionHistoryById((prev) => ({ ...prev, [rowId]: data || [] })))
+      .catch(() => setRevisionHistoryById((prev) => ({ ...prev, [rowId]: [] })));
   }
 
   function toggleMail(rowId) {
@@ -186,6 +262,7 @@ export default function PurchaseOrdersPage() {
     }
     setExpandedId(rowId);
     loadEmails(rowId);
+    if (!revisionHistoryById[rowId]) loadRevisionHistory(rowId);
   }
 
   async function handleSendMail(rowId) {
@@ -247,6 +324,7 @@ export default function PurchaseOrdersPage() {
           </p>
         </div>
 
+        {error && <p className="text-sm text-red-600 px-4 pt-3">{error}</p>}
         {loading && <p className="text-sm text-gray-500 px-4 py-6">Loading…</p>}
 
         {!loading && activeRows.length === 0 && (
@@ -263,14 +341,18 @@ export default function PurchaseOrdersPage() {
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Product Name</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Company</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Status</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Revised</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Last Mail Sent</th>
                   <th className="px-3 py-2 text-left font-semibold text-gray-600">Mail</th>
+                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Revise</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {activeRows.map((r) => {
                   const isExpanded = expandedId === r.id;
                   const emails = emailsById[r.id];
+                  const revisions = revisionHistoryById[r.id];
+                  const hasBeenRevised = (r.revision_number || 1) > 1;
                   return (
                     <Fragment key={r.id}>
                       <tr className="hover:bg-gray-50">
@@ -289,6 +371,20 @@ export default function PurchaseOrdersPage() {
                           <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
                             {r.status}
                           </span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {hasBeenRevised ? (
+                            <span
+                              className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded"
+                              title="This PO has been revised — expand the row to see the original and every change made"
+                            >
+                              Yes (Rev {r.revision_number})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                              No
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
                           {formatDateTime(r.last_mail_sent_at) || "—"}
@@ -313,10 +409,187 @@ export default function PurchaseOrdersPage() {
                             )}
                           </div>
                         </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <button
+                            onClick={() => (revisingId === r.id ? cancelRevise() : openRevise(r))}
+                            className="px-2.5 py-1 border border-gray-300 rounded-md text-[11px] font-medium text-gray-700 hover:bg-gray-50"
+                            title="Create a new revision of this PO under the same P-O number, instead of editing it in place"
+                          >
+                            {revisingId === r.id ? "Cancel" : "Revise PO"}
+                          </button>
+                        </td>
                       </tr>
+                      {revisingId === r.id && (
+                        <tr className="bg-amber-50">
+                          <td colSpan={9} className="px-6 py-3">
+                            <p className="text-xs font-semibold text-amber-800 mb-2">
+                              Revise {r.po_number} — creates a new row (Revision {(r.revision_number || 1) + 1}) under the same P-O number; this row will be marked "Revised" and kept as history. Leave a field as-is to carry it over unchanged.
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 max-w-3xl">
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-0.5">P-O Date</label>
+                                <input
+                                  type="date"
+                                  value={revisionDraft.po_date || ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, po_date: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-[10px] text-gray-500 mb-0.5">Product Name</label>
+                                <input
+                                  type="text"
+                                  value={revisionDraft.product_name || ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, product_name: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-0.5">Quantity</label>
+                                <input
+                                  type="number"
+                                  value={revisionDraft.quantity ?? ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, quantity: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-0.5">MRP</label>
+                                <input
+                                  type="text"
+                                  value={revisionDraft.mrp ?? ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, mrp: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-0.5">Rate</label>
+                                <input
+                                  type="number"
+                                  value={revisionDraft.rate ?? ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, rate: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-0.5">Type</label>
+                                <input
+                                  type="text"
+                                  value={revisionDraft.type || ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, type: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-[10px] text-gray-500 mb-0.5">
+                                  Manufacturer (current: {r.company || "—"})
+                                </label>
+                                <select
+                                  value={revisionDraft.manufacturer_id || ""}
+                                  onChange={(e) => setRevisionDraft((d) => ({ ...d, manufacturer_id: e.target.value }))}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                                >
+                                  <option value="">Keep unchanged</option>
+                                  {manufacturers.map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => saveRevision(r.id)}
+                                disabled={savingRevisionFor === r.id}
+                                className="px-3 py-1.5 bg-gray-900 text-white rounded-md text-xs font-medium hover:bg-gray-800 disabled:opacity-50"
+                              >
+                                {savingRevisionFor === r.id ? "Creating…" : "Create Revision"}
+                              </button>
+                              <button
+                                onClick={cancelRevise}
+                                disabled={savingRevisionFor === r.id}
+                                className="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       {isExpanded && (
                         <tr className="bg-gray-50">
-                          <td colSpan={7} className="px-6 py-4">
+                          <td colSpan={9} className="px-6 py-4">
+                            <div className="mb-4">
+                              <p className="text-xs font-semibold text-gray-600 mb-1.5">PO Details</p>
+                              <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 max-w-3xl text-xs">
+                                {[
+                                  ["P-O Number", r.po_number],
+                                  ["P-O Date", formatDate(r.po_date)],
+                                  ["Product Name", r.product_name],
+                                  ["Product Code", r.product_code || "—"],
+                                  ["Composition", r.composition || "—"],
+                                  ["Quantity", r.quantity ?? "—"],
+                                  ["MRP", r.mrp || "—"],
+                                  ["Rate", r.rate ?? "—"],
+                                  ["Estimate", r.estimate ?? "—"],
+                                  ["Type", r.type || "—"],
+                                  ["Company", r.company],
+                                  ["Category", r.category || "—"],
+                                  ["Specifications", r.specifications || "—"],
+                                  ["Remarks", r.remarks || "—"],
+                                  ["Status", r.status],
+                                ].map(([label, value]) => (
+                                  <div key={label}>
+                                    <dt className="text-gray-400">{label}</dt>
+                                    <dd className="text-gray-800 font-medium">{value}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </div>
+
+                            {(revisions?.length ?? 0) > 1 && (
+                              <div className="mb-4">
+                                <p className="text-xs font-semibold text-gray-600 mb-1">
+                                  Revision History — original P-O {r.po_number} has been revised {revisions.length - 1}{" "}
+                                  time{revisions.length - 1 === 1 ? "" : "s"}
+                                </p>
+                                <table className="text-xs border border-gray-200 rounded-md overflow-hidden w-full max-w-3xl bg-white">
+                                  <thead className="bg-gray-100">
+                                    <tr>
+                                      <th className="px-2 py-1 text-left">Rev</th>
+                                      <th className="px-2 py-1 text-left">Date</th>
+                                      <th className="px-2 py-1 text-left">Product</th>
+                                      <th className="px-2 py-1 text-left">Qty</th>
+                                      <th className="px-2 py-1 text-left">Rate</th>
+                                      <th className="px-2 py-1 text-left">Company</th>
+                                      <th className="px-2 py-1 text-left">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {revisions.map((rev) => (
+                                      <tr key={rev.id} className={rev.id === r.id ? "bg-blue-50" : ""}>
+                                        <td className="px-2 py-1">
+                                          {rev.revision_number}
+                                          {rev.revision_number === 1 && (
+                                            <span className="ml-1 text-[10px] text-gray-500">(original)</span>
+                                          )}
+                                          {rev.id === r.id && <span className="ml-1 text-[10px] text-blue-600">(current)</span>}
+                                        </td>
+                                        <td className="px-2 py-1">{formatDate(rev.po_date)}</td>
+                                        <td className="px-2 py-1">{rev.product_name}</td>
+                                        <td className="px-2 py-1">{rev.quantity ?? ""}</td>
+                                        <td className="px-2 py-1">{rev.rate ?? ""}</td>
+                                        <td className="px-2 py-1">{rev.company}</td>
+                                        <td className="px-2 py-1">{rev.status}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+
+                            <p className="text-xs font-semibold text-gray-600 mb-1.5">Mail History</p>
                             {emails === "loading" && <p className="text-xs text-gray-400">Loading mail history…</p>}
                             {emails && emails.error && (
                               <p className="text-xs text-red-600">Could not load mail history: {emails.error}</p>

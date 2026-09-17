@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +75,14 @@ type PurchaseOrderMasterRow struct {
 	// placed even if the product's specs change later.
 	PMSTypeID         *int            `json:"pms_type_id"`
 	PMSSpecifications json.RawMessage `json:"pms_specifications"`
+	// RevisionNumber/IsLatestRevision/RevisedFromID track PO revisions (see
+	// migration 130): revising a PO inserts a new row sharing the same
+	// po_number rather than editing this one in place. The main list only
+	// ever shows is_latest_revision = TRUE rows; older revisions are only
+	// reachable via GetPORevisionHistory.
+	RevisionNumber   int  `json:"revision_number"`
+	IsLatestRevision bool `json:"is_latest_revision"`
+	RevisedFromID    *int `json:"revised_from_id"`
 }
 
 // CountMissingProductCode returns how many rows in the master list have no
@@ -117,6 +126,10 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 		args = append(args, status)
 		conditions = append(conditions, fmt.Sprintf("status = $%d", len(args)))
 	}
+	// Superseded revisions never show up in the main list — only the
+	// current revision of each PO does. Older ones are reachable via
+	// GetPORevisionHistory from the current row's expanded detail.
+	conditions = append(conditions, "is_latest_revision = TRUE")
 	var where string
 	if len(conditions) > 0 {
 		where = "WHERE " + strings.Join(conditions, " AND ")
@@ -144,7 +157,7 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 		       specifications, type, company, qty_received, remarks, category, status,
 		       time_stamp_date, time_stamp_time, time_stamp_raw, days_diff, bill_number,
 		       (SELECT MAX(e.sent_at) FROM purchase_order_emails e WHERE e.po_id = purchase_order_master.id AND e.in_reply_to_message_id IS NULL) AS last_mail_sent_at,
-		       pms_type_id, pms_specifications
+		       pms_type_id, pms_specifications, revision_number, is_latest_revision, revised_from_id
 		FROM purchase_order_master
 		%s
 		ORDER BY %s %s NULLS LAST, id
@@ -165,12 +178,234 @@ func ListPurchaseOrderMaster(ctx context.Context, db *pgxpool.Pool, limit, offse
 			&r.Rate, &r.Estimate, &r.Specifications, &r.Type, &r.Company, &r.QtyReceived,
 			&r.Remarks, &r.Category, &r.Status, &r.TimeStampDate, &r.TimeStampTime, &r.TimeStampRaw,
 			&r.DaysDiff, &r.BillNumber, &r.LastMailSentAt, &r.PMSTypeID, &r.PMSSpecifications,
+			&r.RevisionNumber, &r.IsLatestRevision, &r.RevisedFromID,
 		); err != nil {
 			return nil, 0, err
 		}
 		result = append(result, r)
 	}
 	return result, total, rows.Err()
+}
+
+// GetPORevisionHistory returns every row sharing the given po_number,
+// oldest revision first — the current (is_latest_revision) row plus every
+// row it superseded, for the "Revision History" panel on a PO's detail
+// view. Uses the same column set as ListPurchaseOrderMaster.
+func GetPORevisionHistory(ctx context.Context, db *pgxpool.Pool, poNumber string) ([]PurchaseOrderMasterRow, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, sr_no, po_date, po_date_raw, po_number, product_name, product_code, composition, quantity, mrp, mrp_unit_id, rate, estimate,
+		       specifications, type, company, qty_received, remarks, category, status,
+		       time_stamp_date, time_stamp_time, time_stamp_raw, days_diff, bill_number,
+		       (SELECT MAX(e.sent_at) FROM purchase_order_emails e WHERE e.po_id = purchase_order_master.id AND e.in_reply_to_message_id IS NULL) AS last_mail_sent_at,
+		       pms_type_id, pms_specifications, revision_number, is_latest_revision, revised_from_id
+		FROM purchase_order_master
+		WHERE po_number = $1
+		ORDER BY revision_number ASC
+	`, poNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := []PurchaseOrderMasterRow{}
+	for rows.Next() {
+		var r PurchaseOrderMasterRow
+		if err := rows.Scan(
+			&r.ID, &r.SrNo, &r.PoDate, &r.PoDateRaw, &r.PoNumber, &r.ProductName, &r.ProductCode, &r.Composition, &r.Quantity, &r.Mrp, &r.MrpUnitID,
+			&r.Rate, &r.Estimate, &r.Specifications, &r.Type, &r.Company, &r.QtyReceived,
+			&r.Remarks, &r.Category, &r.Status, &r.TimeStampDate, &r.TimeStampTime, &r.TimeStampRaw,
+			&r.DaysDiff, &r.BillNumber, &r.LastMailSentAt, &r.PMSTypeID, &r.PMSSpecifications,
+			&r.RevisionNumber, &r.IsLatestRevision, &r.RevisedFromID,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// ReviseMasterPORequest carries optional overrides for a PO revision — any
+// field left nil is carried over unchanged from the row being revised.
+type ReviseMasterPORequest struct {
+	PODate         *string    `json:"po_date,omitempty"`
+	ProductName    *string    `json:"product_name,omitempty"`
+	Quantity       *int       `json:"quantity,omitempty"`
+	MRP            *float64   `json:"mrp,omitempty"`
+	MrpUnitID      *uuid.UUID `json:"mrp_unit_id,omitempty"`
+	Rate           *float64   `json:"rate,omitempty"`
+	Specifications *string    `json:"specifications,omitempty"`
+	Type           *string    `json:"type,omitempty"`
+	ManufacturerID *uuid.UUID `json:"manufacturer_id,omitempty"`
+	Remarks        *string    `json:"remarks,omitempty"`
+	Category       *string    `json:"category,omitempty"`
+	Status         string     `json:"status,omitempty"`
+}
+
+// diffField logs a field-level change (against the new revision's id) if
+// old and new differ — same convention as the single-field PATCH handlers,
+// so a PO's Logs panel reads the same way whether a field was edited
+// directly or carried a change in through a revision.
+func diffField(ctx context.Context, db *pgxpool.Pool, newID int, poNumber string, field string, oldVal, newVal *string, actorID *uuid.UUID) {
+	oldStr, newStr := "", ""
+	if oldVal != nil {
+		oldStr = *oldVal
+	}
+	if newVal != nil {
+		newStr = *newVal
+	}
+	if oldStr == newStr {
+		return
+	}
+	LogPOFieldChange(ctx, db, POSourceMaster, strconv.Itoa(newID), &poNumber, field, oldVal, newVal, actorID)
+}
+
+// CreatePORevision creates a new row that supersedes sourceID, keeping the
+// same po_number but bumping revision_number — the "edit without editing"
+// path: fields not present in req are carried over unchanged from the row
+// being revised. Only the current latest revision of a PO can be revised
+// (enforced via is_latest_revision), so revisions form a single linear
+// chain instead of branching. Returns the new row's id, po_number, and
+// revision_number. Every field the revision actually changed (compared to
+// the row it supersedes) is recorded in purchase_order_logs against the new
+// row's id, so its Logs panel shows exactly what changed and when.
+func CreatePORevision(ctx context.Context, db *pgxpool.Pool, sourceID int, req ReviseMasterPORequest, actorID *uuid.UUID) (int, string, int, error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return 0, "", 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	var srNo *int
+	var poDate *string
+	var poNumber string
+	var productName, productCode, composition, mrp, specifications, poType, company, remarks, category, status *string
+	var quantity, rate *float64
+	var mrpUnitID *uuid.UUID
+	var srcRevision int
+	var isLatest bool
+	var pmsTypeID *int
+	var pmsSpecs json.RawMessage
+
+	err = tx.QueryRow(ctx, `
+		SELECT sr_no, po_date::text, po_number, product_name, product_code, composition, quantity, mrp, mrp_unit_id, rate,
+		       specifications, type, company, remarks, category, status, revision_number, is_latest_revision,
+		       pms_type_id, pms_specifications
+		FROM purchase_order_master WHERE id = $1 FOR UPDATE`, sourceID,
+	).Scan(&srNo, &poDate, &poNumber, &productName, &productCode, &composition, &quantity, &mrp, &mrpUnitID, &rate,
+		&specifications, &poType, &company, &remarks, &category, &status, &srcRevision, &isLatest, &pmsTypeID, &pmsSpecs)
+	if err != nil {
+		return 0, "", 0, fmt.Errorf("purchase order not found: %w", err)
+	}
+	if !isLatest {
+		return 0, "", 0, fmt.Errorf("this purchase order already has a newer revision — revise that one instead")
+	}
+	if status == nil || *status != "Active" {
+		return 0, "", 0, fmt.Errorf("only an Active purchase order can be revised")
+	}
+
+	// Snapshot pre-override values so the changed fields can be diffed and
+	// logged once the revision is created below.
+	origPoDate, origProductName, origMrp, origSpecifications, origType, origCompany, origRemarks, origCategory, origStatus :=
+		poDate, productName, mrp, specifications, poType, company, remarks, category, status
+	origQuantity, origRate := quantity, rate
+
+	if req.PODate != nil {
+		poDate = req.PODate
+	}
+	if req.ProductName != nil {
+		productName = req.ProductName
+	}
+	newQuantity := quantity
+	if req.Quantity != nil {
+		q := float64(*req.Quantity)
+		newQuantity = &q
+	}
+	if req.MRP != nil {
+		s := fmt.Sprintf("%.2f", *req.MRP)
+		mrp = &s
+	}
+	if req.MrpUnitID != nil {
+		mrpUnitID = req.MrpUnitID
+	}
+	newRate := rate
+	if req.Rate != nil {
+		newRate = req.Rate
+	}
+	if req.Specifications != nil {
+		specifications = req.Specifications
+	}
+	if req.Type != nil {
+		poType = req.Type
+	}
+	if req.ManufacturerID != nil {
+		var name string
+		if err := tx.QueryRow(ctx, "SELECT name FROM manufacturers WHERE id = $1", *req.ManufacturerID).Scan(&name); err != nil {
+			return 0, "", 0, fmt.Errorf("manufacturer not found: %w", err)
+		}
+		company = &name
+	}
+	if req.Remarks != nil {
+		remarks = req.Remarks
+	}
+	if req.Category != nil {
+		category = req.Category
+	}
+	newStatus := "Active"
+	if req.Status != "" {
+		newStatus = req.Status
+	}
+
+	var estimate *float64
+	if newRate != nil && newQuantity != nil {
+		e := (*newQuantity) * (*newRate)
+		estimate = &e
+	}
+
+	newRevision := srcRevision + 1
+
+	var newID int
+	err = tx.QueryRow(ctx, `
+		INSERT INTO purchase_order_master (
+			sr_no, po_date, po_number, product_name, product_code, composition, quantity, mrp, mrp_unit_id, rate, estimate,
+			specifications, type, company, remarks, category, status, revision_number, is_latest_revision, revised_from_id,
+			pms_type_id, pms_specifications
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,TRUE,$19,$20,$21)
+		RETURNING id`,
+		srNo, poDate, poNumber, productName, productCode, composition, newQuantity, mrp, mrpUnitID, newRate, estimate,
+		specifications, poType, company, remarks, category, newStatus, newRevision, sourceID, pmsTypeID, pmsSpecs,
+	).Scan(&newID)
+	if err != nil {
+		return 0, "", 0, err
+	}
+
+	if _, err = tx.Exec(ctx, "UPDATE purchase_order_master SET is_latest_revision = FALSE, status = 'Revised' WHERE id = $1", sourceID); err != nil {
+		return 0, "", 0, err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return 0, "", 0, err
+	}
+
+	numStr := func(v *float64) *string {
+		if v == nil {
+			return nil
+		}
+		s := fmt.Sprintf("%g", *v)
+		return &s
+	}
+	diffField(ctx, db, newID, poNumber, "po_date", origPoDate, poDate, actorID)
+	diffField(ctx, db, newID, poNumber, "product_name", origProductName, productName, actorID)
+	diffField(ctx, db, newID, poNumber, "quantity", numStr(origQuantity), numStr(newQuantity), actorID)
+	diffField(ctx, db, newID, poNumber, "mrp", origMrp, mrp, actorID)
+	diffField(ctx, db, newID, poNumber, "rate", numStr(origRate), numStr(newRate), actorID)
+	diffField(ctx, db, newID, poNumber, "specifications", origSpecifications, specifications, actorID)
+	diffField(ctx, db, newID, poNumber, "type", origType, poType, actorID)
+	diffField(ctx, db, newID, poNumber, "company", origCompany, company, actorID)
+	diffField(ctx, db, newID, poNumber, "remarks", origRemarks, remarks, actorID)
+	diffField(ctx, db, newID, poNumber, "category", origCategory, category, actorID)
+	diffField(ctx, db, newID, poNumber, "status", origStatus, &newStatus, actorID)
+
+	return newID, poNumber, newRevision, nil
 }
 
 // SearchMasterProductNames returns distinct product_name values from the

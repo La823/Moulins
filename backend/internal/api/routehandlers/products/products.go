@@ -322,11 +322,12 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		category := r.URL.Query().Get("category")
 		form := r.URL.Query().Get("form")
 		tag := r.URL.Query().Get("tag")
+		imageCount := r.URL.Query().Get("image_count") // "", "1", "2", "3plus"
 		nameOnly := r.URL.Query().Get("name_only") == "true"
 		saltOnly := r.URL.Query().Get("salt_only") == "true"
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:no=%v:so=%v", activeOnly, page, limit, search, category, form, tag, nameOnly, saltOnly)
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:no=%v:so=%v", activeOnly, page, limit, search, category, form, tag, imageCount, nameOnly, saltOnly)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -334,7 +335,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, form, tag, limit, offset, nameOnly, saltOnly)
+		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, form, tag, imageCount, limit, offset, nameOnly, saltOnly)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)

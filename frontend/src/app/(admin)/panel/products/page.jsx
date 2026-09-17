@@ -57,6 +57,7 @@ function AdminProductsInner() {
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [imageCountFilter, setImageCountFilter] = useState(""); // "", "1", "2", "3plus"
   const catRef = useRef(null);
 
   const [categoryOptions, setCategoryOptions] = useState([]);
@@ -92,6 +93,7 @@ function AdminProductsInner() {
       const params = new URLSearchParams({ page: p, limit });
       if (q) params.set("search", q);
       if (categoryFilter) params.set("category", categoryFilter);
+      if (imageCountFilter) params.set("image_count", imageCountFilter);
       const data = await apiFetch(`/admin/products?${params}`);
       setProducts(data.products || []);
       setTotal(data.total || 0);
@@ -108,8 +110,12 @@ function AdminProductsInner() {
   }, [categoryFilter]);
 
   useEffect(() => {
+    setPage(1);
+  }, [imageCountFilter]);
+
+  useEffect(() => {
     fetchProducts(page, search);
-  }, [page, search, categoryFilter]);
+  }, [page, search, categoryFilter, imageCountFilter]);
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
@@ -414,6 +420,16 @@ function AdminProductsInner() {
         >
           Search
         </button>
+        <select
+          value={imageCountFilter}
+          onChange={(e) => setImageCountFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        >
+          <option value="">All images</option>
+          <option value="1">1 image</option>
+          <option value="2">2 images</option>
+          <option value="3plus">More than 2 images</option>
+        </select>
       </div>
 
       {/* Add Product Form */}
