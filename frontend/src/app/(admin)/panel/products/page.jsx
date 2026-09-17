@@ -31,8 +31,10 @@ function AdminProductsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryFilter = searchParams.get("category") || "";
+  const formFilter = searchParams.get("form") || "";
 
   const [products, setProducts] = useState([]);
+  const [inventoryCodes, setInventoryCodes] = useState({}); // { [productId]: "T-14" }
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -68,6 +70,18 @@ function AdminProductsInner() {
       .catch(console.error);
   }, []);
 
+  const [formFilterOptions, setFormFilterOptions] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/products/forms")
+      .then((data) => setFormFilterOptions(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
+
+  // sort_by: "name" | "product_id" | "price" | "inventory_code"
+  const [sortBy, setSortBy] = useState("name");
+  const [sortDir, setSortDir] = useState("asc");
+
   const [selectedTags, setSelectedTags] = useState([]);
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [tagOptions, setTagOptions] = useState([]);
@@ -93,9 +107,13 @@ function AdminProductsInner() {
       const params = new URLSearchParams({ page: p, limit });
       if (q) params.set("search", q);
       if (categoryFilter) params.set("category", categoryFilter);
+      if (formFilter) params.set("form", formFilter);
       if (imageCountFilter) params.set("image_count", imageCountFilter);
+      params.set("sort_by", sortBy);
+      params.set("sort_dir", sortDir);
       const data = await apiFetch(`/admin/products?${params}`);
       setProducts(data.products || []);
+      setInventoryCodes(data.inventory_codes || {});
       setTotal(data.total || 0);
       setTotalPages(data.total_pages || 0);
     } catch (err) {
@@ -111,11 +129,19 @@ function AdminProductsInner() {
 
   useEffect(() => {
     setPage(1);
+  }, [formFilter]);
+
+  useEffect(() => {
+    setPage(1);
   }, [imageCountFilter]);
 
   useEffect(() => {
+    setPage(1);
+  }, [sortBy, sortDir]);
+
+  useEffect(() => {
     fetchProducts(page, search);
-  }, [page, search, categoryFilter, imageCountFilter]);
+  }, [page, search, categoryFilter, formFilter, imageCountFilter, sortBy, sortDir]);
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
@@ -388,6 +414,18 @@ function AdminProductsInner() {
               </button>
             </p>
           )}
+          {formFilter && (
+            <p className="text-xs text-gray-500 mt-1">
+              Filtered by product form:{" "}
+              <span className="font-medium text-gray-700">{formFilter}</span>{" "}
+              <button
+                onClick={() => router.push("/panel/products")}
+                className="text-blue-600 hover:underline ml-1"
+              >
+                Clear
+              </button>
+            </p>
+          )}
         </div>
         <button
           onClick={() => {
@@ -430,6 +468,43 @@ function AdminProductsInner() {
           <option value="2">2 images</option>
           <option value="3plus">More than 2 images</option>
         </select>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        <select
+          value={formFilter}
+          onChange={(e) => {
+            const v = e.target.value;
+            router.push(v ? `/panel/products?form=${encodeURIComponent(v)}` : "/panel/products");
+          }}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        >
+          <option value="">All product forms</option>
+          {formFilterOptions.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+
+        <span className="text-xs text-gray-400">Sort by</span>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        >
+          <option value="name">Name</option>
+          <option value="product_id">Product ID</option>
+          <option value="price">Price</option>
+          <option value="inventory_code">Inventory Code</option>
+        </select>
+        <button
+          onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+          title={sortDir === "asc" ? "Ascending — click for descending" : "Descending — click for ascending"}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:bg-gray-50"
+        >
+          {sortDir === "asc" ? "▲ Asc" : "▼ Desc"}
+        </button>
       </div>
 
       {/* Add Product Form */}
@@ -827,6 +902,14 @@ function AdminProductsInner() {
                       <div className="flex items-center gap-2">
                         <Link href={`/panel/products/${p.id}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline">{p.name}</Link>
                         <span className="text-xs text-gray-400 font-mono">#{p.product_id}</span>
+                        {inventoryCodes[p.id] && (
+                          <span
+                            className="text-xs font-mono font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded"
+                            title="Warehouse inventory code"
+                          >
+                            {inventoryCodes[p.id]}
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-500 mt-0.5">
                         ₹{p.price}

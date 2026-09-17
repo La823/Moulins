@@ -53,6 +53,29 @@ export default function EditProduct() {
       .catch(console.error);
   }, []);
 
+  const [formOptions, setFormOptions] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/products/forms")
+      .then((data) => setFormOptions(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, []);
+
+  // Warehouse inventory code (e.g. "T-14") — assigned automatically from the
+  // product's form, shown read-only here. Fetched separately rather than as
+  // part of the main product payload so it stays purely additive.
+  const [inventoryInfo, setInventoryInfo] = useState(null);
+  const [inventoryInfoError, setInventoryInfoError] = useState("");
+
+  const fetchInventoryInfo = () => {
+    if (!id) return;
+    apiFetch(`/admin/products/${id}/inventory-code`)
+      .then((data) => setInventoryInfo(data))
+      .catch((err) => setInventoryInfoError(err.message));
+  };
+
+  useEffect(fetchInventoryInfo, [id]);
+
   // Form state
   const [form, setForm] = useState({
     product_id: "",
@@ -272,6 +295,7 @@ export default function EditProduct() {
       setNewAudioFile(null);
       setNewAudioPreviewUrl(null);
       setRemoveAudio(false);
+      fetchInventoryInfo();
       setSuccess("Product saved successfully");
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
@@ -417,6 +441,19 @@ export default function EditProduct() {
             &larr; Back
           </Link>
           <h2 className="text-lg font-semibold text-gray-800">Edit Product</h2>
+          <span
+            className={`text-xs font-mono px-2 py-1 rounded-md ${
+              inventoryInfoError ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-600"
+            }`}
+            title={
+              inventoryInfoError ||
+              "Warehouse inventory code — assigned automatically from the Product Form field below, permanent once set"
+            }
+          >
+            {inventoryInfoError
+              ? "Inventory code unavailable"
+              : inventoryInfo?.inventory_code || "No inventory code yet"}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -748,15 +785,36 @@ export default function EditProduct() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Product Form
               </label>
-              <input
-                type="text"
+              <p className="text-[11px] text-gray-400 mb-1">
+                The dosage/pack form of this product (Tablet, Syrup, Injection, etc.) — used to filter and
+                group products by type across the catalog and warehouse.
+              </p>
+              <select
                 value={form.product_form}
                 onChange={(e) =>
                   setForm({ ...form, product_form: e.target.value })
                 }
-                placeholder="Tablet, Cream, Syrup..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-              />
+              >
+                <option value="">Select form</option>
+                {form.product_form && !formOptions.includes(form.product_form) && (
+                  <option value={form.product_form}>{form.product_form} (current)</option>
+                )}
+                {formOptions.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              {inventoryInfo?.inventory_code && (
+                <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+                  <span className="text-sm text-gray-600">Warehouse inventory code:</span>
+                  <span className="font-mono font-semibold text-base text-blue-800">
+                    {inventoryInfo.inventory_code}
+                  </span>
+                  <span className="text-xs text-gray-400">(assigned automatically, permanent once set)</span>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -636,6 +636,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productViewStaff.Use(middleware.StaffOnly)
 	productViewStaff.Use(middleware.RequirePermission(db, "products_view", rdb))
 	productViewStaff.HandleFunc("/products", products.ListProductsHandler(db, false, rdb)).Methods("GET")
+	productViewStaff.HandleFunc("/products/forms", products.AdminListProductFormsHandler(db)).Methods("GET")
+	productViewStaff.HandleFunc("/products/{id}/inventory-code", products.GetProductInventoryCodeHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
 
 	// staff routes — product management (edit)
@@ -665,6 +667,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/tags", tags.CreateHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/tags/{id}", tags.UpdateHandler(db, rdb)).Methods("PUT")
 	productStaff.HandleFunc("/units", units.CreateHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/products/forms/{name}", products.AdminRenameProductFormHandler(db, rdb)).Methods("PUT")
+	productStaff.HandleFunc("/products/forms/{name}/prefix", products.AdminChangeProductFormPrefixHandler(db, rdb)).Methods("PATCH")
 
 	// staff routes — product management (delete)
 	productDeleteStaff := protected.PathPrefix("/admin").Subrouter()
@@ -679,6 +683,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productDeleteStaff.HandleFunc("/categories/{id}", categories.DeleteHandler(db, rdb)).Methods("DELETE")
 	productDeleteStaff.HandleFunc("/tags/{id}", tags.DeleteHandler(db, rdb)).Methods("DELETE")
 	productDeleteStaff.HandleFunc("/units/{id}", units.DeleteHandler(db, rdb)).Methods("DELETE")
+	productDeleteStaff.HandleFunc("/products/forms/{name}", products.AdminClearProductFormHandler(db, rdb)).Methods("DELETE")
 
 	// staff routes — graphics design files (split from product management
 	// so it can be granted to employees independently)

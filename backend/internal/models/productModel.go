@@ -494,6 +494,12 @@ func GetDistinctProductForms(ctx context.Context, db *pgxpool.Pool) ([]string, e
 	return forms, nil
 }
 
+// ProductFormCount, ListProductFormsWithCounts, RenameProductForm and
+// ClearProductForm now live in productFormModel.go, backed by the
+// product_forms table (migration 131) instead of grouping the free-text
+// product_form column directly — the table lets a rename stay stable by id
+// instead of re-matching text.
+
 func titleCase(s string) string {
 	words := strings.Fields(s)
 	for i, w := range words {
@@ -586,7 +592,19 @@ func productWhereClause(conditions []string) string {
 	return where
 }
 
-func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, args []any, argIdx, limit, offset int, fuzzy bool, search string) ([]Product, int, error) {
+// productSortColumns maps the sortBy query param to the SQL used to order
+// by it — validated against this map (rather than interpolating user input
+// directly) so it can never be used for SQL injection. "inventory_code"
+// sorts NULLs (no code yet) last, then by prefix, then numerically by the
+// number after the dash — a plain text sort would put "T-10" before "T-2".
+var productSortColumns = map[string]string{
+	"name":           "name",
+	"product_id":     "product_id",
+	"price":          "price",
+	"inventory_code": "(inventory_code IS NULL), SPLIT_PART(inventory_code, '-', 1), NULLIF(SPLIT_PART(inventory_code, '-', 2), '')::int",
+}
+
+func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, args []any, argIdx, limit, offset int, fuzzy bool, search, sortBy, sortDir string) ([]Product, int, error) {
 	where := productWhereClause(conditions)
 
 	var total int
@@ -595,7 +613,15 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 		return nil, 0, err
 	}
 
-	orderBy := " ORDER BY name ASC"
+	col, ok := productSortColumns[sortBy]
+	if !ok {
+		col = "name"
+	}
+	dir := "ASC"
+	if sortDir == "desc" {
+		dir = "DESC"
+	}
+	orderBy := fmt.Sprintf(" ORDER BY %s %s", col, dir)
 	if fuzzy && search != "" {
 		orderBy = fmt.Sprintf(" ORDER BY GREATEST(word_similarity($%d, name), word_similarity($%d, key_ingredients)) DESC", argIdx, argIdx)
 		// word_similarity (not similarity) matches a short search term against
@@ -603,7 +629,9 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 		// dilutes short terms against e.g. "LAXPOSE SYP 100 ML" and misses
 		// otherwise-good typo matches. Needs its own copy of the search term
 		// as a trailing arg, distinct from the positional args already
-		// consumed by the WHERE clause.
+		// consumed by the WHERE clause. A fuzzy fallback match ignores the
+		// caller's requested sort — it's already a best-effort "did you mean"
+		// result, ranked by how close the match is.
 	}
 
 	baseQuery := `
@@ -660,7 +688,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 }
 
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
-	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, "", limit, offset, nameOnly, false)
+	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, "", limit, offset, nameOnly, false, "", "")
 	return products, total, err
 }
 
@@ -675,9 +703,9 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 // name+key_ingredients — used when the search term came from clicking a
 // "did you mean" salt suggestion, so the result list is the products that
 // actually contain that salt rather than a looser text match.
-func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag, imageCount string, limit, offset int, nameOnly, saltOnly bool) ([]Product, int, []string, error) {
+func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag, imageCount string, limit, offset int, nameOnly, saltOnly bool, sortBy, sortDir string) ([]Product, int, []string, error) {
 	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, imageCount, nameOnly, saltOnly, false)
-	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search)
+	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search, sortBy, sortDir)
 	if err != nil || search == "" {
 		return products, total, nil, err
 	}
@@ -689,7 +717,7 @@ func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeO
 	// Literal search found nothing — fall back to a pg_trgm fuzzy match in
 	// case the term was misspelled (e.g. a salt/composition name).
 	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, imageCount, nameOnly, saltOnly, true)
-	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search)
+	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search, sortBy, sortDir)
 	if err != nil || len(fuzzyProducts) == 0 {
 		return fuzzyProducts, fuzzyTotal, nil, err
 	}

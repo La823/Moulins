@@ -261,6 +261,15 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		models.LogAction(r.Context(), db, actorID(r), "product.created", "product", &id, fmt.Sprintf("Created product %q", req.Name))
 		syncVectorAsync(db, id)
 
+		if req.ProductForm != nil {
+			// Best-effort: links the new product to its product_forms row and
+			// assigns its warehouse inventory code. Never fails the create —
+			// the product itself is already saved successfully above.
+			if err := models.AssignProductForm(r.Context(), db, id, *req.ProductForm); err != nil {
+				log.Printf("assign product form error: %v", err)
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]uuid.UUID{"id": id})
@@ -274,6 +283,11 @@ type productListResult struct {
 	Limit      int              `json:"limit"`
 	TotalPages int              `json:"total_pages"`
 	Suggestions []string        `json:"suggestions,omitempty"`
+	// InventoryCodes is only populated for the admin (activeOnly=false)
+	// listing — keyed by product id (as a string, since JSON object keys
+	// must be strings) — so the public storefront/mobile response shape is
+	// completely unaffected.
+	InventoryCodes map[string]string `json:"inventory_codes,omitempty"`
 }
 
 // GET /products and GET /admin/products
@@ -302,6 +316,133 @@ func ProductFormsHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 	}
 }
 
+// invalidateProductFormCaches drops both the public /products/forms cache
+// (normalized labels) and the storefront product-list cache — a form rename
+// or clear changes what those endpoints return, and the list cache key is
+// keyed by filter params so a blanket flush is simplest.
+func invalidateProductFormCaches(ctx context.Context, rdb *cache.Client) {
+	rdb.Del(ctx, "products:forms")
+}
+
+// GET /admin/products/forms — every distinct product_form value in use
+// (exact string, not normalized), with a per-value product count, for the
+// "Product Forms" manager in the admin panel.
+func AdminListProductFormsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		forms, err := models.ListProductFormsWithCounts(r.Context(), db)
+		if err != nil {
+			log.Printf("list product forms with counts error: %v", err)
+			http.Error(w, "could not fetch product forms", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(forms)
+	}
+}
+
+// PUT /admin/products/forms/{name} — body {"name": "New Label"}
+// Renames a product_form value on every product that has it.
+func AdminRenameProductFormHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		oldName := mux.Vars(r)["name"]
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		newName := strings.TrimSpace(req.Name)
+		if newName == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+
+		count, err := models.RenameProductForm(r.Context(), db, oldName, newName)
+		if err != nil {
+			log.Printf("rename product form error: %v", err)
+			http.Error(w, "could not rename product form", http.StatusInternalServerError)
+			return
+		}
+
+		invalidateProductFormCaches(r.Context(), rdb)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"status": "renamed", "products_updated": count})
+	}
+}
+
+// PATCH /admin/products/forms/{name}/prefix — body {"prefix": "TB"}
+// Changes the prefix used for this form's future inventory codes. Refused
+// if the form already has codes assigned (see RenameProductFormPrefix).
+func AdminChangeProductFormPrefixHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := mux.Vars(r)["name"]
+		var req struct {
+			Prefix string `json:"prefix"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.RenameProductFormPrefix(r.Context(), db, name, req.Prefix); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		invalidateProductFormCaches(r.Context(), rdb)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+	}
+}
+
+// DELETE /admin/products/forms/{name} — clears this form (sets product_form
+// to NULL) on every product that has it.
+func AdminClearProductFormHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := mux.Vars(r)["name"]
+
+		count, err := models.ClearProductForm(r.Context(), db, name)
+		if err != nil {
+			log.Printf("clear product form error: %v", err)
+			http.Error(w, "could not clear product form", http.StatusInternalServerError)
+			return
+		}
+
+		invalidateProductFormCaches(r.Context(), rdb)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"status": "cleared", "products_updated": count})
+	}
+}
+
+// GET /admin/products/{id}/inventory-code — the warehouse inventory code
+// assigned to this product (e.g. "T-14"), plus its form name/prefix. Kept as
+// its own small endpoint rather than added to the main product GET/list
+// response, so the widely-used Product JSON shape (storefront, mobile app,
+// etc.) doesn't change.
+func GetProductInventoryCodeHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid product id", http.StatusBadRequest)
+			return
+		}
+
+		info, err := models.GetProductInventoryInfo(r.Context(), db, id)
+		if err != nil {
+			log.Printf("get product inventory info error: %v", err)
+			http.Error(w, "could not fetch inventory code", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(info)
+	}
+}
+
 func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client) http.HandlerFunc {
 	var c *cache.Client
 	if len(rdb) > 0 {
@@ -325,9 +466,11 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		imageCount := r.URL.Query().Get("image_count") // "", "1", "2", "3plus"
 		nameOnly := r.URL.Query().Get("name_only") == "true"
 		saltOnly := r.URL.Query().Get("salt_only") == "true"
+		sortBy := r.URL.Query().Get("sort_by")
+		sortDir := r.URL.Query().Get("sort_dir")
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:no=%v:so=%v", activeOnly, page, limit, search, category, form, tag, imageCount, nameOnly, saltOnly)
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:no=%v:so=%v:sb=%s:sd=%s", activeOnly, page, limit, search, category, form, tag, imageCount, nameOnly, saltOnly, sortBy, sortDir)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -335,7 +478,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, form, tag, imageCount, limit, offset, nameOnly, saltOnly)
+		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, form, tag, imageCount, limit, offset, nameOnly, saltOnly, sortBy, sortDir)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)
@@ -356,6 +499,22 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			Limit:      limit,
 			TotalPages: totalPages,
 			Suggestions: suggestions,
+		}
+
+		if !activeOnly {
+			ids := make([]uuid.UUID, len(products))
+			for i, p := range products {
+				ids[i] = p.ID
+			}
+			codes, err := models.GetInventoryCodesForProducts(r.Context(), db, ids)
+			if err != nil {
+				log.Printf("get inventory codes for product list error: %v", err)
+			} else {
+				result.InventoryCodes = make(map[string]string, len(codes))
+				for id, code := range codes {
+					result.InventoryCodes[id.String()] = code
+				}
+			}
 		}
 
 		c.SetJSON(r.Context(), cacheKey, result, 5*time.Minute)
@@ -434,6 +593,13 @@ func UpdateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		invalidateProduct(rdb, r, id)
 		models.LogAction(r.Context(), db, actorID(r), "product.updated", "product", &id, "Updated a product")
 		syncVectorAsync(db, id)
+
+		if req.ProductForm != nil {
+			// Best-effort, same as on create — never fails the update.
+			if err := models.AssignProductForm(r.Context(), db, id, *req.ProductForm); err != nil {
+				log.Printf("assign product form error: %v", err)
+			}
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})

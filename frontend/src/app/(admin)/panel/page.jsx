@@ -51,6 +51,20 @@ export default function AdminDashboard() {
   const [tagManagerError, setTagManagerError] = useState("");
   const [confirmDeleteTagId, setConfirmDeleteTagId] = useState(null);
 
+  // Product Forms manager — unlike categories/tags, product_form is a free-text
+  // column on products rather than its own lookup table, so there's no "Add":
+  // a form only exists here because at least one product already has it. Rename
+  // bulk-updates every product with the old value; Delete clears it (sets NULL)
+  // on every product that has it.
+  const [productForms, setProductForms] = useState([]); // [{name, count}]
+  const [formSearch, setFormSearch] = useState("");
+  const [editingForm, setEditingForm] = useState(null);
+  const [editingFormName, setEditingFormName] = useState("");
+  const [formManagerError, setFormManagerError] = useState("");
+  const [confirmDeleteFormName, setConfirmDeleteFormName] = useState(null);
+  const [editingPrefixFor, setEditingPrefixFor] = useState(null);
+  const [editingPrefixValue, setEditingPrefixValue] = useState("");
+
   const fetchCategories = async () => {
     try {
       const data = await apiFetch("/products/categories");
@@ -135,6 +149,84 @@ export default function AdminDashboard() {
       setTagManagerError(err.message);
     }
   };
+
+  const fetchProductForms = async () => {
+    try {
+      const data = await apiFetch("/admin/products/forms");
+      setProductForms(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch("/admin/products/forms")
+      .then((data) => setProductForms(Array.isArray(data) ? data : []))
+      .catch(console.error);
+  }, [isAdmin]);
+
+  const startEditForm = (name) => {
+    setEditingForm(name);
+    setEditingFormName(name);
+    setFormManagerError("");
+  };
+
+  const handleRenameForm = async (oldName) => {
+    const name = editingFormName.trim();
+    if (!name) return;
+    setFormManagerError("");
+    try {
+      await apiFetch(`/admin/products/forms/${encodeURIComponent(oldName)}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      setEditingForm(null);
+      fetchProductForms();
+    } catch (err) {
+      setFormManagerError(err.message);
+    }
+  };
+
+  const handleDeleteForm = async (name) => {
+    if (confirmDeleteFormName !== name) {
+      setConfirmDeleteFormName(name);
+      return;
+    }
+    setConfirmDeleteFormName(null);
+    try {
+      await apiFetch(`/admin/products/forms/${encodeURIComponent(name)}`, { method: "DELETE" });
+      fetchProductForms();
+    } catch (err) {
+      setFormManagerError(err.message);
+    }
+  };
+
+  const startEditPrefix = (f) => {
+    setEditingPrefixFor(f.name);
+    setEditingPrefixValue(f.prefix);
+    setFormManagerError("");
+  };
+
+  const handleSavePrefix = async (name) => {
+    const prefix = editingPrefixValue.trim();
+    if (!prefix) return;
+    setFormManagerError("");
+    try {
+      await apiFetch(`/admin/products/forms/${encodeURIComponent(name)}/prefix`, {
+        method: "PATCH",
+        body: JSON.stringify({ prefix }),
+      });
+      setEditingPrefixFor(null);
+      fetchProductForms();
+    } catch (err) {
+      setFormManagerError(err.message);
+    }
+  };
+
+  const filteredProductForms = productForms.filter((f) =>
+    f.name.toLowerCase().includes(formSearch.trim().toLowerCase())
+  );
 
   const handleAddCategory = async (e) => {
     e.preventDefault();
@@ -504,6 +596,150 @@ export default function AdminDashboard() {
                           }`}
                         >
                           {confirmDeleteTagId === t.id ? "Confirm delete?" : "Delete"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Product Forms Manager - admin only */}
+      {isAdmin && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8 w-full">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Product Forms</h3>
+
+          <input
+            type="text"
+            value={formSearch}
+            onChange={(e) => setFormSearch(e.target.value)}
+            placeholder="Filter by type…"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 mb-3"
+          />
+
+          {formManagerError && (
+            <p className="text-sm text-red-600 mb-2">{formManagerError}</p>
+          )}
+
+          {filteredProductForms.length === 0 ? (
+            <p className="text-sm text-gray-400">
+              {productForms.length === 0 ? "No product forms yet" : "No forms match that filter"}
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {filteredProductForms.map((f) => (
+                <div
+                  key={f.name}
+                  className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 rounded-lg"
+                >
+                  {editingForm === f.name ? (
+                    <input
+                      type="text"
+                      value={editingFormName}
+                      onChange={(e) => setEditingFormName(e.target.value)}
+                      autoFocus
+                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+                    />
+                  ) : (
+                    <span className="flex items-baseline gap-2 min-w-0">
+                      <Link
+                        href={`/panel/products?form=${encodeURIComponent(f.name)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-gray-800 hover:text-gray-900 hover:underline truncate"
+                      >
+                        {f.name}
+                      </Link>
+                      {editingPrefixFor === f.name ? (
+                        <span className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={editingPrefixValue}
+                            onChange={(e) => setEditingPrefixValue(e.target.value.toUpperCase())}
+                            autoFocus
+                            className="w-16 px-1.5 py-0.5 border border-gray-300 rounded text-xs font-mono text-gray-900"
+                          />
+                          <button
+                            onClick={() => handleSavePrefix(f.name)}
+                            className="text-xs font-medium text-gray-900 hover:underline"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingPrefixFor(null)}
+                            className="text-xs text-gray-500 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => startEditPrefix(f)}
+                          title="Change the prefix used for this form's future inventory codes"
+                          className="text-xs text-gray-400 hover:text-gray-700 flex-shrink-0 font-mono underline decoration-dotted"
+                        >
+                          {f.prefix}-N
+                        </button>
+                      )}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {editingForm !== f.name && (
+                      <Link
+                        href={`/panel/products?form=${encodeURIComponent(f.name)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-gray-600 hover:text-gray-900 whitespace-nowrap mr-6"
+                      >
+                        {f.count} product{f.count === 1 ? "" : "s"}
+                      </Link>
+                    )}
+                    {editingForm === f.name ? (
+                      <>
+                        <button
+                          onClick={() => handleRenameForm(f.name)}
+                          className="text-xs font-medium text-gray-900 hover:underline"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingForm(null)}
+                          className="text-xs text-gray-500 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => {
+                            setConfirmDeleteFormName(null);
+                            startEditForm(f.name);
+                          }}
+                          className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                        >
+                          Rename
+                        </button>
+                        {confirmDeleteFormName === f.name && (
+                          <button
+                            onClick={() => setConfirmDeleteFormName(null)}
+                            className="text-xs text-gray-500 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteForm(f.name)}
+                          className={`text-xs font-medium ${
+                            confirmDeleteFormName === f.name
+                              ? "text-red-700 underline"
+                              : "text-red-500 hover:text-red-700"
+                          }`}
+                        >
+                          {confirmDeleteFormName === f.name ? "Confirm delete?" : "Delete"}
                         </button>
                       </>
                     )}
