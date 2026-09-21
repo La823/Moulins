@@ -316,6 +316,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterStaff.HandleFunc("/marg-products", margmaster.ListProductsHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-parties", margmaster.ListPartiesHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/status", margsyncHandlers.StatusHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-sync/runs/{id}", margsyncHandlers.RunHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone
 	// editor's Python persistence layer; see backend/warehouse_layout_editor)
@@ -765,6 +766,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	notificationsStaff.Use(middleware.StaffOnly)
 	notificationsStaff.Use(middleware.RequirePermission(db, "notifications_view", rdb))
 	notificationsStaff.HandleFunc("/notifications", notifications.ListHandler(db)).Methods("GET")
+	notificationsStaff.HandleFunc("/notifications/{id}/recipients", notifications.RecipientsHandler(db)).Methods("GET")
 
 	notificationsEditStaff := protected.PathPrefix("/admin").Subrouter()
 	notificationsEditStaff.Use(middleware.StaffOnly)

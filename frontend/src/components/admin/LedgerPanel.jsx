@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function LedgerPanel({ partnerId }) {
   const [ledger, setLedger] = useState(null);
@@ -73,7 +74,7 @@ export default function LedgerPanel({ partnerId }) {
       {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
       {loading ? (
-        <p className="text-xs text-gray-400">Loading...</p>
+        <Loader size="sm" />
       ) : !ledger ? (
         <p className="text-xs text-gray-400 italic">No ledger uploaded yet</p>
       ) : (

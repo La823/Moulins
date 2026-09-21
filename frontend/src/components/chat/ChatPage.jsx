@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useChatSocket } from "@/lib/chatSocket";
 import { useAuth } from "@/context/AuthContext";
+import Loader from "@/components/Loader";
 
 function displayName(u) {
   return u.username || u.phone_number || "Unknown";
@@ -225,7 +226,7 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
 
           <div className="flex-1 min-h-0 overflow-y-auto">
             {loadingConversations ? (
-              <p className="text-sm text-gray-400 text-center py-8">Loading...</p>
+              <div className="py-8"><Loader size="sm" /></div>
             ) : conversations.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">No conversations yet</p>
             ) : filteredConversations.length === 0 ? (
@@ -284,7 +285,7 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
 
               <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
                 {loadingHistory ? (
-                  <p className="text-xs text-gray-400 text-center">Loading...</p>
+                  <Loader size="sm" />
                 ) : messages.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center">No messages yet — say hello</p>
                 ) : (

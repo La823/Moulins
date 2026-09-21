@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function GraphicsDesignProduct() {
   const { productId } = useParams();
@@ -87,7 +88,7 @@ export default function GraphicsDesignProduct() {
       </Link>
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading...</p>
+        <Loader />
       ) : (
         <>
           <div className="flex items-center justify-between mb-6">

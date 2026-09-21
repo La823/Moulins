@@ -112,13 +112,16 @@ func CreateExclusions(ctx context.Context, db *pgxpool.Pool, notificationID uuid
 	return err
 }
 
-// GetEligibleUserIDs returns partner user IDs excluding the given set —
-// plus doctor-role users too when includeDoctors is set, for a broadcast
-// that's meant to reach both.
+// GetEligibleUserIDs returns partner and employee user IDs excluding the
+// given set — plus doctor-role users too when includeDoctors is set, for a
+// broadcast that's meant to reach all of them. Employees are always
+// included (unlike doctors, which stay opt-in) since staff already use the
+// same mobile app/login and device-token registration as partners — a
+// broadcast reaching them isn't an edge case, it's the expected default.
 func GetEligibleUserIDs(ctx context.Context, db *pgxpool.Pool, excludedIDs []uuid.UUID, includeDoctors bool) ([]uuid.UUID, error) {
 	rows, err := db.Query(ctx, `
 		SELECT id FROM users
-		WHERE (role = 'partner' OR ($2 AND role = 'doctor')) AND NOT (id = ANY($1::uuid[]))
+		WHERE (role = 'partner' OR role = 'employee' OR ($2 AND role = 'doctor')) AND NOT (id = ANY($1::uuid[]))
 	`, uuidStrings(excludedIDs), includeDoctors)
 	if err != nil {
 		return nil, err
@@ -216,6 +219,47 @@ func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, limit, offset in
 		list = append(list, n)
 	}
 	return list, total, rows.Err()
+}
+
+// NotificationRecipientDetail is one recipient of a sent notification, for
+// the admin "who received this" view — distinct from NotificationInboxItem,
+// which is the same join shaped for the recipient's own mobile inbox.
+type NotificationRecipientDetail struct {
+	UserID      uuid.UUID  `json:"user_id"`
+	Username    string     `json:"username"`
+	PhoneNumber string     `json:"phone_number"`
+	Role        string     `json:"role"`
+	IsRead      bool       `json:"is_read"`
+	ReadAt      *time.Time `json:"read_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// GetNotificationRecipients returns every user a notification was actually
+// recorded as sent to (one row per notification_recipients entry), for the
+// admin notification history page's "sent to whom" detail.
+func GetNotificationRecipients(ctx context.Context, db *pgxpool.Pool, notificationID uuid.UUID) ([]NotificationRecipientDetail, error) {
+	rows, err := db.Query(ctx, `
+		SELECT u.id, COALESCE(u.username, ''), COALESCE(u.phone_number, ''), COALESCE(u.role, ''),
+			nr.is_read, nr.read_at, nr.created_at
+		FROM notification_recipients nr
+		JOIN users u ON u.id = nr.user_id
+		WHERE nr.notification_id = $1
+		ORDER BY u.username
+	`, notificationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	recipients := []NotificationRecipientDetail{}
+	for rows.Next() {
+		var r NotificationRecipientDetail
+		if err := rows.Scan(&r.UserID, &r.Username, &r.PhoneNumber, &r.Role, &r.IsRead, &r.ReadAt, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		recipients = append(recipients, r)
+	}
+	return recipients, rows.Err()
 }
 
 func GetNotificationByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Notification, error) {

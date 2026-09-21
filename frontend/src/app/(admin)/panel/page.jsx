@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 // Maps each category name (as stored in the DB) to its storefront landing page.
 // Categories without a landing page yet are shown as plain text.
@@ -34,6 +35,11 @@ export default function AdminDashboard() {
   const [recentProducts, setRecentProducts] = useState([]);
   const [recentUsers, setRecentUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [pendingOrders, setPendingOrders] = useState([]);
+  const [pendingOrdersTotal, setPendingOrdersTotal] = useState(0);
+  const [confirmedOrders, setConfirmedOrders] = useState([]);
+  const [confirmedOrdersTotal, setConfirmedOrdersTotal] = useState(0);
 
   const [categories, setCategories] = useState([]); // [{id, name}]
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -324,7 +330,25 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [isAdmin]);
 
-  if (loading) return <p className="text-gray-500">Loading dashboard...</p>;
+  // Kept separate from the main dashboard fetch above so a missing
+  // orders_view permission (403) never blocks the rest of the dashboard
+  // from loading — each widget just shows nothing if its fetch fails.
+  useEffect(() => {
+    apiFetch("/admin/orders?status=pending&limit=5&sort=newest")
+      .then((data) => {
+        setPendingOrders(data.orders || []);
+        setPendingOrdersTotal(data.total || 0);
+      })
+      .catch(() => {});
+    apiFetch("/admin/orders?status=confirmed&limit=5&sort=newest")
+      .then((data) => {
+        setConfirmedOrders(data.orders || []);
+        setConfirmedOrdersTotal(data.total || 0);
+      })
+      .catch(() => {});
+  }, []);
+
+  if (loading) return <Loader label="Loading dashboard..." />;
 
   return (
     <>
@@ -751,6 +775,25 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Orders — pending and confirmed shown separately so each can be
+          scanned at a glance without a status filter click. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <OrderListCard
+          title="Pending Orders"
+          orders={pendingOrders}
+          total={pendingOrdersTotal}
+          emptyText="No pending orders"
+          badgeClass="bg-yellow-50 text-yellow-700"
+        />
+        <OrderListCard
+          title="Confirmed Orders"
+          orders={confirmedOrders}
+          total={confirmedOrdersTotal}
+          emptyText="No confirmed orders"
+          badgeClass="bg-blue-50 text-blue-700"
+        />
+      </div>
+
       {/* Recent Activity */}
       <div
         className={`grid grid-cols-1 ${isAdmin ? "lg:grid-cols-2" : ""} gap-6`}
@@ -867,6 +910,52 @@ export default function AdminDashboard() {
         )}
       </div>
     </>
+  );
+}
+
+function OrderListCard({ title, orders, total, emptyText, badgeClass }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-700">
+          {title}
+          {total > 0 && <span className="ml-1.5 text-gray-400 font-normal">({total})</span>}
+        </h3>
+        <Link href={`/panel/orders?status=${title === "Pending Orders" ? "pending" : "confirmed"}`} className="text-xs text-blue-600 hover:underline">
+          View all
+        </Link>
+      </div>
+      {orders.length === 0 ? (
+        <p className="text-sm text-gray-400">{emptyText}</p>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((o) => (
+            <Link
+              key={o.id}
+              href={`/panel/orders/${o.id}`}
+              className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1.5 -mx-1.5 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {o.user_name || "No name"}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {o.item_count} item{o.item_count === 1 ? "" : "s"} &middot;{" "}
+                  {new Date(o.created_at).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${badgeClass}`}>
+                {o.status}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function AssignmentsPage() {
   const [assignments, setAssignments] = useState([]);
@@ -138,7 +139,7 @@ export default function AssignmentsPage() {
         </div>
 
         {loading ? (
-          <p className="text-xs text-gray-400">Loading...</p>
+          <Loader size="sm" />
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">No assignments found</p>
         ) : (

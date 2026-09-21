@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function NotificationsPage() {
   const [items, setItems] = useState([]);
@@ -42,7 +43,7 @@ export default function NotificationsPage() {
       <h1 className="text-lg font-semibold text-gray-900 mb-6">Notifications</h1>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : items.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
           <p className="text-sm text-gray-400">No notifications yet</p>

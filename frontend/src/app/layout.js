@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { FavoritesProvider } from "@/context/FavoritesContext";
+import RouteLoader from "@/components/RouteLoader";
 
 const albertSans = Albert_Sans({
   variable: "--font-albert-sans",
@@ -106,6 +107,7 @@ export default function RootLayout({ children }) {
       <body
         className={`${albertSans.variable} ${erode.variable} antialiased`}
       >
+        <RouteLoader />
         <AuthProvider>
           <FavoritesProvider>
             <CartProvider>{children}</CartProvider>

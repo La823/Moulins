@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
@@ -145,6 +145,12 @@ const ICONS = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.75h.007v.008H12V6.75zm0 5.25h.007v.008H12V12zm0 5.25h.007v.008H12v-.008z" />
     </svg>
   ),
+  warehouse: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 21V9.75L12 3l9.75 6.75V21H2.25z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 21v-6h4.5v6M13.5 12h4.5v4.5h-4.5z" />
+    </svg>
+  ),
   chevron: (
     <svg className="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
@@ -163,7 +169,6 @@ const NAV_ITEMS = [
     icon: ICONS.box,
     group: [
       { label: "Products", href: "/panel/products", permission: "products_view" },
-      { label: "Manufacturers", href: "/panel/manufacturers", permission: "manufacturers_view" },
       { label: "Marg Products", href: "/panel/marg-products", permission: "marg_master_view" },
     ],
   },
@@ -192,7 +197,6 @@ const NAV_ITEMS = [
       { label: "Email Templates", href: "/panel/email-templates", permission: "email_templates_view" },
     ],
   },
-  { label: "Settings", href: "/panel/settings", permission: "settings_view", icon: ICONS.settings },
   {
     label: "Purchase Orders",
     icon: ICONS.purchaseOrders,
@@ -201,26 +205,68 @@ const NAV_ITEMS = [
       { label: "PO Master List", href: "/panel/purchase-order-master", permission: "purchase_orders_view" },
       { label: "Product Specifications", href: "/panel/product-specifications", permission: "purchase_orders_view" },
       { label: "Set Product Specs", href: "/panel/po-specifications", permission: "purchase_orders_view" },
+      { label: "Manufacturers", href: "/panel/manufacturers", permission: "manufacturers_view" },
     ],
   },
   {
     label: "Others",
     icon: ICONS.others,
     group: [
-      { label: "Messages", href: "/panel/chat" },
-      { label: "Learning", href: "/panel/learning", permission: "learning_view" },
       { label: "Assignments", href: "/panel/assignments", permission: "assignments_view" },
       { label: "Attendance", href: "/panel/attendance", permission: "attendance_view" },
       { label: "My Attendance", href: "/panel/my-attendance", employeeOnly: true },
       { label: "Meetings", href: "/panel/meetings", permission: "meetings_view" },
       { label: "Requests", href: "/panel/requests", permission: "requests_view" },
-      { label: "Notifications", href: "/panel/notifications", permission: "notifications_view" },
-      { label: "Broadcast Lists", href: "/panel/broadcast-lists", permission: "broadcast_lists_view" },
       { label: "Careers", href: "/panel/careers", permission: "careers_view" },
       { label: "Product Assistant", href: "/panel/product-assistant", adminOnly: true },
+    ],
+  },
+];
+
+// Links shown in the top navbar instead of the side rail — icon-only, with
+// the label revealed as a tooltip on hover. Add more standalone top-level
+// links here over time without crowding the sidebar.
+const TOP_NAV_ITEMS = [
+  { label: "Messages", href: "/panel/chat", icon: ICONS.messages },
+  { label: "Learning", href: "/panel/learning", permission: "learning_view", icon: ICONS.learning },
+  { label: "Settings", href: "/panel/settings", permission: "settings_view", icon: ICONS.settings },
+];
+
+// Icon-only top navbar buttons that open a dropdown menu on click instead of
+// linking straight through.
+const TOP_DROPDOWNS = [
+  {
+    label: "Broadcast",
+    icon: ICONS.broadcast,
+    openOnHover: true,
+    items: [
+      { label: "Create New Broadcast", href: "/panel/notifications", permission: "notifications_view" },
+      { label: "Broadcast Lists", href: "/panel/broadcast-lists", permission: "broadcast_lists_view" },
+      { label: "Recent Notifications", href: "/panel/notification-history", permission: "notifications_view" },
+    ],
+  },
+  {
+    label: "Warehouse",
+    icon: ICONS.warehouse,
+    // Opens on hover (in addition to click, like every other dropdown) —
+    // a quick-glance menu people reach for often enough to skip the click.
+    openOnHover: true,
+    items: [
       { label: "Warehouse Layout", href: "/warehouse", permission: "warehouse_view", newTab: true },
       { label: "Warehouse Inventory", href: "/panel/warehouse-inventory", permission: "warehouse_view" },
       { label: "Warehouse View", href: "/warehouse/view", permission: "warehouse_view", newTab: true },
+    ],
+  },
+  {
+    label: "Purchase Orders",
+    icon: ICONS.purchaseOrders,
+    openOnHover: true,
+    items: [
+      { label: "Purchase Orders", href: "/panel/purchase-orders", permission: "purchase_orders_view" },
+      { label: "PO Master List", href: "/panel/purchase-order-master", permission: "purchase_orders_view" },
+      { label: "Product Specifications", href: "/panel/product-specifications", permission: "purchase_orders_view" },
+      { label: "Set Product Specs", href: "/panel/po-specifications", permission: "purchase_orders_view" },
+      { label: "Manufacturers", href: "/panel/manufacturers", permission: "manufacturers_view" },
     ],
   },
 ];
@@ -251,6 +297,26 @@ export default function AdminLayout({ children }) {
     item.group ? { ...item, group: item.group.filter(canSee) } : item
   ).filter((item) => (item.group ? item.group.length > 0 : canSee(item)));
 
+  const visibleTopNavItems = TOP_NAV_ITEMS.filter(canSee);
+
+  const visibleTopDropdowns = TOP_DROPDOWNS.map((d) => ({ ...d, items: d.items.filter(canSee) })).filter(
+    (d) => d.items.length > 0
+  );
+
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openDropdown]);
+
   const groupIsActive = (item) => item.group.some((child) => isActive(child.href));
 
   const [openGroups, setOpenGroups] = useState(() => {
@@ -270,24 +336,31 @@ export default function AdminLayout({ children }) {
   return (
     <AuthGuard allowedRoles={["admin", "employee"]}>
       <div className="min-h-screen bg-gray-50 flex">
-        {/* Sidebar */}
-        <aside className="w-60 bg-gray-900 text-white flex flex-col fixed inset-y-0 left-0 z-30">
+        {/* Sidebar — collapsed to an icon rail by default, expands on hover.
+            Fixed + overlays content (main content's margin stays at the
+            collapsed width) so hovering never reflows the page. */}
+        <aside className="group w-16 hover:w-60 bg-gray-900 text-white flex flex-col fixed inset-y-0 left-0 z-30 overflow-hidden transition-all duration-200 ease-in-out hover:shadow-2xl">
           <div className="px-5 py-5 border-b border-gray-800">
             <Link href="/panel" className="flex items-center gap-2">
-              <Image
-                src="/Moulins Logo High Res - V2.png"
-                alt="Moulins"
-                width={100}
-                height={32}
-                className="h-7 w-auto brightness-0 invert"
-              />
-              <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">
-                {roleLabel}
+              <div className="w-7 h-7 flex-shrink-0 rounded-md bg-white/10 flex items-center justify-center font-bold text-sm group-hover:hidden">
+                M
+              </div>
+              <span className="hidden group-hover:flex items-center gap-2 whitespace-nowrap">
+                <Image
+                  src="/Moulins Logo High Res - V2.png"
+                  alt="Moulins"
+                  width={100}
+                  height={32}
+                  className="h-7 w-auto brightness-0 invert"
+                />
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">
+                  {roleLabel}
+                </span>
               </span>
             </Link>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
             {visibleNavItems.map((item) => {
               if (item.group) {
                 const open = !!openGroups[item.label];
@@ -302,12 +375,16 @@ export default function AdminLayout({ children }) {
                           : "text-gray-400 hover:text-white hover:bg-white/5"
                       }`}
                     >
-                      {item.icon}
-                      <span className="flex-1 text-left">{item.label}</span>
-                      <span className={open ? "rotate-90" : ""}>{ICONS.chevron}</span>
+                      <span className="flex-shrink-0">{item.icon}</span>
+                      <span className="hidden group-hover:inline flex-1 text-left whitespace-nowrap">
+                        {item.label}
+                      </span>
+                      <span className={`hidden group-hover:inline ${open ? "rotate-90" : ""}`}>
+                        {ICONS.chevron}
+                      </span>
                     </button>
                     {open && (
-                      <div className="mt-1 ml-4 pl-4 border-l border-gray-800 space-y-1">
+                      <div className="hidden group-hover:block mt-1 ml-4 pl-4 border-l border-gray-800 space-y-1">
                         {item.group.map((child) => {
                           const childActive = isActive(child.href);
                           return (
@@ -315,7 +392,7 @@ export default function AdminLayout({ children }) {
                               key={child.href}
                               href={child.href}
                               {...(child.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                              className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              className={`block px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                                 childActive
                                   ? "bg-white/10 text-white"
                                   : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -342,8 +419,8 @@ export default function AdminLayout({ children }) {
                       : "text-gray-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
-                  {item.icon}
-                  {item.label}
+                  <span className="flex-shrink-0">{item.icon}</span>
+                  <span className="hidden group-hover:inline whitespace-nowrap">{item.label}</span>
                 </Link>
               );
             })}
@@ -354,12 +431,12 @@ export default function AdminLayout({ children }) {
               href="/"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
               </svg>
-              Back to Website
+              <span className="hidden group-hover:inline whitespace-nowrap">Back to Website</span>
             </Link>
-            <div className="px-3">
+            <div className="hidden group-hover:block px-3">
               <p className="text-sm text-gray-300 font-medium truncate">
                 {displayName}
               </p>
@@ -371,16 +448,88 @@ export default function AdminLayout({ children }) {
               onClick={logout}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
-              Logout
+              <span className="hidden group-hover:inline whitespace-nowrap">Logout</span>
             </button>
           </div>
         </aside>
 
-        {/* Main content */}
-        <div className="flex-1 ml-60">
+        {/* Main content — margin matches the sidebar's collapsed width;
+            the sidebar overlays content (fixed + z-30) while hover-expanded
+            rather than pushing it, so nothing reflows on hover. */}
+        <div className="flex-1 ml-16">
+          {/* Top navbar — standalone links that don't belong in the side
+              rail — icon + label always shown. */}
+          <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-end gap-3 px-6 sticky top-0 z-20">
+            {visibleTopDropdowns.map((dropdown) => {
+              const open = openDropdown === dropdown.label;
+              return (
+                <div
+                  key={dropdown.label}
+                  className="relative"
+                  ref={open ? dropdownRef : null}
+                  {...(dropdown.openOnHover
+                    ? {
+                        onMouseEnter: () => setOpenDropdown(dropdown.label),
+                        onMouseLeave: () => setOpenDropdown((prev) => (prev === dropdown.label ? null : prev)),
+                      }
+                    : {})}
+                >
+                  <button
+                    onClick={() => setOpenDropdown(open ? null : dropdown.label)}
+                    className={`flex items-center gap-2 px-2.5 h-9 rounded-lg text-sm font-medium transition-colors ${
+                      open
+                        ? "bg-gray-100 text-gray-900"
+                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                    }`}
+                  >
+                    {dropdown.icon}
+                    <span className="whitespace-nowrap">{dropdown.label}</span>
+                  </button>
+                  {open && (
+                    // pt-2 (not mt-2 on the panel below) keeps the hoverable
+                    // area contiguous from the button down through the panel
+                    // — a margin gap here would be a dead zone that fires
+                    // mouseleave before the cursor ever reaches the menu.
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2 w-56 z-30">
+                      <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1.5">
+                        {dropdown.items.map((item) => (
+                          <Link
+                            key={item.label}
+                            href={item.href}
+                            {...(item.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                            onClick={() => setOpenDropdown(null)}
+                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {visibleTopNavItems.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-2 px-2.5 h-9 rounded-lg text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-gray-100 text-gray-900"
+                      : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                  }`}
+                >
+                  {item.icon}
+                  <span className="whitespace-nowrap">{item.label}</span>
+                </Link>
+              );
+            })}
+          </header>
           <main className="p-6">{children}</main>
         </div>
       </div>

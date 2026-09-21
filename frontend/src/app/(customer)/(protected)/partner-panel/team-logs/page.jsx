@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -75,7 +76,7 @@ export default function TeamLogsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : visibleLogs.length === 0 ? (
         <p className="text-sm text-gray-400">No logs submitted for {MONTHS[month - 1]} {year}.</p>
       ) : (

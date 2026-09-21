@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function DeletionRequestsPage() {
   const [requests, setRequests] = useState([]);
@@ -66,7 +67,7 @@ export default function DeletionRequestsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : requests.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <p className="text-sm text-gray-400">No pending deletion requests</p>

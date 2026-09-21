@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -77,7 +78,7 @@ export default function RequestsPage() {
         Your Requests ({requests.length})
       </h2>
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : requests.length === 0 ? (
         <p className="text-sm text-gray-400">No requests submitted yet</p>
       ) : (

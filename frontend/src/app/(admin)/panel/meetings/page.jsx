@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const STATUS_TABS = [
   { value: "", label: "All" },
@@ -113,7 +114,7 @@ export default function AdminMeetingsPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
-          <p className="p-6 text-sm text-gray-400">Loading...</p>
+          <div className="p-6"><Loader /></div>
         ) : meetings.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">No meetings found</p>
         ) : (

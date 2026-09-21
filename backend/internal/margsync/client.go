@@ -196,6 +196,20 @@ type MargProductRow struct {
 	MargCode   string `json:"MargCode"`
 	Conversion string `json:"Conversion"`
 	Salt       string `json:"Salt"`
+	Gcode6     string `json:"Gcode6"`
+}
+
+// MargStypeRow is one row of Marg's generic sub-master/lookup table. Rows
+// are grouped by Sgcode (e.g. "AREA", "SALT", "COMMCD") and within a group,
+// Scode is the short reference code other rows point to and Name is the
+// human-readable value it resolves to. Product rows reference the "COMMCD"
+// (commodity code / HSN) group via their Gcode6 field.
+type MargStypeRow struct {
+	Rid       string `json:"rid"`
+	Sgcode    string `json:"sgcode"`
+	Scode     string `json:"scode"`
+	Name      string `json:"name"`
+	IsDeleted string `json:"Is_Deleted"`
 }
 
 // MargPartyRow mirrors one Party line exactly as Marg sends it.
@@ -228,11 +242,25 @@ type MargPartyRow struct {
 type mst2017Details struct {
 	ProN     []MargProductRow `json:"pro_N"`
 	ProU     []MargProductRow `json:"pro_U"`
+	Stype    []MargStypeRow   `json:"Stype"`
 	Party    []MargPartyRow   `json:"Party"`
 	Status   string           `json:"Status"`
 	Message  string           `json:"Message"`
 	DateTime string           `json:"DateTime"`
+	// Datastatus is Marg's own completeness flag ("Completed" on a whole
+	// response). It used to be parsed into nothing at all, which meant a
+	// short-but-"Sucess" response was applied as if it were complete —
+	// see ValidatePull.
+	Datastatus string `json:"Datastatus"`
 }
+
+// Datastatus / DateTime / row-count accessors, so callers outside this
+// package (the sync runner) can inspect a parsed pull without the struct
+// itself needing to be exported.
+func (d mst2017Details) Datastatus_() string { return d.Datastatus }
+func (d mst2017Details) DateTime_() string   { return d.DateTime }
+func (d mst2017Details) RowCount() int       { return len(d.ProN) + len(d.ProU) }
+func (d mst2017Details) PartyCount() int     { return len(d.Party) }
 
 type mst2017Response struct {
 	Details mst2017Details `json:"Details"`
@@ -279,6 +307,22 @@ func FetchLiveOrderDispatchStatusRawWithIndex(creds Credentials, salesmanID, dat
 		Type:        "S",
 		Datetime:    datetime,
 		Index:       index,
+	})
+	if err != nil {
+		return "", err
+	}
+	return unwrapResponse(respText, creds.APIKey)
+}
+
+// FetchMST2017Raw calls MargMST2017 and returns the decrypted/decompressed
+// JSON as-is, before parsing — for inspecting/capturing the actual response
+// shape. Same datetime semantics as FetchMST2017 (blank = full pull).
+func FetchMST2017Raw(creds Credentials, datetime string) (string, error) {
+	respText, err := post("MargMST2017", mst2017Request{
+		CompanyCode: creds.CompanyCode,
+		MargID:      creds.MargID,
+		Datetime:    datetime,
+		Index:       0,
 	})
 	if err != nil {
 		return "", err

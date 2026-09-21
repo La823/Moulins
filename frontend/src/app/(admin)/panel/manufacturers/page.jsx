@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function ManufacturersPage() {
   const [manufacturers, setManufacturers] = useState([]);
@@ -163,7 +164,7 @@ export default function ManufacturersPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : manufacturers.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <p className="text-sm text-gray-400">No manufacturers yet</p>

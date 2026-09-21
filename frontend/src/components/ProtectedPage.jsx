@@ -3,6 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Loader from "@/components/Loader";
 
 export default function ProtectedPage({ children }) {
   const { user, loading } = useAuth();
@@ -17,7 +18,7 @@ export default function ProtectedPage({ children }) {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-gray-200 border-t-gray-800 rounded-full animate-spin" />
+        <Loader />
       </div>
     );
   }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const STATUS_TABS = [
   { value: "", label: "All" },
@@ -101,7 +102,7 @@ export default function AdminRequestsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : requests.length === 0 ? (
         <p className="text-sm text-gray-400">No requests found</p>
       ) : (

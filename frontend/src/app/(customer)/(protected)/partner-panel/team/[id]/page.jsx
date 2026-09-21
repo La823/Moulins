@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -428,7 +429,7 @@ export default function TeamMemberPage() {
 
           {loading ? (
             <div className="h-64 flex items-center justify-center">
-              <p className="text-sm text-gray-400">Loading...</p>
+              <Loader size="sm" />
             </div>
           ) : (
             <div className="grid grid-cols-7 gap-1">

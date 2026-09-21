@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function GraphicsDesignHome() {
   return (
@@ -81,7 +82,7 @@ function GraphicsDesignHomeInner() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading...</p>
+        <Loader />
       ) : products.length === 0 ? (
         <p className="text-sm text-gray-500">No products found.</p>
       ) : (

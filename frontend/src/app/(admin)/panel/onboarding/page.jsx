@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import Loader from "@/components/Loader";
 
 export default function OnboardingAdminPage() {
   const [partners, setPartners] = useState([]);
@@ -54,7 +55,7 @@ export default function OnboardingAdminPage() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-gray-200 border-t-gray-800 rounded-full animate-spin" />
+        <Loader size="lg" />
       </div>
     );
   }

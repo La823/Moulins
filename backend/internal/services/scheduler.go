@@ -44,29 +44,26 @@ func StartScheduler(db *pgxpool.Pool) {
 // need finer granularity, and admins can always trigger it on demand via
 // POST /admin/marg-sync/trigger). A no-op if MARG_* env vars aren't set.
 func dispatchMargSync(db *pgxpool.Pool) {
-	ctx := context.Background()
-
 	creds, err := margsync.CredentialsFromEnv()
 	if err != nil {
 		return // Marg integration not configured — nothing to do
 	}
 
-	lastSyncedAt, err := margsync.GetLastSyncedAt(ctx, db)
+	// Goes through the same tracked, validated, background-run path as a
+	// manual trigger, so a scheduled sync is visible in the admin panel's
+	// run history and can't race a manual one (a single-active unique index
+	// on margmaster_sync_runs enforces that).
+	//
+	// "last" resumes from the stored cursor, falling back to a one-month
+	// window when there is none — never a full pull, which Marg rate-limits.
+	runID, err := margsync.Launch(db, creds, "scheduled", "last")
 	if err != nil {
-		log.Printf("scheduler: failed to read marg sync cursor: %v", err)
-	}
-
-	result, dateTime, err := margsync.RunSync(ctx, db, creds, lastSyncedAt)
-	if err != nil {
-		log.Printf("scheduler: failed to run marg sync: %v", err)
+		// An already-running sync is the normal case when a long run
+		// overlaps the next tick, not something to alarm about.
+		log.Printf("scheduler: marg sync not started: %v", err)
 		return
 	}
-	log.Printf("scheduler: marg sync complete — %d products, %d batches, %d parties",
-		result.ProductsUpserted, result.BatchesUpserted, result.PartiesUpserted)
-
-	if err := margsync.SetLastSyncedAt(ctx, db, dateTime); err != nil {
-		log.Printf("scheduler: failed to persist marg sync cursor: %v", err)
-	}
+	log.Printf("scheduler: marg sync started (run #%d)", runID)
 }
 
 // dispatchCartPurge removes abandoned cart_items rows older than 2 months

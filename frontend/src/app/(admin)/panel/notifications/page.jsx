@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function NotificationsPage() {
   const [form, setForm] = useState({ title: "", body: "", deep_link: "" });
@@ -184,7 +185,7 @@ export default function NotificationsPage() {
             onChange={(e) => setListId(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
           >
-            <option value="">All partners</option>
+            <option value="">All partners + employees</option>
             {lists.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name} ({l.member_count})
@@ -283,7 +284,7 @@ export default function NotificationsPage() {
         <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
           Sending to{" "}
           <strong>
-            {listId ? lists.find((l) => l.id === listId)?.name || "selected list" : "all partners"}
+            {listId ? lists.find((l) => l.id === listId)?.name || "selected list" : "all partners and employees"}
           </strong>
           {!listId && includeDoctors && (
             <>
@@ -317,7 +318,7 @@ export default function NotificationsPage() {
       {/* History */}
       <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Broadcasts</h3>
       {loadingHistory ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader size="sm" />
       ) : history.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <p className="text-sm text-gray-400">No notifications sent yet</p>

@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function AdminProducts() {
   return (
@@ -395,7 +396,7 @@ function AdminProductsInner() {
     }
   };
 
-  if (loading) return <p className="text-gray-500">Loading products...</p>;
+  if (loading) return <Loader label="Loading products..." />;
 
   return (
     <>

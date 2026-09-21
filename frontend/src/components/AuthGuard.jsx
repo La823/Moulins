@@ -3,6 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Loader from "@/components/Loader";
 
 export default function AuthGuard({ children, requiredRole, allowedRoles }) {
   const { user, loading } = useAuth();
@@ -23,11 +24,7 @@ export default function AuthGuard({ children, requiredRole, allowedRoles }) {
   }, [user, loading, router, roles]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    );
+    return <Loader fullScreen size="lg" />;
   }
 
   if (!user) return null;

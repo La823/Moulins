@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const STATUS_COLORS = {
   present: "text-green-600 bg-green-50",
@@ -84,7 +85,7 @@ export default function TeamPanelDashboard() {
         </Link>
       </div>
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : recentLogs.length === 0 ? (
         <p className="text-sm text-gray-400">No logs submitted yet this month.</p>
       ) : (

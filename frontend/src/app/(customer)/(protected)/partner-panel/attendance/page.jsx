@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -181,7 +182,7 @@ export default function TeamAttendancePage() {
 
             {loading ? (
               <div className="h-64 flex items-center justify-center">
-                <p className="text-sm text-gray-400">Loading...</p>
+                <Loader size="sm" />
               </div>
             ) : (
               <div className="grid grid-cols-7 gap-1">
@@ -232,7 +233,7 @@ export default function TeamAttendancePage() {
                 <p className="text-sm text-gray-400 text-center">Click on a day to view and mark attendance</p>
               </div>
             ) : loadingDay ? (
-              <p className="text-sm text-gray-400">Loading...</p>
+              <Loader size="sm" />
             ) : (
               <>
                 <h3 className="text-sm font-semibold text-gray-800 mb-1">

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 // mode="client": manage employees assigned to a client (userId = client id)
 // mode="employee": manage clients assigned to an employee (userId = employee id)
@@ -139,7 +140,7 @@ export default function AssignmentPanel({ mode, userId }) {
       {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
       {loading ? (
-        <p className="text-xs text-gray-400">Loading...</p>
+        <Loader size="sm" />
       ) : assigned.length === 0 ? (
         <p className="text-xs text-gray-400 italic">
           No {optionLabel}s assigned yet

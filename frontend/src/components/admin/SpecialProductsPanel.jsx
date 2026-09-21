@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 // Inline special-products manager for a single customer — embedded directly
 // in their partner detail page so admins don't have to jump to a separate
@@ -272,7 +273,7 @@ export default function SpecialProductsPanel({ customerId }) {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading products...</p>
+        <Loader size="sm" />
       ) : products.length === 0 ? (
         <p className="text-sm text-gray-400">No special products yet for this customer.</p>
       ) : (

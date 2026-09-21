@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 import MargSyncButton from "@/components/admin/MargSyncButton";
 import CreateProductFromMargProductModal from "@/components/admin/CreateProductFromMargProductModal";
 
@@ -122,7 +123,7 @@ export default function MargProductsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : products.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <p className="text-sm text-gray-400">No Marg products found</p>

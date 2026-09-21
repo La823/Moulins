@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 function SlideThumb({ slide, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -288,7 +289,7 @@ export default function PresentationBuilderPage() {
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-sm text-gray-400">Loading...</div>
+        <div className="py-20"><Loader /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-8">
           {/* Deck */}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function CareersPage() {
   const [jobs, setJobs] = useState(null);
@@ -36,7 +37,7 @@ export default function CareersPage() {
         <h2 className="text-2xl font-light text-gray-900 mb-10">Open Positions</h2>
 
         {jobs === null ? (
-          <p className="text-sm text-gray-400">Loading...</p>
+          <Loader />
         ) : jobs.length === 0 ? (
           <p className="text-sm text-gray-400">No open positions right now — check back soon.</p>
         ) : (

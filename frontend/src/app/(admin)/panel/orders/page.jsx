@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
@@ -37,7 +37,16 @@ const STATUS_TABS = [
 ];
 
 export default function AdminOrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminOrdersPageInner />
+    </Suspense>
+  );
+}
+
+function AdminOrdersPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -45,8 +54,9 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(null);
 
-  // Filters
-  const [statusFilter, setStatusFilter] = useState("");
+  // Filters — statusFilter starts from ?status= so links like the
+  // dashboard's "View all" pending/confirmed widgets land pre-filtered.
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState("newest");

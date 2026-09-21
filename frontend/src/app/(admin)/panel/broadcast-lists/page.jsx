@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 function ListEditor({ initial, onSaved, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
@@ -220,7 +221,7 @@ export default function BroadcastListsPage() {
       {editing !== null ? (
         <ListEditor initial={editing.id ? editing : null} onSaved={onSaved} onCancel={() => setEditing(null)} />
       ) : loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : lists.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <p className="text-sm text-gray-400">You haven&rsquo;t created any broadcast lists yet</p>

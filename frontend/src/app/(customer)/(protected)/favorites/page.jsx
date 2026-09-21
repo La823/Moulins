@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 import { useFavorites } from "@/context/FavoritesContext";
 import ProductCard from "@/components/products/ProductCard";
 
@@ -85,7 +86,7 @@ export default function FavoritesPage() {
           </div>
         )
       ) : loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : favorites.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-400">No favorites yet.</p>

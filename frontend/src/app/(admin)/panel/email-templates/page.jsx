@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function EmailTemplatesPage() {
   const [templates, setTemplates] = useState(null);
@@ -58,7 +59,7 @@ export default function EmailTemplatesPage() {
   };
 
   if (templates === null) {
-    return <p className="text-sm text-gray-400">Loading...</p>;
+    return <Loader />;
   }
 
   return (

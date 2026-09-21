@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function TeamPage() {
   const { user } = useAuth();
@@ -141,7 +142,7 @@ export default function TeamPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : members.length === 0 ? (
         <p className="text-sm text-gray-400">No team members yet. Add your first one above.</p>
       ) : (

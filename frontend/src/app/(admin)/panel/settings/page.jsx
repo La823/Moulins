@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({});
@@ -36,7 +37,7 @@ export default function SettingsPage() {
       <h2 className="text-lg font-semibold text-gray-800 mb-6">Settings</h2>
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : (
         <div className="space-y-4 max-w-xl">
           {/* Attendance visibility toggle */}

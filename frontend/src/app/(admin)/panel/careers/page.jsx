@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Internship", "Contract"];
 
@@ -102,7 +103,7 @@ export default function CareersAdminPage() {
     }
   };
 
-  if (!jobs) return <p className="text-gray-500">Loading...</p>;
+  if (!jobs) return <Loader />;
 
   return (
     <>

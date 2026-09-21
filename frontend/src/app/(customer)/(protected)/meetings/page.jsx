@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 import { useAuth } from "@/context/AuthContext";
 
 const STATUS_STYLES = {
@@ -680,7 +681,7 @@ function MeetingsPageInner() {
         </div>
       </div>
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <Loader />
       ) : upcoming.length === 0 ? (
         <p className="text-sm text-gray-400">
           {upcomingFilter === "all" ? "No upcoming meetings scheduled" : "No meetings in this range"}

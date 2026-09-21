@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import Loader from "@/components/Loader";
 import { visibleImages } from "@/lib/productImages";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
@@ -85,7 +86,7 @@ export default function ProductDetailPage() {
 
   if (loading) return (
     <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-gray-200 border-t-gray-800 rounded-full animate-spin" />
+      <Loader size="lg" />
     </div>
   );
 

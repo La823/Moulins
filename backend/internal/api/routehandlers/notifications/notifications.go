@@ -133,6 +133,29 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/notifications/{id}/recipients — every user this notification
+// was recorded as sent to, for the "who received this" detail on the
+// admin notification history page.
+func RecipientsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid notification id", http.StatusBadRequest)
+			return
+		}
+
+		recipients, err := models.GetNotificationRecipients(r.Context(), db, id)
+		if err != nil {
+			log.Printf("get notification recipients error: %v", err)
+			http.Error(w, "could not fetch recipients", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(recipients)
+	}
+}
+
 // POST /admin/notifications/upload-url
 func UploadURLHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

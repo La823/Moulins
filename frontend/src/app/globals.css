@@ -32,3 +32,38 @@ h1, h2, h3, h4, h5, h6 {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Logo loader (components/Loader.jsx) — a gentle "breathing" scale/opacity
+   pulse on the mark itself, plus an expanding ring behind it. */
+@keyframes logo-breathe {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes logo-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.animate-logo-breathe {
+  animation: logo-breathe 1.4s ease-in-out infinite;
+}
+.animate-logo-ring {
+  animation: logo-ring 1.4s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-logo-breathe,
+  .animate-logo-ring {
+    animation: none;
+  }
+}
