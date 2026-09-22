@@ -592,6 +592,7 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 		for _, oi := range order.Items {
 			pdfItem := utils.OrderPDFItem{ProductName: oi.ProductName, Quantity: oi.Quantity}
 			if baseCode, ok := margCodeByProduct[oi.ProductID]; ok {
+				pdfItem.ProductCode = baseCode
 				if batches := batchesByBaseCode[baseCode]; len(batches) > 0 {
 					// Prefer the explicitly saved selection; if none was ever
 					// made, fall back to the same earliest-expiry (FEFO)

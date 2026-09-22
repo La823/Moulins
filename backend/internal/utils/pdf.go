@@ -164,6 +164,7 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 
 type OrderPDFItem struct {
 	ProductName string
+	ProductCode string // Marg base code, blank for products not linked to Marg
 	Quantity    int
 	Batch       string
 	Expiry      string
@@ -219,21 +220,33 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	pdf.SetAutoPageBreak(false, 0)
 	const bottomLimit = 270.0
 
-	colProduct := 75.0
-	colQty := 20.0
-	colBatch := 40.0
-	colExp := pageW - colProduct - colQty - colBatch
+	colCode := 22.0
+	colProduct := 62.0
+	colQty := 16.0
+	colBatch := 38.0
+	colExp := pageW - colCode - colProduct - colQty - colBatch
+
+	// Column offsets from the row's left edge, accumulated once rather than
+	// re-summed at every draw call — five columns of "x+colA+colB+colC" gets
+	// unreadable fast and is easy to get subtly wrong.
+	xCode := 0.0
+	xProduct := xCode + colCode
+	xQty := xProduct + colProduct
+	xBatch := xQty + colQty
+	xExp := xBatch + colBatch
 
 	drawHeader := func() {
 		pdf.SetFont("Arial", "B", 9)
 		x, y := pdf.GetX(), pdf.GetY()
-		pdf.Rect(x, y, colProduct, 8, "D")
+		pdf.Rect(x+xCode, y, colCode, 8, "D")
+		pdf.CellFormat(colCode, 8, "CODE", "", 0, "L", false, 0, "")
+		pdf.Rect(x+xProduct, y, colProduct, 8, "D")
 		pdf.CellFormat(colProduct, 8, "PRODUCT", "", 0, "L", false, 0, "")
-		pdf.Rect(x+colProduct, y, colQty, 8, "D")
+		pdf.Rect(x+xQty, y, colQty, 8, "D")
 		pdf.CellFormat(colQty, 8, "QTY", "", 0, "C", false, 0, "")
-		pdf.Rect(x+colProduct+colQty, y, colBatch, 8, "D")
+		pdf.Rect(x+xBatch, y, colBatch, 8, "D")
 		pdf.CellFormat(colBatch, 8, "BATCH", "", 0, "L", false, 0, "")
-		pdf.Rect(x+colProduct+colQty+colBatch, y, colExp, 8, "D")
+		pdf.Rect(x+xExp, y, colExp, 8, "D")
 		pdf.CellFormat(colExp, 8, "EXPIRY", "", 1, "L", false, 0, "")
 		pdf.SetFont("Arial", "", 9)
 	}
@@ -252,22 +265,29 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		}
 
 		x, y := pdf.GetX(), pdf.GetY()
-		pdf.Rect(x, y, colProduct, rowH, "D")
-		pdf.Rect(x+colProduct, y, colQty, rowH, "D")
-		pdf.Rect(x+colProduct+colQty, y, colBatch, rowH, "D")
-		pdf.Rect(x+colProduct+colQty+colBatch, y, colExp, rowH, "D")
+		pdf.Rect(x+xCode, y, colCode, rowH, "D")
+		pdf.Rect(x+xProduct, y, colProduct, rowH, "D")
+		pdf.Rect(x+xQty, y, colQty, rowH, "D")
+		pdf.Rect(x+xBatch, y, colBatch, rowH, "D")
+		pdf.Rect(x+xExp, y, colExp, rowH, "D")
 
-		pdf.SetXY(x+1, y+1)
+		code := item.ProductCode
+		if code == "" {
+			code = "-"
+		}
+		pdf.SetXY(x+xCode+1, y+1)
+		pdf.CellFormat(colCode-2, rowH-2, code, "", 0, "L", false, 0, "")
+		pdf.SetXY(x+xProduct+1, y+1)
 		pdf.MultiCell(colProduct-2, 5, item.ProductName, "", "L", false)
-		pdf.SetXY(x+colProduct+1, y+1)
+		pdf.SetXY(x+xQty+1, y+1)
 		pdf.CellFormat(colQty-2, rowH-2, fmt.Sprintf("%d", item.Quantity), "", 0, "C", false, 0, "")
-		pdf.SetXY(x+colProduct+colQty+1, y+1)
+		pdf.SetXY(x+xBatch+1, y+1)
 		batch := item.Batch
 		if batch == "" {
 			batch = "-"
 		}
 		pdf.CellFormat(colBatch-2, rowH-2, batch, "", 0, "L", false, 0, "")
-		pdf.SetXY(x+colProduct+colQty+colBatch+1, y+1)
+		pdf.SetXY(x+xExp+1, y+1)
 		exp := item.Expiry
 		if exp == "" {
 			exp = "-"

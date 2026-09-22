@@ -317,20 +317,48 @@ export default function AdminOrderDetail() {
     setShowProductResults(false);
     setAddingProduct(true);
     setError("");
+    const quantity = Math.max(1, product.moq || 1);
     try {
-      await apiFetch(`/admin/orders/${id}/items`, {
+      const res = await apiFetch(`/admin/orders/${id}/items`, {
         method: "POST",
         body: JSON.stringify({
           product_id: product.id,
           product_name: product.name,
-          quantity: Math.max(1, product.moq || 1),
+          quantity,
         }),
       });
-      await loadOrder();
+
+      // Render the new row straight from the POST's own response instead of
+      // waiting on a re-fetch. Adding used to cost three sequential round
+      // trips (insert, then the full order, then nothing for batches) to a
+      // database in another region, which is where the ~2s came from — the
+      // work itself is two inserts. The POST returns the new item_id, and
+      // the row only needs id/name/quantity/batch, so there's nothing left
+      // to wait for.
+      if (res?.item_id) {
+        setItems((prev) => [
+          ...prev,
+          {
+            id: res.item_id,
+            order_id: id,
+            product_id: product.id,
+            product_name: product.name,
+            quantity,
+            selected_batch_code: null,
+          },
+        ]);
+      }
       setSuccess(`${product.name} added to order`);
+      setAddingProduct(false);
+
+      // Reconcile in the background, and crucially refresh the batch options
+      // too: batchInfoByItem is keyed by order_item_id, so without this the
+      // new row has no entry and its batch dropdown stays missing until the
+      // page is manually reloaded. Both refreshes run together rather than
+      // one after the other.
+      Promise.all([loadOrder(), loadBatchOptions()]).catch(() => {});
     } catch (err) {
       setError(err.message);
-    } finally {
       setAddingProduct(false);
     }
   };
