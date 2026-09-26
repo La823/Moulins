@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import ToastStack, { useToasts } from "@/components/admin/Toast";
+import { HsnResult, useHsnLookup } from "@/components/admin/HsnLookup";
 
 export default function EditProduct() {
   const { id } = useParams();
@@ -59,6 +60,10 @@ export default function EditProduct() {
   // own endpoint rather than through the main product form, so changing it
   // is one click and doesn't require submitting every other field.
   const [licenceTypes, setLicenceTypes] = useState([]);
+
+  // HSN lookup for the code typed into the form — verifies the code is real
+  // and shows what it actually covers, without leaving the page.
+  const hsn = useHsnLookup();
   const [licenceTypeId, setLicenceTypeId] = useState("");
   const [foodType, setFoodType] = useState("");
   const [savingLicence, setSavingLicence] = useState(false);
@@ -819,14 +824,42 @@ export default function EditProduct() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 HSN Code
               </label>
-              <input
-                type="text"
-                value={form.hsn_code}
-                onChange={(e) =>
-                  setForm({ ...form, hsn_code: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={form.hsn_code}
+                  onChange={(e) => {
+                    setForm({ ...form, hsn_code: e.target.value });
+                    hsn.reset();
+                  }}
+                  onKeyDown={(e) => {
+                    // Enter looks the code up rather than submitting the whole
+                    // product form, which is what a bare Enter would do here.
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      hsn.lookup(form.hsn_code);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => hsn.lookup(form.hsn_code)}
+                  disabled={hsn.loading || !form.hsn_code?.trim()}
+                  title="Look this HSN code up in the master"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {hsn.loading ? "…" : "Search"}
+                </button>
+              </div>
+              {hsn.error && (
+                <p className="text-xs text-red-600 mt-1">{hsn.error}</p>
+              )}
+              {hsn.result && (
+                <div className="mt-2">
+                  <HsnResult result={hsn.result} compact />
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

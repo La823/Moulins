@@ -33,6 +33,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/hsncodes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/licencetypes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/warehousezones"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
@@ -644,6 +645,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productViewStaff.HandleFunc("/product-licence-types", licencetypes.ListHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/product-licence-types/breakdown", licencetypes.BreakdownHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/warehouse-zones", warehousezones.ListHandler(db)).Methods("GET")
+	productViewStaff.HandleFunc("/hsn-codes", hsncodes.LookupHandler(db)).Methods("GET")
+	productViewStaff.HandleFunc("/hsn-codes/{code}", hsncodes.LookupHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
 
 	// staff routes — product management (edit)
