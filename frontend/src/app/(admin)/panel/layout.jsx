@@ -172,6 +172,7 @@ const NAV_ITEMS = [
       { label: "Licence Types", href: "/panel/licence-types", permission: "products_view" },
       { label: "Warehouse Zones", href: "/panel/warehouse-zones", permission: "products_view" },
       { label: "HSN Search", href: "/panel/hsn-search", permission: "products_view" },
+      { label: "HSN Codes & GST", href: "/panel/hsn-codes", permission: "products_view" },
       { label: "Marg Products", href: "/panel/marg-products", permission: "marg_master_view" },
     ],
   },

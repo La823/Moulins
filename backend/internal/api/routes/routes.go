@@ -645,6 +645,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productViewStaff.HandleFunc("/product-licence-types", licencetypes.ListHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/product-licence-types/breakdown", licencetypes.BreakdownHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/warehouse-zones", warehousezones.ListHandler(db)).Methods("GET")
+	productViewStaff.HandleFunc("/hsn-codes/browse", hsncodes.BrowseHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/hsn-codes", hsncodes.LookupHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/hsn-codes/{code}", hsncodes.LookupHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")

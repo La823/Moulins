@@ -48,6 +48,51 @@ export function HsnResult({ result, compact = false }) {
         <p className="text-gray-700 mt-1 leading-snug">{result.nearest.description}</p>
       </div>
 
+      {/* GST. Shown as candidates, never resolved to one number: a single
+          HSN can carry several rates depending on which schedule entry the
+          goods fall under (2106 spans 0% to 28%). Picking one for the user
+          would be a guess written into a tax field. */}
+      {result.gst?.length > 0 && (
+        <div className="mt-2">
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400">
+              GST {result.gst_via && result.gst_via !== result.nearest.code && (
+                <span className="normal-case tracking-normal">
+                  (published under {result.gst_via})
+                </span>
+              )}
+            </span>
+            {result.gst.length > 1 && (
+              <span className="text-[10px] text-amber-700">
+                {result.gst.length} possible rates — depends on the goods
+              </span>
+            )}
+          </div>
+          <ul className="space-y-1">
+            {result.gst.map((g, i) => (
+              <li key={i} className="flex gap-2 items-baseline leading-snug">
+                <span
+                  className={`font-mono font-semibold flex-shrink-0 w-12 text-right ${
+                    g.igst == null ? "text-gray-300" : "text-gray-900"
+                  }`}
+                >
+                  {g.igst == null ? "—" : `${g.igst}%`}
+                </span>
+                <span className="text-[11px] text-gray-600">
+                  {g.description}
+                  {g.cgst != null && g.sgst != null && (
+                    <span className="text-gray-400">
+                      {" "}· CGST {g.cgst}% + SGST {g.sgst}%
+                    </span>
+                  )}
+                  {g.cess && <span className="text-amber-700"> · cess {g.cess}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {result.parents?.length > 0 && (
         <ul className="mt-2 space-y-1">
           {result.parents

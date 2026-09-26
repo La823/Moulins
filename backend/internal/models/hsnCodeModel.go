@@ -2,6 +2,8 @@ package models
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,12 +24,31 @@ type HsnCode struct {
 // not cover every combination, so an exact miss is common and a bare 404
 // would be unhelpful. Walking up 8 -> 6 -> 4 -> 2 always yields something
 // meaningful, and it is the same single query either way.
+// HsnGstRate is one GST schedule entry for a code. There can be several per
+// code — the rate depends on which entry the goods fall under — so these are
+// returned as candidates, not resolved to a single number.
+type HsnGstRate struct {
+	Code        string   `json:"code"`
+	Schedule    *string  `json:"schedule,omitempty"`
+	Description string   `json:"description"`
+	CGST        *float64 `json:"cgst,omitempty"`
+	SGST        *float64 `json:"sgst,omitempty"`
+	IGST        *float64 `json:"igst,omitempty"`
+	Cess        *string  `json:"cess,omitempty"`
+}
+
 type HsnLookup struct {
 	Query   string    `json:"query"`
 	Found   bool      `json:"found"`
 	Code    *HsnCode  `json:"code,omitempty"`
 	Parents []HsnCode `json:"parents"`
 	Nearest *HsnCode  `json:"nearest,omitempty"` // exact match, else closest ancestor
+
+	// GST entries for the code, or for the closest ancestor that has any.
+	// GstVia says which code they were found under, since rates are published
+	// at heading level and an 8-digit code usually inherits them.
+	Gst    []HsnGstRate `json:"gst"`
+	GstVia string       `json:"gst_via,omitempty"`
 }
 
 // LookupHsnCode fetches a code and its ancestors in one round trip. Digits
@@ -82,6 +103,186 @@ func LookupHsnCode(ctx context.Context, db *pgxpool.Pool, raw string) (HsnLookup
 				out.Nearest = &c // longest ancestor, since rows are ordered by length
 			}
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+
+	// Rates: try the code itself, then walk up. Published at heading level,
+	// so an 8-digit code almost always resolves via its 4-digit parent.
+	//
+	// Only when the code resolved to something real. Otherwise a nonsense
+	// query like 99999999 would climb to chapter 99 and return a page of
+	// unrelated rates, which reads as though the code were valid.
+	out.Gst = []HsnGstRate{}
+	if out.Nearest == nil {
+		return out, nil
+	}
+	// Collect from EVERY level, not just the first that matches.
+	//
+	// Stopping at the first hit was wrong in exactly the case that matters
+	// most here: for pharmaceuticals the concessional 5% entries are
+	// published at chapter level ("30 — Medicaments including Ayurvedic,
+	// Unani, Siddha, Homeopathic", "Drugs or medicines ... List 1/2"), while
+	// the residual 12% sits at heading level (3004). Breaking on the first
+	// match meant 3004's 12% hid the 5% entries that actually apply to most
+	// formulations. Both are real candidates and both must be shown.
+	levels := make([]string, 0, len(candidates))
+	for _, cand := range candidates {
+		if len(cand) <= len(out.Nearest.Code) {
+			levels = append(levels, cand)
+		}
+	}
+	grows, err := db.Query(ctx, `
+		SELECT code, schedule, description, cgst, sgst, igst, cess
+		FROM hsn_gst_rates
+		WHERE code = ANY($1)
+		ORDER BY length(code) DESC, igst NULLS LAST, description`, levels)
+	if err != nil {
+		return out, err
+	}
+	defer grows.Close()
+	seen := map[string]bool{}
+	for grows.Next() {
+		var g HsnGstRate
+		if err := grows.Scan(&g.Code, &g.Schedule, &g.Description, &g.CGST, &g.SGST, &g.IGST, &g.Cess); err != nil {
+			return out, err
+		}
+		// The same entry can be listed against several codes in a group.
+		key := g.Description
+		if g.IGST != nil {
+			key = fmt.Sprintf("%s|%g", key, *g.IGST)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if out.GstVia == "" {
+			out.GstVia = g.Code
+		}
+		out.Gst = append(out.Gst, g)
+	}
+	return out, grows.Err()
+}
+
+// HsnBrowseRow is one row of the browse table: a code plus the distinct GST
+// rates that apply to it, resolved through its ancestors the same way the
+// single lookup does — rates are published at chapter/heading level, so most
+// 8-digit codes have none of their own and would otherwise show blank.
+type HsnBrowseRow struct {
+	Code        string    `json:"code"`
+	Description string    `json:"description"`
+	Level       int       `json:"level"`
+	Rates       []float64 `json:"rates"`
+	RateVia     *string   `json:"rate_via,omitempty"`
+	EntryCount  int       `json:"entry_count"`
+}
+
+type HsnBrowseFilters struct {
+	Query  string // matches code prefix or description
+	Level  int    // 0 = any
+	Rate   *float64
+	HasGST string // "", "yes", "no"
+	Page   int
+	Limit  int
+}
+
+// BrowseHsnCodes lists codes with their resolved rates, paginated.
+func BrowseHsnCodes(ctx context.Context, db *pgxpool.Pool, f HsnBrowseFilters) ([]HsnBrowseRow, int, error) {
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.Limit < 1 || f.Limit > 200 {
+		f.Limit = 50
+	}
+
+	// The candidate set for a code is itself plus each shorter prefix; this
+	// is the same walk LookupHsnCode does, expressed for the whole page.
+	const ancestors = `(h.code, left(h.code,6), left(h.code,4), left(h.code,2))`
+	rateAgg := `(SELECT array_agg(DISTINCT r.igst) FROM hsn_gst_rates r
+	             WHERE r.code IN ` + ancestors + ` AND r.igst IS NOT NULL)`
+	viaAgg := `(SELECT r.code FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + `
+	            ORDER BY length(r.code) DESC LIMIT 1)`
+	cntAgg := `(SELECT count(*) FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + `)`
+
+	conds := []string{}
+	args := []any{}
+	n := 1
+	if q := strings.TrimSpace(f.Query); q != "" {
+		conds = append(conds, fmt.Sprintf("(h.code LIKE $%d OR h.description ILIKE $%d)", n, n+1))
+		args = append(args, q+"%", "%"+q+"%")
+		n += 2
+	}
+	if f.Level > 0 {
+		conds = append(conds, fmt.Sprintf("h.level = $%d", n))
+		args = append(args, f.Level)
+		n++
+	}
+	if f.Rate != nil {
+		conds = append(conds, fmt.Sprintf(
+			`EXISTS (SELECT 1 FROM hsn_gst_rates r WHERE r.code IN %s AND r.igst = $%d)`,
+			ancestors, n))
+		args = append(args, *f.Rate)
+		n++
+	}
+	switch f.HasGST {
+	case "yes":
+		conds = append(conds, cntAgg+" > 0")
+	case "no":
+		conds = append(conds, cntAgg+" = 0")
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = " WHERE " + strings.Join(conds, " AND ")
+	}
+
+	var total int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM hsn_codes h`+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, f.Limit, (f.Page-1)*f.Limit)
+	rows, err := db.Query(ctx, fmt.Sprintf(`
+		SELECT h.code, h.description, h.level, %s, %s, %s
+		FROM hsn_codes h%s
+		ORDER BY h.code
+		LIMIT $%d OFFSET $%d`, rateAgg, viaAgg, cntAgg, where, n, n+1), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := []HsnBrowseRow{}
+	for rows.Next() {
+		var r HsnBrowseRow
+		var rates []float64
+		if err := rows.Scan(&r.Code, &r.Description, &r.Level, &rates, &r.RateVia, &r.EntryCount); err != nil {
+			return nil, 0, err
+		}
+		if rates == nil {
+			rates = []float64{}
+		}
+		sort.Float64s(rates)
+		r.Rates = rates
+		out = append(out, r)
+	}
+	return out, total, rows.Err()
+}
+
+// DistinctGstRates powers the rate filter dropdown.
+func DistinctGstRates(ctx context.Context, db *pgxpool.Pool) ([]float64, error) {
+	rows, err := db.Query(ctx, `SELECT DISTINCT igst FROM hsn_gst_rates WHERE igst IS NOT NULL ORDER BY igst`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []float64{}
+	for rows.Next() {
+		var v float64
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
 	}
 	return out, rows.Err()
 }
