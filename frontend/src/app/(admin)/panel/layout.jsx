@@ -170,6 +170,7 @@ const NAV_ITEMS = [
     group: [
       { label: "Products", href: "/panel/products", permission: "products_view" },
       { label: "Licence Types", href: "/panel/licence-types", permission: "products_view" },
+      { label: "Warehouse Zones", href: "/panel/warehouse-zones", permission: "products_view" },
       { label: "Marg Products", href: "/panel/marg-products", permission: "marg_master_view" },
     ],
   },

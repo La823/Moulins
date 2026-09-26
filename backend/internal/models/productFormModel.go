@@ -206,12 +206,23 @@ func findOrCreateProductForm(ctx context.Context, tx pgx.Tx, name string) (int, 
 }
 
 // AssignProductForm links productID to the product_forms row for formName
-// (creating it if it's brand new) and, if the product doesn't already have
-// an inventory_code, assigns the next one for that form (e.g. "T-14").
-// A product's inventory_code is permanent once assigned — it never changes
-// even if the form is corrected later, since it may already be written on a
-// physical shelf/pallet label. formName == "" only clears the link
-// (product_form_id set to NULL), leaving any existing inventory_code as-is.
+// (creating it if it's brand new) and gives the product an inventory_code
+// drawn from that form's sequence (e.g. "T-14").
+//
+// Changing a product's form REISSUES its code from the new form, so the code
+// always agrees with the form it names. The number it held in the old form is
+// never reused — next_sequence only ever moves forward — so the old form is
+// left with a permanent gap. That is deliberate: reusing a freed number would
+// point two different products at the same code over time, which is worse
+// than a gap.
+//
+// A code is only reissued when the form actually CHANGES. Callers invoke this
+// on every product save, so reissuing on an unchanged form would burn a fresh
+// number (and change a live code) every time anyone edited an unrelated field.
+//
+// formName == "" only clears the link (product_form_id set to NULL), leaving
+// any existing inventory_code alone — the product hasn't moved anywhere, so
+// there is nothing to reissue.
 func AssignProductForm(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID, formName string) error {
 	formName = strings.TrimSpace(formName)
 
@@ -233,20 +244,23 @@ func AssignProductForm(ctx context.Context, db *pgxpool.Pool, productID uuid.UUI
 		return err
 	}
 
+	var currentFormID *int
 	var hasCode bool
-	if err := tx.QueryRow(ctx, `SELECT inventory_code IS NOT NULL FROM products WHERE id = $1 FOR UPDATE`, productID).Scan(&hasCode); err != nil {
+	if err := tx.QueryRow(ctx,
+		`SELECT product_form_id, inventory_code IS NOT NULL FROM products WHERE id = $1 FOR UPDATE`,
+		productID).Scan(&currentFormID, &hasCode); err != nil {
 		return err
 	}
-	if hasCode {
-		_, err := tx.Exec(ctx, `UPDATE products SET product_form_id = $1 WHERE id = $2`, formID, productID)
-		if err != nil {
-			return err
-		}
+
+	// Unchanged form and a code already in hand: nothing to do. Without this
+	// guard every save of an unrelated field would reissue the code.
+	sameForm := currentFormID != nil && *currentFormID == formID
+	if sameForm && hasCode {
 		return tx.Commit(ctx)
 	}
 
-	// Lock the form row so two products getting their first code for the
-	// same form at the same time don't race on the same sequence number.
+	// Lock the form row so two products drawing a code from the same form at
+	// the same time don't race on the same sequence number.
 	var seq int
 	var prefix string
 	if err := tx.QueryRow(ctx, `SELECT next_sequence, prefix FROM product_forms WHERE id = $1 FOR UPDATE`, formID).Scan(&seq, &prefix); err != nil {

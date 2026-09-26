@@ -34,6 +34,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/licencetypes"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/warehousezones"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/productspec"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseordermaster"
@@ -642,6 +643,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productViewStaff.HandleFunc("/products/{id}/inventory-code", products.GetProductInventoryCodeHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/product-licence-types", licencetypes.ListHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/product-licence-types/breakdown", licencetypes.BreakdownHandler(db)).Methods("GET")
+	productViewStaff.HandleFunc("/warehouse-zones", warehousezones.ListHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
 
 	// staff routes — product management (edit)
@@ -654,6 +656,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/product-licence-types/{id}", licencetypes.UpdateHandler(db)).Methods("PUT")
 	productStaff.HandleFunc("/product-licence-types/{id}", licencetypes.DeleteHandler(db)).Methods("DELETE")
 	productStaff.HandleFunc("/products/{id}/licence-type", licencetypes.SetForProductHandler(db)).Methods("PUT")
+	productStaff.HandleFunc("/warehouse-zones", warehousezones.CreateHandler(db)).Methods("POST")
+	productStaff.HandleFunc("/warehouse-zones/{id}", warehousezones.UpdateHandler(db)).Methods("PUT")
+	productStaff.HandleFunc("/warehouse-zones/{id}", warehousezones.DeleteHandler(db)).Methods("DELETE")
+	productStaff.HandleFunc("/product-forms/{id}/zone", warehousezones.SetFormZoneHandler(db)).Methods("PUT")
 	productStaff.HandleFunc("/marg-products/{base_code}/create-product", products.CreateProductFromMargProductHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/upload-url", products.UploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/document-upload-url", products.DocumentUploadURLHandler()).Methods("POST")
