@@ -169,6 +169,7 @@ const NAV_ITEMS = [
     icon: ICONS.box,
     group: [
       { label: "Products", href: "/panel/products", permission: "products_view" },
+      { label: "Licence Types", href: "/panel/licence-types", permission: "products_view" },
       { label: "Marg Products", href: "/panel/marg-products", permission: "marg_master_view" },
     ],
   },

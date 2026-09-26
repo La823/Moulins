@@ -55,6 +55,65 @@ export default function EditProduct() {
 
   const [formOptions, setFormOptions] = useState([]);
 
+  // Regulatory licence classification (Drug / Food / Cosmetic). Saved on its
+  // own endpoint rather than through the main product form, so changing it
+  // is one click and doesn't require submitting every other field.
+  const [licenceTypes, setLicenceTypes] = useState([]);
+  const [licenceTypeId, setLicenceTypeId] = useState("");
+  const [foodType, setFoodType] = useState("");
+  const [savingLicence, setSavingLicence] = useState(false);
+  const [licenceMsg, setLicenceMsg] = useState("");
+
+  useEffect(() => {
+    apiFetch("/admin/product-licence-types")
+      .then((data) => setLicenceTypes(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  // True when the selected licence type is the Food one — veg/non-veg only
+  // applies there. Resolved by name rather than a hardcoded id, since the
+  // licence types table is admin-editable.
+  const isFood = licenceTypes.some(
+    (t) => String(t.id) === String(licenceTypeId) && t.name.toLowerCase() === "food",
+  );
+
+  const saveLicence = async (typeId, food) => {
+    setSavingLicence(true);
+    setLicenceMsg("");
+    try {
+      await apiFetch(`/admin/products/${id}/licence-type`, {
+        method: "PUT",
+        body: JSON.stringify({
+          licence_type_id: typeId === "" ? null : Number(typeId),
+          food_type: food === "" ? null : food,
+        }),
+      });
+      setLicenceMsg("Saved");
+      setTimeout(() => setLicenceMsg(""), 2500);
+    } catch (err) {
+      setLicenceMsg(err.message || "Could not save");
+    } finally {
+      setSavingLicence(false);
+    }
+  };
+
+  const handleLicenceChange = async (value) => {
+    setLicenceTypeId(value);
+    // Moving away from Food clears veg/non-veg — it would otherwise linger
+    // on a product it no longer applies to.
+    const nowFood = licenceTypes.some(
+      (t) => String(t.id) === String(value) && t.name.toLowerCase() === "food",
+    );
+    const nextFood = nowFood ? foodType : "";
+    setFoodType(nextFood);
+    await saveLicence(value, nextFood);
+  };
+
+  const handleFoodTypeChange = async (value) => {
+    setFoodType(value);
+    await saveLicence(licenceTypeId, value);
+  };
+
   useEffect(() => {
     apiFetch("/products/forms")
       .then((data) => setFormOptions(Array.isArray(data) ? data : []))
@@ -153,6 +212,8 @@ export default function EditProduct() {
           edetailing: p.edetailing || "",
           marg_code: p.marg_code || "",
         });
+        setLicenceTypeId(p.licence_type_id != null ? String(p.licence_type_id) : "");
+        setFoodType(p.food_type || "");
         setSelectedCategories(p.categories || []);
         setSelectedTags(p.tags || []);
         setImages(p.images || []);
@@ -813,6 +874,66 @@ export default function EditProduct() {
                     {inventoryInfo.inventory_code}
                   </span>
                   <span className="text-xs text-gray-400">(assigned automatically, permanent once set)</span>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Licence Type
+              </label>
+              <p className="text-[11px] text-gray-400 mb-1">
+                The regulatory licence this product is sold under. Manage the
+                list under Licence Types in the panel.
+              </p>
+              <div className="flex items-center gap-2">
+                <select
+                  value={licenceTypeId}
+                  onChange={(e) => handleLicenceChange(e.target.value)}
+                  disabled={savingLicence}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 disabled:opacity-60"
+                >
+                  <option value="">Not classified</option>
+                  {licenceTypes.map((t) => (
+                    <option key={t.id} value={String(t.id)}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                {licenceMsg && (
+                  <span
+                    className={`text-xs whitespace-nowrap ${
+                      licenceMsg === "Saved" ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {licenceMsg}
+                  </span>
+                )}
+              </div>
+
+              {isFood && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Veg / Non-Veg
+                  </label>
+                  <p className="text-[11px] text-gray-400 mb-1">
+                    Required on food products — the FSSAI green or brown mark.
+                  </p>
+                  <select
+                    value={foodType}
+                    onChange={(e) => handleFoodTypeChange(e.target.value)}
+                    disabled={savingLicence}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 disabled:opacity-60"
+                  >
+                    <option value="">Not set</option>
+                    <option value="Veg">Veg</option>
+                    <option value="Non-Veg">Non-Veg</option>
+                  </select>
+                  {!foodType && (
+                    <p className="text-[11px] text-amber-600 mt-1">
+                      Not set — food products should be marked Veg or Non-Veg.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

@@ -47,6 +47,8 @@ type Product struct {
 	AudioKey        *string           `json:"audio_key,omitempty"`
 	AudioURL        string            `json:"audio_url,omitempty"`
 	MargCode        *string           `json:"marg_code,omitempty"`
+	LicenceTypeID   *int              `json:"licence_type_id,omitempty"`
+	FoodType        *string           `json:"food_type,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
 }
@@ -640,7 +642,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
-			created_at, updated_at
+			created_at, updated_at, licence_type_id, food_type
 		FROM products
 	` + where + orderBy
 
@@ -676,7 +678,8 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 			&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 			&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
 			&p.KeyBenefits, &p.DirectionForUse,
-			&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt,
+			&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt, &p.LicenceTypeID,
+			&p.FoodType,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -782,7 +785,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
-			created_at, updated_at, marg_code
+			created_at, updated_at, marg_code, licence_type_id, food_type
 		FROM products WHERE id = $1
 	`
 	var p Product
@@ -794,6 +797,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 		&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
 		&p.KeyBenefits, &p.DirectionForUse,
 		&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt, &p.MargCode,
+		&p.LicenceTypeID, &p.FoodType,
 	)
 	if err != nil {
 		return nil, err

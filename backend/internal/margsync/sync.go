@@ -34,6 +34,8 @@ type Result struct {
 	PartiesUpserted  int `json:"parties_upserted"`
 	ProductsNew      int `json:"products_new"`
 	RowsReceived     int `json:"rows_received"`
+	RateUpdates      int `json:"rate_updates"`
+	StockUpdates     int `json:"stock_updates"`
 }
 
 // Progress is a snapshot of a sync in flight, handed to a ProgressFunc so a
@@ -65,6 +67,18 @@ func parseNumeric(s string) *string {
 	return &s
 }
 
+// numOrNil renders a JSON-number rate tier for the numeric columns. Zero is
+// stored as NULL rather than 0: Marg sends 0 both for "no tier configured"
+// and genuinely-zero, and every populated tier in the data is > 0, so NULL
+// keeps "unset" distinguishable from a real price.
+func numOrNil(f float64) *string {
+	if f == 0 {
+		return nil
+	}
+	v := strconv.FormatFloat(f, 'f', -1, 64)
+	return &v
+}
+
 func isDeleted(s string) bool {
 	return strings.TrimSpace(s) == "1"
 }
@@ -90,6 +104,10 @@ type groupedProduct struct {
 	mrp        *string
 	rate       *string
 	prate      *string
+	rateB      *string
+	rateC      *string
+	rateD      *string
+	rateF      *string
 	deal       *string
 	free       *string
 	totalStock float64
@@ -255,6 +273,10 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 			g.mrp = parseNumeric(row.MRP)
 			g.rate = parseNumeric(row.Rate)
 			g.prate = parseNumeric(row.PRate)
+			g.rateB = numOrNil(row.RateB)
+			g.rateC = numOrNil(row.RateC)
+			g.rateD = numOrNil(row.RateD)
+			g.rateF = numOrNil(row.RateF)
 			g.deal = parseNumeric(row.Deal)
 			g.free = parseNumeric(row.Free)
 			if stock, err := strconv.ParseFloat(strings.TrimSpace(row.Stock), 64); err == nil {
@@ -310,6 +332,10 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 		mrps := make([]*string, n)
 		rates := make([]*string, n)
 		prates := make([]*string, n)
+		rbs := make([]*string, n)
+		rcs := make([]*string, n)
+		rds := make([]*string, n)
+		rfs := make([]*string, n)
 		deals := make([]*string, n)
 		frees := make([]*string, n)
 		stocks := make([]string, n)
@@ -341,6 +367,7 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 			bases[i], names[i], companies[i] = base, g.name, g.company
 			salts[i], gcodes[i], gcode6s[i] = g.salt, g.gcode, g.gcode6
 			mrps[i], rates[i], prates[i] = g.mrp, g.rate, g.prate
+			rbs[i], rcs[i], rds[i], rfs[i] = g.rateB, g.rateC, g.rateD, g.rateF
 			deals[i], frees[i] = g.deal, g.free
 			stocks[i] = strconv.FormatFloat(g.totalStock, 'f', -1, 64)
 			counts[i] = strconv.Itoa(len(g.batches))
@@ -350,15 +377,18 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 		qrows, err := db.Query(ctx, `
 			INSERT INTO margmaster_products
 				(base_code, name, company, salt, gcode, gcode6, hsn_code, mrp, rate, prate,
-				 deal, free, total_stock, batch_count, current_batch, exp, is_deleted, synced_at)
+				 deal, free, total_stock, batch_count, current_batch, exp, is_deleted,
+				 rate_b, rate_c, rate_d, rate_f, synced_at)
 			SELECT t.base_code, t.name, t.company, t.salt, t.gcode, t.gcode6, t.hsn,
 			       t.mrp::numeric, t.rate::numeric, t.prate::numeric, t.deal::numeric, t.free::numeric,
-			       t.total_stock::numeric, t.batch_count::int, t.current_batch, t.exp, t.is_deleted, NOW()
+			       t.total_stock::numeric, t.batch_count::int, t.current_batch, t.exp, t.is_deleted,
+			       t.rate_b::numeric, t.rate_c::numeric, t.rate_d::numeric, t.rate_f::numeric, NOW()
 			FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[],$6::text[],$7::text[],
 			            $8::text[],$9::text[],$10::text[],$11::text[],$12::text[],$13::text[],
-			            $14::text[],$15::text[],$16::text[],$17::bool[])
+			            $14::text[],$15::text[],$16::text[],$17::bool[],
+			            $18::text[],$19::text[],$20::text[],$21::text[])
 			     AS t(base_code,name,company,salt,gcode,gcode6,hsn,mrp,rate,prate,deal,free,
-			          total_stock,batch_count,current_batch,exp,is_deleted)
+			          total_stock,batch_count,current_batch,exp,is_deleted,rate_b,rate_c,rate_d,rate_f)
 			ON CONFLICT (base_code) DO UPDATE SET
 				name = EXCLUDED.name, company = EXCLUDED.company, salt = EXCLUDED.salt,
 				gcode = EXCLUDED.gcode, gcode6 = EXCLUDED.gcode6,
@@ -367,10 +397,13 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 				deal = EXCLUDED.deal, free = EXCLUDED.free,
 				total_stock = EXCLUDED.total_stock, batch_count = EXCLUDED.batch_count,
 				current_batch = EXCLUDED.current_batch, exp = EXCLUDED.exp,
-				is_deleted = EXCLUDED.is_deleted, synced_at = NOW()
+				is_deleted = EXCLUDED.is_deleted,
+				rate_b = EXCLUDED.rate_b, rate_c = EXCLUDED.rate_c,
+				rate_d = EXCLUDED.rate_d, rate_f = EXCLUDED.rate_f, synced_at = NOW()
 			RETURNING id, base_code, hsn_code`,
 			bases, names, companies, salts, gcodes, gcode6s, hsns,
-			mrps, rates, prates, deals, frees, stocks, counts, curBatches, exps, dels)
+			mrps, rates, prates, deals, frees, stocks, counts, curBatches, exps, dels,
+			rbs, rcs, rds, rfs)
 		if err != nil {
 			return result, fmt.Errorf("upsert products: %w", err)
 		}
@@ -420,9 +453,10 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 
 	// ---- batches --------------------------------------------------------
 	type batchRow struct {
-		pid, code, rid, curbatch, exp, stock string
-		mrp, rate, prate                     *string
-		deleted                              bool
+		pid, code, rid, curbatch, exp, stock  string
+		mrp, rate, prate                      *string
+		rateB, rateC, rateD, rateF            *string
+		deleted                               bool
 	}
 	all := make([]batchRow, 0, len(rows))
 	for _, base := range order {
@@ -436,6 +470,8 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 				pid: pid, code: b.Code, rid: b.Rid, curbatch: b.CurBatch, exp: b.Exp,
 				stock: strconv.FormatFloat(stock, 'f', -1, 64),
 				mrp:   parseNumeric(b.MRP), rate: parseNumeric(b.Rate), prate: parseNumeric(b.PRate),
+				rateB: numOrNil(b.RateB), rateC: numOrNil(b.RateC),
+				rateD: numOrNil(b.RateD), rateF: numOrNil(b.RateF),
 				deleted: isDeleted(b.IsDeleted),
 			})
 		}
@@ -464,28 +500,41 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 		mrps := make([]*string, n)
 		brates := make([]*string, n)
 		bprates := make([]*string, n)
+		bbs := make([]*string, n)
+		bcs := make([]*string, n)
+		bds := make([]*string, n)
+		bfs := make([]*string, n)
 		bdels := make([]bool, n)
 		for i, b := range chunk {
 			pids[i], codes[i], rids[i] = b.pid, b.code, b.rid
 			curbatches[i], exps[i], stocks[i] = b.curbatch, b.exp, b.stock
 			mrps[i], brates[i], bprates[i] = b.mrp, b.rate, b.prate
+			bbs[i], bcs[i], bds[i], bfs[i] = b.rateB, b.rateC, b.rateD, b.rateF
 			bdels[i] = b.deleted
 		}
 
 		if _, err := db.Exec(ctx, `
 			INSERT INTO margmaster_product_batches
-				(margmaster_product_id, code, rid, curbatch, exp, stock, mrp, rate, prate, is_deleted, synced_at)
+				(margmaster_product_id, code, rid, curbatch, exp, stock, mrp, rate, prate,
+				 rate_b, rate_c, rate_d, rate_f, is_deleted, synced_at)
 			SELECT t.pid::uuid, t.code, t.rid, t.curbatch, t.exp, t.stock::numeric,
-			       t.mrp::numeric, t.rate::numeric, t.prate::numeric, t.is_deleted, NOW()
+			       t.mrp::numeric, t.rate::numeric, t.prate::numeric,
+			       t.rate_b::numeric, t.rate_c::numeric, t.rate_d::numeric, t.rate_f::numeric,
+			       t.is_deleted, NOW()
 			FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[],$6::text[],
-			            $7::text[],$8::text[],$9::text[],$10::bool[])
-			     AS t(pid,code,rid,curbatch,exp,stock,mrp,rate,prate,is_deleted)
+			            $7::text[],$8::text[],$9::text[],
+			            $10::text[],$11::text[],$12::text[],$13::text[],$14::bool[])
+			     AS t(pid,code,rid,curbatch,exp,stock,mrp,rate,prate,rate_b,rate_c,rate_d,rate_f,is_deleted)
 			ON CONFLICT (code) DO UPDATE SET
 				margmaster_product_id = EXCLUDED.margmaster_product_id,
 				rid = EXCLUDED.rid, curbatch = EXCLUDED.curbatch, exp = EXCLUDED.exp,
 				stock = EXCLUDED.stock, mrp = EXCLUDED.mrp, rate = EXCLUDED.rate,
-				prate = EXCLUDED.prate, is_deleted = EXCLUDED.is_deleted, synced_at = NOW()`,
-			pids, codes, rids, curbatches, exps, stocks, mrps, brates, bprates, bdels); err != nil {
+				prate = EXCLUDED.prate,
+				rate_b = EXCLUDED.rate_b, rate_c = EXCLUDED.rate_c,
+				rate_d = EXCLUDED.rate_d, rate_f = EXCLUDED.rate_f,
+				is_deleted = EXCLUDED.is_deleted, synced_at = NOW()`,
+			pids, codes, rids, curbatches, exps, stocks, mrps, brates, bprates,
+			bbs, bcs, bds, bfs, bdels); err != nil {
 			return result, fmt.Errorf("upsert batches: %w", err)
 		}
 
@@ -498,6 +547,81 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 		})
 	}
 
+	// ---- pro_R / pro_S : rate-only and stock-only updates ----------------
+	// Delta pulls deliver a price or stock change for an existing batch
+	// through these feeds rather than through pro_N/pro_U, and they were
+	// previously parsed into nothing at all — so a rate change could arrive
+	// and be discarded, leaving the mirror quietly wrong. They are keyed by
+	// the same batch `code`, so an UPDATE joined on it is enough; rows for
+	// codes we have never seen are ignored rather than inserted, since these
+	// feeds carry no name/company to build a product from.
+	if len(details.ProR) > 0 {
+		for start := 0; start < len(details.ProR); start += writeChunkSize {
+			end := start + writeChunkSize
+			if end > len(details.ProR) {
+				end = len(details.ProR)
+			}
+			chunk := details.ProR[start:end]
+			n := len(chunk)
+			codes := make([]string, n)
+			stocks := make([]*string, n)
+			mrps := make([]*string, n)
+			rates := make([]*string, n)
+			prates := make([]*string, n)
+			rbs := make([]*string, n)
+			rcs := make([]*string, n)
+			rds := make([]*string, n)
+			rfs := make([]*string, n)
+			for i, r := range chunk {
+				codes[i] = r.Code
+				stocks[i] = parseNumeric(r.Stock)
+				mrps[i], rates[i], prates[i] = parseNumeric(r.MRP), parseNumeric(r.Rate), parseNumeric(r.PRate)
+				rbs[i], rcs[i], rds[i], rfs[i] = numOrNil(r.RateB), numOrNil(r.RateC), numOrNil(r.RateD), numOrNil(r.RateF)
+			}
+			if _, err := db.Exec(ctx, `
+				UPDATE margmaster_product_batches b
+				SET stock = COALESCE(t.stock::numeric, b.stock),
+				    mrp   = COALESCE(t.mrp::numeric, b.mrp),
+				    rate  = COALESCE(t.rate::numeric, b.rate),
+				    prate = COALESCE(t.prate::numeric, b.prate),
+				    rate_b = t.rate_b::numeric, rate_c = t.rate_c::numeric,
+				    rate_d = t.rate_d::numeric, rate_f = t.rate_f::numeric,
+				    synced_at = NOW()
+				FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[],
+				            $6::text[],$7::text[],$8::text[],$9::text[])
+				     AS t(code,stock,mrp,rate,prate,rate_b,rate_c,rate_d,rate_f)
+				WHERE b.code = t.code`,
+				codes, stocks, mrps, rates, prates, rbs, rcs, rds, rfs); err != nil {
+				return result, fmt.Errorf("apply rate updates (pro_R): %w", err)
+			}
+			result.RateUpdates += n
+		}
+	}
+
+	if len(details.ProS) > 0 {
+		for start := 0; start < len(details.ProS); start += writeChunkSize {
+			end := start + writeChunkSize
+			if end > len(details.ProS) {
+				end = len(details.ProS)
+			}
+			chunk := details.ProS[start:end]
+			n := len(chunk)
+			codes := make([]string, n)
+			stocks := make([]*string, n)
+			for i, r := range chunk {
+				codes[i], stocks[i] = r.Code, parseNumeric(r.Stock)
+			}
+			if _, err := db.Exec(ctx, `
+				UPDATE margmaster_product_batches b
+				SET stock = COALESCE(t.stock::numeric, b.stock), synced_at = NOW()
+				FROM unnest($1::text[],$2::text[]) AS t(code,stock)
+				WHERE b.code = t.code`, codes, stocks); err != nil {
+				return result, fmt.Errorf("apply stock updates (pro_S): %w", err)
+			}
+			result.StockUpdates += n
+		}
+	}
+
 	// ---- reconcile the denormalised per-product totals -------------------
 	// total_stock and batch_count must describe every batch the mirror holds
 	// for a product, not just the ones this pull happened to contain. A
@@ -506,6 +630,26 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 	// batches in the mirror and one in the delta would report batch_count 1).
 	// Recompute from margmaster_product_batches, which is the source of
 	// truth, for exactly the products this run touched.
+	// pro_R/pro_S change batch stock without going through pro_N/pro_U, so
+	// their products need reconciling too or their totals go stale.
+	extraBases := map[string]bool{}
+	for _, r := range details.ProR {
+		extraBases[baseCode(r.Code)] = true
+	}
+	for _, r := range details.ProS {
+		extraBases[baseCode(r.Code)] = true
+	}
+	for base := range extraBases {
+		if _, ok := productIDs[base]; ok {
+			continue // already in productIDs from this pull
+		}
+		var id string
+		if err := db.QueryRow(ctx,
+			`SELECT id FROM margmaster_products WHERE base_code = $1`, base).Scan(&id); err == nil {
+			productIDs[base] = id
+		}
+	}
+
 	if len(productIDs) > 0 {
 		touched := make([]string, 0, len(productIDs))
 		for _, id := range productIDs {

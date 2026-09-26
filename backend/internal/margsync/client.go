@@ -132,7 +132,12 @@ func unwrapResponse(responseText, key string) (string, error) {
 	return "", fmt.Errorf("decompress: %w", ferr)
 }
 
-var httpClient = &http.Client{Timeout: 60 * time.Second}
+// A large delta (a couple of days of a distributor's activity, or a full
+// pull of ~3,000 batch rows) regularly takes Marg well over a minute to
+// assemble before it sends the first byte, so 60s was low enough to fail
+// real syncs. The sync runs in the background and is bounded separately by
+// the run's own 2h context, so a generous client timeout costs nothing.
+var httpClient = &http.Client{Timeout: 5 * time.Minute}
 
 func post(endpoint string, payload interface{}) (string, error) {
 	body, err := json.Marshal(payload)
@@ -197,6 +202,38 @@ type MargProductRow struct {
 	Conversion string `json:"Conversion"`
 	Salt       string `json:"Salt"`
 	Gcode6     string `json:"Gcode6"`
+	// Rate tiers. These arrive as JSON *numbers*, unlike MRP/Rate/PRate
+	// above which Marg sends as strings — declaring them as string would
+	// make the whole row fail to unmarshal. RateF is not a duplicate of
+	// PRate: it differs on ~6% of rows.
+	RateB float64 `json:"RateB"`
+	RateC float64 `json:"RateC"`
+	RateD float64 `json:"RateD"`
+	RateF float64 `json:"RateF"`
+}
+
+// MargRateRow is one pro_R line — Marg's "rate-only update" feed. It has no
+// name/rid/Is_Deleted, just a code plus the current pricing and stock, and
+// note "Curbatch" is capitalised here where pro_N spells it "curbatch".
+type MargRateRow struct {
+	Code     string  `json:"code"`
+	CurBatch string  `json:"Curbatch"`
+	Stock    string  `json:"stock"`
+	MRP      string  `json:"MRP"`
+	Rate     string  `json:"Rate"`
+	PRate    string  `json:"PRate"`
+	Deal     string  `json:"Deal"`
+	Free     string  `json:"Free"`
+	RateB    float64 `json:"RateB"`
+	RateC    float64 `json:"RateC"`
+	RateD    float64 `json:"RateD"`
+	RateF    float64 `json:"RateF"`
+}
+
+// MargStockRow is one pro_S line — Marg's "stock-only update" feed.
+type MargStockRow struct {
+	Code  string `json:"code"`
+	Stock string `json:"stock"`
 }
 
 // MargStypeRow is one row of Marg's generic sub-master/lookup table. Rows
@@ -242,6 +279,11 @@ type MargPartyRow struct {
 type mst2017Details struct {
 	ProN     []MargProductRow `json:"pro_N"`
 	ProU     []MargProductRow `json:"pro_U"`
+	// pro_R / pro_S are delta-only feeds that were previously parsed into
+	// nothing at all, so a rate or stock change delivered through them was
+	// dropped on the floor.
+	ProR     []MargRateRow    `json:"pro_R"`
+	ProS     []MargStockRow   `json:"pro_S"`
 	Stype    []MargStypeRow   `json:"Stype"`
 	Party    []MargPartyRow   `json:"Party"`
 	Status   string           `json:"Status"`
