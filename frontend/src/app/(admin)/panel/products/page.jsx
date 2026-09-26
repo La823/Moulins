@@ -61,6 +61,18 @@ function AdminProductsInner() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [imageCountFilter, setImageCountFilter] = useState(""); // "", "1", "2", "3plus"
+  // "", "<licence type id>", or "none" for unclassified. Seeded from the URL
+  // so the links on the Licence Types page arrive with the filter applied.
+  const [licenceFilter, setLicenceFilter] = useState(
+    () => searchParams.get("licence_type") || "",
+  );
+  const [licenceTypes, setLicenceTypes] = useState([]);
+
+  useEffect(() => {
+    apiFetch("/admin/product-licence-types")
+      .then((data) => setLicenceTypes(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
   const catRef = useRef(null);
 
   const [categoryOptions, setCategoryOptions] = useState([]);
@@ -110,6 +122,7 @@ function AdminProductsInner() {
       if (categoryFilter) params.set("category", categoryFilter);
       if (formFilter) params.set("form", formFilter);
       if (imageCountFilter) params.set("image_count", imageCountFilter);
+      if (licenceFilter) params.set("licence_type", licenceFilter);
       params.set("sort_by", sortBy);
       params.set("sort_dir", sortDir);
       const data = await apiFetch(`/admin/products?${params}`);
@@ -138,11 +151,15 @@ function AdminProductsInner() {
 
   useEffect(() => {
     setPage(1);
+  }, [licenceFilter]);
+
+  useEffect(() => {
+    setPage(1);
   }, [sortBy, sortDir]);
 
   useEffect(() => {
     fetchProducts(page, search);
-  }, [page, search, categoryFilter, formFilter, imageCountFilter, sortBy, sortDir]);
+  }, [page, search, categoryFilter, formFilter, imageCountFilter, licenceFilter, sortBy, sortDir]);
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
@@ -468,6 +485,20 @@ function AdminProductsInner() {
           <option value="1">1 image</option>
           <option value="2">2 images</option>
           <option value="3plus">More than 2 images</option>
+        </select>
+        <select
+          value={licenceFilter}
+          onChange={(e) => setLicenceFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
+        >
+          <option value="">All licence types</option>
+          {licenceTypes.map((t) => (
+            <option key={t.id} value={String(t.id)}>
+              {t.name}
+              {t.product_count ? ` (${t.product_count})` : ""}
+            </option>
+          ))}
+          <option value="none">Not classified</option>
         </select>
       </div>
 

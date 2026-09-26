@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 
@@ -180,11 +181,14 @@ export default function LicenceTypesPage() {
               return (
                 <tr key={b.id ?? "none"} className="text-gray-700">
                   <td className="py-2">
-                    {b.id === null ? (
-                      <span className="text-amber-600">{b.name}</span>
-                    ) : (
-                      b.name
-                    )}
+                    {/* Straight through to the product list filtered to this
+                        licence type — "none" is the unclassified bucket. */}
+                    <Link
+                      href={`/panel/products?licence_type=${b.id === null ? "none" : b.id}`}
+                      className={`hover:underline ${b.id === null ? "text-amber-600" : "text-gray-700"}`}
+                    >
+                      {b.name}
+                    </Link>
                   </td>
                   <td className="py-2 text-right tabular-nums">
                     {b.product_count.toLocaleString("en-IN")}
@@ -285,12 +289,28 @@ export default function LicenceTypesPage() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">
-                      {t.product_count.toLocaleString("en-IN")}
+                      {t.product_count > 0 ? (
+                        <Link
+                          href={`/panel/products?licence_type=${t.id}`}
+                          className="text-gray-700 hover:text-gray-900 hover:underline"
+                          title={`View the ${t.product_count} product(s) with this licence type`}
+                        >
+                          {t.product_count.toLocaleString("en-IN")}
+                        </Link>
+                      ) : (
+                        <span className="text-gray-300">0</span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <Link
+                        href={`/panel/products?licence_type=${t.id}`}
+                        className="text-xs text-gray-600 hover:text-gray-900 hover:underline"
+                      >
+                        View products
+                      </Link>
                       <button
                         onClick={() => startEdit(t)}
-                        className="text-xs text-gray-600 hover:text-gray-900 hover:underline"
+                        className="ml-3 text-xs text-gray-600 hover:text-gray-900 hover:underline"
                       >
                         Edit
                       </button>
