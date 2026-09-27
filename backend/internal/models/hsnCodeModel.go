@@ -118,15 +118,22 @@ func LookupHsnCode(ctx context.Context, db *pgxpool.Pool, raw string) (HsnLookup
 	if out.Nearest == nil {
 		return out, nil
 	}
-	// Collect from EVERY level, not just the first that matches.
+	// Take rates from the MOST SPECIFIC level that has any, and no broader.
 	//
-	// Stopping at the first hit was wrong in exactly the case that matters
-	// most here: for pharmaceuticals the concessional 5% entries are
-	// published at chapter level ("30 — Medicaments including Ayurvedic,
-	// Unani, Siddha, Homeopathic", "Drugs or medicines ... List 1/2"), while
-	// the residual 12% sits at heading level (3004). Breaking on the first
-	// match meant 3004's 12% hid the 5% entries that actually apply to most
-	// formulations. Both are real candidates and both must be shown.
+	// Collecting from every level over-reports badly. Chapter 30 carries one
+	// 18% entry (synthetic menthol) against ~600 medicament entries at 5%;
+	// gathering all levels leaked that 18% onto every code in the chapter, so
+	// 30049099 offered "5% or 18%" when 3004 answers it exactly: 5%.
+	//
+	// An earlier version did collect every level, because the rates then in the
+	// table were the pre-2025 ones where 3004 read 12% and the 5% entries sat
+	// at chapter level -- so the climb was the only way to find the real rate.
+	// That was working around stale data, and with the correct schedule loaded
+	// it does damage instead.
+	//
+	// A broader entry is not a competing candidate: it is what applies when
+	// nothing more specific does. Asking about chapter 30 itself still returns
+	// both, which is right -- the question was about the whole chapter.
 	levels := make([]string, 0, len(candidates))
 	for _, cand := range candidates {
 		if len(cand) <= len(out.Nearest.Code) {
@@ -140,7 +147,9 @@ func LookupHsnCode(ctx context.Context, db *pgxpool.Pool, raw string) (HsnLookup
 		SELECT code, schedule, description, cgst, sgst, igst, cess
 		FROM hsn_gst_rates
 		WHERE code = ANY($1) AND effective_from IS NOT NULL
-		ORDER BY length(code) DESC, igst NULLS LAST, description`, levels)
+		  AND length(code) = (SELECT max(length(code)) FROM hsn_gst_rates
+		                      WHERE code = ANY($1) AND effective_from IS NOT NULL)
+		ORDER BY igst NULLS LAST, description`, levels)
 	if err != nil {
 		return out, err
 	}
@@ -204,11 +213,13 @@ func BrowseHsnCodes(ctx context.Context, db *pgxpool.Pool, f HsnBrowseFilters) (
 	const ancestors = `(h.code, left(h.code,6), left(h.code,4), left(h.code,2))`
 	// Only the current regime: see the note in LookupHsnCode.
 	const current = ` AND r.effective_from IS NOT NULL`
-	rateAgg := `(SELECT array_agg(DISTINCT r.igst) FROM hsn_gst_rates r
-	             WHERE r.code IN ` + ancestors + ` AND r.igst IS NOT NULL` + current + `)`
+	// The most specific ancestor carrying any rate; the rate is read from that
+	// one level only. See LookupHsnCode for why broader levels are excluded.
 	viaAgg := `(SELECT r.code FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + current + `
 	            ORDER BY length(r.code) DESC LIMIT 1)`
-	cntAgg := `(SELECT count(*) FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + current + `)`
+	rateAgg := `(SELECT array_agg(DISTINCT r.igst) FROM hsn_gst_rates r
+	             WHERE r.code = ` + viaAgg + ` AND r.igst IS NOT NULL` + current + `)`
+	cntAgg := `(SELECT count(*) FROM hsn_gst_rates r WHERE r.code = ` + viaAgg + current + `)`
 
 	conds := []string{}
 	args := []any{}
@@ -224,9 +235,11 @@ func BrowseHsnCodes(ctx context.Context, db *pgxpool.Pool, f HsnBrowseFilters) (
 		n++
 	}
 	if f.Rate != nil {
+		// Match the rate the row actually resolves to, not one it merely
+		// inherits from a broader level it never reports.
 		conds = append(conds, fmt.Sprintf(
-			`EXISTS (SELECT 1 FROM hsn_gst_rates r WHERE r.code IN %s AND r.igst = $%d%s)`,
-			ancestors, n, current))
+			`EXISTS (SELECT 1 FROM hsn_gst_rates r WHERE r.code = %s AND r.igst = $%d%s)`,
+			viaAgg, n, current))
 		args = append(args, *f.Rate)
 		n++
 	}
