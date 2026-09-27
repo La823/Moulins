@@ -133,10 +133,13 @@ func LookupHsnCode(ctx context.Context, db *pgxpool.Pool, raw string) (HsnLookup
 			levels = append(levels, cand)
 		}
 	}
+	// effective_from must be set: rows without it predate the 22 September 2025
+	// rationalisation and carry the abolished 12% slab, so serving them would
+	// put last year's rate on a medicine.
 	grows, err := db.Query(ctx, `
 		SELECT code, schedule, description, cgst, sgst, igst, cess
 		FROM hsn_gst_rates
-		WHERE code = ANY($1)
+		WHERE code = ANY($1) AND effective_from IS NOT NULL
 		ORDER BY length(code) DESC, igst NULLS LAST, description`, levels)
 	if err != nil {
 		return out, err
@@ -199,11 +202,13 @@ func BrowseHsnCodes(ctx context.Context, db *pgxpool.Pool, f HsnBrowseFilters) (
 	// The candidate set for a code is itself plus each shorter prefix; this
 	// is the same walk LookupHsnCode does, expressed for the whole page.
 	const ancestors = `(h.code, left(h.code,6), left(h.code,4), left(h.code,2))`
+	// Only the current regime: see the note in LookupHsnCode.
+	const current = ` AND r.effective_from IS NOT NULL`
 	rateAgg := `(SELECT array_agg(DISTINCT r.igst) FROM hsn_gst_rates r
-	             WHERE r.code IN ` + ancestors + ` AND r.igst IS NOT NULL)`
-	viaAgg := `(SELECT r.code FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + `
+	             WHERE r.code IN ` + ancestors + ` AND r.igst IS NOT NULL` + current + `)`
+	viaAgg := `(SELECT r.code FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + current + `
 	            ORDER BY length(r.code) DESC LIMIT 1)`
-	cntAgg := `(SELECT count(*) FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + `)`
+	cntAgg := `(SELECT count(*) FROM hsn_gst_rates r WHERE r.code IN ` + ancestors + current + `)`
 
 	conds := []string{}
 	args := []any{}
@@ -220,8 +225,8 @@ func BrowseHsnCodes(ctx context.Context, db *pgxpool.Pool, f HsnBrowseFilters) (
 	}
 	if f.Rate != nil {
 		conds = append(conds, fmt.Sprintf(
-			`EXISTS (SELECT 1 FROM hsn_gst_rates r WHERE r.code IN %s AND r.igst = $%d)`,
-			ancestors, n))
+			`EXISTS (SELECT 1 FROM hsn_gst_rates r WHERE r.code IN %s AND r.igst = $%d%s)`,
+			ancestors, n, current))
 		args = append(args, *f.Rate)
 		n++
 	}
@@ -271,7 +276,8 @@ func BrowseHsnCodes(ctx context.Context, db *pgxpool.Pool, f HsnBrowseFilters) (
 
 // DistinctGstRates powers the rate filter dropdown.
 func DistinctGstRates(ctx context.Context, db *pgxpool.Pool) ([]float64, error) {
-	rows, err := db.Query(ctx, `SELECT DISTINCT igst FROM hsn_gst_rates WHERE igst IS NOT NULL ORDER BY igst`)
+	rows, err := db.Query(ctx, `SELECT DISTINCT igst FROM hsn_gst_rates
+		WHERE igst IS NOT NULL AND effective_from IS NOT NULL ORDER BY igst`)
 	if err != nil {
 		return nil, err
 	}
