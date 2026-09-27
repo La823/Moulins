@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -124,8 +125,24 @@ func CreatePMSType(ctx context.Context, db *pgxpool.Pool, name string) (int, err
 // DeletePMSType removes a product type and (via ON DELETE CASCADE) all of
 // its fields and their dropdown options.
 func DeletePMSType(ctx context.Context, db *pgxpool.Pool, id int) error {
-	_, err := db.Exec(ctx, "DELETE FROM pms_types WHERE id = $1", id)
-	return err
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Products keep their answers in a JSONB blob, which no foreign key
+	// reaches. Dropping the type cascades to its fields and nulls
+	// products.pms_type_id, but the blob would survive with every key now
+	// orphaned, so clear it for the affected products first.
+	if _, err := tx.Exec(ctx,
+		"UPDATE products SET pms_specifications = NULL WHERE pms_type_id = $1", id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM pms_types WHERE id = $1", id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreatePMSField adds a specification field to a product type.
@@ -140,9 +157,31 @@ func CreatePMSField(ctx context.Context, db *pgxpool.Pool, typeID int, fieldName
 
 // DeletePMSField removes a field and (via ON DELETE CASCADE) any dropdown
 // options belonging to it.
+//
+// It also strips the field's answers off every product. Those live in
+// products.pms_specifications as a JSONB object keyed by field id, which no
+// foreign key reaches, so the cascade cannot clean them: deleting a field used
+// to leave its value behind under a key that no longer resolves to anything.
 func DeletePMSField(ctx context.Context, db *pgxpool.Pool, id int) error {
-	_, err := db.Exec(ctx, "DELETE FROM pms_fields WHERE id = $1", id)
-	return err
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	key := strconv.Itoa(id)
+	// The `?` guard also keeps the `-` operator away from rows holding a JSON
+	// scalar rather than an object, where subtracting a key would error.
+	if _, err := tx.Exec(ctx, `
+		UPDATE products
+		SET pms_specifications = pms_specifications - $1::text
+		WHERE pms_specifications ? $1::text`, key); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "DELETE FROM pms_fields WHERE id = $1", id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreatePMSFieldOption adds a persisted dropdown option to a dropdown field.
