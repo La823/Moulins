@@ -67,10 +67,20 @@ function AdminProductsInner() {
     () => searchParams.get("licence_type") || "",
   );
   const [licenceTypes, setLicenceTypes] = useState([]);
+  // "", "<zone code>", or "none". Pairs with sorting by inventory code, which
+  // orders by zone then serial — so picking a zone gives that zone's products
+  // in shelf order.
+  const [zoneFilter, setZoneFilter] = useState(
+    () => searchParams.get("zone") || "",
+  );
+  const [zones, setZones] = useState([]);
 
   useEffect(() => {
     apiFetch("/admin/product-licence-types")
       .then((data) => setLicenceTypes(Array.isArray(data) ? data : []))
+      .catch(() => {});
+    apiFetch("/admin/warehouse-zones")
+      .then((data) => setZones(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
   const catRef = useRef(null);
@@ -123,6 +133,7 @@ function AdminProductsInner() {
       if (formFilter) params.set("form", formFilter);
       if (imageCountFilter) params.set("image_count", imageCountFilter);
       if (licenceFilter) params.set("licence_type", licenceFilter);
+      if (zoneFilter) params.set("zone", zoneFilter);
       params.set("sort_by", sortBy);
       params.set("sort_dir", sortDir);
       const data = await apiFetch(`/admin/products?${params}`);
@@ -159,7 +170,7 @@ function AdminProductsInner() {
 
   useEffect(() => {
     fetchProducts(page, search);
-  }, [page, search, categoryFilter, formFilter, imageCountFilter, licenceFilter, sortBy, sortDir]);
+  }, [page, search, categoryFilter, formFilter, imageCountFilter, licenceFilter, zoneFilter, sortBy, sortDir]);
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
@@ -499,6 +510,27 @@ function AdminProductsInner() {
             </option>
           ))}
           <option value="none">Not classified</option>
+        </select>
+        <select
+          value={zoneFilter}
+          onChange={(e) => {
+            const v = e.target.value;
+            setZoneFilter(v);
+            // Picking a zone is a warehouse question, so order by inventory
+            // code — that sorts by zone then serial, i.e. shelf order.
+            if (v && v !== "none") setSortBy("inventory_code");
+          }}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-gray-400"
+          title="Warehouse zone"
+        >
+          <option value="">All zones</option>
+          {zones.map((z) => (
+            <option key={z.id ?? z.code} value={z.code}>
+              {z.code} — {z.name}
+              {z.product_count ? ` (${z.product_count})` : ""}
+            </option>
+          ))}
+          <option value="none">No zone assigned</option>
         </select>
       </div>
 
