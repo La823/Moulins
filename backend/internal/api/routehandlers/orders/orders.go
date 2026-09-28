@@ -588,11 +588,25 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			batchesByBaseCode = map[string][]models.MargProductBatch{}
 		}
 
+		// The printed code is the warehouse inventory code, since the person
+		// reading this sheet is picking stock off a rack. The Marg code is
+		// still what the batch lookup is keyed on — it is Marg's identifier,
+		// not ours — so the two are kept separate rather than one replacing
+		// the other.
+		inventoryCodeByProduct, err := models.GetInventoryCodesForProducts(r.Context(), db, productIDs)
+		if err != nil {
+			log.Printf("order pdf inventory code lookup error: %v", err)
+			inventoryCodeByProduct = map[uuid.UUID]string{}
+		}
+
 		items := make([]utils.OrderPDFItem, 0, len(order.Items))
 		for _, oi := range order.Items {
-			pdfItem := utils.OrderPDFItem{ProductName: oi.ProductName, Quantity: oi.Quantity}
+			pdfItem := utils.OrderPDFItem{
+				ProductName: oi.ProductName,
+				Quantity:    oi.Quantity,
+				ProductCode: inventoryCodeByProduct[oi.ProductID],
+			}
 			if baseCode, ok := margCodeByProduct[oi.ProductID]; ok {
-				pdfItem.ProductCode = baseCode
 				if batches := batchesByBaseCode[baseCode]; len(batches) > 0 {
 					// Prefer the explicitly saved selection; if none was ever
 					// made, fall back to the same earliest-expiry (FEFO)

@@ -164,7 +164,7 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 
 type OrderPDFItem struct {
 	ProductName string
-	ProductCode string // Marg base code, blank for products not linked to Marg
+	ProductCode string // warehouse inventory code, blank if none assigned
 	Quantity    int
 	Batch       string
 	Expiry      string
@@ -220,7 +220,11 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	pdf.SetAutoPageBreak(false, 0)
 	const bottomLimit = 270.0
 
-	colCode := 22.0
+	// Wide enough for a full inventory code (OS-0001-TAB/D, 13 chars at
+	// Arial 9) rather than the 7-char Marg code this column used to carry.
+	// The width comes out of colExp, which is the remainder and had it to
+	// spare, so the product name column is unaffected.
+	colCode := 34.0
 	colProduct := 62.0
 	colQty := 16.0
 	colBatch := 38.0
