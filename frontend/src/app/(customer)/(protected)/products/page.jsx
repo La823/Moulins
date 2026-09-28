@@ -18,7 +18,7 @@ const CATEGORY_ICONS = {
   "Little Planet (Pediatric)": "/moulins divisions/Little Planet.jpg.jpeg",
   "Matrix": "/moulins divisions/Matrix.jpg.jpeg",
   "Mindset (Neuro/Psychiatry)": "/moulins divisions/Mindset.jpg.jpeg",
-  "Missbella(Derma and Skin Wellness)": "/moulins divisions/Misbella.jpg.jpeg",
+  "Misbella (Derma and Skin Wellness)": "/moulins divisions/Misbella.jpg.jpeg",
   "Srishti (Gynaecology)": "/moulins divisions/Srishti.jpg.jpeg",
   "View Point (Ophthalmology)": "/moulins divisions/View Point.jpg.jpeg",
 };

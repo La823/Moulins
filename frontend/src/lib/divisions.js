@@ -12,7 +12,7 @@ export const DIVISIONS = [
   { label: "Little Planet", desc: "Pediatric", route: "/littleplanet", heroImage: "/pages/pedia_landscape.png" },
   { label: "Matrix", desc: "", route: "/matrix", heroImage: "/pages/Matrix.png" },
   { label: "Mindset", desc: "Neuro/Psychiatry", route: "/mindset", heroImage: "/pages/neuro_landscape.png" },
-  { label: "Missbella", desc: "Derma & Skin", route: "/missbella", heroImage: "/pages/missbella.png" },
+  { label: "Misbella", desc: "Derma & Skin", route: "/missbella", heroImage: "/pages/missbella.png" },
   { label: "Srishti", desc: "Gynaecology", route: "/srishti", heroImage: "/pages/Gynae.png" },
   { label: "View Point", desc: "Ophthalmology", route: "/viewpoint", heroImage: "/pages/viewpoint_banner_2400x800.jpg" },
 ];

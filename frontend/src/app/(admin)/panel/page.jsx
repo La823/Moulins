@@ -18,7 +18,7 @@ const CATEGORY_LINKS = {
   "Little Planet (Pediatric)": "/littleplanet",
   "Matrix": "/matrix",
   "Mindset (Neuro/Psychiatry)": "/mindset",
-  "Missbella(Derma and Skin Wellness)": "/missbella",
+  "Misbella (Derma and Skin Wellness)": "/missbella",
   "Srishti (Gynaecology)": "/srishti",
   "View Point (Ophthalmology)": "/viewpoint",
 };

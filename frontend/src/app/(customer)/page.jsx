@@ -21,7 +21,7 @@ const DIVISIONS = [
   { name: "Little Planet", desc: "Pediatric", href: "/littleplanet", icon: "/moulins divisions/Little Planet.jpg.jpeg" },
   { name: "Matrix", desc: "", href: "/matrix", icon: "/moulins divisions/Matrix.jpg.jpeg" },
   { name: "Mindset", desc: "Neuro/Psychiatry", href: "/mindset", icon: "/moulins divisions/Mindset.jpg.jpeg" },
-  { name: "Missbella", desc: "Derma & Skin", href: "/missbella", icon: "/moulins divisions/Misbella.jpg.jpeg" },
+  { name: "Misbella", desc: "Derma & Skin", href: "/missbella", icon: "/moulins divisions/Misbella.jpg.jpeg" },
   { name: "Srishti", desc: "Gynaecology", href: "/srishti", icon: "/moulins divisions/Srishti.jpg.jpeg" },
   { name: "View Point", desc: "Ophthalmology", href: "/viewpoint", icon: "/moulins divisions/View Point.jpg.jpeg" },
 ];

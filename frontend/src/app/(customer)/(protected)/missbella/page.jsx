@@ -1,11 +1,11 @@
 import CategoryLandingPage from "@/components/customer/CategoryLandingPage";
 
-export default function MissbellaPage() {
+export default function MisbellaPage() {
   return (
     <CategoryLandingPage
-      categoryName="Missbella(Derma and Skin Wellness)"
+      categoryName="Misbella (Derma and Skin Wellness)"
       heroImage="/pages/missbella.png"
-      heroLabel="Missbella"
+      heroLabel="Misbella"
       heroTitle="Derma & Skin Wellness Care"
     />
   );

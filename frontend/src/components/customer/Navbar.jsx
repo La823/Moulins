@@ -23,7 +23,7 @@ const DIVISIONS = [
   { name: "Little Planet", desc: "Pediatric", href: "/littleplanet" },
   { name: "Matrix", desc: "", href: "/matrix" },
   { name: "Mindset", desc: "Neuro/Psychiatry", href: "/mindset" },
-  { name: "Missbella", desc: "Derma & Skin", href: "/missbella" },
+  { name: "Misbella", desc: "Derma & Skin", href: "/missbella" },
   { name: "Srishti", desc: "Gynaecology", href: "/srishti" },
   { name: "View Point", desc: "Ophthalmology", href: "/viewpoint" },
 ];
