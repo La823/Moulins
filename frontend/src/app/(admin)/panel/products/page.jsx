@@ -79,8 +79,9 @@ function AdminProductsInner() {
     apiFetch("/admin/product-licence-types")
       .then((data) => setLicenceTypes(Array.isArray(data) ? data : []))
       .catch(() => {});
+    // The endpoint returns {zones, forms}, not a bare array.
     apiFetch("/admin/warehouse-zones")
-      .then((data) => setZones(Array.isArray(data) ? data : []))
+      .then((data) => setZones(data?.zones || []))
       .catch(() => {});
   }, []);
   const catRef = useRef(null);
