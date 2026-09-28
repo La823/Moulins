@@ -184,6 +184,52 @@ type OrderPDFData struct {
 	PrintedAt     string
 }
 
+// gofpdf's built-in fonts are cp1252, so a UTF-8 character outside it prints
+// as mojibake -- an em-dash in a product name comes out "â€". These are the
+// characters that realistically turn up in pasted product names and notes;
+// each maps to something readable rather than being dropped.
+var pdfTextReplacer = strings.NewReplacer(
+	"–", "-", // en dash
+	"—", "-", // em dash
+	"‒", "-", // figure dash
+	"−", "-", // minus sign
+	"‘", "'", "’", "'", // curly single quotes
+	"“", `"`, "”", `"`, // curly double quotes
+	"…", "...", // ellipsis
+	"₹", "Rs.", // rupee sign, absent from cp1252
+	" ", " ", // non-breaking space
+	"•", "-", // bullet
+	"×", "x", // multiplication sign
+)
+
+// sanitizeOrderPDFData cleans every user-supplied string once, rather than at
+// each of the dozen draw calls, so a newly added field cannot quietly skip it.
+// It matters that this happens before line measurement too: SplitLines has to
+// measure the same string that eventually gets drawn.
+func sanitizeOrderPDFData(tr func(string) string, d OrderPDFData) OrderPDFData {
+	f := func(s string) string { return tr(pdfTextReplacer.Replace(s)) }
+	d.OrderNumber = f(d.OrderNumber)
+	d.Date = f(d.Date)
+	d.Status = f(d.Status)
+	d.CustomerName = f(d.CustomerName)
+	d.CustomerPhone = f(d.CustomerPhone)
+	d.TransportMode = f(d.TransportMode)
+	d.TransportName = f(d.TransportName)
+	d.Notes = f(d.Notes)
+	d.PrintedBy = f(d.PrintedBy)
+	d.PrintedAt = f(d.PrintedAt)
+	items := make([]OrderPDFItem, len(d.Items))
+	for i, it := range d.Items {
+		it.ProductName = f(it.ProductName)
+		it.ProductCode = f(it.ProductCode)
+		it.Batch = f(it.Batch)
+		it.Expiry = f(it.Expiry)
+		items[i] = it
+	}
+	d.Items = items
+	return d
+}
+
 // GenerateOrderPDF renders a printable summary of a finalized customer
 // order — order/customer identity, status, the item lines (with whichever
 // Marg batch/expiry is selected, if any), and notes/transport.
@@ -191,6 +237,9 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(20, 20, 20)
 	pdf.AddPage()
+
+	// Empty descriptor means cp1252, which is what the built-in fonts use.
+	data = sanitizeOrderPDFData(pdf.UnicodeTranslatorFromDescriptor(""), data)
 
 	pageW := 170.0
 
@@ -308,13 +357,17 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 
 	if data.TransportMode != "" {
 		pdf.SetFont("Arial", "B", 10)
-		pdf.CellFormat(pageW, 6, "Transport:", "", 0, "L", false, 0, "")
+		// The label cell is sized to the label. Giving it the full page width
+		// with ln=0 pushed the cursor to the right margin, so the value was
+		// drawn off the edge of the page and all but its first word vanished.
+		const transportLabelW = 24.0
+		pdf.CellFormat(transportLabelW, 6, "Transport:", "", 0, "L", false, 0, "")
 		pdf.SetFont("Arial", "", 10)
 		transport := data.TransportMode
 		if data.TransportName != "" {
 			transport += " - " + data.TransportName
 		}
-		pdf.CellFormat(pageW-30, 6, transport, "", 1, "L", false, 0, "")
+		pdf.CellFormat(pageW-transportLabelW, 6, transport, "", 1, "L", false, 0, "")
 		pdf.Ln(2)
 	}
 
