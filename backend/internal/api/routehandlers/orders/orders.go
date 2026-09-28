@@ -658,7 +658,6 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Date:          order.CreatedAt.Format("2006-01-02"),
 			Status:        order.Status,
 			CustomerName:  customerName,
-			CustomerPhone: user.PhoneNumber,
 			TransportMode: order.TransportMode,
 			TransportName: transportName,
 			Notes:         stringOrEmpty(order.Notes),

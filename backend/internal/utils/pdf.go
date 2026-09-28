@@ -175,7 +175,6 @@ type OrderPDFData struct {
 	Date          string
 	Status        string
 	CustomerName  string
-	CustomerPhone string
 	TransportMode string
 	TransportName string
 	Notes         string
@@ -188,6 +187,8 @@ type OrderPDFData struct {
 // as mojibake -- an em-dash in a product name comes out "â€". These are the
 // characters that realistically turn up in pasted product names and notes;
 // each maps to something readable rather than being dropped.
+// Note the non-breaking-space entry looks like a no-op in an editor: the key
+// is U+00A0 and the value an ordinary space, which render identically.
 var pdfTextReplacer = strings.NewReplacer(
 	"–", "-", // en dash
 	"—", "-", // em dash
@@ -212,7 +213,6 @@ func sanitizeOrderPDFData(tr func(string) string, d OrderPDFData) OrderPDFData {
 	d.Date = f(d.Date)
 	d.Status = f(d.Status)
 	d.CustomerName = f(d.CustomerName)
-	d.CustomerPhone = f(d.CustomerPhone)
 	d.TransportMode = f(d.TransportMode)
 	d.TransportName = f(d.TransportName)
 	d.Notes = f(d.Notes)
@@ -256,7 +256,7 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	pdf.SetFont("Arial", "B", 11)
 	pdf.CellFormat(pageW, 7, "CUSTOMER", "", 1, "L", false, 0, "")
 	pdf.SetFont("Arial", "", 11)
-	pdf.CellFormat(pageW, 7, fmt.Sprintf("%s - %s", data.CustomerName, data.CustomerPhone), "", 1, "L", false, 0, "")
+	pdf.CellFormat(pageW, 7, data.CustomerName, "", 1, "L", false, 0, "")
 	pdf.Ln(5)
 
 	// ── Items table ────────────────────────────────────────────────────────
