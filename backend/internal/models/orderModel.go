@@ -28,6 +28,9 @@ type Order struct {
 	ExpectedDelivery *string `json:"expected_delivery,omitempty"`
 	DeliveryNotes    *string `json:"delivery_notes,omitempty"`
 	EwayBillNumber   *string `json:"eway_bill_number,omitempty"`
+	// OrderTotal is the sum of the priced lines. Nil when nothing on the
+	// order has been rated yet. Internal, like the per-line rates.
+	OrderTotal *float64 `json:"order_total,omitempty"`
 	// Joined fields for admin view
 	UserName           string  `json:"user_name,omitempty"`
 	UserPhone          string  `json:"user_phone,omitempty"`
@@ -70,6 +73,16 @@ type OrderItem struct {
 	// through an order leaves an accurate per-line record. A retry only
 	// resends items where this is still nil.
 	MargPushedAt *time.Time `json:"marg_pushed_at,omitempty"`
+	// Rate is what we charge for this line, entered by staff when the order
+	// is received. Nil until priced — an unpriced line reads as unpriced
+	// rather than as free.
+	//
+	// Internal: stripped before the order reaches a customer, including the
+	// mobile app, which shares this endpoint.
+	Rate *float64 `json:"rate,omitempty"`
+	// LineTotal is quantity * rate, computed by Postgres rather than here,
+	// so it cannot drift from the two values it is derived from.
+	LineTotal *float64 `json:"line_total,omitempty"`
 }
 
 type OrderEvent struct {
@@ -315,7 +328,8 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	itemRows, err := db.Query(ctx,
 		`SELECT oi.id, oi.order_id, oi.product_id,
 		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
-		        oi.quantity, oi.created_at, oi.selected_batch_code, oi.marg_pushed_at
+		        oi.quantity, oi.created_at, oi.selected_batch_code, oi.marg_pushed_at,
+		        oi.rate, oi.line_total
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1`,
@@ -329,7 +343,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	o.Items = []OrderItem{}
 	for itemRows.Next() {
 		var item OrderItem
-		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt); err != nil {
+		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal); err != nil {
 			return nil, err
 		}
 		o.Items = append(o.Items, item)
@@ -337,6 +351,21 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 
 	if err := itemRows.Err(); err != nil {
 		return nil, err
+	}
+
+	// Summed here rather than stored, so it cannot go stale when a line is
+	// added, removed or re-rated. Left nil when nothing is priced yet: a
+	// zero would read as "this order is worth nothing" rather than "this
+	// order has not been priced".
+	for _, it := range o.Items {
+		if it.LineTotal != nil {
+			total := 0.0
+			if o.OrderTotal != nil {
+				total = *o.OrderTotal
+			}
+			total += *it.LineTotal
+			o.OrderTotal = &total
+		}
 	}
 
 	// Fetch events
@@ -515,6 +544,15 @@ func UpdateOrderItemBatch(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUI
 		code = &batchCode
 	}
 	_, err := db.Exec(ctx, `UPDATE order_items SET selected_batch_code = $1 WHERE id = $2`, code, itemID)
+	return err
+}
+
+// UpdateOrderItemRate sets what we charge for one line. A nil rate clears it,
+// which returns the line to unpriced rather than pricing it at zero.
+//
+// line_total is not written here: Postgres generates it from quantity * rate.
+func UpdateOrderItemRate(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID, rate *float64) error {
+	_, err := db.Exec(ctx, `UPDATE order_items SET rate = $1 WHERE id = $2`, rate, itemID)
 	return err
 }
 

@@ -526,9 +526,28 @@ func GetOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 		for i := range order.Photos {
 			order.Photos[i].ImageURL = utils.GetPublicURL(order.Photos[i].ImageKey)
 		}
+		// This route is shared: partners and the mobile app read their own
+		// orders through it, so what we charge has to come off before it
+		// leaves. The fields are omitempty, so a stripped order carries no
+		// pricing keys at all rather than nulls.
+		stripInternalPricing(r, order)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(order)
+	}
+}
+
+// stripInternalPricing removes the per-line rates and the order total unless
+// the caller is staff. Rates are entered by us when an order is received and
+// are not a customer-facing figure.
+func stripInternalPricing(r *http.Request, order *models.Order) {
+	if role, _ := r.Context().Value("role").(string); role == "admin" || role == "employee" {
+		return
+	}
+	order.OrderTotal = nil
+	for i := range order.Items {
+		order.Items[i].Rate = nil
+		order.Items[i].LineTotal = nil
 	}
 }
 
@@ -1017,6 +1036,44 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if err := models.UpdateOrderItemBatch(r.Context(), db, itemID, body.BatchCode); err != nil {
 			log.Printf("update order item batch error: %v", err)
 			http.Error(w, "could not update batch selection", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
+	}
+}
+
+// PUT /admin/orders/{id}/items/{itemId}/rate — staff-only rate for one line,
+// entered when the order is received. Like the batch pick, this logs no
+// order_event: order events are partner-visible history, and what we charge
+// is not something the partner reads off their order.
+//
+// A null rate clears the line back to unpriced; sending 0 would price it at
+// zero, which is a different statement.
+func UpdateOrderItemRateHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		itemID, err := uuid.Parse(mux.Vars(r)["itemId"])
+		if err != nil {
+			http.Error(w, "invalid item id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Rate *float64 `json:"rate"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if body.Rate != nil && *body.Rate < 0 {
+			http.Error(w, "rate cannot be negative", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.UpdateOrderItemRate(r.Context(), db, itemID, body.Rate); err != nil {
+			log.Printf("update order item rate error: %v", err)
+			http.Error(w, "could not update rate", http.StatusInternalServerError)
 			return
 		}
 
