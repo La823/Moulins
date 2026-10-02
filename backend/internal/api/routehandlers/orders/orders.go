@@ -1044,41 +1044,47 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// PUT /admin/orders/{id}/items/{itemId}/rate — staff-only rate for one line,
-// entered when the order is received. Like the batch pick, this logs no
-// order_event: order events are partner-visible history, and what we charge
-// is not something the partner reads off their order.
+// PUT /admin/orders/{id}/rates — staff-only, saves every changed line rate on
+// an order in one request. Rates are typed in freely and committed by an
+// explicit Save, so this takes the whole set rather than firing per field.
+//
+// Like the batch pick, this logs no order_event: order events are
+// partner-visible history, and what we charge is not something the partner
+// reads off their order.
 //
 // A null rate clears the line back to unpriced; sending 0 would price it at
 // zero, which is a different statement.
-func UpdateOrderItemRateHandler(db *pgxpool.Pool) http.HandlerFunc {
+func UpdateOrderItemRatesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		itemID, err := uuid.Parse(mux.Vars(r)["itemId"])
+		orderID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
-			http.Error(w, "invalid item id", http.StatusBadRequest)
+			http.Error(w, "invalid order id", http.StatusBadRequest)
 			return
 		}
 
 		var body struct {
-			Rate *float64 `json:"rate"`
+			Rates []models.OrderItemRate `json:"rates"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
-		if body.Rate != nil && *body.Rate < 0 {
-			http.Error(w, "rate cannot be negative", http.StatusBadRequest)
-			return
+		for _, rt := range body.Rates {
+			if rt.Rate != nil && *rt.Rate < 0 {
+				http.Error(w, "rate cannot be negative", http.StatusBadRequest)
+				return
+			}
 		}
 
-		if err := models.UpdateOrderItemRate(r.Context(), db, itemID, body.Rate); err != nil {
-			log.Printf("update order item rate error: %v", err)
-			http.Error(w, "could not update rate", http.StatusInternalServerError)
+		updated, err := models.UpdateOrderItemRates(r.Context(), db, orderID, body.Rates)
+		if err != nil {
+			log.Printf("update order item rates error: %v", err)
+			http.Error(w, "could not save rates", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
+		json.NewEncoder(w).Encode(map[string]any{"message": "saved", "updated": updated})
 	}
 }
 

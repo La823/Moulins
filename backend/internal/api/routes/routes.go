@@ -612,7 +612,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.HandleFunc("/orders/{id}/items", orders.AddOrderItemHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.UpdateOrderItemHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}/batch", orders.UpdateOrderItemBatchHandler(db)).Methods("PUT")
-	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}/rate", orders.UpdateOrderItemRateHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/orders/{id}/rates", orders.UpdateOrderItemRatesHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items/{itemId}", orders.DeleteOrderItemHandler(db)).Methods("DELETE")
 	orderEditStaff.HandleFunc("/orders/upload-url", orders.UploadURLHandler()).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/{id}/tracking-upload-url", orders.TrackingUploadURLHandler()).Methods("POST")

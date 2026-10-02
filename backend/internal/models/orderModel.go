@@ -547,13 +547,42 @@ func UpdateOrderItemBatch(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUI
 	return err
 }
 
-// UpdateOrderItemRate sets what we charge for one line. A nil rate clears it,
-// which returns the line to unpriced rather than pricing it at zero.
+// OrderItemRate is one line's price in a batch save. A nil Rate clears the
+// line back to unpriced rather than pricing it at zero.
+type OrderItemRate struct {
+	ItemID uuid.UUID `json:"item_id"`
+	Rate   *float64  `json:"rate"`
+}
+
+// UpdateOrderItemRates writes every changed rate on an order in a single
+// statement. One round trip matters here: the database is in ap-southeast-2
+// and each one costs roughly 400ms, so saving a 20-line order field by field
+// would take the better part of ten seconds.
 //
-// line_total is not written here: Postgres generates it from quantity * rate.
-func UpdateOrderItemRate(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID, rate *float64) error {
-	_, err := db.Exec(ctx, `UPDATE order_items SET rate = $1 WHERE id = $2`, rate, itemID)
-	return err
+// line_total is not written: Postgres generates it from quantity * rate.
+//
+// The update is scoped to orderID as well as the item ids, so a caller cannot
+// reach another order's lines by guessing ids.
+func UpdateOrderItemRates(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, rates []OrderItemRate) (int64, error) {
+	if len(rates) == 0 {
+		return 0, nil
+	}
+	ids := make([]uuid.UUID, len(rates))
+	vals := make([]*float64, len(rates))
+	for i, r := range rates {
+		ids[i] = r.ItemID
+		vals[i] = r.Rate
+	}
+	tag, err := db.Exec(ctx, `
+		UPDATE order_items oi
+		SET rate = v.rate
+		FROM unnest($1::uuid[], $2::numeric[]) AS v(id, rate)
+		WHERE oi.id = v.id AND oi.order_id = $3`,
+		ids, vals, orderID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 func DeleteOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID) error {
