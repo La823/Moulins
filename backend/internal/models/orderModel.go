@@ -332,7 +332,8 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		        oi.rate, oi.line_total
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
-		 WHERE oi.order_id = $1`,
+		 WHERE oi.order_id = $1
+		 ORDER BY oi.created_at, oi.id`,
 		orderID,
 	)
 	if err != nil {
@@ -567,10 +568,13 @@ func UpdateOrderItemRates(ctx context.Context, db *pgxpool.Pool, orderID uuid.UU
 	if len(rates) == 0 {
 		return 0, nil
 	}
-	ids := make([]uuid.UUID, len(rates))
+	// pgx has no encode plan for []uuid.UUID against uuid[], so the ids go as
+	// strings and Postgres casts them — the same thing
+	// GetInventoryCodesForProducts does.
+	ids := make([]string, len(rates))
 	vals := make([]*float64, len(rates))
 	for i, r := range rates {
-		ids[i] = r.ItemID
+		ids[i] = r.ItemID.String()
 		vals[i] = r.Rate
 	}
 	tag, err := db.Exec(ctx, `
