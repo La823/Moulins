@@ -855,7 +855,8 @@ export default function AdminOrderDetail() {
                         </>
                       );
                     })()}
-                    <td className="py-3 text-right">
+                    <td className="py-3">
+                      <div className="flex items-center justify-end gap-1">
                       <input
                         type="number"
                         min="0"
@@ -876,6 +877,29 @@ export default function AdminOrderDetail() {
                             : "border-gray-200"
                         }`}
                       />
+                      {/* Reverts this one line to its last saved rate. Takes
+                          up no width when the line is unedited, so the column
+                          does not shift as rates are typed. */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRateDrafts((prev) => {
+                            const next = { ...prev };
+                            delete next[item.id];
+                            return next;
+                          })
+                        }
+                        className={`text-gray-300 hover:text-red-500 transition-colors ${
+                          item.id in rateDrafts ? "visible" : "invisible"
+                        }`}
+                        title="Discard this change"
+                        aria-label="Discard this change"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      </div>
                     </td>
                     <td className="py-3 text-right tabular-nums text-gray-900">
                       {lineTotalOf(item) == null ? (
@@ -953,9 +977,13 @@ export default function AdminOrderDetail() {
                   <button
                     onClick={() => setRateDrafts({})}
                     disabled={savingRates}
-                    className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-50"
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 disabled:opacity-50"
+                    title="Discard all unsaved rates"
                   >
-                    Discard
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                    Discard all
                   </button>
                 </>
               )}
