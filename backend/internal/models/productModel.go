@@ -518,6 +518,30 @@ func titleCase(s string) string {
 	return strings.Join(words, " ")
 }
 
+// categoryRenames maps a category name a released client still sends to the
+// name it now has in the database.
+//
+// The mobile app compiles the division's category string into the binary, so
+// renaming a category empties that screen for everyone until an app release.
+// "Missbella" was corrected to "Misbella" and the installed app still asks for
+// the old spelling; normalising punctuation would not help, since the two
+// differ by a letter.
+//
+// Deliberately a map here rather than a table: it is one entry that becomes
+// dead the moment the app ships with the right string. Delete this and its
+// use below once that release is out.
+var categoryRenames = map[string]string{
+	"Missbella(Derma and Skin Wellness)":  "Misbella (Derma and Skin Wellness)",
+	"Missbella (Derma and Skin Wellness)": "Misbella (Derma and Skin Wellness)",
+}
+
+func renamedCategory(name string) string {
+	if current, ok := categoryRenames[name]; ok {
+		return current
+	}
+	return name
+}
+
 // buildProductConditions builds the shared WHERE-clause pieces for
 // GetAllProducts. fuzzy swaps the search condition from a literal ILIKE
 // match to a pg_trgm similarity match (used as a fallback when the literal
@@ -558,7 +582,7 @@ func buildProductConditions(activeOnly bool, search, category, form, tag, imageC
 		conditions = append(conditions, fmt.Sprintf(
 			`EXISTS (SELECT 1 FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = products.id AND c.name = $%d)`,
 			argIdx))
-		args = append(args, category)
+		args = append(args, renamedCategory(category))
 		argIdx++
 	}
 	if form != "" {
