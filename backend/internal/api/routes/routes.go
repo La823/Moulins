@@ -554,6 +554,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerEditStaff.HandleFunc("/partners/{id}/pincode", userauth.UpdatePartnerPincodeHandler(db, rdb)).Methods("PUT")
 	partnerEditStaff.HandleFunc("/partners/{id}/send-email/{key}", userauth.SendPartnerEmailHandler(db)).Methods("POST")
 	partnerEditStaff.HandleFunc("/marg-parties/{rid}/create-partner", userauth.CreatePartnerFromMargPartyHandler(db)).Methods("POST")
+	// Marking a party duplicate is an edit to partner data, so it sits behind
+	// partners_edit rather than the marg_master_view that gates the listing.
+	partnerEditStaff.HandleFunc("/marg-parties/{id}/status", margmaster.UpdatePartyStatusHandler(db)).Methods("PUT")
 	partnerEditStaff.HandleFunc("/partners/special-tile-upload-url", userauth.SpecialTileUploadURLHandler()).Methods("POST")
 	partnerEditStaff.HandleFunc("/partners/{id}/special-tile-image", userauth.UpdatePartnerSpecialTileImageHandler(db, rdb)).Methods("PUT")
 

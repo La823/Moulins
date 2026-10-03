@@ -21,6 +21,32 @@ export default function MargPartiesPage() {
   const [expanded, setExpanded] = useState(() => new Set());
   const [refreshKey, setRefreshKey] = useState(0);
   const [creatingFor, setCreatingFor] = useState(null); // party object, or null
+  const [savingStatusId, setSavingStatusId] = useState(null);
+  const [statusError, setStatusError] = useState("");
+
+  // Our own status against a synced party — "active" or "duplicate". Written
+  // straight through on change: it is one small write per row, not a form, so
+  // there is nothing to batch.
+  const handleStatusChange = async (party, status) => {
+    const previous = party.status || "active";
+    if (status === previous) return;
+    setSavingStatusId(party.id);
+    setStatusError("");
+    // Shown immediately, reverted below if the write fails, so the dropdown
+    // never sits on a value the database does not hold.
+    setParties((prev) => prev.map((x) => (x.id === party.id ? { ...x, status } : x)));
+    try {
+      await apiFetch(`/admin/marg-parties/${party.id}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status }),
+      });
+    } catch (err) {
+      setParties((prev) => prev.map((x) => (x.id === party.id ? { ...x, status: previous } : x)));
+      setStatusError(err.message || "Could not update status");
+    } finally {
+      setSavingStatusId(null);
+    }
+  };
   const [createdMessage, setCreatedMessage] = useState("");
 
   const toggle = (id) => {
@@ -60,6 +86,9 @@ export default function MargPartiesPage() {
           <p className="text-xs text-gray-400 mt-0.5">
             Ledger accounts synced from Marg ERP — {total} record{total !== 1 ? "s" : ""}.
           </p>
+          {statusError && (
+            <p className="text-xs text-red-600 mt-1">{statusError}</p>
+          )}
           {createdMessage && (
             <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -105,6 +134,9 @@ export default function MargPartiesPage() {
                   <th className="px-4 py-3">Phone</th>
                   <th className="px-4 py-3">GSTIN</th>
                   <th className="px-4 py-3 text-right">Balance</th>
+                  {/* Two different things: what Marg says about the record,
+                      and the status we keep against it. */}
+                  <th className="px-4 py-3">Marg Status</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Partner Account</th>
                 </tr>
@@ -117,6 +149,8 @@ export default function MargPartiesPage() {
                     open={expanded.has(p.id)}
                     onToggle={() => toggle(p.id)}
                     onCreateClick={() => setCreatingFor(p)}
+                    onStatusChange={(status) => handleStatusChange(p, status)}
+                    saving={savingStatusId === p.id}
                   />
                 ))}
               </tbody>
@@ -163,7 +197,7 @@ export default function MargPartiesPage() {
   );
 }
 
-function PartyRow({ p, open, onToggle, onCreateClick }) {
+function PartyRow({ p, open, onToggle, onCreateClick, onStatusChange, saving }) {
   return (
     <>
       <tr className={`hover:bg-gray-50 transition-colors ${p.is_deleted ? "opacity-40" : ""}`}>
@@ -195,6 +229,21 @@ function PartyRow({ p, open, onToggle, onCreateClick }) {
           )}
         </td>
         <td className="px-4 py-3">
+          <select
+            value={p.status || "active"}
+            disabled={saving}
+            onChange={(e) => onStatusChange(e.target.value)}
+            className={`text-xs px-2 py-1 rounded-lg border bg-white focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 ${
+              (p.status || "active") === "duplicate"
+                ? "border-amber-300 text-amber-700 bg-amber-50"
+                : "border-gray-200 text-gray-700"
+            }`}
+          >
+            <option value="active">Active</option>
+            <option value="duplicate">Duplicate</option>
+          </select>
+        </td>
+        <td className="px-4 py-3">
           {p.linked_partner_id ? (
             <Link
               href={`/panel/users/${p.linked_partner_id}`}
@@ -217,7 +266,7 @@ function PartyRow({ p, open, onToggle, onCreateClick }) {
       </tr>
       {open && (
         <tr>
-          <td colSpan={9} className="px-4 pb-4 pt-0 bg-gray-50">
+          <td colSpan={10} className="px-4 pb-4 pt-0 bg-gray-50">
             <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Address</p>
               <p className="text-sm text-gray-700">{p.address?.trim() || "No address on file"}</p>

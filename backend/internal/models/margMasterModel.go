@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -263,6 +264,10 @@ type MargParty struct {
 	LedgerCode      *string    `json:"ledgercode,omitempty"`
 	SyncedAt        time.Time  `json:"synced_at"`
 	LinkedPartnerID *uuid.UUID `json:"linked_partner_id,omitempty"`
+	// Status is ours, not Marg's: "active" or "duplicate", set by staff to
+	// flag the duplicate entries Marg's party list accumulates. The sync
+	// never writes it.
+	Status string `json:"status"`
 }
 
 // MargPartyPage is one page of Marg parties plus the total matching count.
@@ -287,7 +292,7 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search string, limit,
 
 	rows, err := db.Query(ctx, `
 		SELECT mp.id, mp.rid, mp.code, mp.name, mp.area, mp.address, mp.balance, mp.gcode, mp.is_deleted,
-		       mp.phone1, mp.email1, mp.gstin, mp.ledgercode, mp.synced_at, u.id
+		       mp.phone1, mp.email1, mp.gstin, mp.ledgercode, mp.synced_at, u.id, mp.status
 		FROM margmaster_party mp
 		LEFT JOIN users u ON u.rid = mp.rid AND u.role = 'partner'
 		WHERE $1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%'
@@ -304,7 +309,8 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search string, limit,
 	for rows.Next() {
 		var p MargParty
 		if err := rows.Scan(&p.ID, &p.Rid, &p.Code, &p.Name, &p.Area, &p.Address, &p.Balance, &p.Gcode,
-			&p.IsDeleted, &p.Phone1, &p.Email1, &p.GSTIN, &p.LedgerCode, &p.SyncedAt, &p.LinkedPartnerID); err != nil {
+			&p.IsDeleted, &p.Phone1, &p.Email1, &p.GSTIN, &p.LedgerCode, &p.SyncedAt, &p.LinkedPartnerID,
+			&p.Status); err != nil {
 			return page, err
 		}
 		parties = append(parties, p)
@@ -322,13 +328,27 @@ func GetMargPartyByRid(ctx context.Context, db *pgxpool.Pool, rid string) (*Marg
 	var p MargParty
 	err := db.QueryRow(ctx, `
 		SELECT id, rid, code, name, area, address, balance, gcode, is_deleted,
-		       phone1, email1, gstin, ledgercode, synced_at
+		       phone1, email1, gstin, ledgercode, synced_at, status
 		FROM margmaster_party WHERE rid = $1`,
 		rid,
 	).Scan(&p.ID, &p.Rid, &p.Code, &p.Name, &p.Area, &p.Address, &p.Balance, &p.Gcode,
-		&p.IsDeleted, &p.Phone1, &p.Email1, &p.GSTIN, &p.LedgerCode, &p.SyncedAt)
+		&p.IsDeleted, &p.Phone1, &p.Email1, &p.GSTIN, &p.LedgerCode, &p.SyncedAt, &p.Status)
 	if err != nil {
 		return nil, err
 	}
 	return &p, nil
+}
+
+// MargPartyStatuses is the allowed set, mirroring the column's CHECK
+// constraint so a bad value is rejected before it reaches the database.
+var MargPartyStatuses = map[string]bool{"active": true, "duplicate": true}
+
+// SetMargPartyStatus marks a synced party active or duplicate. The status is
+// ours and the sync does not overwrite it, so it survives the next pull.
+func SetMargPartyStatus(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, status string) error {
+	if !MargPartyStatuses[status] {
+		return fmt.Errorf("invalid party status %q", status)
+	}
+	_, err := db.Exec(ctx, `UPDATE margmaster_party SET status = $1 WHERE id = $2`, status, id)
+	return err
 }

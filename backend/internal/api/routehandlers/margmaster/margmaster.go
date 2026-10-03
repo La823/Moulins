@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
 )
@@ -69,5 +71,40 @@ func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			"page":      page,
 			"page_size": margPartiesPageSize,
 		})
+	}
+}
+
+// PUT /admin/marg-parties/{id}/status — marks a synced party active or
+// duplicate. Marg's party list accumulates duplicates and we cannot clean
+// them up on their side, so the flag lives here; the sync never overwrites
+// it, so it survives the next pull.
+func UpdatePartyStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid party id", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		if !models.MargPartyStatuses[body.Status] {
+			http.Error(w, "status must be \"active\" or \"duplicate\"", http.StatusBadRequest)
+			return
+		}
+
+		if err := models.SetMargPartyStatus(r.Context(), db, id, body.Status); err != nil {
+			log.Printf("update marg party status: %v", err)
+			http.Error(w, "could not update status", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated", "status": body.Status})
 	}
 }
