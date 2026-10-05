@@ -683,10 +683,11 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			inventoryCodeByProduct = map[uuid.UUID]string{}
 		}
 
-		// MRP comes from the product, which is today's printed price. Rate and
-		// line total come from the order line, where they were snapshotted when
-		// staff priced it — so a later price change never rewrites what an
-		// order was charged at.
+		// Fallback MRP, used only where a line has no Marg batch to read one
+		// from. Where a batch exists its own MRP wins, since that is the pack
+		// actually shipping. Rate and line total come from the order line,
+		// snapshotted when staff priced it, so a later price change never
+		// rewrites what an order was charged at.
 		mrpByProduct := map[uuid.UUID]float64{}
 		if mrpRows, err := db.Query(r.Context(),
 			`SELECT id, mrp FROM products WHERE id = ANY($1) AND mrp IS NOT NULL`, productIDs); err != nil {
@@ -733,6 +734,14 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 					}
 					pdfItem.Batch = chosen.CurBatch
 					pdfItem.Expiry = formatBatchExpiryForPDF(chosen.Exp)
+					// MRP comes from the batch being shipped, not the product.
+					// Batch MRPs differ — DICMOLIN runs 103.13 / 103.00 /
+					// 110.00 across its batches — so the printed price has to
+					// be the one on the pack going out, matching the batch
+					// code and expiry printed beside it.
+					if chosen.MRP != nil {
+						pdfItem.MRP = chosen.MRP
+					}
 				}
 			}
 			items = append(items, pdfItem)
