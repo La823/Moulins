@@ -21,6 +21,14 @@ class CartService {
         mrp: row['mrp'] == null ? null : (row['mrp'] as num).toDouble(),
         packSize: row['pack_size'],
         productForm: row['product_form'],
+        // The cart endpoint returns the product's first visible image as a
+        // single url, not the full image list, so it is wrapped into one
+        // ProductImage — enough for primaryImageUrl, which is all a cart row
+        // renders. hidden is false because the backend already excluded
+        // hidden images when choosing it.
+        images: (row['image_url'] ?? '').toString().isEmpty
+            ? const []
+            : [ProductImage(id: '', imageUrl: row['image_url'], sortOrder: 0)],
       );
       return CartItem(product: product, quantity: row['quantity'] ?? 1);
     }).toList();

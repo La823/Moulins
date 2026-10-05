@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 type CartItem struct {
@@ -16,10 +17,7 @@ type CartItem struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	// Joined from products, so clients can render the cart without a
-	// second round-trip. Images aren't included here — batching those
-	// needs the relations loader that lives in the products handler
-	// package, not the models layer; clients fall back to a placeholder
-	// thumbnail for cart rows, same as anywhere else a product has none.
+	// second round-trip.
 	ProductName string  `json:"product_name"`
 	Price       float64 `json:"price"`
 	Mrp         float64 `json:"mrp"`
@@ -28,12 +26,25 @@ type CartItem struct {
 	PackSize    *string `json:"pack_size,omitempty"`
 	ProductForm *string `json:"product_form,omitempty"`
 	IsActive    bool    `json:"is_active"`
+	// The product's first visible image. A cart is a handful of rows, so
+	// this is a per-row subquery rather than the batched relations loader
+	// the products handler uses — the loader lives in that handler's
+	// package and is not worth reaching for at this size.
+	//
+	// Hidden images are excluded here, not client-side, so an image staff
+	// pulled from customer view cannot reach a customer through the cart.
+	ImageKey *string `json:"image_key,omitempty"`
+	ImageURL string  `json:"image_url,omitempty"`
 }
 
 func GetCartItems(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]CartItem, error) {
 	rows, err := db.Query(ctx, `
 		SELECT ci.id, ci.product_id, ci.quantity, ci.created_at, ci.updated_at,
-			p.name, p.price, p.mrp, p.stock, p.moq, p.pack_size, p.product_form, p.is_active
+			p.name, p.price, p.mrp, p.stock, p.moq, p.pack_size, p.product_form, p.is_active,
+			(SELECT pi.image_key FROM product_images pi
+			  WHERE pi.product_id = p.id AND NOT pi.hidden
+			  ORDER BY pi.sort_order, pi.created_at
+			  LIMIT 1) AS image_key
 		FROM cart_items ci
 		JOIN products p ON p.id = ci.product_id
 		WHERE ci.user_id = $1
@@ -50,8 +61,15 @@ func GetCartItems(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]Ca
 		if err := rows.Scan(
 			&c.ID, &c.ProductID, &c.Quantity, &c.CreatedAt, &c.UpdatedAt,
 			&c.ProductName, &c.Price, &c.Mrp, &c.Stock, &c.Moq, &c.PackSize, &c.ProductForm, &c.IsActive,
+			&c.ImageKey,
 		); err != nil {
 			return nil, err
+		}
+		// Resolved here rather than in each handler: two of them return
+		// carts, and a handler that forgot would serve a key the client
+		// cannot turn into an image.
+		if c.ImageKey != nil && *c.ImageKey != "" {
+			c.ImageURL = utils.GetPublicURL(*c.ImageKey)
 		}
 		items = append(items, c)
 	}
