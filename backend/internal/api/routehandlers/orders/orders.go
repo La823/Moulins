@@ -683,12 +683,37 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			inventoryCodeByProduct = map[uuid.UUID]string{}
 		}
 
+		// MRP comes from the product, which is today's printed price. Rate and
+		// line total come from the order line, where they were snapshotted when
+		// staff priced it — so a later price change never rewrites what an
+		// order was charged at.
+		mrpByProduct := map[uuid.UUID]float64{}
+		if mrpRows, err := db.Query(r.Context(),
+			`SELECT id, mrp FROM products WHERE id = ANY($1) AND mrp IS NOT NULL`, productIDs); err != nil {
+			log.Printf("order pdf mrp lookup error: %v", err)
+		} else {
+			for mrpRows.Next() {
+				var id uuid.UUID
+				var mrp float64
+				if err := mrpRows.Scan(&id, &mrp); err == nil {
+					mrpByProduct[id] = mrp
+				}
+			}
+			mrpRows.Close()
+		}
+
 		items := make([]utils.OrderPDFItem, 0, len(order.Items))
 		for _, oi := range order.Items {
 			pdfItem := utils.OrderPDFItem{
 				ProductName: oi.ProductName,
 				Quantity:    oi.Quantity,
 				ProductCode: inventoryCodeByProduct[oi.ProductID],
+				Rate:        oi.Rate,
+				LineTotal:   oi.LineTotal,
+			}
+			if mrp, ok := mrpByProduct[oi.ProductID]; ok {
+				m := mrp
+				pdfItem.MRP = &m
 			}
 			if baseCode, ok := margCodeByProduct[oi.ProductID]; ok {
 				if batches := batchesByBaseCode[baseCode]; len(batches) > 0 {
@@ -746,8 +771,11 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			TransportName: transportName,
 			Notes:         stringOrEmpty(order.Notes),
 			Items:         items,
-			PrintedBy:     printedBy,
-			PrintedAt:     printedAt.Format("02.01.2006 15:04"),
+			// Computed by GetOrderByID from the priced lines; nil when the
+			// order has not been priced at all.
+			OrderTotal: order.OrderTotal,
+			PrintedBy:  printedBy,
+			PrintedAt:  printedAt.Format("02.01.2006 15:04"),
 		})
 		if err != nil {
 			log.Printf("order pdf generation error: %v", err)

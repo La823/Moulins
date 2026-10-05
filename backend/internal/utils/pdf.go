@@ -162,12 +162,28 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// money renders an amount for the items table. A nil value prints "-"
+// rather than 0.00: an unpriced line is not a line worth nothing, and on a
+// document someone acts on, the difference matters.
+func money(v *float64) string {
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f", *v)
+}
+
 type OrderPDFItem struct {
 	ProductName string
 	ProductCode string // warehouse inventory code, blank if none assigned
 	Quantity    int
 	Batch       string
 	Expiry      string
+	// Money. All three are pointers because an order is not priced until
+	// staff enter a rate on receipt — nil prints "-", which says "not priced
+	// yet" rather than "free".
+	MRP       *float64
+	Rate      *float64
+	LineTotal *float64
 }
 
 type OrderPDFData struct {
@@ -179,6 +195,8 @@ type OrderPDFData struct {
 	TransportName string
 	Notes         string
 	Items         []OrderPDFItem
+	// Sum of the priced lines; nil when nothing on the order has a rate.
+	OrderTotal *float64
 	PrintedBy     string
 	PrintedAt     string
 }
@@ -273,11 +291,18 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	// Arial 9) rather than the 7-char Marg code this column used to carry.
 	// The width comes out of colExp, which is the remainder and had it to
 	// spare, so the product name column is unaffected.
-	colCode := 34.0
-	colProduct := 62.0
-	colQty := 16.0
-	colBatch := 38.0
-	colExp := pageW - colCode - colProduct - colQty - colBatch
+	// Eight columns across the same 170mm, so everything tightens. The table
+	// drops to Arial 8 to buy the room; the rest of the document stays at 9.
+	// Product names wrap rather than truncate, which is why PRODUCT keeps the
+	// largest share.
+	colCode := 26.0
+	colProduct := 40.0
+	colQty := 11.0
+	colMRP := 16.0
+	colRate := 16.0
+	colTotal := 19.0
+	colBatch := 26.0
+	colExp := pageW - colCode - colProduct - colQty - colMRP - colRate - colTotal - colBatch
 
 	// Column offsets from the row's left edge, accumulated once rather than
 	// re-summed at every draw call — five columns of "x+colA+colB+colC" gets
@@ -285,11 +310,14 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	xCode := 0.0
 	xProduct := xCode + colCode
 	xQty := xProduct + colProduct
-	xBatch := xQty + colQty
+	xMRP := xQty + colQty
+	xRate := xMRP + colMRP
+	xTotal := xRate + colRate
+	xBatch := xTotal + colTotal
 	xExp := xBatch + colBatch
 
 	drawHeader := func() {
-		pdf.SetFont("Arial", "B", 9)
+		pdf.SetFont("Arial", "B", 8)
 		x, y := pdf.GetX(), pdf.GetY()
 		pdf.Rect(x+xCode, y, colCode, 8, "D")
 		pdf.CellFormat(colCode, 8, "CODE", "", 0, "L", false, 0, "")
@@ -297,11 +325,17 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.CellFormat(colProduct, 8, "PRODUCT", "", 0, "L", false, 0, "")
 		pdf.Rect(x+xQty, y, colQty, 8, "D")
 		pdf.CellFormat(colQty, 8, "QTY", "", 0, "C", false, 0, "")
+		pdf.Rect(x+xMRP, y, colMRP, 8, "D")
+		pdf.CellFormat(colMRP, 8, "MRP", "", 0, "R", false, 0, "")
+		pdf.Rect(x+xRate, y, colRate, 8, "D")
+		pdf.CellFormat(colRate, 8, "RATE", "", 0, "R", false, 0, "")
+		pdf.Rect(x+xTotal, y, colTotal, 8, "D")
+		pdf.CellFormat(colTotal, 8, "TOTAL", "", 0, "R", false, 0, "")
 		pdf.Rect(x+xBatch, y, colBatch, 8, "D")
 		pdf.CellFormat(colBatch, 8, "BATCH", "", 0, "L", false, 0, "")
 		pdf.Rect(x+xExp, y, colExp, 8, "D")
 		pdf.CellFormat(colExp, 8, "EXPIRY", "", 1, "L", false, 0, "")
-		pdf.SetFont("Arial", "", 9)
+		pdf.SetFont("Arial", "", 8)
 	}
 
 	drawHeader()
@@ -321,6 +355,9 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.Rect(x+xCode, y, colCode, rowH, "D")
 		pdf.Rect(x+xProduct, y, colProduct, rowH, "D")
 		pdf.Rect(x+xQty, y, colQty, rowH, "D")
+		pdf.Rect(x+xMRP, y, colMRP, rowH, "D")
+		pdf.Rect(x+xRate, y, colRate, rowH, "D")
+		pdf.Rect(x+xTotal, y, colTotal, rowH, "D")
 		pdf.Rect(x+xBatch, y, colBatch, rowH, "D")
 		pdf.Rect(x+xExp, y, colExp, rowH, "D")
 
@@ -334,6 +371,12 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.MultiCell(colProduct-2, 5, item.ProductName, "", "L", false)
 		pdf.SetXY(x+xQty+1, y+1)
 		pdf.CellFormat(colQty-2, rowH-2, fmt.Sprintf("%d", item.Quantity), "", 0, "C", false, 0, "")
+		pdf.SetXY(x+xMRP+1, y+1)
+		pdf.CellFormat(colMRP-2, rowH-2, money(item.MRP), "", 0, "R", false, 0, "")
+		pdf.SetXY(x+xRate+1, y+1)
+		pdf.CellFormat(colRate-2, rowH-2, money(item.Rate), "", 0, "R", false, 0, "")
+		pdf.SetXY(x+xTotal+1, y+1)
+		pdf.CellFormat(colTotal-2, rowH-2, money(item.LineTotal), "", 0, "R", false, 0, "")
 		pdf.SetXY(x+xBatch+1, y+1)
 		batch := item.Batch
 		if batch == "" {
@@ -348,6 +391,23 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.CellFormat(colExp-2, rowH-2, exp, "", 0, "L", false, 0, "")
 
 		pdf.SetXY(x, y+rowH)
+	}
+
+	// Order total, aligned under the TOTAL column so it reads as a sum of it.
+	// Omitted entirely when nothing is priced — a printed "0.00" on a sheet
+	// someone acts on would be read as the order being worth nothing.
+	if data.OrderTotal != nil {
+		x, y := pdf.GetX(), pdf.GetY()
+		labelW := colCode + colProduct + colQty + colMRP + colRate
+		pdf.Rect(x, y, labelW, 8, "D")
+		pdf.SetFont("Arial", "B", 8)
+		pdf.SetXY(x+1, y+1)
+		pdf.CellFormat(labelW-2, 6, "ORDER TOTAL", "", 0, "R", false, 0, "")
+		pdf.Rect(x+xTotal, y, colTotal, 8, "D")
+		pdf.SetXY(x+xTotal+1, y+1)
+		pdf.CellFormat(colTotal-2, 6, money(data.OrderTotal), "", 0, "R", false, 0, "")
+		pdf.SetXY(x, y+8)
+		pdf.SetFont("Arial", "", 9)
 	}
 
 	if pdf.GetY()+40 > bottomLimit {
