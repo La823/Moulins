@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/cart_provider.dart';
-import 'quantity_stepper.dart';
+import 'product_thumbnail.dart';
 
 /// Side cart, opened from [CartButton]. Shows what is in the cart and lets
 /// quantities be adjusted without leaving the current screen; checkout still
@@ -75,48 +75,60 @@ class CartDrawer extends ConsumerWidget {
                     final item = items[i];
                     final step = item.product.moq > 0 ? item.product.moq : 1;
                     return Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Flexible, because product names here run long
-                              // ("NEBSMOL-G RESPULES 4*5*2 ML") and would
-                              // otherwise overflow the narrower drawer.
-                              Expanded(
-                                child: Text(
+                          ProductThumbnail(product: item.product, size: 44),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // One line: the drawer is narrow and a wrapped
+                                // name pushes the row's height around, which
+                                // makes the list look ragged.
+                                Text(
                                   item.product.name,
                                   style: const TextStyle(
-                                      fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF1A1A1A)),
-                                  maxLines: 2,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1A1A1A),
+                                      height: 1.2),
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                              IconButton(
-                                icon: Icon(Icons.close, size: 16, color: Colors.grey.shade400),
-                                tooltip: 'Remove',
-                                onPressed: () => cart.remove(item.product.id),
-                              ),
-                            ],
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    _MiniStepper(
+                                      quantity: item.quantity,
+                                      onDecrement: () =>
+                                          cart.updateQty(item.product.id, item.quantity - step),
+                                      onIncrement: () =>
+                                          cart.updateQty(item.product.id, item.quantity + step),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '₹${item.total.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF1A1A1A)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              QuantityStepper(
-                                quantity: item.quantity,
-                                step: step,
-                                onDecrement: () => cart.updateQty(item.product.id, item.quantity - step),
-                                onIncrement: () => cart.updateQty(item.product.id, item.quantity + step),
-                              ),
-                              const Spacer(),
-                              Text(
-                                '₹${item.total.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A)),
-                              ),
-                            ],
+                          IconButton(
+                            icon: Icon(Icons.close, size: 15, color: Colors.grey.shade400),
+                            tooltip: 'Remove',
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            padding: EdgeInsets.zero,
+                            onPressed: () => cart.remove(item.product.id),
                           ),
                         ],
                       ),
@@ -173,4 +185,54 @@ class CartDrawer extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// A smaller [QuantityStepper] for the side cart, where the full-size control
+/// would crowd a 44px row. Same teal, same behaviour, roughly two-thirds the
+/// height.
+class _MiniStepper extends StatelessWidget {
+  final int quantity;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+
+  const _MiniStepper({
+    required this.quantity,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _btn(Icons.remove, onDecrement),
+          SizedBox(
+            width: 30,
+            child: Text(
+              '$quantity',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+            ),
+          ),
+          _btn(Icons.add, onIncrement),
+        ],
+      ),
+    );
+  }
+
+  Widget _btn(IconData icon, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Icon(icon, size: 15, color: CartDrawer._teal),
+        ),
+      );
 }
