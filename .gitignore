@@ -32,3 +32,11 @@ api test/
 # OS
 .DS_Store
 Thumbs.db
+
+# Loose spreadsheets, exports and reference docs — kept locally, not in git.
+# Tracked files already in data-files/ are unaffected by this.
+data-files/exports/
+data-files/reference/*.xlsx
+data-files/reference/*.XLS
+data-files/reference/*.xlsm
+!data-files/reference/1mg SHEET.xlsx
