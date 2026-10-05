@@ -250,7 +250,17 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   ),
                 ),
 
-                // Summary + order button
+                // Summary + order button.
+                //
+                // Hidden while the keyboard is up. The Scaffold shrinks the
+                // body by the keyboard's height, and with this panel at a
+                // fixed height the Expanded list above absorbs the entire
+                // loss — so the panel rode up and covered the quantity row
+                // being edited. Dropping it gives the list that space back
+                // and keeps the field in view. Nothing here is needed while
+                // typing a quantity, and it returns as soon as the keyboard
+                // closes.
+                if (MediaQuery.of(context).viewInsets.bottom == 0)
                 Container(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                   decoration: BoxDecoration(
