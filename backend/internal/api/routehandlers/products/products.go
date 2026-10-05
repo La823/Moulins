@@ -466,13 +466,15 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		imageCount := r.URL.Query().Get("image_count")     // "", "1", "2", "3plus"
 		licenceType := r.URL.Query().Get("licence_type")  // "", "<id>", "none"
 		zone := r.URL.Query().Get("zone")                 // "", "<zone code>", "none"
+		// Preferred over category: a uuid survives renaming, a name does not.
+		categoryID := r.URL.Query().Get("category_id")
 		nameOnly := r.URL.Query().Get("name_only") == "true"
 		saltOnly := r.URL.Query().Get("salt_only") == "true"
 		sortBy := r.URL.Query().Get("sort_by")
 		sortDir := r.URL.Query().Get("sort_dir")
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:lic=%s:zone=%s:no=%v:so=%v:sb=%s:sd=%s", activeOnly, page, limit, search, category, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, sortBy, sortDir)
+		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:lic=%s:zone=%s:cid=%s:no=%v:so=%v:sb=%s:sd=%s", activeOnly, page, limit, search, category, form, tag, imageCount, licenceType, zone, categoryID, nameOnly, saltOnly, sortBy, sortDir)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -480,7 +482,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, form, tag, imageCount, licenceType, zone, limit, offset, nameOnly, saltOnly, sortBy, sortDir)
+		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, limit, offset, nameOnly, saltOnly, sortBy, sortDir)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)

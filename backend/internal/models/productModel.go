@@ -546,7 +546,7 @@ func renamedCategory(name string) string {
 // GetAllProducts. fuzzy swaps the search condition from a literal ILIKE
 // match to a pg_trgm similarity match (used as a fallback when the literal
 // search finds nothing, e.g. a misspelled salt/composition name).
-func buildProductConditions(activeOnly bool, search, category, form, tag, imageCount, licenceType, zone string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
+func buildProductConditions(activeOnly bool, search, category, categoryID, form, tag, imageCount, licenceType, zone string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
@@ -578,7 +578,21 @@ func buildProductConditions(activeOnly bool, search, category, form, tag, imageC
 		}
 		argIdx++
 	}
-	if category != "" {
+	// categoryID is the rename-proof way to filter: a category's uuid never
+	// changes, so a client holding one keeps working through any renaming.
+	// Filtering by name cannot offer that — "Missbella" to "Misbella" emptied
+	// the division screen on every installed app and needed a store release
+	// to fix properly. New clients should send category_id; category stays
+	// for the ones already out there.
+	if categoryID != "" {
+		if _, err := uuid.Parse(categoryID); err == nil {
+			conditions = append(conditions, fmt.Sprintf(
+				`EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = products.id AND pc.category_id = $%d)`,
+				argIdx))
+			args = append(args, categoryID)
+			argIdx++
+		}
+	} else if category != "" {
 		conditions = append(conditions, fmt.Sprintf(
 			`EXISTS (SELECT 1 FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = products.id AND c.name = $%d)`,
 			argIdx))
@@ -746,7 +760,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 }
 
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
-	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, form, tag, "", "", "", limit, offset, nameOnly, false, "", "")
+	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, "", form, tag, "", "", "", limit, offset, nameOnly, false, "", "")
 	return products, total, err
 }
 
@@ -761,8 +775,8 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 // name+key_ingredients — used when the search term came from clicking a
 // "did you mean" salt suggestion, so the result list is the products that
 // actually contain that salt rather than a looser text match.
-func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag, imageCount, licenceType, zone string, limit, offset int, nameOnly, saltOnly bool, sortBy, sortDir string) ([]Product, int, []string, error) {
-	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, false)
+func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, categoryID, form, tag, imageCount, licenceType, zone string, limit, offset int, nameOnly, saltOnly bool, sortBy, sortDir string) ([]Product, int, []string, error) {
+	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, false)
 	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search, sortBy, sortDir)
 	if err != nil || search == "" {
 		return products, total, nil, err
@@ -774,7 +788,7 @@ func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeO
 
 	// Literal search found nothing — fall back to a pg_trgm fuzzy match in
 	// case the term was misspelled (e.g. a salt/composition name).
-	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, true)
+	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, true)
 	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search, sortBy, sortDir)
 	if err != nil || len(fuzzyProducts) == 0 {
 		return fuzzyProducts, fuzzyTotal, nil, err
