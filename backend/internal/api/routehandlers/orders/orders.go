@@ -17,6 +17,7 @@ import (
 	"github.com/lavanyaarora/server/internal/mailer"
 	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/services"
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
@@ -119,6 +120,64 @@ func buildOrderEmailData(order *models.Order, user *models.User) orderEmailData 
 		TransportMode:   transportMode,
 		ShippingAddress: shippingAddress,
 	}
+}
+
+// notifyStaffNewOrder pings every admin and employee that an order has come
+// in — an in-app notification plus a push to their registered devices.
+//
+// Async and best-effort, like the order emails: a push failure must never
+// stop an order being placed, and FCM is slow enough that doing it inline
+// would be felt by whoever is checking out.
+//
+// excludeUserID keeps a staff member from being told about an order they
+// just created themselves; pass uuid.Nil for a customer's own checkout.
+func notifyStaffNewOrder(db *pgxpool.Pool, orderID uuid.UUID, excludeUserID uuid.UUID) {
+	go func() {
+		ctx := context.Background()
+		order, err := models.GetOrderByID(ctx, db, orderID)
+		if err != nil {
+			log.Printf("staff order notification: failed to load order %s: %v", orderID, err)
+			return
+		}
+
+		customer := "a customer"
+		if user, err := models.GetUserByID(ctx, db, order.UserID); err == nil {
+			if user.Username != nil && *user.Username != "" {
+				customer = *user.Username
+			} else if user.PhoneNumber != "" {
+				customer = user.PhoneNumber
+			}
+		}
+
+		items := len(order.Items)
+		body := fmt.Sprintf("%s placed an order with %d item%s", customer, items, plural(items))
+
+		staff, err := models.GetStaffUserIDs(ctx, db)
+		if err != nil {
+			log.Printf("staff order notification: failed to list staff: %v", err)
+			return
+		}
+
+		// Points at the order's page in the panel; the app currently just
+		// opens on tap, which is why this is not load-bearing.
+		deepLink := "/panel/orders/" + orderID.String()
+		for _, uid := range staff {
+			if uid == excludeUserID {
+				continue
+			}
+			if err := services.SendDirectNotification(ctx, db, uid, "New order received", body, &deepLink); err != nil {
+				// One bad device must not stop the rest being told.
+				log.Printf("staff order notification: send to %s failed: %v", uid, err)
+			}
+		}
+	}()
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // notifyOrderPlacedEmail sends the initial order-received confirmation.
@@ -351,6 +410,9 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		notifyOrderPlacedEmail(db, orderID)
+		// A customer's own checkout: nobody on staff is the author, so
+		// everyone gets told.
+		notifyStaffNewOrder(db, orderID, uuid.Nil)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -431,6 +493,9 @@ func CreateOrderForCustomerHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		notifyOrderPlacedEmail(db, orderID)
+		// Staff placed this one on a customer's behalf; they do not need
+		// telling about their own action.
+		notifyStaffNewOrder(db, orderID, staffID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)

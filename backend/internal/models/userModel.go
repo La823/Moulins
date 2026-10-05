@@ -602,3 +602,28 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	}
 	return users, rows.Err()
 }
+
+// GetStaffUserIDs returns every admin and employee who should be told when
+// something happens on the operations side.
+//
+// There is no soft-delete on public.users — the deleted_at column belongs to
+// Supabase's own auth.users — so a departing staff member is handled by
+// changing their role, which this filter already respects.
+func GetStaffUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx,
+		`SELECT id FROM users WHERE role IN ('admin', 'employee')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
