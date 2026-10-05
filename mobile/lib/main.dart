@@ -234,6 +234,7 @@ final List<GoRoute> _divisionRoutes = kDivisions
             heroTitle: d.heroTitle,
             heroImage: d.heroImage,
             category: d.category,
+            categoryId: d.categoryId,
           ),
         ))
     .toList();

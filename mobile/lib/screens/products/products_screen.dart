@@ -38,7 +38,11 @@ class ProductsScreen extends ConsumerStatefulWidget {
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   final _searchCtrl = TextEditingController();
   String _search = '';
+  // Filtering keys off the uuid, not the name: a uuid survives a category
+  // being renamed. _category is kept only for a deep link that arrives with
+  // a name, and as the fallback when that name matches no known division.
   String _category = '';
+  String _categoryId = '';
   String _form = '';
   String _tag = '';
   int _page = 1;
@@ -62,6 +66,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   void initState() {
     super.initState();
     _category = widget.initialCategory ?? '';
+    if (_category.isNotEmpty) {
+      final match = kDivisions.where((d) => d.category == _category);
+      if (match.isNotEmpty) {
+        _categoryId = match.first.categoryId;
+        _category = '';
+      }
+      // No match: leave the name in place and let the backend resolve it,
+      // which covers a link carrying a category's previous name.
+    }
     _tag = widget.initialTag ?? '';
     _load();
     _scrollCtrl.addListener(() {
@@ -94,6 +107,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         page: _page,
         search: _search,
         category: _category,
+        categoryId: _categoryId,
         form: _form,
         tag: _tag,
         saltOnly: _saltOnly,
@@ -183,8 +197,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _load(reset: true);
   }
 
-  void _onCategory(String cat) {
-    setState(() => _category = _category == cat ? '' : cat);
+  void _onCategory(String categoryId) {
+    setState(() {
+      _categoryId = _categoryId == categoryId ? '' : categoryId;
+      _category = ''; // a tile tap supersedes any name from a deep link
+    });
     _load(reset: true);
   }
 
@@ -313,8 +330,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           children: [
                             GestureDetector(
                               onTap: () {
-                                if (_category != '')
-                                  setState(() => _category = '');
+                                if (_category.isNotEmpty || _categoryId.isNotEmpty) {
+                                  setState(() {
+                                    _category = '';
+                                    _categoryId = '';
+                                  });
+                                }
                                 _load(reset: true);
                               },
                               child: Container(
@@ -323,7 +344,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                     const EdgeInsets.symmetric(vertical: 10),
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: _category == ''
+                                  color: (_category.isEmpty && _categoryId.isEmpty)
                                       ? _filterRed
                                       : Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(10),
@@ -333,7 +354,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
-                                    color: _category == ''
+                                    color: (_category.isEmpty && _categoryId.isEmpty)
                                         ? Colors.white
                                         : Colors.grey.shade700,
                                   ),
@@ -381,9 +402,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                               ),
                               itemBuilder: (context, i) {
                                 final d = kDivisions[i];
-                                final isActive = _category == d.category;
+                                final isActive = _categoryId == d.categoryId;
                                 return GestureDetector(
-                                  onTap: () => _onCategory(d.category),
+                                  onTap: () => _onCategory(d.categoryId),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(10),

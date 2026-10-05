@@ -20,6 +20,9 @@ class DivisionLandingScreen extends ConsumerStatefulWidget {
   final String heroTitle;
   final String heroImage;
   final String category;
+  /// Filtering keys off this rather than [category]: a uuid survives the
+  /// category being renamed, a name does not.
+  final String categoryId;
 
   const DivisionLandingScreen({
     super.key,
@@ -27,6 +30,7 @@ class DivisionLandingScreen extends ConsumerStatefulWidget {
     required this.heroTitle,
     required this.heroImage,
     required this.category,
+    required this.categoryId,
   });
 
   @override
@@ -45,7 +49,7 @@ class _DivisionLandingScreenState extends ConsumerState<DivisionLandingScreen> {
 
   Future<void> _load() async {
     try {
-      final res = await _productService.getProducts(category: widget.category, limit: 100);
+      final res = await _productService.getProducts(categoryId: widget.categoryId, limit: 100);
       if (mounted) setState(() { _products.addAll(res.products); _loading = false; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);

@@ -10,6 +10,8 @@ class ProductService {
     int limit = 20,
     String search = '',
     String category = '',
+    /// Preferred over [category]: a uuid survives a category being renamed.
+    String categoryId = '',
     String form = '',
     String tag = '',
     bool saltOnly = false,
@@ -20,7 +22,8 @@ class ProductService {
         'limit': limit,
         if (search.isNotEmpty) 'search': search,
         if (search.isNotEmpty && saltOnly) 'salt_only': 'true',
-        if (category.isNotEmpty) 'category': category,
+        if (categoryId.isNotEmpty) 'category_id': categoryId
+        else if (category.isNotEmpty) 'category': category,
         if (form.isNotEmpty) 'form': form,
         if (tag.isNotEmpty) 'tag': tag,
       });
