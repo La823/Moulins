@@ -30,15 +30,15 @@ const STATUS_STYLES = {
 // Marg batch expiry comes back as raw "YYYYMMDD" (e.g. "20270701") —
 // render it as a readable date, falling back to the raw string if it
 // doesn't parse (e.g. the placeholder all-spaces value for empty batches).
+// Marg's raw "YYYYMMDD" expiry, shown as "MM/YYYY".
+//
+// The day is dropped deliberately: a batch expires at the end of its stated
+// month, so a day implies a precision the date does not carry — Marg stores
+// the first of the month regardless of when the batch actually lapses.
 function formatBatchExpiry(raw) {
   const trimmed = raw?.trim();
   if (!trimmed || trimmed.length !== 8) return trimmed || "";
-  const year = trimmed.slice(0, 4);
-  const month = trimmed.slice(4, 6);
-  const day = trimmed.slice(6, 8);
-  const d = new Date(`${year}-${month}-${day}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return trimmed;
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  return `${trimmed.slice(4, 6)}/${trimmed.slice(0, 4)}`;
 }
 
 export default function AdminOrderDetail() {

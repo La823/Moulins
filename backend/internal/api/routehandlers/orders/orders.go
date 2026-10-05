@@ -789,13 +789,17 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// formatBatchExpiryForPDF turns Marg's raw "YYYYMMDD" expiry into "DD.MM.YYYY".
+// formatBatchExpiryForPDF turns Marg's raw "YYYYMMDD" expiry into "MM/YYYY".
+//
+// The day is dropped deliberately: a batch expires at the end of its stated
+// month, so printing a day implies a precision the date does not carry, and
+// Marg stores the first of the month regardless.
 func formatBatchExpiryForPDF(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if len(trimmed) != 8 {
 		return trimmed
 	}
-	return trimmed[6:8] + "." + trimmed[4:6] + "." + trimmed[0:4]
+	return trimmed[4:6] + "/" + trimmed[0:4]
 }
 
 func stringOrEmpty(s *string) string {
