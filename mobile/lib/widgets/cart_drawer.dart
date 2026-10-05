@@ -109,14 +109,6 @@ class CartDrawer extends ConsumerWidget {
                                       onIncrement: () =>
                                           cart.updateQty(item.product.id, item.quantity + step),
                                     ),
-                                    const Spacer(),
-                                    Text(
-                                      '₹${item.total.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF1A1A1A)),
-                                    ),
                                   ],
                                 ),
                               ],
@@ -143,19 +135,20 @@ class CartDrawer extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
                 child: Column(
                   children: [
+                    // No amount shown: an order is priced when staff enter a
+                    // rate on receipt, so any figure here would be a guess
+                    // dressed as a total. The item count is the honest
+                    // summary.
                     Row(
                       children: [
-                        const Text('Total',
-                            style: TextStyle(fontSize: 14, color: Colors.grey)),
-                        const Spacer(),
                         Text(
-                          '₹${cart.total.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
+                          '${items.length} item${items.length == 1 ? '' : 's'}',
+                          style: const TextStyle(fontSize: 13, color: Colors.grey),
                         ),
+                        const Spacer(),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -165,14 +158,14 @@ class CartDrawer extends ConsumerWidget {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        // Transport and address live on the full cart screen,
-                        // so checkout goes there rather than being duplicated
-                        // in a panel this narrow.
+                        // Checkout happens on the full cart screen, which owns
+                        // transport and address — duplicating those in a panel
+                        // this narrow would be worse, not faster.
                         onPressed: () {
                           Navigator.of(context).pop();
                           context.push('/cart');
                         },
-                        child: const Text('Go to Cart',
+                        child: const Text('Checkout',
                             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                       ),
                     ),

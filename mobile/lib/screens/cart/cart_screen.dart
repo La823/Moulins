@@ -211,12 +211,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // No price shown: an order is priced when
+                                  // staff enter a rate on receipt, and MRP is
+                                  // not what the partner pays.
                                   Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'MRP Rs. ${(item.product.mrp ?? item.product.price).toStringAsFixed(2)}',
-                                    style: const TextStyle(color: Color(0xFF00A6A4), fontWeight: FontWeight.w600),
-                                  ),
                                 ],
                               ),
                             ),
