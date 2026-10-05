@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
@@ -9,22 +11,35 @@ import '../../widgets/upcoming_products_section.dart';
 // import '../../widgets/areas_of_focus_section.dart'; // temporarily unused — see below
 import '../../widgets/partnership_section.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/cart_button.dart';
+import '../../widgets/cart_drawer.dart';
 import '../../data/divisions.dart';
 
 const _ink = Color(0xFF1A1A1A);
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Doctors browse the catalogue but cannot order, so they get no cart —
+    // the same rule the products screen applies.
+    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+
     return Scaffold(
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
+      endDrawer: canOrder ? const CartDrawer() : null,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
+        actions: [
+          const ChatButton(),
+          const NotificationBellButton(),
+          if (canOrder) const CartButton(),
+          const ProfileButton(),
+          const SizedBox(width: 4),
+        ],
       ),
       body: ListView(
         padding: EdgeInsets.zero,

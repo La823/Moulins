@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
+import '../../widgets/cart_button.dart';
+import '../../widgets/cart_drawer.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/favorite_service.dart';
@@ -77,6 +79,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
     final canOrder = ref.watch(authProvider).user?.role != 'doctor';
 
     return Scaffold(
+      endDrawer: const CartDrawer(),
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
@@ -87,10 +90,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
           if (canOrder)
             Stack(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF1A1A1A)),
-                  onPressed: () => context.push('/cart'),
-                ),
+          const CartButton(),
                 if (ref.watch(cartProvider).isNotEmpty)
                   Positioned(
                     right: 8, top: 8,
