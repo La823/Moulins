@@ -305,44 +305,50 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	// largest share.
 	colCode := 26.0
 	colProduct := 40.0
-	colQty := 11.0
-	colMRP := 16.0
-	colRate := 16.0
-	colTotal := 19.0
 	colBatch := 26.0
-	colExp := pageW - colCode - colProduct - colQty - colMRP - colRate - colTotal - colBatch
+	colExp := 16.0
+	colMRP := 16.0
+	colQty := 11.0
+	colRate := 16.0
+	colTotal := pageW - colCode - colProduct - colBatch - colExp - colMRP - colQty - colRate
 
-	// Column offsets from the row's left edge, accumulated once rather than
-	// re-summed at every draw call — five columns of "x+colA+colB+colC" gets
-	// unreadable fast and is easy to get subtly wrong.
+	// Column order: what the line is, which pack it ships from, then the money
+	// working left to right — MRP, QTY x RATE = TOTAL. TOTAL is last so the
+	// SUBTOTAL / FREIGHT / ORDER TOTAL rows sit flush under it at the table's
+	// right edge. MRP stays beside EXPIRY since both come from the same batch.
+	//
+	// Offsets are accumulated once rather than re-summed at every draw call —
+	// eight columns of "x+colA+colB+colC" is unreadable and easy to get wrong.
 	xCode := 0.0
 	xProduct := xCode + colCode
-	xQty := xProduct + colProduct
-	xMRP := xQty + colQty
-	xRate := xMRP + colMRP
-	xTotal := xRate + colRate
-	xBatch := xTotal + colTotal
+	xBatch := xProduct + colProduct
 	xExp := xBatch + colBatch
+	xMRP := xExp + colExp
+	xQty := xMRP + colMRP
+	xRate := xQty + colQty
+	xTotal := xRate + colRate
 
 	drawHeader := func() {
 		pdf.SetFont("Arial", "B", 8)
 		x, y := pdf.GetX(), pdf.GetY()
+		// Cells are laid left to right with ln=0, so they must be drawn in
+		// column order; the rects are positioned by offset either way.
 		pdf.Rect(x+xCode, y, colCode, 8, "D")
 		pdf.CellFormat(colCode, 8, "CODE", "", 0, "L", false, 0, "")
 		pdf.Rect(x+xProduct, y, colProduct, 8, "D")
 		pdf.CellFormat(colProduct, 8, "PRODUCT", "", 0, "L", false, 0, "")
-		pdf.Rect(x+xQty, y, colQty, 8, "D")
-		pdf.CellFormat(colQty, 8, "QTY", "", 0, "C", false, 0, "")
-		pdf.Rect(x+xMRP, y, colMRP, 8, "D")
-		pdf.CellFormat(colMRP, 8, "MRP", "", 0, "R", false, 0, "")
-		pdf.Rect(x+xRate, y, colRate, 8, "D")
-		pdf.CellFormat(colRate, 8, "RATE", "", 0, "R", false, 0, "")
-		pdf.Rect(x+xTotal, y, colTotal, 8, "D")
-		pdf.CellFormat(colTotal, 8, "TOTAL", "", 0, "R", false, 0, "")
 		pdf.Rect(x+xBatch, y, colBatch, 8, "D")
 		pdf.CellFormat(colBatch, 8, "BATCH", "", 0, "L", false, 0, "")
 		pdf.Rect(x+xExp, y, colExp, 8, "D")
-		pdf.CellFormat(colExp, 8, "EXPIRY", "", 1, "L", false, 0, "")
+		pdf.CellFormat(colExp, 8, "EXPIRY", "", 0, "L", false, 0, "")
+		pdf.Rect(x+xMRP, y, colMRP, 8, "D")
+		pdf.CellFormat(colMRP, 8, "MRP", "", 0, "R", false, 0, "")
+		pdf.Rect(x+xQty, y, colQty, 8, "D")
+		pdf.CellFormat(colQty, 8, "QTY", "", 0, "C", false, 0, "")
+		pdf.Rect(x+xRate, y, colRate, 8, "D")
+		pdf.CellFormat(colRate, 8, "RATE", "", 0, "R", false, 0, "")
+		pdf.Rect(x+xTotal, y, colTotal, 8, "D")
+		pdf.CellFormat(colTotal, 8, "TOTAL", "", 1, "R", false, 0, "")
 		pdf.SetFont("Arial", "", 8)
 	}
 
@@ -426,7 +432,7 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 			return
 		}
 		x, y := pdf.GetX(), pdf.GetY()
-		labelW := colCode + colProduct + colQty + colMRP + colRate
+		labelW := xTotal // everything to the left of TOTAL
 		style := ""
 		if bold {
 			style = "B"
