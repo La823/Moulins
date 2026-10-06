@@ -7,6 +7,15 @@ import { apiFetch } from "@/lib/api";
 import ToastStack, { useToasts } from "@/components/admin/Toast";
 import { HsnResult, useHsnLookup } from "@/components/admin/HsnLookup";
 
+// Marg's raw "YYYYMMDD" batch expiry, shown as "MM/YYYY". The day is dropped
+// deliberately: a batch expires at the end of its stated month, and Marg
+// stores the first of the month regardless.
+function fmtExp(raw) {
+  const t = (raw || "").trim();
+  if (t.length !== 8) return t || "—";
+  return `${t.slice(4, 6)}/${t.slice(0, 4)}`;
+}
+
 export default function EditProduct() {
   const { id } = useParams();
   const router = useRouter();
@@ -141,6 +150,11 @@ export default function EditProduct() {
   useEffect(fetchInventoryInfo, [id]);
 
   // Form state
+  // Marg batches for this product, FEFO-ordered (earliest expiry first), used
+  // by the MRP picker. Empty for products not linked to Marg.
+  const [batches, setBatches] = useState([]);
+  const fefoMrp = batches.find((b) => b.mrp != null)?.mrp ?? null;
+
   const [form, setForm] = useState({
     product_id: "",
     name: "",
@@ -187,6 +201,10 @@ export default function EditProduct() {
 
   // Fetch product data
   useEffect(() => {
+    apiFetch(`/admin/products/${id}/batches`)
+      .then((d) => setBatches(Array.isArray(d?.batches) ? d.batches : []))
+      .catch(() => setBatches([]));
+
     apiFetch(`/products/${id}`)
       .then((p) => {
         setForm({
@@ -615,6 +633,35 @@ export default function EditProduct() {
                 onChange={(e) => setForm({ ...form, mrp: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
+              {/* Fills the field above from a batch. The value is still just
+                  products.mrp — this only saves reading batch figures off
+                  another screen — so it stays editable afterwards. */}
+              {batches.length > 0 && (
+                <div className="mt-2">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const b = batches.find((x) => x.curbatch === e.target.value);
+                      if (b?.mrp != null) setForm((f) => ({ ...f, mrp: String(b.mrp) }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs bg-gray-50 text-gray-700"
+                  >
+                    <option value="">Take MRP from a batch…</option>
+                    {batches.map((b, i) => (
+                      <option key={b.id || i} value={b.curbatch}>
+                        {b.curbatch || "(no code)"} · {fmtExp(b.exp)} · ₹{b.mrp ?? "—"}
+                        {` · stock ${Number(b.stock ?? 0)}`}
+                        {i === 0 ? "  (FEFO)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {fefoMrp != null && String(fefoMrp) !== String(form.mrp) && (
+                    <p className="text-[11px] text-amber-700 mt-1">
+                      FEFO batch is ₹{fefoMrp} — this differs from the saved MRP.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

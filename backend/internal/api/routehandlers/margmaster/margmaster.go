@@ -108,3 +108,43 @@ func UpdatePartyStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated", "status": body.Status})
 	}
 }
+
+// GET /admin/products/{id}/batches — the product's live Marg batches, each
+// with its code, expiry, stock and MRP, ordered FEFO (earliest expiry first).
+//
+// Feeds the MRP picker on the product page: staff choose a batch and its MRP
+// is written into products.mrp, which stays the one place a product's MRP
+// lives. The first entry is the FEFO batch, which is the sensible default.
+func ProductBatchesHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid product id", http.StatusBadRequest)
+			return
+		}
+
+		codes, err := models.GetProductMargCodesBatch(r.Context(), db, []uuid.UUID{id})
+		if err != nil {
+			log.Printf("product batches: marg code lookup: %v", err)
+			http.Error(w, "could not load batches", http.StatusInternalServerError)
+			return
+		}
+		baseCode, ok := codes[id]
+		if !ok || baseCode == "" {
+			// Not linked to Marg, so there are no batches to choose from.
+			// An empty list, not an error — the picker just has nothing to show.
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"batches": []any{}})
+			return
+		}
+
+		batches, err := models.GetLiveMargBatchesByBaseCode(r.Context(), db, baseCode)
+		if err != nil {
+			log.Printf("product batches: %v", err)
+			http.Error(w, "could not load batches", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"batches": batches})
+	}
+}
