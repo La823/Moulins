@@ -491,6 +491,12 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	onboardingEditStaff.Use(middleware.StaffOnly)
 	onboardingEditStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))
 	onboardingEditStaff.HandleFunc("/onboarding/verify", onboardingHandler.VerifyDocument).Methods("PATCH")
+	// Staff adding a partner's drug licence or GST on their behalf. Same
+	// handlers as the partner's own upload routes; {userID} names the partner.
+	onboardingEditStaff.HandleFunc("/partners/{userID}/documents", onboardingHandler.UploadDocument).Methods("POST")
+	onboardingEditStaff.HandleFunc("/partners/{userID}/licenses", onboardingHandler.CreateLicense).Methods("POST")
+	onboardingEditStaff.HandleFunc("/partners/{userID}/licenses/{id}", onboardingHandler.UpdateLicense).Methods("PUT")
+	onboardingEditStaff.HandleFunc("/partners/{userID}/licenses/{id}", onboardingHandler.DeleteLicense).Methods("DELETE")
 
 	// staff routes — homepage (highlights, carousel, areas of focus)
 	homepageEditStaff := protected.PathPrefix("/admin").Subrouter()

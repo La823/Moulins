@@ -36,6 +36,45 @@ func parseOptionalDate(s *string) *time.Time {
 	return &parsed
 }
 
+// targetUserID decides whose documents a request is about.
+//
+// On the staff routes, /admin/partners/{userID}/..., it is the partner named
+// in the URL: an employee adding a drug licence or GST on a partner's behalf,
+// through exactly the same code a partner's own upload runs. Everywhere else
+// it is the logged-in caller, and the partner routes carry no {userID}, so a
+// partner can only ever reach their own documents.
+//
+// The staff routes are gated by partners_edit in routes.go; this only checks
+// that the target really is a partner, so documents cannot be attached to an
+// employee or admin by mistake.
+func (h *OnboardingHandler) targetUserID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	if v, ok := mux.Vars(r)["userID"]; ok {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			http.Error(w, "invalid partner id", http.StatusBadRequest)
+			return uuid.Nil, false
+		}
+		var role string
+		if err := h.db.QueryRow(r.Context(), `SELECT role FROM users WHERE id = $1`, id).Scan(&role); err != nil {
+			http.Error(w, "partner not found", http.StatusNotFound)
+			return uuid.Nil, false
+		}
+		if role != "partner" {
+			http.Error(w, "documents can only be added for partners", http.StatusBadRequest)
+			return uuid.Nil, false
+		}
+		return id, true
+	}
+
+	userIDStr, _ := r.Context().Value("user_id").(string)
+	id, err := uuid.Parse(userIDStr)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
 // POST /api/onboarding/upload-url - Get presigned S3 URL for document photo upload
 func (h *OnboardingHandler) GetUploadURL(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -64,10 +103,8 @@ func (h *OnboardingHandler) GetUploadURL(w http.ResponseWriter, r *http.Request)
 
 // POST /api/onboarding/documents - Upload a document (license or GST)
 func (h *OnboardingHandler) UploadDocument(w http.ResponseWriter, r *http.Request) {
-	userIDStr, _ := r.Context().Value("user_id").(string)
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	userID, ok := h.targetUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -159,10 +196,8 @@ type licenseRequestBody struct {
 // POST /api/onboarding/licenses - Add a new drug license (as many as the
 // partner needs, each labeled by them — e.g. "Form 20B", "Wholesale").
 func (h *OnboardingHandler) CreateLicense(w http.ResponseWriter, r *http.Request) {
-	userIDStr, _ := r.Context().Value("user_id").(string)
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	userID, ok := h.targetUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -212,10 +247,8 @@ func (h *OnboardingHandler) CreateLicense(w http.ResponseWriter, r *http.Request
 // PUT /api/onboarding/licenses/{id} - Replace an existing license's details
 // (re-upload/resubmit), resetting its verification status.
 func (h *OnboardingHandler) UpdateLicense(w http.ResponseWriter, r *http.Request) {
-	userIDStr, _ := r.Context().Value("user_id").(string)
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	userID, ok := h.targetUserID(w, r)
+	if !ok {
 		return
 	}
 	docID, err := uuid.Parse(mux.Vars(r)["id"])
@@ -269,10 +302,8 @@ func (h *OnboardingHandler) UpdateLicense(w http.ResponseWriter, r *http.Request
 // DELETE /api/onboarding/licenses/{id} - Remove a license the partner added
 // by mistake.
 func (h *OnboardingHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
-	userIDStr, _ := r.Context().Value("user_id").(string)
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	userID, ok := h.targetUserID(w, r)
+	if !ok {
 		return
 	}
 	docID, err := uuid.Parse(mux.Vars(r)["id"])

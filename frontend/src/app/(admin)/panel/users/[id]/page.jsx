@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import AddPartnerDocument from "@/components/admin/AddPartnerDocument";
 import { useAuth } from "@/context/AuthContext";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
@@ -66,6 +67,9 @@ export default function PartnerDetailPage() {
   const { user } = useAuth();
   const canEditCredentials =
     user?.role === "admin" || (user?.permissions || []).includes("partners_credentials");
+  // Matches the partners_edit gate on the staff document routes.
+  const canEditPartner =
+    user?.role === "admin" || (user?.permissions || []).includes("partners_edit");
   const [partner, setPartner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -914,6 +918,17 @@ export default function PartnerDetailPage() {
           {/* Special product catalog — only for special-type customers */}
           {partner.customer_type === "special" && (
             <SpecialProductsPanel customerId={partner.id} />
+          )}
+
+          {/* Staff adding a licence or GST on the partner's behalf. Sits outside
+              the documents block below, which only renders once there is at
+              least one document — a partner with none would otherwise have no
+              way in. */}
+          {canEditPartner && (
+            <AddPartnerDocument
+              partnerId={partner.id}
+              onAdded={async () => setPartner(await apiFetch(`/admin/partners/${id}`))}
+            />
           )}
 
           {/* Documents */}
