@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,8 +29,12 @@ type Order struct {
 	ExpectedDelivery *string `json:"expected_delivery,omitempty"`
 	DeliveryNotes    *string `json:"delivery_notes,omitempty"`
 	EwayBillNumber   *string `json:"eway_bill_number,omitempty"`
-	// OrderTotal is the sum of the priced lines. Nil when nothing on the
-	// order has been rated yet. Internal, like the per-line rates.
+	// Freight charged on the order, entered by staff. Nil until entered.
+	Freight *float64 `json:"freight,omitempty"`
+	// ItemsTotal is the sum of the priced lines; OrderTotal is that plus
+	// freight. Both nil when there is nothing to sum. Internal, like the
+	// per-line rates: stripped before an order reaches a customer.
+	ItemsTotal *float64 `json:"items_total,omitempty"`
 	OrderTotal *float64 `json:"order_total,omitempty"`
 	// Joined fields for admin view
 	UserName           string  `json:"user_name,omitempty"`
@@ -83,6 +88,8 @@ type OrderItem struct {
 	// LineTotal is quantity * rate, computed by Postgres rather than here,
 	// so it cannot drift from the two values it is derived from.
 	LineTotal *float64 `json:"line_total,omitempty"`
+	// Remarks is a staff note against this line. Internal.
+	Remarks *string `json:"remarks,omitempty"`
 }
 
 type OrderEvent struct {
@@ -305,7 +312,8 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone,
 			t.name, t.gst_number,
-			o.marg_order_no, o.marg_pushed_at, o.marg_insert_order_id
+			o.marg_order_no, o.marg_pushed_at, o.marg_insert_order_id,
+			o.freight
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
 		LEFT JOIN transports t ON t.id = o.transport_id
@@ -319,6 +327,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		&o.UserName, &o.UserPhone,
 		&o.TransportName, &o.TransportGstNumber,
 		&o.MargOrderNo, &o.MargPushedAt, &o.MargInsertOrderID,
+		&o.Freight,
 	)
 	if err != nil {
 		return nil, err
@@ -329,7 +338,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		`SELECT oi.id, oi.order_id, oi.product_id,
 		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
 		        oi.quantity, oi.created_at, oi.selected_batch_code, oi.marg_pushed_at,
-		        oi.rate, oi.line_total
+		        oi.rate, oi.line_total, oi.remarks
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1
@@ -344,7 +353,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	o.Items = []OrderItem{}
 	for itemRows.Next() {
 		var item OrderItem
-		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal); err != nil {
+		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal, &item.Remarks); err != nil {
 			return nil, err
 		}
 		o.Items = append(o.Items, item)
@@ -354,19 +363,28 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		return nil, err
 	}
 
-	// Summed here rather than stored, so it cannot go stale when a line is
-	// added, removed or re-rated. Left nil when nothing is priced yet: a
-	// zero would read as "this order is worth nothing" rather than "this
-	// order has not been priced".
+	// Summed here rather than stored, so neither can go stale when a line is
+	// added, removed or re-rated. ItemsTotal is nil when no line is priced:
+	// a zero would read as "worth nothing" rather than "not priced yet".
+	// OrderTotal adds freight, and exists whenever either part does.
 	for _, it := range o.Items {
 		if it.LineTotal != nil {
-			total := 0.0
-			if o.OrderTotal != nil {
-				total = *o.OrderTotal
+			sum := *it.LineTotal
+			if o.ItemsTotal != nil {
+				sum += *o.ItemsTotal
 			}
-			total += *it.LineTotal
-			o.OrderTotal = &total
+			o.ItemsTotal = &sum
 		}
+	}
+	if o.ItemsTotal != nil || o.Freight != nil {
+		total := 0.0
+		if o.ItemsTotal != nil {
+			total += *o.ItemsTotal
+		}
+		if o.Freight != nil {
+			total += *o.Freight
+		}
+		o.OrderTotal = &total
 	}
 
 	// Fetch events
@@ -555,38 +573,74 @@ type OrderItemRate struct {
 	Rate   *float64  `json:"rate"`
 }
 
-// UpdateOrderItemRates writes every changed rate on an order in a single
-// statement. One round trip matters here: the database is in ap-southeast-2
-// and each one costs roughly 400ms, so saving a 20-line order field by field
-// would take the better part of ten seconds.
+// OrderItemRemark is one line's staff remark in a batch save. A nil or empty
+// Remarks clears it.
+type OrderItemRemark struct {
+	ItemID  uuid.UUID `json:"item_id"`
+	Remarks *string   `json:"remarks"`
+}
+
+// SaveOrderPricing writes an order's changed rates, remarks and freight in one
+// transaction — the order page has a single Save, and half of it landing
+// would leave the totals describing something nobody saved.
 //
-// line_total is not written: Postgres generates it from quantity * rate.
-//
-// The update is scoped to orderID as well as the item ids, so a caller cannot
+// Rates and remarks are each one UPDATE ... FROM unnest(...): the database is
+// in ap-southeast-2 at ~400ms a round trip, so line-by-line would crawl.
+// Every write is scoped to orderID as well as the item ids, so a caller cannot
 // reach another order's lines by guessing ids.
-func UpdateOrderItemRates(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, rates []OrderItemRate) (int64, error) {
-	if len(rates) == 0 {
-		return 0, nil
-	}
-	// pgx has no encode plan for []uuid.UUID against uuid[], so the ids go as
-	// strings and Postgres casts them — the same thing
-	// GetInventoryCodesForProducts does.
-	ids := make([]string, len(rates))
-	vals := make([]*float64, len(rates))
-	for i, r := range rates {
-		ids[i] = r.ItemID.String()
-		vals[i] = r.Rate
-	}
-	tag, err := db.Exec(ctx, `
-		UPDATE order_items oi
-		SET rate = v.rate
-		FROM unnest($1::uuid[], $2::numeric[]) AS v(id, rate)
-		WHERE oi.id = v.id AND oi.order_id = $3`,
-		ids, vals, orderID)
+//
+// setFreight distinguishes "leave freight alone" from "set it", and a nil
+// freight with setFreight clears it back to not-entered.
+func SaveOrderPricing(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID,
+	rates []OrderItemRate, remarks []OrderItemRemark, setFreight bool, freight *float64) error {
+
+	tx, err := db.Begin(ctx)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	return tag.RowsAffected(), nil
+	defer tx.Rollback(ctx)
+
+	if len(rates) > 0 {
+		// pgx has no encode plan for []uuid.UUID against uuid[], so ids go
+		// as strings and Postgres casts them.
+		ids := make([]string, len(rates))
+		vals := make([]*float64, len(rates))
+		for i, r := range rates {
+			ids[i], vals[i] = r.ItemID.String(), r.Rate
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE order_items oi SET rate = v.rate
+			FROM unnest($1::uuid[], $2::numeric[]) AS v(id, rate)
+			WHERE oi.id = v.id AND oi.order_id = $3`, ids, vals, orderID); err != nil {
+			return err
+		}
+	}
+
+	if len(remarks) > 0 {
+		ids := make([]string, len(remarks))
+		vals := make([]*string, len(remarks))
+		for i, r := range remarks {
+			ids[i] = r.ItemID.String()
+			if r.Remarks != nil && strings.TrimSpace(*r.Remarks) != "" {
+				t := strings.TrimSpace(*r.Remarks)
+				vals[i] = &t
+			}
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE order_items oi SET remarks = v.remarks
+			FROM unnest($1::uuid[], $2::text[]) AS v(id, remarks)
+			WHERE oi.id = v.id AND oi.order_id = $3`, ids, vals, orderID); err != nil {
+			return err
+		}
+	}
+
+	if setFreight {
+		if _, err := tx.Exec(ctx, `UPDATE orders SET freight = $1 WHERE id = $2`, freight, orderID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func DeleteOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID) error {

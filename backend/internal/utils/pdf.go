@@ -184,6 +184,9 @@ type OrderPDFItem struct {
 	MRP       *float64
 	Rate      *float64
 	LineTotal *float64
+	// Remarks is a staff note on the line, printed under the product name —
+	// the table has no width left for a column of its own.
+	Remarks string
 }
 
 type OrderPDFData struct {
@@ -195,7 +198,11 @@ type OrderPDFData struct {
 	TransportName string
 	Notes         string
 	Items         []OrderPDFItem
-	// Sum of the priced lines; nil when nothing on the order has a rate.
+	// ItemsTotal is the sum of the priced lines; Freight is entered by
+	// staff; OrderTotal is the two together. Each nil when there is nothing
+	// to show, and each row is omitted rather than printed as 0.00.
+	ItemsTotal *float64
+	Freight    *float64
 	OrderTotal *float64
 	PrintedBy     string
 	PrintedAt     string
@@ -242,6 +249,7 @@ func sanitizeOrderPDFData(tr func(string) string, d OrderPDFData) OrderPDFData {
 		it.ProductCode = f(it.ProductCode)
 		it.Batch = f(it.Batch)
 		it.Expiry = f(it.Expiry)
+		it.Remarks = f(it.Remarks)
 		items[i] = it
 	}
 	d.Items = items
@@ -342,6 +350,15 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	for _, item := range data.Items {
 		lines := pdf.SplitLines([]byte(item.ProductName), colProduct-4)
 		rowH := float64(len(lines)) * 5
+		// Remarks print beneath the name in a smaller face, so the row grows
+		// by however many lines they wrap to.
+		var remarkLines [][]byte
+		if item.Remarks != "" {
+			pdf.SetFont("Arial", "I", 7)
+			remarkLines = pdf.SplitLines([]byte(item.Remarks), colProduct-4)
+			pdf.SetFont("Arial", "", 8)
+			rowH += float64(len(remarkLines))*4 + 1
+		}
 		if rowH < 8 {
 			rowH = 8
 		}
@@ -369,6 +386,14 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.CellFormat(colCode-2, rowH-2, code, "", 0, "L", false, 0, "")
 		pdf.SetXY(x+xProduct+1, y+1)
 		pdf.MultiCell(colProduct-2, 5, item.ProductName, "", "L", false)
+		if len(remarkLines) > 0 {
+			pdf.SetX(x + xProduct + 1)
+			pdf.SetFont("Arial", "I", 7)
+			pdf.SetTextColor(90, 90, 90)
+			pdf.MultiCell(colProduct-2, 4, item.Remarks, "", "L", false)
+			pdf.SetTextColor(0, 0, 0)
+			pdf.SetFont("Arial", "", 8)
+		}
 		pdf.SetXY(x+xQty+1, y+1)
 		pdf.CellFormat(colQty-2, rowH-2, fmt.Sprintf("%d", item.Quantity), "", 0, "C", false, 0, "")
 		pdf.SetXY(x+xMRP+1, y+1)
@@ -393,22 +418,35 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.SetXY(x, y+rowH)
 	}
 
-	// Order total, aligned under the TOTAL column so it reads as a sum of it.
-	// Omitted entirely when nothing is priced — a printed "0.00" on a sheet
-	// someone acts on would be read as the order being worth nothing.
-	if data.OrderTotal != nil {
+	// Totals, aligned under the TOTAL column so they read as sums of it. Each
+	// row is omitted when it has nothing in it — a printed "0.00" on a sheet
+	// someone acts on would read as "worth nothing" or "free delivery".
+	totalRow := func(label string, v *float64, bold bool) {
+		if v == nil {
+			return
+		}
 		x, y := pdf.GetX(), pdf.GetY()
 		labelW := colCode + colProduct + colQty + colMRP + colRate
-		pdf.Rect(x, y, labelW, 8, "D")
-		pdf.SetFont("Arial", "B", 8)
-		pdf.SetXY(x+1, y+1)
-		pdf.CellFormat(labelW-2, 6, "ORDER TOTAL", "", 0, "R", false, 0, "")
-		pdf.Rect(x+xTotal, y, colTotal, 8, "D")
-		pdf.SetXY(x+xTotal+1, y+1)
-		pdf.CellFormat(colTotal-2, 6, money(data.OrderTotal), "", 0, "R", false, 0, "")
-		pdf.SetXY(x, y+8)
-		pdf.SetFont("Arial", "", 9)
+		style := ""
+		if bold {
+			style = "B"
+		}
+		pdf.SetFont("Arial", style, 8)
+		pdf.Rect(x, y, labelW, 7, "D")
+		pdf.SetXY(x+1, y+0.5)
+		pdf.CellFormat(labelW-2, 6, label, "", 0, "R", false, 0, "")
+		pdf.Rect(x+xTotal, y, colTotal, 7, "D")
+		pdf.SetXY(x+xTotal+1, y+0.5)
+		pdf.CellFormat(colTotal-2, 6, money(v), "", 0, "R", false, 0, "")
+		pdf.SetXY(x, y+7)
 	}
+	// A subtotal only earns its row when freight is there to be added to it.
+	if data.Freight != nil {
+		totalRow("SUBTOTAL", data.ItemsTotal, false)
+		totalRow("FREIGHT", data.Freight, false)
+	}
+	totalRow("ORDER TOTAL", data.OrderTotal, true)
+	pdf.SetFont("Arial", "", 9)
 
 	if pdf.GetY()+40 > bottomLimit {
 		pdf.AddPage()

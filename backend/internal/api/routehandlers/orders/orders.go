@@ -610,9 +610,12 @@ func stripInternalPricing(r *http.Request, order *models.Order) {
 		return
 	}
 	order.OrderTotal = nil
+	order.ItemsTotal = nil
+	order.Freight = nil
 	for i := range order.Items {
 		order.Items[i].Rate = nil
 		order.Items[i].LineTotal = nil
+		order.Items[i].Remarks = nil
 	}
 }
 
@@ -712,6 +715,9 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 				Rate:        oi.Rate,
 				LineTotal:   oi.LineTotal,
 			}
+			if oi.Remarks != nil {
+				pdfItem.Remarks = *oi.Remarks
+			}
 			if mrp, ok := mrpByProduct[oi.ProductID]; ok {
 				m := mrp
 				pdfItem.MRP = &m
@@ -782,6 +788,8 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Items:         items,
 			// Computed by GetOrderByID from the priced lines; nil when the
 			// order has not been priced at all.
+			ItemsTotal: order.ItemsTotal,
+			Freight:    order.Freight,
 			OrderTotal: order.OrderTotal,
 			PrintedBy:  printedBy,
 			PrintedAt:  printedAt.Format("02.01.2006 15:04"),
@@ -1150,16 +1158,18 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// PUT /admin/orders/{id}/rates — staff-only, saves every changed line rate on
-// an order in one request. Rates are typed in freely and committed by an
-// explicit Save, so this takes the whole set rather than firing per field.
+// PUT /admin/orders/{id}/rates — staff-only. Saves an order's changed line
+// rates, line remarks and freight in one request, behind the order page's
+// single Save button.
+//
+// Body: {"rates":   [{"item_id": "...", "rate": 12.5 | null}],
+//        "remarks": [{"item_id": "...", "remarks": "..." | null}],
+//        "freight": 150 | null}            <- omit to leave freight alone
 //
 // Like the batch pick, this logs no order_event: order events are
 // partner-visible history, and what we charge is not something the partner
-// reads off their order.
-//
-// A null rate clears the line back to unpriced; sending 0 would price it at
-// zero, which is a different statement.
+// reads off their order. A null rate or freight clears it back to not-entered;
+// 0 would mean free, which is a different statement.
 func UpdateOrderItemRatesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		orderID, err := uuid.Parse(mux.Vars(r)["id"])
@@ -1169,7 +1179,11 @@ func UpdateOrderItemRatesHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var body struct {
-			Rates []models.OrderItemRate `json:"rates"`
+			Rates   []models.OrderItemRate   `json:"rates"`
+			Remarks []models.OrderItemRemark `json:"remarks"`
+			// Raw so an absent key ("leave it") is distinguishable from an
+			// explicit null ("clear it").
+			Freight json.RawMessage `json:"freight"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -1182,15 +1196,25 @@ func UpdateOrderItemRatesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
-		updated, err := models.UpdateOrderItemRates(r.Context(), db, orderID, body.Rates)
-		if err != nil {
-			log.Printf("update order item rates error: %v", err)
-			http.Error(w, "could not save rates", http.StatusInternalServerError)
+		setFreight := len(body.Freight) > 0
+		var freight *float64
+		if setFreight && string(body.Freight) != "null" {
+			var f float64
+			if err := json.Unmarshal(body.Freight, &f); err != nil || f < 0 {
+				http.Error(w, "freight must be a non-negative number or null", http.StatusBadRequest)
+				return
+			}
+			freight = &f
+		}
+
+		if err := models.SaveOrderPricing(r.Context(), db, orderID, body.Rates, body.Remarks, setFreight, freight); err != nil {
+			log.Printf("save order pricing error: %v", err)
+			http.Error(w, "could not save", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"message": "saved", "updated": updated})
+		json.NewEncoder(w).Encode(map[string]string{"message": "saved"})
 	}
 }
 
