@@ -660,41 +660,37 @@ export default function EditProduct() {
                   with it. Choosing one here does the same by hand. The MRP
                   field above stays editable either way. */}
               {batches.length > 0 && (
-                <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="px-3 py-1.5 bg-gray-50 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-                    Batches · MRP follows the current one
-                  </div>
-                  <ul className="divide-y divide-gray-100">
+                <div className="mt-2">
+                  <label className="block text-[11px] font-medium text-gray-500 mb-1">
+                    Current batch — MRP follows it
+                  </label>
+                  <select
+                    value={currentBatch?.id || ""}
+                    disabled={settingBatch !== null}
+                    onChange={(e) => {
+                      const b = batches.find((x) => x.id === e.target.value);
+                      if (b && !b.is_current) makeCurrent(b);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white text-gray-900 disabled:opacity-50"
+                  >
+                    {!currentBatch && <option value="">No current batch</option>}
                     {batches.map((b) => {
                       const stock = Number(b.stock ?? 0);
                       return (
-                        <li key={b.id} className={`flex items-center gap-2 px-3 py-2 text-xs ${b.is_current ? "bg-teal-50" : ""}`}>
-                          <span className="font-mono text-gray-800 w-24 truncate">{b.curbatch || "(no code)"}</span>
-                          <span className="text-gray-500 w-16">{fmtExp(b.exp)}</span>
-                          <span className={`w-20 tabular-nums ${stock > 0 ? "text-gray-600" : "text-gray-300"}`}>stock {stock}</span>
-                          <span className="tabular-nums text-gray-900 font-medium w-20">₹{b.mrp ?? "—"}</span>
-                          <span className="ml-auto">
-                            {b.is_current ? (
-                              <span className="text-[11px] font-semibold text-teal-700">CURRENT</span>
-                            ) : stock > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() => makeCurrent(b)}
-                                disabled={settingBatch !== null}
-                                className="text-[11px] font-medium text-gray-500 hover:text-teal-700 disabled:opacity-40"
-                              >
-                                {settingBatch === b.id ? "Setting…" : "Make current"}
-                              </button>
-                            ) : (
-                              <span className="text-[11px] text-gray-300">no stock</span>
-                            )}
-                          </span>
-                        </li>
+                        // A batch with no stock cannot be current — the next
+                        // sync would move the flag straight off it.
+                        <option key={b.id} value={b.id} disabled={stock <= 0 && !b.is_current}>
+                          {b.curbatch || "(no code)"} · {fmtExp(b.exp)} · ₹{b.mrp ?? "—"} · stock {stock}
+                          {stock <= 0 ? " (no stock)" : ""}
+                        </option>
                       );
                     })}
-                  </ul>
+                  </select>
+                  {settingBatch !== null && (
+                    <p className="text-[11px] text-gray-400 mt-1">Updating…</p>
+                  )}
                   {currentBatch?.mrp != null && String(currentBatch.mrp) !== String(form.mrp) && (
-                    <p className="px-3 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-t border-amber-100">
+                    <p className="text-[11px] text-amber-700 mt-1">
                       Current batch MRP is ₹{currentBatch.mrp} — differs from the MRP above.
                     </p>
                   )}
