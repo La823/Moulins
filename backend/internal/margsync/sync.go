@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/models"
+	"log"
 )
 
 // stripBatchSuffixRE strips a trailing "[BATCH]" qualifier Marg appends to
@@ -453,10 +455,10 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 
 	// ---- batches --------------------------------------------------------
 	type batchRow struct {
-		pid, code, rid, curbatch, exp, stock  string
-		mrp, rate, prate                      *string
-		rateB, rateC, rateD, rateF            *string
-		deleted                               bool
+		pid, code, rid, curbatch, exp, stock string
+		mrp, rate, prate                     *string
+		rateB, rateC, rateD, rateF           *string
+		deleted                              bool
 	}
 	all := make([]batchRow, 0, len(rows))
 	for _, base := range order {
@@ -670,6 +672,16 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 			  AND (p.total_stock IS DISTINCT FROM s.stock OR p.batch_count IS DISTINCT FROM s.n)`,
 			touched); err != nil {
 			return result, fmt.Errorf("reconcile product totals: %w", err)
+		}
+
+		// Stock has now landed for every product this run touched, so this
+		// is the point to move a sold-out current batch on to the next one in
+		// FEFO order. A failure here is logged rather than failing the sync:
+		// the stock itself is correct, and the next run will try again.
+		if n, err := models.AdvanceCurrentBatches(ctx, db, touched); err != nil {
+			log.Printf("marg sync: advance current batches: %v", err)
+		} else if n > 0 {
+			log.Printf("marg sync: current batch moved on for %d product(s)", n)
 		}
 	}
 

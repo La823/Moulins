@@ -661,6 +661,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff := protected.PathPrefix("/admin").Subrouter()
 	productStaff.Use(middleware.StaffOnly)
 	productStaff.Use(middleware.RequirePermission(db, "products_edit", rdb))
+	productStaff.HandleFunc("/products/{id}/batches/{batchId}/current", margmaster.SetCurrentBatchHandler(db)).Methods("PUT")
 
 	productStaff.HandleFunc("/products", products.CreateProductHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/product-licence-types", licencetypes.CreateHandler(db)).Methods("POST")

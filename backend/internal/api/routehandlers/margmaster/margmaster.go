@@ -2,6 +2,7 @@ package margmaster
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -146,5 +147,41 @@ func ProductBatchesHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"batches": batches})
+	}
+}
+
+// PUT /admin/products/{id}/batches/{batchId}/current — makes a batch the
+// product's current batch and copies its MRP into products.mrp. It stays
+// current until it sells out, at which point the next sync moves the flag on
+// to the next batch in FEFO order.
+func SetCurrentBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		productID, err := uuid.Parse(vars["id"])
+		if err != nil {
+			http.Error(w, "invalid product id", http.StatusBadRequest)
+			return
+		}
+		batchID, err := uuid.Parse(vars["batchId"])
+		if err != nil {
+			http.Error(w, "invalid batch id", http.StatusBadRequest)
+			return
+		}
+
+		switch err := models.SetCurrentBatch(r.Context(), db, productID, batchID); {
+		case errors.Is(err, models.ErrBatchNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		case errors.Is(err, models.ErrBatchNoStock):
+			http.Error(w, "this batch has no stock, so it cannot be the current batch", http.StatusBadRequest)
+			return
+		case err != nil:
+			log.Printf("set current batch: %v", err)
+			http.Error(w, "could not set the current batch", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
 	}
 }

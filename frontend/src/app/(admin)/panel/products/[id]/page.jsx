@@ -153,7 +153,30 @@ export default function EditProduct() {
   // Marg batches for this product, FEFO-ordered (earliest expiry first), used
   // by the MRP picker. Empty for products not linked to Marg.
   const [batches, setBatches] = useState([]);
-  const fefoMrp = batches.find((b) => b.mrp != null)?.mrp ?? null;
+  // The batch the MRP follows. Marked in the database, one per product, and
+  // moved on to the next FEFO batch by the Marg sync when it sells out.
+  const currentBatch = batches.find((b) => b.is_current) || null;
+  const [settingBatch, setSettingBatch] = useState(null);
+
+  const loadBatches = () =>
+    apiFetch(`/admin/products/${id}/batches`)
+      .then((d) => setBatches(Array.isArray(d?.batches) ? d.batches : []))
+      .catch(() => setBatches([]));
+
+  const makeCurrent = async (b) => {
+    setSettingBatch(b.id);
+    try {
+      await apiFetch(`/admin/products/${id}/batches/${b.id}/current`, { method: "PUT" });
+      // The endpoint copies the batch MRP into products.mrp; mirror it in the
+      // form so a later Save does not write the old figure back over it.
+      if (b.mrp != null) setForm((f) => ({ ...f, mrp: String(b.mrp) }));
+      await loadBatches();
+    } catch (err) {
+      alert(err.message || "Could not set the current batch");
+    } finally {
+      setSettingBatch(null);
+    }
+  };
 
   const [form, setForm] = useState({
     product_id: "",
@@ -201,9 +224,7 @@ export default function EditProduct() {
 
   // Fetch product data
   useEffect(() => {
-    apiFetch(`/admin/products/${id}/batches`)
-      .then((d) => setBatches(Array.isArray(d?.batches) ? d.batches : []))
-      .catch(() => setBatches([]));
+    loadBatches();
 
     apiFetch(`/products/${id}`)
       .then((p) => {
@@ -633,31 +654,48 @@ export default function EditProduct() {
                 onChange={(e) => setForm({ ...form, mrp: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
               />
-              {/* Fills the field above from a batch. The value is still just
-                  products.mrp — this only saves reading batch figures off
-                  another screen — so it stays editable afterwards. */}
+              {/* The product's batches, earliest expiry first. The current
+                  one is what the MRP follows; when it sells out the Marg sync
+                  moves the flag to the next batch with stock and the MRP goes
+                  with it. Choosing one here does the same by hand. The MRP
+                  field above stays editable either way. */}
               {batches.length > 0 && (
-                <div className="mt-2">
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const b = batches.find((x) => x.curbatch === e.target.value);
-                      if (b?.mrp != null) setForm((f) => ({ ...f, mrp: String(b.mrp) }));
-                    }}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs bg-gray-50 text-gray-700"
-                  >
-                    <option value="">Take MRP from a batch…</option>
-                    {batches.map((b, i) => (
-                      <option key={b.id || i} value={b.curbatch}>
-                        {b.curbatch || "(no code)"} · {fmtExp(b.exp)} · ₹{b.mrp ?? "—"}
-                        {` · stock ${Number(b.stock ?? 0)}`}
-                        {i === 0 ? "  (FEFO)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {fefoMrp != null && String(fefoMrp) !== String(form.mrp) && (
-                    <p className="text-[11px] text-amber-700 mt-1">
-                      FEFO batch is ₹{fefoMrp} — this differs from the saved MRP.
+                <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-1.5 bg-gray-50 text-[11px] font-medium text-gray-500 uppercase tracking-wide">
+                    Batches · MRP follows the current one
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {batches.map((b) => {
+                      const stock = Number(b.stock ?? 0);
+                      return (
+                        <li key={b.id} className={`flex items-center gap-2 px-3 py-2 text-xs ${b.is_current ? "bg-teal-50" : ""}`}>
+                          <span className="font-mono text-gray-800 w-24 truncate">{b.curbatch || "(no code)"}</span>
+                          <span className="text-gray-500 w-16">{fmtExp(b.exp)}</span>
+                          <span className={`w-20 tabular-nums ${stock > 0 ? "text-gray-600" : "text-gray-300"}`}>stock {stock}</span>
+                          <span className="tabular-nums text-gray-900 font-medium w-20">₹{b.mrp ?? "—"}</span>
+                          <span className="ml-auto">
+                            {b.is_current ? (
+                              <span className="text-[11px] font-semibold text-teal-700">CURRENT</span>
+                            ) : stock > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => makeCurrent(b)}
+                                disabled={settingBatch !== null}
+                                className="text-[11px] font-medium text-gray-500 hover:text-teal-700 disabled:opacity-40"
+                              >
+                                {settingBatch === b.id ? "Setting…" : "Make current"}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-gray-300">no stock</span>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {currentBatch?.mrp != null && String(currentBatch.mrp) !== String(form.mrp) && (
+                    <p className="px-3 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-t border-amber-100">
+                      Current batch MRP is ₹{currentBatch.mrp} — differs from the MRP above.
                     </p>
                   )}
                 </div>

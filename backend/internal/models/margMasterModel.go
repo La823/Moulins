@@ -20,6 +20,8 @@ type MargProductBatch struct {
 	Rate      *float64  `json:"rate,omitempty"`
 	PRate     *float64  `json:"prate,omitempty"`
 	IsDeleted bool      `json:"is_deleted"`
+	// IsCurrent marks the batch the product's MRP follows. One per product.
+	IsCurrent bool `json:"is_current"`
 }
 
 // GetLiveMargBatchesByBaseCode returns every live (not deleted) batch for a
@@ -28,7 +30,7 @@ type MargProductBatch struct {
 // where the earliest-expiry batch is offered as the default pick.
 func GetLiveMargBatchesByBaseCode(ctx context.Context, db *pgxpool.Pool, baseCode string) ([]MargProductBatch, error) {
 	rows, err := db.Query(ctx, `
-		SELECT b.id, b.code, b.curbatch, b.exp, b.stock, b.mrp, b.rate, b.prate, b.is_deleted
+		SELECT b.id, b.code, b.curbatch, b.exp, b.stock, b.mrp, b.rate, b.prate, b.is_deleted, b.is_current
 		FROM margmaster_product_batches b
 		JOIN margmaster_products p ON p.id = b.margmaster_product_id
 		WHERE p.base_code = $1 AND b.is_deleted = FALSE
@@ -43,7 +45,7 @@ func GetLiveMargBatchesByBaseCode(ctx context.Context, db *pgxpool.Pool, baseCod
 	batches := []MargProductBatch{}
 	for rows.Next() {
 		var b MargProductBatch
-		if err := rows.Scan(&b.ID, &b.Code, &b.CurBatch, &b.Exp, &b.Stock, &b.MRP, &b.Rate, &b.PRate, &b.IsDeleted); err != nil {
+		if err := rows.Scan(&b.ID, &b.Code, &b.CurBatch, &b.Exp, &b.Stock, &b.MRP, &b.Rate, &b.PRate, &b.IsDeleted, &b.IsCurrent); err != nil {
 			return nil, err
 		}
 		batches = append(batches, b)
@@ -352,3 +354,174 @@ func SetMargPartyStatus(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, sta
 	_, err := db.Exec(ctx, `UPDATE margmaster_party SET status = $1 WHERE id = $2`, status, id)
 	return err
 }
+
+// AdvanceCurrentBatches makes sure each given Marg product has a usable
+// current batch.
+//
+// A current batch that still has stock and is not deleted is left alone, so
+// a batch staff chose keeps its place until it sells out. Otherwise the flag
+// moves to the FEFO batch — earliest expiry still holding stock. A product
+// with no stocked batch is left with none.
+//
+// When a product rolls over from one current batch to another, its MRP
+// follows: products.mrp is set to the new batch's MRP. That only happens on a
+// real rollover. A product getting its first current batch keeps the MRP it
+// already has, so the initial backfill cannot overwrite every hand-entered
+// price at once.
+//
+// Pass nil to process every product.
+func AdvanceCurrentBatches(ctx context.Context, db *pgxpool.Pool, mmProductIDs []string) (advanced int, err error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	scope := `SELECT id FROM margmaster_products`
+	args := []any{}
+	if mmProductIDs != nil {
+		scope = `SELECT unnest($1::uuid[])`
+		args = append(args, mmProductIDs)
+	}
+
+	// Products whose current batch is missing, sold out or deleted, and
+	// whether they had one at all (which decides whether MRP follows).
+	rows, err := tx.Query(ctx, `
+		WITH scope(pid) AS (`+scope+`)
+		SELECT s.pid, EXISTS (
+			SELECT 1 FROM margmaster_product_batches b
+			WHERE b.margmaster_product_id = s.pid AND b.is_current
+		)
+		FROM scope s
+		WHERE NOT EXISTS (
+			SELECT 1 FROM margmaster_product_batches b
+			WHERE b.margmaster_product_id = s.pid AND b.is_current
+			  AND NOT b.is_deleted AND b.stock > 0
+		)`, args...)
+	if err != nil {
+		return 0, err
+	}
+	need := []string{}
+	hadCurrent := map[string]bool{}
+	for rows.Next() {
+		var pid string
+		var had bool
+		if err := rows.Scan(&pid, &had); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		need = append(need, pid)
+		hadCurrent[pid] = had
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(need) == 0 {
+		return 0, tx.Commit(ctx)
+	}
+
+	// Clear first: the unique index allows only one current batch per
+	// product, so the old flag has to go before the new one is set.
+	if _, err := tx.Exec(ctx, `
+		UPDATE margmaster_product_batches SET is_current = FALSE
+		WHERE margmaster_product_id = ANY($1::uuid[]) AND is_current`, need); err != nil {
+		return 0, err
+	}
+
+	setRows, err := tx.Query(ctx, `
+		UPDATE margmaster_product_batches b SET is_current = TRUE
+		FROM (
+			SELECT DISTINCT ON (margmaster_product_id) id
+			FROM margmaster_product_batches
+			WHERE margmaster_product_id = ANY($1::uuid[])
+			  AND NOT is_deleted AND stock > 0
+			ORDER BY margmaster_product_id, NULLIF(trim(exp), '') ASC NULLS LAST, curbatch
+		) f
+		WHERE b.id = f.id
+		RETURNING b.margmaster_product_id::text, b.mrp`, need)
+	if err != nil {
+		return 0, err
+	}
+	rollIDs := []string{}
+	rollMRP := []float64{}
+	for setRows.Next() {
+		var pid string
+		var mrp *float64
+		if err := setRows.Scan(&pid, &mrp); err != nil {
+			setRows.Close()
+			return 0, err
+		}
+		advanced++
+		if hadCurrent[pid] && mrp != nil {
+			rollIDs = append(rollIDs, pid)
+			rollMRP = append(rollMRP, *mrp)
+		}
+	}
+	setRows.Close()
+	if err := setRows.Err(); err != nil {
+		return 0, err
+	}
+
+	if len(rollIDs) > 0 {
+		if _, err := tx.Exec(ctx, `
+			UPDATE products p SET mrp = v.mrp, updated_at = now()
+			FROM unnest($1::uuid[], $2::numeric[]) AS v(pid, mrp)
+			JOIN margmaster_products m ON m.id = v.pid
+			WHERE p.marg_code = m.base_code`, rollIDs, rollMRP); err != nil {
+			return 0, err
+		}
+	}
+
+	return advanced, tx.Commit(ctx)
+}
+
+// SetCurrentBatch makes one batch its product's current batch and copies its
+// MRP into products.mrp. A batch with no stock is refused: the next sync would
+// move the flag straight off it again.
+func SetCurrentBatch(ctx context.Context, db *pgxpool.Pool, productID, batchID uuid.UUID) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var mmID string
+	var stock float64
+	var deleted bool
+	var mrp *float64
+	err = tx.QueryRow(ctx, `
+		SELECT b.margmaster_product_id::text, COALESCE(b.stock, 0), b.is_deleted, b.mrp
+		FROM margmaster_product_batches b
+		JOIN margmaster_products m ON m.id = b.margmaster_product_id
+		JOIN products p ON p.marg_code = m.base_code
+		WHERE b.id = $1 AND p.id = $2`, batchID, productID).Scan(&mmID, &stock, &deleted, &mrp)
+	if err != nil {
+		return ErrBatchNotFound
+	}
+	if deleted || stock <= 0 {
+		return ErrBatchNoStock
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE margmaster_product_batches SET is_current = FALSE
+		WHERE margmaster_product_id = $1 AND is_current`, mmID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE margmaster_product_batches SET is_current = TRUE WHERE id = $1`, batchID); err != nil {
+		return err
+	}
+	if mrp != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE products SET mrp = $1, updated_at = now() WHERE id = $2`, *mrp, productID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+var (
+	ErrBatchNotFound = fmt.Errorf("batch not found for this product")
+	ErrBatchNoStock  = fmt.Errorf("batch has no stock")
+)
