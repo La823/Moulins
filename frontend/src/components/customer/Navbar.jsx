@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 
 const panelEase = [0.33, 1, 0.68, 1];
 
@@ -983,7 +983,7 @@ export default function CustomerNavbar() {
                       >
                         {images.length > 0 ? (
                           <img
-                            src={images[0].image_url}
+                            src={cardImageUrl(p, images)}
                             alt={p.name}
                             className="w-10 h-10 object-contain flex-shrink-0"
                           />

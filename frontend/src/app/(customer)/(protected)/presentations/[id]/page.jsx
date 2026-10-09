@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
@@ -20,6 +20,13 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
+import NotebookViewer from "@/components/presentations/NotebookViewer";
+
+const VIEWER_KEY = "presentationViewer";
+const VIEWERS = [
+  ["slideshow", "Slideshow"],
+  ["notebook", "Notebook"],
+];
 
 function SlideThumb({ slide, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -81,6 +88,22 @@ export default function PresentationBuilderPage() {
   // Presentation ("Present") viewer
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
+  // Which viewer "Present" opens; remembered per browser.
+  const [viewer, setViewer] = useState("slideshow");
+  const [notebookOpen, setNotebookOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(VIEWER_KEY) === "notebook") setViewer("notebook");
+    } catch {}
+  }, []);
+
+  const chooseViewer = (v) => {
+    setViewer(v);
+    try {
+      localStorage.setItem(VIEWER_KEY, v);
+    } catch {}
+  };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -199,6 +222,21 @@ export default function PresentationBuilderPage() {
     }
   };
 
+  // Download and decode every slide as soon as the presentation opens — not
+  // when "Present" is pressed — and hold on to them while the page is open,
+  // so neither the slideshow nor the notebook waits on a picture.
+  const preloaded = useRef(new Map());
+  useEffect(() => {
+    for (const s of slides) {
+      if (!s.image_url || preloaded.current.has(s.image_url)) continue;
+      const img = new Image();
+      img.decoding = "async";
+      img.src = s.image_url;
+      img.decode?.().catch(() => {});
+      preloaded.current.set(s.image_url, img);
+    }
+  }, [slides]);
+
   useEffect(() => {
     if (!presenting) return;
     const onKey = (e) => {
@@ -209,6 +247,8 @@ export default function PresentationBuilderPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [presenting, slides.length]);
+
+  const closeNotebook = useCallback(() => setNotebookOpen(false), []);
 
   const visibleImages = activeProduct?.images?.filter((img) => !visualAidOnly || img.visual_aid) || [];
 
@@ -258,8 +298,26 @@ export default function PresentationBuilderPage() {
           >
             {saving ? "Saving..." : "Save"}
           </button>
+          <div role="group" aria-label="Presentation style" className="flex items-center border border-gray-300 rounded-lg p-0.5">
+            {VIEWERS.map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => chooseViewer(v)}
+                aria-pressed={viewer === v}
+                className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
+                  viewer === v ? "bg-gray-900 text-white" : "text-gray-500 hover:text-gray-900"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => {
+              if (viewer === "notebook") {
+                setNotebookOpen(true);
+                return;
+              }
               setPresentIndex(0);
               setPresenting(true);
             }}
@@ -448,16 +506,31 @@ export default function PresentationBuilderPage() {
               </button>
             )}
 
-            <motion.img
-              key={presentIndex}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              src={slides[presentIndex]?.image_url}
-              alt=""
-              className="max-h-[90vh] max-w-[90vw] object-contain"
-              onClick={(e) => e.stopPropagation()}
-            />
+            {/* The current slide and two either side stay mounted as loaded
+                pictures, and changing slide crossfades between them.
+                Remounting a fresh <img> per slide made it blink to black
+                (worst in dev, where React mounts everything twice). */}
+            <div className="relative w-[90vw] h-[90vh] pointer-events-none">
+              {slides.map((s, i) =>
+                Math.abs(i - presentIndex) <= 2 ? (
+                  <img
+                    key={s.product_image_id}
+                    src={s.image_url}
+                    alt=""
+                    decoding="async"
+                    // the new slide fades in on top while the old one stays
+                    // solid underneath, then the old one drops away — so the
+                    // screen never dims halfway through
+                    className={`absolute inset-0 m-auto max-h-full max-w-full object-contain transition-opacity ${
+                      i === presentIndex
+                        ? "opacity-100 z-10 duration-300 pointer-events-auto"
+                        : "opacity-0 z-0 duration-0 delay-300"
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : null
+              )}
+            </div>
 
             {presentIndex < slides.length - 1 && (
               <button
@@ -479,6 +552,14 @@ export default function PresentationBuilderPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {notebookOpen && (
+        <NotebookViewer
+          slides={slides}
+          title={name}
+          onClose={closeNotebook}
+        />
+      )}
     </div>
   );
 }

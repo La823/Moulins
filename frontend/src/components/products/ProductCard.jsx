@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useAuth } from "@/context/AuthContext";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 // Shared product card — used on the products listing page and the
@@ -64,7 +64,7 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
         )}
         {images.length > 0 ? (
           <img
-            src={images[0].image_url}
+            src={cardImageUrl(p, images)}
             alt={p.name}
             className="max-h-full max-w-full object-contain origin-bottom transition-transform duration-300 group-hover:scale-[1.06]"
           />

@@ -11,7 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import SmallProductCard from "@/components/products/SmallProductCard";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 import { divisionRouteForCategory } from "@/lib/divisionRoutes";
-import { DIVISIONS } from "@/lib/divisions";
+import { DIVISIONS, divisionThumb } from "@/lib/divisions";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -367,7 +367,7 @@ export default function ProductDetailPage() {
                   overflows so the image always fills the box. Shorter than
                   the 2-column layout since columns are narrower here. */}
               <img
-                src={d.heroImage}
+                src={divisionThumb(d.heroImage)}
                 alt={d.label}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               />

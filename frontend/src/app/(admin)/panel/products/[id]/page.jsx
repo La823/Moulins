@@ -6,6 +6,8 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import ToastStack, { useToasts } from "@/components/admin/Toast";
 import { HsnResult, useHsnLookup } from "@/components/admin/HsnLookup";
+import ProductVisibilityPanel from "@/components/admin/ProductVisibilityPanel";
+import ProductThumbnailCard from "@/components/admin/ProductThumbnailCard";
 
 // Marg's raw "YYYYMMDD" batch expiry, shown as "MM/YYYY". The day is dropped
 // deliberately: a batch expires at the end of its stated month, and Marg
@@ -208,6 +210,9 @@ export default function EditProduct() {
   });
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [images, setImages] = useState([]);
+  // card thumbnail: a small copy of the first image (see ProductThumbnailCard)
+  const [thumb, setThumb] = useState({ url: "", source: "" });
+  const firstImageKey = images.find((img) => !img.hidden)?.image_key || "";
   const [documents, setDocuments] = useState([]);
   const [newImageFiles, setNewImageFiles] = useState([]);
   const [newPdfFiles, setNewPdfFiles] = useState([]);
@@ -261,6 +266,7 @@ export default function EditProduct() {
         setSelectedCategories(p.categories || []);
         setSelectedTags(p.tags || []);
         setImages(p.images || []);
+        setThumb({ url: p.thumb_url || "", source: p.thumb_source_key || "" });
         setDocuments(p.documents || []);
         setAudioUrl(p.audio_url || null);
       })
@@ -393,6 +399,16 @@ export default function EditProduct() {
       // Refresh product data
       const updated = await apiFetch(`/products/${id}`);
       setImages(updated.images || []);
+      setThumb({ url: updated.thumb_url || "", source: updated.thumb_source_key || "" });
+      // a product's first thumbnail is made in the background after its first
+      // image is added — pick it up a moment later
+      if (!updated.thumb_url && (updated.images || []).length) {
+        setTimeout(() => {
+          apiFetch(`/products/${id}`)
+            .then((p) => setThumb({ url: p.thumb_url || "", source: p.thumb_source_key || "" }))
+            .catch(() => {});
+        }, 4000);
+      }
       setDocuments(updated.documents || []);
       setAudioUrl(updated.audio_url || null);
       setNewImageFiles([]);
@@ -1243,6 +1259,13 @@ export default function EditProduct() {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
             Images
           </h3>
+          <ProductThumbnailCard
+            productId={id}
+            thumbUrl={thumb.url}
+            sourceKey={thumb.source}
+            firstImageKey={firstImageKey}
+            onChange={setThumb}
+          />
           {images.length > 0 && (
             <div className="flex flex-wrap gap-3">
               {images.map((img) => (
@@ -1507,6 +1530,11 @@ export default function EditProduct() {
           </Link>
         </div>
       </form>
+
+      {/* saves on its own, separately from the form above */}
+      <div className="max-w-3xl mt-6">
+        <ProductVisibilityPanel productId={id} />
+      </div>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </>
   );

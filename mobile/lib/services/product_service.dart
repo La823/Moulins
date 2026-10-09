@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../config/api.dart';
 import '../models/product.dart';
 import 'offline_cache.dart';
@@ -63,6 +64,13 @@ class ProductService {
       OfflineCache.saveProduct(product);
       return product;
     } catch (e) {
+      // 404 means the product is gone or has been hidden from this partner —
+      // forget the cached copy rather than keep showing it. Only a failed
+      // connection falls back to the offline copy.
+      if (e is DioException && e.response?.statusCode == 404) {
+        OfflineCache.removeProduct(id);
+        rethrow;
+      }
       final cached = await OfflineCache.loadProduct(id);
       if (cached != null) return cached;
       rethrow;

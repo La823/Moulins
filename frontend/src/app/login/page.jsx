@@ -131,8 +131,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm p-8 bg-white rounded-2xl shadow-md">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-sm md:max-w-4xl grid md:grid-cols-2 overflow-hidden bg-white rounded-2xl shadow-md">
+      {/* Sign-in form — left on desktop, below the video on phones */}
+      <div className="order-2 md:order-1 p-8 md:p-12 flex flex-col justify-center">
         <div className="flex justify-center mb-6">
           <Image
             src="/Moulins Logo High Res - V2.png"
@@ -210,6 +212,21 @@ export default function LoginPage() {
         <p className="text-xs text-gray-400 text-center mt-6">
           Don&apos;t have an account? Contact us to get invited.
         </p>
+      </div>
+
+      {/* Logo animation — plays once and rests on the logo. White panel
+          matches how the video's background renders, so its edges don't show. */}
+      <div className="order-1 md:order-2 flex items-center justify-center bg-white md:border-l md:border-gray-100">
+        <video
+          src="/login-logo.mp4"
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+          className="w-48 md:w-full max-w-md aspect-square object-contain"
+        />
+      </div>
       </div>
 
       {showForgotPassword && (

@@ -5,7 +5,7 @@ import '../models/product.dart';
 /// Small square product image, used wherever a product appears in a list —
 /// the cart and the side cart today.
 ///
-/// Reads [Product.primaryImageUrl], which excludes images staff have marked
+/// Reads [Product.cardImageUrl], which excludes images staff have marked
 /// hidden, so this can never surface one on a customer-facing screen. Falls
 /// back to the same pill icon the product card uses while loading, on error,
 /// and when a product has no image at all.
@@ -17,7 +17,7 @@ class ProductThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = product.primaryImageUrl;
+    final url = product.cardImageUrl;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),

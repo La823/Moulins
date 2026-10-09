@@ -969,8 +969,8 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                             contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: p.primaryImageUrl != null
-                                  ? CachedNetworkImage(imageUrl: p.primaryImageUrl!, width: 44, height: 44, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(width: 44, height: 44, color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, color: Colors.grey)))
+                              child: p.cardImageUrl != null
+                                  ? CachedNetworkImage(imageUrl: p.cardImageUrl!, width: 44, height: 44, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(width: 44, height: 44, color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, color: Colors.grey)))
                                   : Container(width: 44, height: 44, color: Colors.grey.shade100, child: const Icon(Icons.medication_outlined, color: Colors.grey)),
                             ),
                             title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),

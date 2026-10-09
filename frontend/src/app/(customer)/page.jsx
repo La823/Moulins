@@ -5,26 +5,58 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import HomeCarousel from "@/components/customer/HomeCarousel";
 import { useAuth } from "@/context/AuthContext";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
 // All 12 divisions, using the same banner images used as filters on the Products page.
 const DIVISIONS = [
-  { name: "Aerozone", desc: "Respiratory & ENT", href: "/aerozone", icon: "/moulins divisions/Aerozone.jpg.jpeg" },
-  { name: "Bone Voyage", desc: "Orthopaedics", href: "/bonevoyage", icon: "/moulins divisions/Bone Voyage.jpg.jpeg" },
-  { name: "Fluidity", desc: "Urology & Renal", href: "/fluidity", icon: "/moulins divisions/Fluidity.jpg.jpeg" },
-  { name: "Gutsy", desc: "Gastro", href: "/gutsy", icon: "/moulins divisions/GUTSY.jpg.jpeg" },
-  { name: "Jivya", desc: "Cardio Diabetic", href: "/jivya", icon: "/moulins divisions/Jivvya.jpg.jpeg" },
-  { name: "Life Gard", desc: "Antibiotics/Trauma", href: "/lifegard", icon: "/moulins divisions/Lifegard.jpg.jpeg" },
-  { name: "Little Planet", desc: "Pediatric", href: "/littleplanet", icon: "/moulins divisions/Little Planet.jpg.jpeg" },
-  { name: "Matrix", desc: "", href: "/matrix", icon: "/moulins divisions/Matrix.jpg.jpeg" },
-  { name: "Mindset", desc: "Neuro/Psychiatry", href: "/mindset", icon: "/moulins divisions/Mindset.jpg.jpeg" },
-  { name: "Misbella", desc: "Derma & Skin", href: "/missbella", icon: "/moulins divisions/Misbella.jpg.jpeg" },
-  { name: "Srishti", desc: "Gynaecology", href: "/srishti", icon: "/moulins divisions/Srishti.jpg.jpeg" },
-  { name: "View Point", desc: "Ophthalmology", href: "/viewpoint", icon: "/moulins divisions/View Point.jpg.jpeg" },
+  { name: "Aerozone", desc: "Respiratory & ENT", href: "/aerozone", icon: "/moulins divisions/thumbs/Aerozone.jpg", glyph: "wind", tint: "sky" },
+  { name: "Bone Voyage", desc: "Orthopaedics", href: "/bonevoyage", icon: "/moulins divisions/thumbs/Bone Voyage.jpg", glyph: "bone", tint: "rose" },
+  { name: "Fluidity", desc: "Urology & Renal", href: "/fluidity", icon: "/moulins divisions/thumbs/Fluidity.jpg", glyph: "droplet", tint: "cyan" },
+  { name: "Gutsy", desc: "Gastro", href: "/gutsy", icon: "/moulins divisions/thumbs/GUTSY.jpg", glyph: "stomach", tint: "red" },
+  { name: "Jivya", desc: "Cardio Diabetic", href: "/jivya", icon: "/moulins divisions/thumbs/Jivvya.jpg", glyph: "heart", tint: "violet" },
+  { name: "Life Gard", desc: "Antibiotics & Trauma", href: "/lifegard", icon: "/moulins divisions/thumbs/Lifegard.jpg", glyph: "shield", tint: "red" },
+  { name: "Little Planet", desc: "Pediatric", href: "/littleplanet", icon: "/moulins divisions/thumbs/Little Planet.jpg", glyph: "smile", tint: "emerald" },
+  { name: "Matrix", desc: "General & Wellness", href: "/matrix", icon: "/moulins divisions/thumbs/Matrix.jpg", glyph: "leaf", tint: "teal" },
+  { name: "Mindset", desc: "Neuro & Psychiatry", href: "/mindset", icon: "/moulins divisions/thumbs/Mindset.jpg", glyph: "brain", tint: "purple" },
+  { name: "Misbella", desc: "Derma & Skin", href: "/missbella", icon: "/moulins divisions/thumbs/Misbella.jpg", glyph: "sparkle", tint: "amber" },
+  { name: "Srishti", desc: "Gynaecology", href: "/srishti", icon: "/moulins divisions/thumbs/Srishti.jpg", glyph: "venus", tint: "pink" },
+  { name: "View Point", desc: "Ophthalmology", href: "/viewpoint", icon: "/moulins divisions/thumbs/View Point.jpg", glyph: "eye", tint: "blue" },
 ];
+
+// Tint classes spelled out in full so Tailwind keeps them.
+// strip = card's lower band, badge = icon circle, arrow = arrow circle
+const DIVISION_TINTS = {
+  sky: { strip: "bg-sky-50", badge: "bg-sky-100 text-sky-600", arrow: "bg-sky-100 text-sky-700" },
+  rose: { strip: "bg-rose-50", badge: "bg-rose-100 text-rose-500", arrow: "bg-rose-100 text-rose-600" },
+  cyan: { strip: "bg-cyan-50", badge: "bg-cyan-100 text-cyan-600", arrow: "bg-cyan-100 text-cyan-700" },
+  red: { strip: "bg-red-50", badge: "bg-red-100 text-red-500", arrow: "bg-red-100 text-red-600" },
+  violet: { strip: "bg-violet-50", badge: "bg-violet-100 text-violet-600", arrow: "bg-violet-100 text-violet-700" },
+  emerald: { strip: "bg-emerald-50", badge: "bg-emerald-100 text-emerald-600", arrow: "bg-emerald-100 text-emerald-700" },
+  teal: { strip: "bg-teal-50", badge: "bg-teal-100 text-teal-600", arrow: "bg-teal-100 text-teal-700" },
+  purple: { strip: "bg-purple-50", badge: "bg-purple-100 text-purple-600", arrow: "bg-purple-100 text-purple-700" },
+  amber: { strip: "bg-amber-50", badge: "bg-amber-100 text-amber-600", arrow: "bg-amber-100 text-amber-700" },
+  pink: { strip: "bg-pink-50", badge: "bg-pink-100 text-pink-500", arrow: "bg-pink-100 text-pink-600" },
+  blue: { strip: "bg-blue-50", badge: "bg-blue-100 text-blue-600", arrow: "bg-blue-100 text-blue-700" },
+};
+
+// Outline icons (24x24, stroked) for each division's specialty
+const DIVISION_GLYPHS = {
+  wind: <><path d="M12.8 19.6A2 2 0 1 0 14 16H2" /><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2" /><path d="M9.8 4.4A2 2 0 1 1 11 8H2" /></>,
+  bone: <path d="M17 10c.7-.7 1.69 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .81.7 1.8 0 2.5l-7 7c-.7.7-1.69 0-2.5 0a2.5 2.5 0 0 0 0 5c.28 0 .5.22.5.5a2.5 2.5 0 1 0 5 0c0-.81-.7-1.8 0-2.5Z" />,
+  droplet: <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />,
+  stomach: <path d="M8 2v3a3 3 0 0 0 3 3h1a6 6 0 0 1 6 6v1a6 6 0 0 1-6 6H9a5 5 0 0 1-5-5v-1a3 3 0 0 1 3-3h2" />,
+  heart: <><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" /><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" /></>,
+  shield: <><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="M9 12h6" /><path d="M12 9v6" /></>,
+  smile: <><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><path d="M9 9h.01" /><path d="M15 9h.01" /></>,
+  leaf: <><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" /><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" /></>,
+  brain: <><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" /><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" /><path d="M12 5v13" /></>,
+  sparkle: <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />,
+  venus: <><circle cx="12" cy="9" r="6" /><path d="M12 15v7" /><path d="M9 19h6" /></>,
+  eye: <><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></>,
+};
 
 const PARTNER_LOGOS = [
   {
@@ -118,24 +150,19 @@ export default function HomePage() {
     <>
       {/* Hero — same crop the mobile app uses below md, desktop banner above */}
       <section className="relative h-[100svh] md:h-[92vh] flex items-end overflow-hidden">
-        {/* Backdrop image */}
-        <Image
-          src="/pic.jpg.jpeg"
-          alt=""
-          fill
-          className="hidden md:block object-cover"
-          priority
-          quality={90}
-        />
-        <Image
-          src="/mobilehome.png"
-          alt=""
-          fill
-          className="md:hidden object-cover"
-          style={{ objectPosition: "30% 0%" }}
-          priority
-          quality={90}
-        />
+        {/* Backdrop video — plays once, then rests on its last frame */}
+        <video
+          poster="/hero-poster.jpg"
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full object-cover"
+        >
+          <source src="/hero.webm" type="video/webm" />
+          <source src="/hero.mp4" type="video/mp4" />
+        </video>
         {/* Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
 
@@ -235,35 +262,57 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Divisions grid — same images used as filters on the Products page */}
-      <section className="max-w-7xl mx-auto px-8 py-20">
-        <div className="mb-14">
-          <h2 className="text-3xl font-light text-gray-900">Our Divisions</h2>
-          <p className="text-sm text-gray-400 mt-3 max-w-lg">
-            From active pharmaceutical ingredients to finished formulations — explore our comprehensive catalogue.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {DIVISIONS.map((division) => (
-            <Link
-              key={division.href}
-              href={division.href}
-              className="group relative aspect-[16/9] overflow-hidden rounded-xl bg-white"
-            >
-              <img
-                src={division.icon}
-                alt={division.name}
-                className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
-              />
-              <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 p-4">
-                <h3 className="text-white text-base font-medium">{division.name}</h3>
-                {division.desc && (
-                  <p className="text-white/70 text-xs mt-0.5">{division.desc}</p>
-                )}
-              </div>
-            </Link>
-          ))}
+      {/* Divisions grid — logo card with a tinted specialty strip */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 to-white">
+        <div className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 rounded-full bg-cyan-100/40 blur-3xl" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-8 py-10">
+          <div className="text-center mb-6">
+            <div className="flex items-center justify-center gap-4 mb-2">
+              <span className="h-px w-10 bg-teal-500/60" />
+              <span className="text-xs font-semibold uppercase tracking-[0.3em] text-teal-600">Specialist Care</span>
+              <span className="h-px w-10 bg-teal-500/60" />
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-[#0f2557]">Our Divisions</h2>
+            <p className="text-sm text-slate-500 mt-2 max-w-xl mx-auto leading-relaxed">
+              From active pharmaceutical ingredients to finished formulations — explore our comprehensive catalogue.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {DIVISIONS.map((division) => {
+              const tint = DIVISION_TINTS[division.tint];
+              return (
+                <Link
+                  key={division.href}
+                  href={division.href}
+                  className="group flex flex-col overflow-hidden rounded-2xl bg-white border border-slate-100 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <div className="h-24 flex items-center justify-center px-5 py-2.5">
+                    <img
+                      src={division.icon}
+                      alt={division.name}
+                      className="max-h-full max-w-full object-contain mix-blend-multiply transition-transform duration-500 group-hover:scale-105"
+                    />
+                  </div>
+                  <div className={`flex items-center gap-3 px-3.5 py-2.5 ${tint.strip}`}>
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint.badge}`}>
+                      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                        {DIVISION_GLYPHS[division.glyph]}
+                      </svg>
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-bold text-[#0f2557] truncate">{division.name}</h3>
+                      <p className="text-xs text-slate-500 truncate">{division.desc}</p>
+                    </div>
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:translate-x-1 ${tint.arrow}`}>
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+                      </svg>
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -414,37 +463,69 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Curated collection highlights — admin-editable via /admin */}
+      {/* Curated collection highlights — admin-editable via /admin.
+          Warm "product spotlight" look: cream backdrop, orange accents, serif heading */}
       {highlights && (
-        <section className="py-14" style={{ backgroundColor: "#1F3B2C" }}>
-          <div className="max-w-7xl mx-auto px-8">
-            <h2 className="text-4xl text-center text-[#F3EEE3] mb-10">
-              {highlights.heading}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <section className="relative overflow-hidden py-16 md:py-20 bg-[#fbf3ea]">
+          {/* Soft peach arcs + orange dot field, top right */}
+          <div className="pointer-events-none absolute -top-40 -right-40 w-[34rem] h-[34rem] rounded-full bg-[#f6dfc8]/60" />
+          <div className="pointer-events-none absolute -bottom-48 -left-32 w-[28rem] h-[28rem] rounded-full bg-[#f8e7d6]/70" />
+          <div
+            className="pointer-events-none absolute top-0 right-0 w-80 h-60"
+            style={{
+              backgroundImage: "radial-gradient(circle, #ef7a2f 2.5px, transparent 3px)",
+              backgroundSize: "22px 22px",
+              maskImage: "radial-gradient(ellipse at top right, black 10%, transparent 70%)",
+              WebkitMaskImage: "radial-gradient(ellipse at top right, black 10%, transparent 70%)",
+            }}
+          />
+
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-8">
+            {/* Heading — left aligned, eyebrow with a trailing rule */}
+            <div className="mb-10">
+              <div className="flex items-center gap-4">
+                <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#e0661f]">Product Spotlight</span>
+                <span className="h-px w-14 bg-[#e0661f]/60" />
+              </div>
+              <h2
+                className="mt-3 text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] text-[#10261c] max-w-3xl"
+                style={{ fontFamily: "var(--font-erode), Georgia, serif" }}
+              >
+                {highlights.heading}
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
               {[1, 2].map((n) => {
                 const imageUrl = highlights[`card${n}_image_url`];
                 const buttonText = highlights[`card${n}_button_text`];
                 const linkUrl = highlights[`card${n}_link_url`] || "/products";
                 return (
-                  <Link key={n} href={linkUrl} className="group block">
-                    <div className="relative aspect-[4/3] overflow-hidden">
-                      {imageUrl ? (
+                  <Link
+                    key={n}
+                    href={linkUrl}
+                    className="group flex flex-col overflow-hidden rounded-2xl bg-white border border-[#f1c9a5] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+                  >
+                    <div className="relative aspect-[16/10] overflow-hidden p-8 md:p-10">
+                      {imageUrl && (
                         <img
                           src={imageUrl}
                           alt={buttonText}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
                         />
-                      ) : (
-                        <div className="w-full h-full bg-black/10" />
                       )}
                     </div>
-                    <div
-                      className="flex items-center justify-center py-5"
-                      style={{ backgroundColor: "#F3EEE3" }}
-                    >
-                      <span className="text-sm font-medium" style={{ color: "#1F3B2C" }}>
+                    <div className="flex items-center justify-between gap-4 px-6 py-5">
+                      <h3
+                        className="text-2xl md:text-3xl font-bold leading-tight text-[#10261c]"
+                        style={{ fontFamily: "var(--font-erode), Georgia, serif" }}
+                      >
                         {buttonText}
+                      </h3>
+                      <span className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 bg-gradient-to-r from-[#e0661f] to-[#f08a3c] text-white shadow-md transition-transform group-hover:translate-x-1">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H3" />
+                        </svg>
                       </span>
                     </div>
                   </Link>

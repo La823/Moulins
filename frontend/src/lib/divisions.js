@@ -2,6 +2,13 @@
 // hero banner image each division's own page uses — single source of truth
 // for anywhere on the site that needs to link out to "explore this division"
 // (e.g. the product detail page's "Explore Other Categories" grid).
+// A small copy of a division's banner, for tiles that show it small (the
+// product page's portfolio grid) — made by scripts/make_division_thumbs.py.
+// The division's own page keeps the full-size banner.
+export function divisionThumb(heroImage) {
+  return heroImage.replace(/^\/pages\//, "/pages/thumbs/").replace(/(\.(jpg|jpeg|png|webp))+$/i, ".jpg");
+}
+
 export const DIVISIONS = [
   { label: "Aerozone", desc: "Respiratory & ENT", route: "/aerozone", heroImage: "/pages/aerozone.jpg" },
   { label: "Bone Voyage", desc: "Orthopaedics", route: "/bonevoyage", heroImage: "/pages/Bonevoyage.png" },

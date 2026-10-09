@@ -141,9 +141,9 @@ class _UpcomingCard extends StatelessWidget {
                   child: SizedBox(
                     height: 120,
                     width: double.infinity,
-                    child: product.primaryImageUrl != null
+                    child: product.cardImageUrl != null
                         ? CachedNetworkImage(
-                            imageUrl: product.primaryImageUrl!,
+                            imageUrl: product.cardImageUrl!,
                             fit: BoxFit.cover,
                             width: double.infinity,
                             placeholder: (_, __) => Container(color: accent.bg, child: Center(child: Icon(Icons.medication_outlined, color: accent.solid))),

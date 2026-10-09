@@ -11,6 +11,7 @@ import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 import SpecialProductsPanel from "@/components/admin/SpecialProductsPanel";
+import PartnerProductVisibilityPanel from "@/components/admin/PartnerProductVisibilityPanel";
 import { GstVerifyModal, DlVerifyModal, ScrapedDetails } from "@/components/shared/DocVerifyModals";
 
 const STATUS_STYLES = {
@@ -919,6 +920,9 @@ export default function PartnerDetailPage() {
           {partner.customer_type === "special" && (
             <SpecialProductsPanel customerId={partner.id} />
           )}
+
+          {/* products hidden from, or exclusive to, this partner */}
+          {partner.role === "partner" && <PartnerProductVisibilityPanel partnerId={partner.id} />}
 
           {/* Staff adding a licence or GST on the partner's behalf. Sits outside
               the documents block below, which only renders once there is at

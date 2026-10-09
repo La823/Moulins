@@ -188,6 +188,7 @@ const NAV_ITEMS = [
       { label: "Admins", href: "/panel/admins", permission: "admins_view" },
       { label: "Deletion Requests", href: "/panel/deletion-requests", permission: "deletion_requests_view" },
       { label: "Partner Map", href: "/panel/partners-map", permission: "partners_view" },
+      { label: "Product Visibility", href: "/panel/product-visibility", permission: "partners_view" },
       { label: "Doctors Map", href: "/panel/doctors-map", permission: "partners_view" },
       { label: "Marg Parties", href: "/panel/marg-parties", permission: "marg_master_view" },
     ],

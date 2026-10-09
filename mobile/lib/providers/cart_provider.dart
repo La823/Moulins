@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
@@ -37,7 +38,13 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     } else {
       state = [...state, CartItem(product: product, quantity: quantity)];
     }
-    _service.addItem(product.id, quantity).catchError((_) {});
+    _service.addItem(product.id, quantity).catchError((e) {
+      // 404: hidden from this partner (or deleted) since the list was loaded —
+      // take back the optimistic add so the cart matches the server.
+      if (e is DioException && e.response?.statusCode == 404) {
+        state = state.where((i) => i.product.id != product.id).toList();
+      }
+    });
   }
 
   void remove(String productId) {

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 export default function CategoryLandingPage({ categoryName, heroImage, heroLabel, heroTitle }) {
@@ -123,7 +123,7 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
                 <div className="relative h-96 bg-white overflow-hidden mb-0 flex items-center justify-center pb-6">
                   {images.length > 0 ? (
                     <img
-                      src={images[0].image_url}
+                      src={cardImageUrl(p, images)}
                       alt={p.name}
                       className="max-h-full max-w-full object-contain scale-[1.06] origin-bottom"
                     />

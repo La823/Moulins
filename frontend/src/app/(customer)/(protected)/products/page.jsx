@@ -3,24 +3,24 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import ProductCard from "@/components/products/ProductCard";
 import { useAuth } from "@/context/AuthContext";
 
 // Category name (as stored in the DB) -> its division banner image.
 const CATEGORY_ICONS = {
-  "Aerozone(Respiratory & ENT)": "/moulins divisions/Aerozone.jpg.jpeg",
-  "Bone Voyage (Orthopaedics)": "/moulins divisions/Bone Voyage.jpg.jpeg",
-  "Fluidity (Urology and renal)": "/moulins divisions/Fluidity.jpg.jpeg",
-  "Gutsy (Gastro)": "/moulins divisions/GUTSY.jpg.jpeg",
-  "Jivya (Cardio Diabetic Division)": "/moulins divisions/Jivvya.jpg.jpeg",
-  "Life Gard (Antibiotics/ Trauma)": "/moulins divisions/Lifegard.jpg.jpeg",
-  "Little Planet (Pediatric)": "/moulins divisions/Little Planet.jpg.jpeg",
-  "Matrix": "/moulins divisions/Matrix.jpg.jpeg",
-  "Mindset (Neuro/Psychiatry)": "/moulins divisions/Mindset.jpg.jpeg",
-  "Misbella (Derma and Skin Wellness)": "/moulins divisions/Misbella.jpg.jpeg",
-  "Srishti (Gynaecology)": "/moulins divisions/Srishti.jpg.jpeg",
-  "View Point (Ophthalmology)": "/moulins divisions/View Point.jpg.jpeg",
+  "Aerozone(Respiratory & ENT)": "/moulins divisions/thumbs/Aerozone.jpg",
+  "Bone Voyage (Orthopaedics)": "/moulins divisions/thumbs/Bone Voyage.jpg",
+  "Fluidity (Urology and renal)": "/moulins divisions/thumbs/Fluidity.jpg",
+  "Gutsy (Gastro)": "/moulins divisions/thumbs/GUTSY.jpg",
+  "Jivya (Cardio Diabetic Division)": "/moulins divisions/thumbs/Jivvya.jpg",
+  "Life Gard (Antibiotics/ Trauma)": "/moulins divisions/thumbs/Lifegard.jpg",
+  "Little Planet (Pediatric)": "/moulins divisions/thumbs/Little Planet.jpg",
+  "Matrix": "/moulins divisions/thumbs/Matrix.jpg",
+  "Mindset (Neuro/Psychiatry)": "/moulins divisions/thumbs/Mindset.jpg",
+  "Misbella (Derma and Skin Wellness)": "/moulins divisions/thumbs/Misbella.jpg",
+  "Srishti (Gynaecology)": "/moulins divisions/thumbs/Srishti.jpg",
+  "View Point (Ophthalmology)": "/moulins divisions/thumbs/View Point.jpg",
 };
 
 function getCategoryIcon(name) {
@@ -314,7 +314,7 @@ function ProductsPageInner() {
                       >
                         {images.length > 0 ? (
                           <img
-                            src={images[0].image_url}
+                            src={cardImageUrl(p, images)}
                             alt={p.name}
                             className="w-8 h-8 object-contain flex-shrink-0"
                           />

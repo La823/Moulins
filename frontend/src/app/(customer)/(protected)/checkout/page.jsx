@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 
 const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 
@@ -111,7 +111,7 @@ export default function CheckoutPage() {
             <div className="w-16 h-16 rounded-md bg-gray-50 flex-shrink-0 overflow-hidden">
               {images.length > 0 ? (
                 <img
-                  src={images[0].image_url}
+                  src={cardImageUrl(product, images)}
                   alt={product.name}
                   className="w-full h-full object-contain p-1"
                 />

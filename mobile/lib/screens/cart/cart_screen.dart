@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/cart_provider.dart';
@@ -156,9 +157,20 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         );
       }
     } catch (e) {
+      var message = 'Failed to place order. Please try again.';
+      // 409: a product in the cart has since been hidden from this partner.
+      // The server names it; reloading the cart drops it, since the cart
+      // only returns products the partner can still see.
+      if (e is DioException && e.response?.statusCode == 409) {
+        final body = e.response?.data;
+        message = body is String && body.trim().isNotEmpty
+            ? '${body.trim()[0].toUpperCase()}${body.trim().substring(1)}. It has been removed from your cart.'
+            : 'Some products are no longer available and have been removed from your cart.';
+        await ref.read(cartProvider.notifier).loadFromServer();
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to place order: $e'), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
+          SnackBar(content: Text(message), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
         );
       }
     } finally {

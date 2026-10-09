@@ -23,7 +23,7 @@ class CartService {
         productForm: row['product_form'],
         // The cart endpoint returns the product's first visible image as a
         // single url, not the full image list, so it is wrapped into one
-        // ProductImage — enough for primaryImageUrl, which is all a cart row
+        // ProductImage — enough for cardImageUrl, which is all a cart row
         // renders. hidden is false because the backend already excluded
         // hidden images when choosing it.
         images: (row['image_url'] ?? '').toString().isEmpty

@@ -695,9 +695,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                     ClipRRect(
                                       borderRadius:
                                           BorderRadius.circular(4),
-                                      child: p.primaryImageUrl != null
+                                      child: p.cardImageUrl != null
                                           ? Image.network(
-                                              p.primaryImageUrl!,
+                                              p.cardImageUrl!,
                                               width: 32,
                                               height: 32,
                                               fit: BoxFit.contain)

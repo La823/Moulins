@@ -129,8 +129,8 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                                 child: ListTile(
                                   leading: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
-                                    child: p.primaryImageUrl != null
-                                        ? Image.network(p.primaryImageUrl!, width: 44, height: 44, fit: BoxFit.cover,
+                                    child: p.cardImageUrl != null
+                                        ? Image.network(p.cardImageUrl!, width: 44, height: 44, fit: BoxFit.cover,
                                             errorBuilder: (_, __, ___) => _placeholderIcon())
                                         : _placeholderIcon(),
                                   ),

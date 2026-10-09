@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/doctor.dart';
 import '../../models/presentation.dart';
 import '../../models/product.dart';
@@ -38,10 +39,18 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
   Product? _activeProduct;
   bool _visualAidOnly = false;
 
+  // Which viewer "Present" opens — the swipe-through slideshow or the
+  // page-turning notebook. Remembered on this device.
+  static const _viewerKey = 'presentation_viewer';
+  bool _notebook = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _notebook = prefs.getString(_viewerKey) == 'notebook');
+    }).catchError((_) {});
     _doctorService.getDoctors().then((d) {
       if (mounted) setState(() => _doctors = d);
     }).catchError((_) {});
@@ -161,8 +170,19 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
     }
   }
 
+  void _setViewer(bool notebook) {
+    setState(() => _notebook = notebook);
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setString(_viewerKey, notebook ? 'notebook' : 'slideshow'))
+        .catchError((_) => false);
+  }
+
   void _present() {
     if (_slides.isEmpty) return;
+    if (_notebook) {
+      context.push('/notebook', extra: List<PresentationSlide>.of(_slides));
+      return;
+    }
     context.push('/gallery', extra: {
       'imageUrls': _slides.map((s) => s.imageUrl).toList(),
       'initialIndex': 0,
@@ -233,6 +253,30 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
                               _dirty = true;
                             }),
                           ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: Row(
+                    children: [
+                      const Text('Present as:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(width: 8),
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(value: false, label: Text('Slideshow'), icon: Icon(Icons.slideshow_outlined, size: 16)),
+                          ButtonSegment(value: true, label: Text('Notebook'), icon: Icon(Icons.menu_book_outlined, size: 16)),
+                        ],
+                        selected: {_notebook},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (s) => _setViewer(s.first),
+                        style: SegmentedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          textStyle: const TextStyle(fontSize: 12),
+                          selectedBackgroundColor: const Color(0xFF00A6A4),
+                          selectedForegroundColor: Colors.white,
                         ),
                       ),
                     ],

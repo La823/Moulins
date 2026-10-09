@@ -1,6 +1,9 @@
 class ProductImage {
   final String id;
   final String imageUrl;
+  /// The S3 key — compared with [Product.thumbSourceKey] to tell whether the
+  /// card thumbnail is still of this image.
+  final String imageKey;
   final int sortOrder;
   final bool visualAid;
   final bool hidden;
@@ -8,6 +11,7 @@ class ProductImage {
   ProductImage(
       {required this.id,
       required this.imageUrl,
+      this.imageKey = '',
       required this.sortOrder,
       this.visualAid = false,
       this.hidden = false});
@@ -15,6 +19,7 @@ class ProductImage {
   factory ProductImage.fromJson(Map<String, dynamic> json) => ProductImage(
         id: json['id'] ?? '',
         imageUrl: json['image_url'] ?? '',
+        imageKey: json['image_key'] ?? '',
         sortOrder: json['sort_order'] ?? 0,
         visualAid: json['visual_aid'] ?? false,
         hidden: json['hidden'] ?? false,
@@ -23,6 +28,7 @@ class ProductImage {
   Map<String, dynamic> toJson() => {
         'id': id,
         'image_url': imageUrl,
+        'image_key': imageKey,
         'sort_order': sortOrder,
         'visual_aid': visualAid,
         'hidden': hidden,
@@ -71,6 +77,10 @@ class Product {
   final List<ProductImage> images;
   final List<ProductDocument> documents;
   final String? audioUrl;
+  /// Small card thumbnail of the first image ('' until one is made), and the
+  /// image key it was made from. See [cardImageUrl].
+  final String thumbUrl;
+  final String thumbSourceKey;
 
   Product({
     required this.id,
@@ -95,6 +105,8 @@ class Product {
     this.images = const [],
     this.documents = const [],
     this.audioUrl,
+    this.thumbUrl = '',
+    this.thumbSourceKey = '',
   });
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -124,6 +136,8 @@ class Product {
             .map((e) => ProductDocument.fromJson(e))
             .toList(),
         audioUrl: json['audio_url'],
+        thumbUrl: json['thumb_url'] ?? '',
+        thumbSourceKey: json['thumb_source_key'] ?? '',
       );
 
   // Customer-facing screens must never show an image staff have marked
@@ -135,6 +149,22 @@ class Product {
 
   String? get primaryImageUrl =>
       visibleImages.isNotEmpty ? visibleImages.first.imageUrl : null;
+
+  /// The picture for product cards and list rows: the small thumbnail of the
+  /// first image, so a screen of cards doesn't download full-size originals.
+  /// Only while it was made from the current first image — if that image has
+  /// changed since, use the image itself until the thumbnail is regenerated.
+  /// Same rule as the website's cardImageUrl. Detail and full-screen views
+  /// keep using [primaryImageUrl] / the originals.
+  String? get cardImageUrl {
+    final imgs = visibleImages;
+    if (imgs.isEmpty) return null;
+    final first = imgs.first;
+    if (thumbUrl.isNotEmpty && first.imageKey.isNotEmpty && thumbSourceKey == first.imageKey) {
+      return thumbUrl;
+    }
+    return first.imageUrl;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -158,6 +188,8 @@ class Product {
         'edetailing': edetailing,
         'images': images.map((e) => e.toJson()).toList(),
         'documents': documents.map((e) => e.toJson()).toList(),
+        'thumb_url': thumbUrl,
+        'thumb_source_key': thumbSourceKey,
       };
 }
 

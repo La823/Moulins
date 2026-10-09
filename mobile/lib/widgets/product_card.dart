@@ -82,9 +82,9 @@ class ProductCard extends ConsumerWidget {
                       height: double.infinity,
                       color: Colors.white,
                       padding: const EdgeInsets.all(6),
-                      child: product.primaryImageUrl != null
+                      child: product.cardImageUrl != null
                           ? CachedNetworkImage(
-                              imageUrl: product.primaryImageUrl!,
+                              imageUrl: product.cardImageUrl!,
                               fit: BoxFit.contain,
                               width: double.infinity,
                               placeholder: (_, __) => Container(color: Colors.grey.shade100, child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey))),

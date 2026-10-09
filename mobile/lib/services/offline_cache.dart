@@ -35,6 +35,11 @@ class OfflineCache {
     await prefs.setString('$_productPrefix${product.id}', jsonEncode(product.toJson()));
   }
 
+  static Future<void> removeProduct(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_productPrefix$id');
+  }
+
   static Future<Product?> loadProduct(String id) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('$_productPrefix$id');

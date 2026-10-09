@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "@/context/CartContext";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 export default function CartDrawer() {
@@ -105,7 +105,7 @@ export default function CartDrawer() {
                         <div className="w-20 h-20 rounded-md bg-gray-50 flex-shrink-0 overflow-hidden">
                           {images.length > 0 ? (
                             <img
-                              src={images[0].image_url}
+                              src={cardImageUrl(product, images)}
                               alt={product.name}
                               className="w-full h-full object-contain p-1"
                             />

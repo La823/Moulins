@@ -19,6 +19,7 @@ import 'screens/doctors/doctors_screen.dart';
 import 'screens/doctors/doctor_detail_resolver.dart';
 import 'screens/presentations/presentations_screen.dart';
 import 'screens/presentations/presentation_builder_screen.dart';
+import 'screens/presentations/notebook_presentation_screen.dart';
 import 'screens/cart/cart_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/home/profile_screen.dart';
@@ -42,6 +43,7 @@ import 'screens/payments/payments_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
 import 'models/team_member.dart';
 import 'data/divisions.dart';
+import 'models/presentation.dart';
 import 'widgets/fullscreen_image_gallery.dart';
 
 void main() async {
@@ -105,6 +107,13 @@ class MoulinsApp extends ConsumerWidget {
               initialIndex: extra['initialIndex'] as int? ?? 0,
             );
           },
+        ),
+        // Top-level for the same reasons as /gallery above.
+        GoRoute(
+          path: '/notebook',
+          builder: (_, state) => NotebookPresentationScreen(
+            slides: List<PresentationSlide>.from(state.extra as List),
+          ),
         ),
         ShellRoute(
           builder: (_, state, child) =>

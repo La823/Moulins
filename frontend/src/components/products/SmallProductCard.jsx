@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
-import { visibleImages } from "@/lib/productImages";
+import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 // Same visual style as ProductCard, sized down for horizontal-scroll rows
@@ -39,7 +39,7 @@ export default function SmallProductCard({ product: p }) {
                 and bottom equally while the width always stays fully
                 contained, never cropped. */}
             <img
-              src={images[0].image_url}
+              src={cardImageUrl(p, images)}
               alt={p.name}
               className="w-full h-auto"
               style={{ transform: "scaleY(1.15)" }}
