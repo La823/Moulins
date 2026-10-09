@@ -1,6 +1,7 @@
 package products
 
 import (
+	"sync"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/cache"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 	vectorsearch "github.com/lavanyaarora/server/internal/vectorsearch"
@@ -128,8 +130,24 @@ func CreateProductFromMargProductHandler(db *pgxpool.Pool, rdb *cache.Client) ht
 	}
 }
 
+// The four lookups below are independent, so they run at the same time: the
+// database is a long round trip away (Sydney, from a Mumbai server), and one
+// after another they cost four of those instead of one.
 func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) {
-	images, _ := models.GetProductImages(r.Context(), db, p.ID)
+	ctx := r.Context()
+	var (
+		images     []models.ProductImage
+		docs       []models.ProductDocument
+		cats, tags []string
+		wg         sync.WaitGroup
+	)
+	wg.Add(4)
+	go func() { defer wg.Done(); images, _ = models.GetProductImages(ctx, db, p.ID) }()
+	go func() { defer wg.Done(); docs, _ = models.GetProductDocuments(ctx, db, p.ID) }()
+	go func() { defer wg.Done(); cats, _ = models.GetProductCategories(ctx, db, p.ID) }()
+	go func() { defer wg.Done(); tags, _ = models.GetProductTags(ctx, db, p.ID) }()
+	wg.Wait()
+
 	if images == nil {
 		images = []models.ProductImage{}
 	}
@@ -138,7 +156,6 @@ func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) 
 	}
 	p.Images = images
 
-	docs, _ := models.GetProductDocuments(r.Context(), db, p.ID)
 	if docs == nil {
 		docs = []models.ProductDocument{}
 	}
@@ -150,14 +167,15 @@ func loadProductRelations(r *http.Request, db *pgxpool.Pool, p *models.Product) 
 	if p.AudioKey != nil {
 		p.AudioURL = utils.GetPublicURL(*p.AudioKey)
 	}
+	if p.ThumbKey != nil {
+		p.ThumbURL = utils.GetPublicURL(*p.ThumbKey)
+	}
 
-	cats, _ := models.GetProductCategories(r.Context(), db, p.ID)
 	if cats == nil {
 		cats = []string{}
 	}
 	p.Categories = cats
 
-	tags, _ := models.GetProductTags(r.Context(), db, p.ID)
 	if tags == nil {
 		tags = []string{}
 	}
@@ -174,10 +192,20 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 		ids[i] = products[i].ID
 	}
 
-	imagesMap, _ := models.GetProductImagesBatch(r.Context(), db, ids)
-	docsMap, _ := models.GetProductDocumentsBatch(r.Context(), db, ids)
-	catsMap, _ := models.GetProductCategoriesBatch(r.Context(), db, ids)
-	tagsMap, _ := models.GetProductTagsBatch(r.Context(), db, ids)
+	// independent lookups, run at the same time — see loadProductRelations
+	ctx := r.Context()
+	var (
+		imagesMap         map[uuid.UUID][]models.ProductImage
+		docsMap           map[uuid.UUID][]models.ProductDocument
+		catsMap, tagsMap  map[uuid.UUID][]string
+		wg                sync.WaitGroup
+	)
+	wg.Add(4)
+	go func() { defer wg.Done(); imagesMap, _ = models.GetProductImagesBatch(ctx, db, ids) }()
+	go func() { defer wg.Done(); docsMap, _ = models.GetProductDocumentsBatch(ctx, db, ids) }()
+	go func() { defer wg.Done(); catsMap, _ = models.GetProductCategoriesBatch(ctx, db, ids) }()
+	go func() { defer wg.Done(); tagsMap, _ = models.GetProductTagsBatch(ctx, db, ids) }()
+	wg.Wait()
 
 	for i := range products {
 		images := imagesMap[products[i].ID]
@@ -200,6 +228,9 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 
 		if products[i].AudioKey != nil {
 			products[i].AudioURL = utils.GetPublicURL(*products[i].AudioKey)
+		}
+		if products[i].ThumbKey != nil {
+			products[i].ThumbURL = utils.GetPublicURL(*products[i].ThumbKey)
 		}
 
 		cats := catsMap[products[i].ID]
@@ -474,7 +505,16 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		sortDir := r.URL.Query().Get("sort_dir")
 		offset := (page - 1) * limit
 
-		cacheKey := fmt.Sprintf("products:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:lic=%s:zone=%s:cid=%s:no=%v:so=%v:sb=%s:sd=%s", activeOnly, page, limit, search, category, form, tag, imageCount, licenceType, zone, categoryID, nameOnly, saltOnly, sortBy, sortDir)
+		// Who's looking decides which products they get. The staff list
+		// (activeOnly false) is the whole catalogue; the public one is
+		// filtered, and cached per scope — never shared across partners
+		// whose rules differ.
+		viewer, scope := models.EveryProduct, middleware.ProductScopeAll
+		if activeOnly {
+			viewer, scope = middleware.ProductViewerFor(r, db, c)
+		}
+
+		cacheKey := fmt.Sprintf("products:scope=%s:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:lic=%s:zone=%s:cid=%s:no=%v:so=%v:sb=%s:sd=%s", scope, activeOnly, page, limit, search, category, form, tag, imageCount, licenceType, zone, categoryID, nameOnly, saltOnly, sortBy, sortDir)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
 			w.Header().Set("Content-Type", "application/json")
@@ -482,7 +522,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			return
 		}
 
-		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, limit, offset, nameOnly, saltOnly, sortBy, sortDir)
+		products, total, suggestions, err := models.GetAllProductsWithSuggestion(r.Context(), db, viewer, activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, limit, offset, nameOnly, saltOnly, sortBy, sortDir)
 		if err != nil {
 			log.Printf("list products error: %v", err)
 			http.Error(w, "could not fetch products", http.StatusInternalServerError)
@@ -539,21 +579,37 @@ func GetProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 
 		cacheKey := fmt.Sprintf("product:%s", id)
 		var product models.Product
-		if rdb.GetJSON(r.Context(), cacheKey, &product) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(&product)
-			return
+		p := &product
+		if !rdb.GetJSON(r.Context(), cacheKey, p) {
+			p, err = models.GetProductByID(r.Context(), db, id)
+			if err != nil {
+				http.Error(w, "product not found", http.StatusNotFound)
+				return
+			}
+			loadProductRelations(r, db, p)
+			rdb.SetJSON(r.Context(), cacheKey, p, 10*time.Minute)
 		}
 
-		p, err := models.GetProductByID(r.Context(), db, id)
-		if err != nil {
+		// A product kept from this viewer looks like one that doesn't exist,
+		// so its page can't be reached by link, favourite or old bookmark.
+		// The public scope is decided by the exclusive flag alone; only a
+		// partner with rules of their own needs the database.
+		viewer, scope := middleware.ProductViewerFor(r, db, rdb)
+		visible := !p.Exclusive
+		switch {
+		case scope == middleware.ProductScopeAll:
+			visible = true
+		case scope != middleware.ProductScopePublic:
+			if visible, err = models.CanSeeProduct(r.Context(), db, viewer, id); err != nil {
+				log.Printf("product visibility check error: %v", err)
+				http.Error(w, "could not fetch product", http.StatusInternalServerError)
+				return
+			}
+		}
+		if !visible {
 			http.Error(w, "product not found", http.StatusNotFound)
 			return
 		}
-
-		loadProductRelations(r, db, p)
-
-		rdb.SetJSON(r.Context(), cacheKey, p, 10*time.Minute)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(p)
@@ -689,6 +745,18 @@ func AddImageHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
+
+		// let browsers and phones keep the picture for a year instead of
+		// downloading it again — in the background, since it's an S3 copy
+		// and the upload has already worked either way
+		go func(key string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := utils.SetLongCacheControl(ctx, key); err != nil {
+				log.Printf("set cache-control on %s: %v", key, err)
+			}
+		}(req.ImageKey)
+		ensureThumbnailAsync(db, rdb, productID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)

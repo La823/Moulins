@@ -574,7 +574,7 @@ func GetPartnerCartHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid user id", http.StatusBadRequest)
 			return
 		}
-		items, err := models.GetCartItems(r.Context(), db, userID)
+		items, err := models.GetCartItems(r.Context(), db, models.EveryProduct, userID) // staff see the whole cart
 		if err != nil {
 			log.Printf("get partner cart error: %v", err)
 			http.Error(w, "could not fetch cart", http.StatusInternalServerError)

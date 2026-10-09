@@ -37,8 +37,11 @@ type CartItem struct {
 	ImageURL string  `json:"image_url,omitempty"`
 }
 
-func GetCartItems(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]CartItem, error) {
-	rows, err := db.Query(ctx, `
+// viewer leaves out items the user can no longer see: a product hidden from
+// them after it went into their cart quietly drops out of it, and ordering
+// it is refused (orders.CreateOrderHandler).
+func GetCartItems(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, userID uuid.UUID) ([]CartItem, error) {
+	query, args := viewer.andVisible(`
 		SELECT ci.id, ci.product_id, ci.quantity, ci.created_at, ci.updated_at,
 			p.name, p.price, p.mrp, p.stock, p.moq, p.pack_size, p.product_form, p.is_active,
 			(SELECT pi.image_key FROM product_images pi
@@ -47,9 +50,8 @@ func GetCartItems(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]Ca
 			  LIMIT 1) AS image_key
 		FROM cart_items ci
 		JOIN products p ON p.id = ci.product_id
-		WHERE ci.user_id = $1
-		ORDER BY ci.created_at ASC
-	`, userID)
+		WHERE ci.user_id = $1`, "p", []any{userID})
+	rows, err := db.Query(ctx, query+` ORDER BY ci.created_at ASC`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 	vectorsearch "github.com/lavanyaarora/server/internal/vectorsearch"
 )
@@ -414,6 +415,15 @@ func AddDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// only a product the partner can see themselves can go on a doctor
+		if ok, err := models.CanSeeProduct(r.Context(), db, middleware.ProductViewerOnly(r, db), req.ProductID); err != nil {
+			log.Printf("doctor product visibility check error: %v", err)
+			http.Error(w, "could not add product", http.StatusInternalServerError)
+			return
+		} else if !ok {
+			http.Error(w, "product not found", http.StatusNotFound)
+			return
+		}
 		if err := models.AddDoctorProduct(r.Context(), db, doctorID, req.ProductID); err != nil {
 			log.Printf("add doctor product error: %v", err)
 			http.Error(w, "could not add product", http.StatusInternalServerError)

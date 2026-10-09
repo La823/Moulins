@@ -1,6 +1,6 @@
 module github.com/lavanyaarora/server
 
-go 1.25.0
+go 1.26.0
 
 require (
 	firebase.google.com/go/v4 v4.20.0
@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
 	github.com/aws/smithy-go v1.24.0
+	github.com/disintegration/imaging v1.6.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
@@ -21,6 +22,7 @@ require (
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/xuri/excelize/v2 v2.10.1
 	golang.org/x/crypto v0.53.0
+	golang.org/x/image v0.46.0
 	google.golang.org/api v0.279.0
 )
 
@@ -93,9 +95,9 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/appengine/v2 v2.0.6 // indirect
 	google.golang.org/genproto v0.0.0-20260511170946-3700d4141b60 // indirect

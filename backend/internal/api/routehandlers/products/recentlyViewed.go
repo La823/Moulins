@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
@@ -35,7 +36,7 @@ func RecordProductViewHandler(db *pgxpool.Pool) http.HandlerFunc {
 // recent first, capped at 25.
 func ListRecentlyViewedHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		recent, err := models.GetRecentlyViewedProducts(r.Context(), db, getUserID(r))
+		recent, err := models.GetRecentlyViewedProducts(r.Context(), db, middleware.ProductViewerOnly(r, db), getUserID(r))
 		if err != nil {
 			log.Printf("list recently viewed error: %v", err)
 			http.Error(w, "could not fetch recently viewed", http.StatusInternalServerError)

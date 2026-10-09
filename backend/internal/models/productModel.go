@@ -24,6 +24,15 @@ type Product struct {
 	Stock           int               `json:"stock"`
 	Moq             int               `json:"moq"`
 	IsActive        bool              `json:"is_active"`
+	// Exclusive products are shown only to partners allowed them — see
+	// productAccessModel.go. Added for app 1.0.10; older apps ignore it.
+	Exclusive       bool              `json:"exclusive"`
+	// A small copy of the first image, for product cards — see
+	// productThumbnailModel.go. ThumbURL is empty until one is made; cards
+	// fall back to the first image's image_url. Added for 1.0.10.
+	ThumbKey        *string           `json:"thumb_key,omitempty"`
+	ThumbSourceKey  *string           `json:"thumb_source_key,omitempty"`
+	ThumbURL        string            `json:"thumb_url,omitempty"`
 	BrandName       *string           `json:"brand_name,omitempty"`
 	HsnCode         *string           `json:"hsn_code,omitempty"`
 	GstRate         *float64          `json:"gst_rate,omitempty"`
@@ -546,13 +555,20 @@ func renamedCategory(name string) string {
 // GetAllProducts. fuzzy swaps the search condition from a literal ILIKE
 // match to a pg_trgm similarity match (used as a fallback when the literal
 // search finds nothing, e.g. a misspelled salt/composition name).
-func buildProductConditions(activeOnly bool, search, category, categoryID, form, tag, imageCount, licenceType, zone string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
+func buildProductConditions(viewer ProductViewer, activeOnly bool, search, category, categoryID, form, tag, imageCount, licenceType, zone string, nameOnly, saltOnly, fuzzy bool) ([]string, []any, int) {
 	conditions := []string{}
 	args := []any{}
 	argIdx := 1
 
 	if activeOnly {
 		conditions = append(conditions, "is_active = TRUE")
+	}
+	// who's looking: products hidden from them, or exclusive to others, are
+	// left out (see productAccessModel.go)
+	if cond, extra, next := viewer.visibleSQL("products", argIdx); cond != "" {
+		conditions = append(conditions, cond)
+		args = append(args, extra...)
+		argIdx = next
 	}
 	if search != "" {
 		if fuzzy {
@@ -678,11 +694,18 @@ var productSortColumns = map[string]string{
 func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, args []any, argIdx, limit, offset int, fuzzy bool, search, sortBy, sortDir string) ([]Product, int, error) {
 	where := productWhereClause(conditions)
 
-	var total int
-	countQuery := "SELECT COUNT(*) FROM products" + where
-	if err := db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
+	// The count doesn't depend on the page, so it runs alongside the page
+	// query instead of before it — one database round trip instead of two.
+	var (
+		total    int
+		countErr error
+		counted  = make(chan struct{})
+	)
+	go func() {
+		defer close(counted)
+		countErr = db.QueryRow(ctx, "SELECT COUNT(*) FROM products"+where, args...).Scan(&total)
+	}()
+	waitCount := func() error { <-counted; return countErr }
 
 	col, ok := productSortColumns[sortBy]
 	if !ok {
@@ -711,7 +734,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
-			created_at, updated_at, licence_type_id, food_type
+			created_at, updated_at, licence_type_id, food_type, exclusive, thumb_key, thumb_source_key
 		FROM products
 	` + where + orderBy
 
@@ -733,6 +756,7 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 
 	rows, err := db.Query(ctx, query, queryArgs...)
 	if err != nil {
+		waitCount() // never leave the count running on a pooled connection
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -748,19 +772,27 @@ func queryProducts(ctx context.Context, db *pgxpool.Pool, conditions []string, a
 			&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
 			&p.KeyBenefits, &p.DirectionForUse,
 			&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt, &p.LicenceTypeID,
-			&p.FoodType,
+			&p.FoodType, &p.Exclusive, &p.ThumbKey, &p.ThumbSourceKey,
 		)
 		if err != nil {
+			waitCount()
 			return nil, 0, err
 		}
 		p.Categories = []string{}
 		products = append(products, p)
 	}
-	return products, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		waitCount()
+		return nil, 0, err
+	}
+	if err := waitCount(); err != nil {
+		return nil, 0, err
+	}
+	return products, total, nil
 }
 
 func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, form, tag string, limit, offset int, nameOnly bool) ([]Product, int, error) {
-	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, activeOnly, search, category, "", form, tag, "", "", "", limit, offset, nameOnly, false, "", "")
+	products, total, _, err := GetAllProductsWithSuggestion(ctx, db, EveryProduct, activeOnly, search, category, "", form, tag, "", "", "", limit, offset, nameOnly, false, "", "")
 	return products, total, err
 }
 
@@ -775,31 +807,31 @@ func GetAllProducts(ctx context.Context, db *pgxpool.Pool, activeOnly bool, sear
 // name+key_ingredients — used when the search term came from clicking a
 // "did you mean" salt suggestion, so the result list is the products that
 // actually contain that salt rather than a looser text match.
-func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, activeOnly bool, search, category, categoryID, form, tag, imageCount, licenceType, zone string, limit, offset int, nameOnly, saltOnly bool, sortBy, sortDir string) ([]Product, int, []string, error) {
-	conditions, args, argIdx := buildProductConditions(activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, false)
+func GetAllProductsWithSuggestion(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, activeOnly bool, search, category, categoryID, form, tag, imageCount, licenceType, zone string, limit, offset int, nameOnly, saltOnly bool, sortBy, sortDir string) ([]Product, int, []string, error) {
+	conditions, args, argIdx := buildProductConditions(viewer, activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, false)
 	products, total, err := queryProducts(ctx, db, conditions, args, argIdx, limit, offset, false, search, sortBy, sortDir)
 	if err != nil || search == "" {
 		return products, total, nil, err
 	}
 
 	if len(products) > 0 {
-		return products, total, suggestionsOrEmpty(ctx, db, search), nil
+		return products, total, suggestionsOrEmpty(ctx, db, viewer, search), nil
 	}
 
 	// Literal search found nothing — fall back to a pg_trgm fuzzy match in
 	// case the term was misspelled (e.g. a salt/composition name).
-	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, true)
+	fuzzyConditions, fuzzyArgs, fuzzyArgIdx := buildProductConditions(viewer, activeOnly, search, category, categoryID, form, tag, imageCount, licenceType, zone, nameOnly, saltOnly, true)
 	fuzzyProducts, fuzzyTotal, err := queryProducts(ctx, db, fuzzyConditions, fuzzyArgs, fuzzyArgIdx, limit, offset, true, search, sortBy, sortDir)
 	if err != nil || len(fuzzyProducts) == 0 {
 		return fuzzyProducts, fuzzyTotal, nil, err
 	}
-	return fuzzyProducts, fuzzyTotal, suggestionsOrEmpty(ctx, db, search), nil
+	return fuzzyProducts, fuzzyTotal, suggestionsOrEmpty(ctx, db, viewer, search), nil
 }
 
 // suggestionsOrEmpty runs suggestSpelling and drops any suggestion that
 // errored, or that just echoes back the term the user already typed.
-func suggestionsOrEmpty(ctx context.Context, db *pgxpool.Pool, search string) []string {
-	words, err := suggestSpelling(ctx, db, search)
+func suggestionsOrEmpty(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, search string) []string {
+	words, err := suggestSpelling(ctx, db, viewer, search)
 	if err != nil {
 		return nil
 	}
@@ -817,20 +849,29 @@ func suggestionsOrEmpty(ctx context.Context, db *pgxpool.Pool, search string) []
 // prompt — independent of which specific products matched, since a typo
 // like "paracetmol" should surface "Paracetamol" even though many
 // different products contain it.
-func suggestSpelling(ctx context.Context, db *pgxpool.Pool, term string) ([]string, error) {
-	const q = `
+func suggestSpelling(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, term string) ([]string, error) {
+	// only words from products this viewer can see, so a suggestion never
+	// names a product kept from them
+	visible := "TRUE"
+	args := []any{term}
+	if cond, extra, _ := viewer.visibleSQL("products", 2); cond != "" {
+		visible = cond
+		args = append(args, extra...)
+	}
+	q := `
 		SELECT word FROM (
 			SELECT DISTINCT unnest(regexp_split_to_array(
 				regexp_replace(name || ' ' || COALESCE(key_ingredients, ''), '[^a-zA-Z0-9]+', ' ', 'g'),
 				' '
 			)) AS word
 			FROM products
+			WHERE ` + visible + `
 		) words
 		WHERE length(word) > 3
 		ORDER BY word_similarity($1, word) DESC
 		LIMIT 5
 	`
-	rows, err := db.Query(ctx, q, term)
+	rows, err := db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -854,7 +895,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 			pack_size, pack_form, key_ingredients, strength, product_weight,
 			length_cm, width_cm, height_cm,
 			key_benefits, direction_for_use, safety_information, edetailing, audio_key,
-			created_at, updated_at, marg_code, licence_type_id, food_type
+			created_at, updated_at, marg_code, licence_type_id, food_type, exclusive, thumb_key, thumb_source_key
 		FROM products WHERE id = $1
 	`
 	var p Product
@@ -866,7 +907,7 @@ func GetProductByID(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*Produ
 		&p.Strength, &p.ProductWeight, &p.LengthCm, &p.WidthCm, &p.HeightCm,
 		&p.KeyBenefits, &p.DirectionForUse,
 		&p.SafetyInfo, &p.Edetailing, &p.AudioKey, &p.CreatedAt, &p.UpdatedAt, &p.MargCode,
-		&p.LicenceTypeID, &p.FoodType,
+		&p.LicenceTypeID, &p.FoodType, &p.Exclusive, &p.ThumbKey, &p.ThumbSourceKey,
 	)
 	if err != nil {
 		return nil, err

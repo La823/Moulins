@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
@@ -20,7 +21,7 @@ func getUserID(r *http.Request) uuid.UUID {
 // (images/documents/categories) the same way the product list is.
 func ListFavoritesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		favs, err := models.GetFavoriteProducts(r.Context(), db, getUserID(r))
+		favs, err := models.GetFavoriteProducts(r.Context(), db, middleware.ProductViewerOnly(r, db), getUserID(r))
 		if err != nil {
 			log.Printf("list favorites error: %v", err)
 			http.Error(w, "could not fetch favorites", http.StatusInternalServerError)

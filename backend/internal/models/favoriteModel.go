@@ -26,19 +26,18 @@ func RemoveFavorite(ctx context.Context, db *pgxpool.Pool, userID, productID uui
 // GetFavoriteProducts returns the user's favorited products (base fields
 // only — the handler layer loads images/documents/categories the same way
 // it does for GetAllProducts, via loadProductRelationsBatch).
-func GetFavoriteProducts(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) ([]Product, error) {
-	rows, err := db.Query(ctx,
-		`SELECT p.id, p.name, p.description, p.price, p.stock, p.is_active,
+// viewer leaves out favourites the user can no longer see — a product
+// hidden from them after they saved it.
+func GetFavoriteProducts(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, userID uuid.UUID) ([]Product, error) {
+	query, args := viewer.andVisible(`SELECT p.id, p.name, p.description, p.price, p.stock, p.is_active,
 		        p.brand_name, p.hsn_code, p.gst_rate, p.mrp, p.product_form, p.consume_type,
 		        p.pack_size, p.pack_form, p.key_ingredients, p.strength, p.product_weight,
 		        p.key_benefits, p.direction_for_use, p.safety_information,
-		        p.created_at, p.updated_at
+		        p.created_at, p.updated_at, p.thumb_key
 		 FROM product_favorites f
 		 JOIN products p ON p.id = f.product_id
-		 WHERE f.user_id = $1
-		 ORDER BY f.created_at DESC`,
-		userID,
-	)
+		 WHERE f.user_id = $1`, "p", []any{userID})
+	rows, err := db.Query(ctx, query+` ORDER BY f.created_at DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +52,7 @@ func GetFavoriteProducts(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID
 			&p.BrandName, &p.HsnCode, &p.GstRate, &p.Mrp, &p.ProductForm,
 			&p.ConsumeType, &p.PackSize, &p.PackForm, &p.KeyIngredients,
 			&p.Strength, &p.ProductWeight, &p.KeyBenefits, &p.DirectionForUse,
-			&p.SafetyInfo, &p.CreatedAt, &p.UpdatedAt,
+			&p.SafetyInfo, &p.CreatedAt, &p.UpdatedAt, &p.ThumbKey,
 		)
 		if err != nil {
 			return nil, err

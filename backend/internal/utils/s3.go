@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -388,6 +390,43 @@ func DeleteObject(key string) error {
 	_, err := s3Client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
+	})
+	return err
+}
+
+// LongCacheControl lets browsers, phones and CDNs keep a file for a year
+// without asking again. Only safe for keys that are never reused for
+// different content — every upload key here starts with a fresh uuid.
+const LongCacheControl = "public, max-age=31536000, immutable"
+
+// SetLongCacheControl re-stamps an uploaded object with LongCacheControl,
+// copying it onto itself with its content type and metadata kept. Done on
+// the server after upload, rather than in the presigned upload URL, because
+// a header signed into that URL would have to be sent by every uploader —
+// released apps included — or their uploads would fail.
+func SetLongCacheControl(ctx context.Context, key string) error {
+	bucket := os.Getenv("S3_BUCKET")
+	head, err := s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		return err
+	}
+	if head.CacheControl != nil && *head.CacheControl == LongCacheControl {
+		return nil
+	}
+	parts := strings.Split(key, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	_, err = s3Client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:             aws.String(bucket),
+		Key:                aws.String(key),
+		CopySource:         aws.String(bucket + "/" + strings.Join(parts, "/")),
+		MetadataDirective:  s3types.MetadataDirectiveReplace,
+		CacheControl:       aws.String(LongCacheControl),
+		ContentType:        head.ContentType,
+		ContentDisposition: head.ContentDisposition,
+		ContentEncoding:    head.ContentEncoding,
+		Metadata:           head.Metadata,
 	})
 	return err
 }

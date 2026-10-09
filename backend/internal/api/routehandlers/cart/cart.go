@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 )
 
@@ -21,7 +22,7 @@ func rawUserID(r *http.Request) uuid.UUID {
 // GET /cart
 func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		items, err := models.GetCartItems(r.Context(), db, rawUserID(r))
+		items, err := models.GetCartItems(r.Context(), db, middleware.ProductViewerOnly(r, db), rawUserID(r))
 		if err != nil {
 			log.Printf("cart list error: %v", err)
 			http.Error(w, "could not fetch cart", http.StatusInternalServerError)
@@ -51,6 +52,16 @@ func AddHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		if req.Quantity < 1 {
 			req.Quantity = 1
+		}
+		// a product kept from this partner can't be added — it answers like
+		// one that doesn't exist, the same as its product page
+		if ok, err := models.CanSeeProduct(r.Context(), db, middleware.ProductViewerOnly(r, db), req.ProductID); err != nil {
+			log.Printf("cart add visibility check error: %v", err)
+			http.Error(w, "could not add to cart", http.StatusInternalServerError)
+			return
+		} else if !ok {
+			http.Error(w, "product not found", http.StatusNotFound)
+			return
 		}
 
 		if err := models.UpsertCartItem(r.Context(), db, rawUserID(r), req.ProductID, req.Quantity); err != nil {

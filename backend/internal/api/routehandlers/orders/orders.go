@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/mailer"
 	"github.com/lavanyaarora/server/internal/margsync"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/services"
 	"github.com/lavanyaarora/server/internal/utils"
@@ -383,6 +384,36 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "quantity must be at least 1", http.StatusBadRequest)
 				return
 			}
+		}
+
+		// Refuse products kept from this partner — one hidden from them after
+		// it went into their cart, or an id sent by hand. Named in the error
+		// so they know what to take out.
+		ids := make([]uuid.UUID, len(req.Items))
+		for i, item := range req.Items {
+			ids[i] = item.ProductID
+		}
+		hidden, err := models.HiddenAmong(r.Context(), db, middleware.ProductViewerOnly(r, db), ids)
+		if err != nil {
+			log.Printf("order visibility check error: %v", err)
+			http.Error(w, "could not create order", http.StatusInternalServerError)
+			return
+		}
+		if len(hidden) > 0 {
+			names := []string{}
+			for _, item := range req.Items {
+				for _, h := range hidden {
+					if item.ProductID == h && item.ProductName != "" {
+						names = append(names, item.ProductName)
+					}
+				}
+			}
+			msg := "some products in this order are no longer available"
+			if len(names) > 0 {
+				msg = "no longer available: " + strings.Join(names, ", ")
+			}
+			http.Error(w, msg, http.StatusConflict)
+			return
 		}
 
 		// An invalid/omitted transport_mode isn't rejected here — CreateOrder

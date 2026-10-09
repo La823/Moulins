@@ -545,6 +545,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerStaff.HandleFunc("/partners/{id}", userauth.GetPartnerDetailHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}/send-log", userauth.PartnerSendLogHandler(db)).Methods("GET")
 	partnerStaff.HandleFunc("/partners/{id}/cart", userauth.GetPartnerCartHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/partners/{id}/product-access", products.PartnerProductAccessHandler(db)).Methods("GET")
+	partnerStaff.HandleFunc("/product-access/partners", products.PartnerAccessSummariesHandler(db)).Methods("GET")
 
 	// staff routes — partner management (edit)
 	partnerEditStaff := protected.PathPrefix("/admin").Subrouter()
@@ -662,6 +664,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productViewStaff.HandleFunc("/hsn-codes", hsncodes.LookupHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/hsn-codes/{code}", hsncodes.LookupHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/special-products", specialproducts.AdminListSpecialProductsHandler(db)).Methods("GET")
+	// who can see a product — hidden from, or exclusive to, chosen partners
+	productViewStaff.HandleFunc("/products/{id}/access", products.GetProductAccessHandler(db)).Methods("GET")
 
 	// staff routes — product management (edit)
 	productStaff := protected.PathPrefix("/admin").Subrouter()
@@ -670,6 +674,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/{id}/batches/{batchId}/current", margmaster.SetCurrentBatchHandler(db)).Methods("PUT")
 
 	productStaff.HandleFunc("/products", products.CreateProductHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/products/{id}/access", products.SetProductAccessHandler(db, rdb)).Methods("PUT")
+	productStaff.HandleFunc("/products/{id}/thumbnail", products.RegenerateThumbnailHandler(db, rdb)).Methods("POST")
+	productStaff.HandleFunc("/partners/{id}/product-access/{productId}", products.SetPartnerProductAccessHandler(db, rdb)).Methods("PUT")
+	productStaff.HandleFunc("/partners/{id}/product-access/{productId}", products.RemovePartnerProductAccessHandler(db, rdb)).Methods("DELETE")
 	productStaff.HandleFunc("/product-licence-types", licencetypes.CreateHandler(db)).Methods("POST")
 	productStaff.HandleFunc("/product-licence-types/{id}", licencetypes.UpdateHandler(db)).Methods("PUT")
 	productStaff.HandleFunc("/product-licence-types/{id}", licencetypes.DeleteHandler(db)).Methods("DELETE")
