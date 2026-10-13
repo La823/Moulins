@@ -40,3 +40,5 @@ data-files/reference/*.xlsx
 data-files/reference/*.XLS
 data-files/reference/*.xlsm
 !data-files/reference/1mg SHEET.xlsx
+
+security-audit/

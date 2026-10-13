@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import ProductCard from "@/components/products/ProductCard";
+import ProductListRow, { ProductListHeader } from "@/components/products/ProductListRow";
 import { useAuth } from "@/context/AuthContext";
+import Link from "next/link";
+import { DIVISIONS } from "@/lib/divisions";
+import { divisionRouteForCategory } from "@/lib/divisionRoutes";
 
 // Category name (as stored in the DB) -> its division banner image.
 const CATEGORY_ICONS = {
@@ -59,6 +63,8 @@ function ProductsPageInner() {
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  // list view only: a further page is being appended below the rows
+  const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -80,6 +86,22 @@ function ProductsPageInner() {
   // salt suggestion — restricts matching to key_ingredients so the result
   // list is products that actually contain that salt, not a loose name match.
   const [saltOnly, setSaltOnly] = useState(false);
+  // "grid" = product cards with images, "list" = compact rows without.
+  // Remembered on this browser only.
+  const [view, setView] = useState("grid");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("products_view") === "list") setView("list");
+    } catch {}
+  }, []);
+  const changeView = (v) => {
+    setView(v);
+    // grid pages and the list's running total don't mix — start over
+    setPage(1);
+    try {
+      localStorage.setItem("products_view", v);
+    } catch {}
+  };
 
   const [specialProducts, setSpecialProducts] = useState([]);
 
@@ -181,7 +203,12 @@ function ProductsPageInner() {
       return;
     }
 
-    setLoading(true);
+    // List view scrolls forever: pages after the first are added below the
+    // rows already shown instead of replacing them.
+    const append = view === "list" && page > 1;
+    let cancelled = false;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     const params = new URLSearchParams({
       page: String(page),
       limit: String(limit),
@@ -194,6 +221,7 @@ function ProductsPageInner() {
 
     apiFetch(`/products?${params}`)
       .then((data) => {
+        if (cancelled) return;
         let list = data.products || [];
         let combinedTotal = data.total || 0;
 
@@ -208,14 +236,47 @@ function ProductsPageInner() {
           combinedTotal += extras.length;
         }
 
-        setProducts(list);
-        setTotal(combinedTotal);
+        if (append) {
+          setProducts((prev) => {
+            const seen = new Set(prev.map((p) => p.id));
+            return [...prev, ...list.filter((p) => !seen.has(p.id))];
+          });
+        } else {
+          setProducts(list);
+          setTotal(combinedTotal);
+        }
         setTotalPages(data.total_pages || 0);
         setSpellingSuggestions(data.suggestions || []);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [page, debouncedSearch, saltOnly, activeCategory, activeForm, activeTag, specialProducts, isSpecialCustomer]);
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+        setLoadingMore(false);
+      });
+    // a newer request (filter changed, view switched) supersedes this one
+    return () => {
+      cancelled = true;
+    };
+  }, [page, view, debouncedSearch, saltOnly, activeCategory, activeForm, activeTag, specialProducts, isSpecialCustomer]);
+
+  // List view: load the next page when the marker under the last row comes
+  // within ~600px of the screen, so rows arrive before the reader gets there.
+  const sentinelRef = useRef(null);
+  const hasMore = page < totalPages;
+  useEffect(() => {
+    if (view !== "list" || loading || loadingMore || !hasMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) setPage((p) => p + 1);
+      },
+      { rootMargin: "600px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [view, loading, loadingMore, hasMore]);
 
   return (
     <div className="max-w-[96rem] mx-auto px-10 py-10">
@@ -349,18 +410,19 @@ function ProductsPageInner() {
             gridTemplateColumns: `repeat(${Math.ceil((categories.length + 1 + (isSpecialCustomer ? 1 : 0)) / 2)}, 1fr)`,
           }}
         >
+          {/* "All" tile — the triangle artwork behind it, a light shade so the
+              label reads; selected gets the same red border as the division tiles */}
           <button
             onClick={() => setActiveCategory("")}
-            className={`px-4 py-1.5 text-sm font-medium transition-all duration-200 min-w-0 border-4 rounded-md ${
+            className={`px-4 py-1.5 text-2xl md:text-3xl font-extrabold tracking-wide text-white transition-all duration-200 min-w-0 border-4 rounded-md bg-cover bg-center ${
               activeCategory === ""
-                ? "border-transparent"
+                ? "border-[#AC2528]"
                 : "border-gray-200 hover:border-[#AC2528]"
             }`}
-            style={
-              activeCategory === ""
-                ? { backgroundColor: "#AC2528", color: "white" }
-                : { backgroundColor: "transparent", color: "#6b7280" }
-            }
+            style={{
+              backgroundImage: 'linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.18)), url("/all-tile.jpg")',
+              textShadow: "0 1px 6px rgba(0,0,0,0.45)",
+            }}
           >
             All
           </button>
@@ -438,6 +500,39 @@ function ProductsPageInner() {
         </div>
       )}
 
+      {/* Selected division's banner — the same picture its own page opens
+          with, plus a link there. Only for the 12 divisions. */}
+      {(() => {
+        if (!activeCategory || activeCategory === SPECIAL_FILTER) return null;
+        const route = divisionRouteForCategory(activeCategory);
+        const division = DIVISIONS.find((d) => d.route === route);
+        if (!division) return null;
+        return (
+          <section key={division.route} className="relative mb-10 h-48 md:h-72 rounded-xl overflow-hidden flex items-end">
+            <img
+              src={division.heroImage}
+              alt={division.label}
+              className="absolute inset-0 w-full h-full object-cover object-[center_15%]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent" />
+            <div className="relative z-10 w-full flex flex-wrap items-end justify-between gap-3 px-6 md:px-10 pb-6 md:pb-8">
+              <div>
+                <h2 className="text-3xl md:text-4xl text-white leading-tight">{division.label}</h2>
+                {division.desc && (
+                  <p className="mt-1 text-xs md:text-sm uppercase tracking-[0.2em] text-white/75">{division.desc}</p>
+                )}
+              </div>
+              <Link
+                href={division.route}
+                className="px-4 py-2 rounded-lg bg-white/90 hover:bg-white text-gray-900 text-xs md:text-sm font-medium transition-colors"
+              >
+                Visit {division.label} &rarr;
+              </Link>
+            </div>
+          </section>
+        );
+      })()}
+
       {/* Type (product form) filter — small pills on larger screens, a
           dropdown only below sm where pills would wrap/overflow awkwardly */}
       {forms.length > 0 && (
@@ -492,8 +587,44 @@ function ProductsPageInner() {
         </div>
       )}
 
-      {/* Products grid */}
+      {/* Grid / list toggle */}
+      <div className="flex justify-end mb-5">
+        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-white" role="group" aria-label="Product view">
+          {[
+            ["grid", "Grid", "M3.75 3.75h6.5v6.5h-6.5zM13.75 3.75h6.5v6.5h-6.5zM3.75 13.75h6.5v6.5h-6.5zM13.75 13.75h6.5v6.5h-6.5z"],
+            ["list", "List", "M8.25 6.75h12M8.25 12h12M8.25 17.25h12M3.75 6.75h.008v.008H3.75zM3.75 12h.008v.008H3.75zM3.75 17.25h.008v.008H3.75z"],
+          ].map(([key, label, d]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => changeView(key)}
+              aria-pressed={view === key}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                view === key ? "bg-gray-900 text-white" : "text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+              </svg>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Products grid / list */}
       {loading ? (
+        view === "list" ? (
+          <div className="border-t border-gray-200">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="animate-pulse px-4 py-4 border-b border-gray-100 flex gap-6">
+                <div className="h-4 bg-gray-100 rounded flex-1" />
+                <div className="h-4 bg-gray-100 rounded w-24" />
+                <div className="h-4 bg-gray-100 rounded w-16" />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="animate-pulse">
@@ -504,6 +635,7 @@ function ProductsPageInner() {
             </div>
           ))}
         </div>
+        )
       ) : products.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-gray-400 text-sm">No products found</p>
@@ -520,6 +652,32 @@ function ProductsPageInner() {
             </button>
           )}
         </div>
+      ) : view === "list" ? (
+        <div className="border-t border-gray-200">
+          <ProductListHeader />
+          {products.map((p) => (
+            <ProductListRow key={p.id} product={p} />
+          ))}
+          <div ref={sentinelRef} />
+          <div className="py-8 text-center text-xs text-gray-400">
+            {loadingMore ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+                Loading more…
+              </span>
+            ) : hasMore ? (
+              <button
+                type="button"
+                onClick={() => setPage((p) => p + 1)}
+                className="text-gray-500 hover:text-gray-900 underline underline-offset-2"
+              >
+                Load more
+              </button>
+            ) : (
+              `All ${products.length} product${products.length !== 1 ? "s" : ""} shown`
+            )}
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
           {products.map((p) => (
@@ -529,7 +687,7 @@ function ProductsPageInner() {
       )}
 
       {/* Pagination */}
-      {total > 0 && !loading && (
+      {view === "grid" && total > 0 && !loading && (
         <div className="flex items-center justify-between mt-14 pt-8 border-t border-gray-200 text-sm text-gray-500">
           <span>
             {(page - 1) * limit + 1}&ndash;{Math.min(page * limit, total)} of{" "}

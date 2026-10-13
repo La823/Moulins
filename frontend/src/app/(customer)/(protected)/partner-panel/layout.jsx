@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -132,6 +132,13 @@ export default function PartnerPanelLayout({ children }) {
   const { user, logout, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  // phones: the sidebar is a slide-in menu, closed again on every page change
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPath, setMenuPath] = useState(pathname);
+  if (menuPath !== pathname) {
+    setMenuPath(pathname);
+    setMenuOpen(false);
+  }
 
   useEffect(() => {
     if (!loading && user && user.role !== "partner") {
@@ -141,13 +148,32 @@ export default function PartnerPanelLayout({ children }) {
 
   if (loading || (user && user.role !== "partner")) return null;
 
-  const isActive = (href) => (href === "/partner-panel" ? pathname === "/partner-panel" : pathname.startsWith(href));
+  // exact page or a page under it — a bare prefix would light up "My Team"
+  // (/partner-panel/team) on Team Logs (/partner-panel/team-logs) too
+  const isActive = (href) =>
+    href === "/partner-panel" ? pathname === "/partner-panel" : pathname === href || pathname.startsWith(href + "/");
   const displayName = user?.username || user?.phone_number || "";
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* Phones: slim top bar with the menu button */}
+      <header className="md:hidden fixed top-0 inset-x-0 z-20 h-14 bg-gray-900 text-white flex items-center gap-3 px-4">
+        <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/10">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+          </svg>
+        </button>
+        <Image src="/Moulins Logo High Res - V2.png" alt="Moulins" width={90} height={28} className="h-6 w-auto brightness-0 invert" />
+        <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Partner</span>
+      </header>
+      {menuOpen && <div className="md:hidden fixed inset-0 z-30 bg-black/40" onClick={() => setMenuOpen(false)} />}
+
       {/* Sidebar */}
-      <aside className="w-60 bg-gray-900 text-white flex flex-col fixed inset-y-0 left-0 z-30">
+      <aside
+        className={`w-64 md:w-60 bg-gray-900 text-white flex flex-col fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:translate-x-0 ${
+          menuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="px-5 py-5 border-b border-gray-800">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -206,8 +232,8 @@ export default function PartnerPanelLayout({ children }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 ml-60">
-        <main className="p-6">{children}</main>
+      <div className="flex-1 min-w-0 md:ml-60 pt-14 md:pt-0">
+        <main className="p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

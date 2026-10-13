@@ -10,6 +10,8 @@ import '../../services/product_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/product_list_row.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
@@ -64,6 +66,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   bool _showDropdown = false;
   bool _saltOnly = false;
 
+  // Grid of image cards, or a compact image-free list (composition first).
+  // Remembered on this device. Both keep loading more as you scroll.
+  static const _viewKey = 'products_view';
+  bool _listView = false;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +85,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       // which covers a link carrying a category's previous name.
     }
     _tag = widget.initialTag ?? '';
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted && prefs.getString(_viewKey) == 'list') setState(() => _listView = true);
+    }).catchError((_) {});
     _load();
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.position.pixels >=
@@ -124,6 +134,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     } catch (_) {
       setState(() => _loading = false);
     }
+  }
+
+  void _setListView(bool list) {
+    setState(() => _listView = list);
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setString(_viewKey, list ? 'list' : 'grid'))
+        .catchError((_) => false);
   }
 
   void _loadMore() {
@@ -313,25 +330,36 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 }
                                 _load(reset: true);
                               },
+                              // "All" — the triangle artwork behind it (same
+                              // as the website), selected gets a red border
                               child: Container(
                                 width: double.infinity,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
+                                height: 58,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: (_category.isEmpty && _categoryId.isEmpty)
-                                      ? _filterRed
-                                      : Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: (_category.isEmpty && _categoryId.isEmpty)
+                                        ? _filterRed
+                                        : Colors.grey.shade200,
+                                    width: 3,
+                                  ),
+                                  image: DecorationImage(
+                                    image: const AssetImage('assets/images/all_tile.jpg'),
+                                    fit: BoxFit.cover,
+                                    colorFilter: ColorFilter.mode(
+                                        Colors.black.withValues(alpha: 0.18),
+                                        BlendMode.darken),
+                                  ),
                                 ),
-                                child: Text(
+                                child: const Text(
                                   'All',
                                   style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: (_category.isEmpty && _categoryId.isEmpty)
-                                        ? Colors.white
-                                        : Colors.grey.shade700,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1,
+                                    color: Colors.white,
+                                    shadows: [Shadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 1))],
                                   ),
                                 ),
                               ),
@@ -411,6 +439,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 );
                               },
                             ),
+                            _DivisionBanner(categoryId: _categoryId),
                           ],
                         ),
                       ),
@@ -566,6 +595,31 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     ),
                   ),
 
+                // Grid / list toggle
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(value: false, label: Text('Grid'), icon: Icon(Icons.grid_view_rounded, size: 16)),
+                          ButtonSegment(value: true, label: Text('List'), icon: Icon(Icons.view_list_rounded, size: 16)),
+                        ],
+                        selected: {_listView},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (sel) => _setListView(sel.first),
+                        style: SegmentedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          selectedBackgroundColor: const Color(0xFF111827),
+                          selectedForegroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Product grid
                 if (_products.isEmpty && _loading)
                   const SliverFillRemaining(
@@ -581,6 +635,34 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         child: Text('No products found',
                             style: TextStyle(color: Colors.grey))),
                   )
+                else if (_listView) ...[
+                  if (isWide(context))
+                    const SliverToBoxAdapter(
+                      child: Padding(padding: EdgeInsets.only(top: 12), child: ProductListHeader()),
+                    ),
+                  SliverPadding(
+                    padding: EdgeInsets.only(top: isWide(context) ? 0 : 8, bottom: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, i) {
+                          if (i >= _products.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+                            );
+                          }
+                          final p = _products[i];
+                          return ProductListRow(
+                            product: p,
+                            wide: isWide(context),
+                            onTap: () => context.push('/products/${p.id}'),
+                          );
+                        },
+                        childCount: _products.length + (_hasMore ? 1 : 0),
+                      ),
+                    ),
+                  ),
+                ]
                 else
                   SliverPadding(
                     padding: const EdgeInsets.all(16),
@@ -744,6 +826,84 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// The selected division's banner — the same picture its own screen opens
+/// with, plus a way there. Nothing for "All" or a non-division category.
+class _DivisionBanner extends StatelessWidget {
+  final String categoryId;
+  const _DivisionBanner({required this.categoryId});
+
+  @override
+  Widget build(BuildContext context) {
+    final match = kDivisions.where((d) => d.categoryId == categoryId);
+    if (categoryId.isEmpty || match.isEmpty) return const SizedBox.shrink();
+    final d = match.first;
+    final wide = isWide(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          height: wide ? 240 : 160,
+          width: double.infinity,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(d.heroImage, fit: BoxFit.cover, alignment: const Alignment(0, -0.7)),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black.withValues(alpha: 0.7), Colors.black.withValues(alpha: 0.2), Colors.transparent],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: wide ? 28 : 16,
+                right: wide ? 24 : 12,
+                bottom: wide ? 22 : 14,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(d.heroLabel,
+                              style: TextStyle(color: Colors.white, fontSize: wide ? 32 : 24, height: 1.1)),
+                          const SizedBox(height: 4),
+                          Text(d.heroTitle.toUpperCase(),
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: wide ? 12 : 10, letterSpacing: 2)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Material(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => context.push(d.route),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: wide ? 14 : 10, vertical: 8),
+                          child: Text(wide ? 'Visit ${d.heroLabel} →' : 'Visit →',
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF111827))),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

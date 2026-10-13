@@ -10,6 +10,7 @@ import '../../widgets/home_carousel_section.dart';
 import '../../widgets/upcoming_products_section.dart';
 // import '../../widgets/areas_of_focus_section.dart'; // temporarily unused — see below
 import '../../widgets/partnership_section.dart';
+import '../../widgets/app_footer.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/cart_button.dart';
 import '../../widgets/cart_drawer.dart';
@@ -55,7 +56,7 @@ class HomeScreen extends ConsumerWidget {
           // Areas of Focus — temporarily hidden, not removed; may be needed again later.
           // const AreasOfFocusSection(),
           const PartnershipSection(),
-          const SizedBox(height: 24),
+          const AppFooter(),
         ],
       ),
     );

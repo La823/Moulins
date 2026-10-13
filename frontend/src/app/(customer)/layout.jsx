@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import CustomerNavbar from "@/components/customer/Navbar";
 import Footer from "@/components/customer/Footer";
 import CartDrawer from "@/components/customer/CartDrawer";
+import SmoothScroll from "@/components/customer/SmoothScroll";
 
 export default function CustomerLayout({ children }) {
   // The partner panel and team-member panel are each their own full-screen
@@ -23,6 +24,9 @@ export default function CustomerLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
+      {/* Smooth scrolling on storefront pages only — the partner/team
+          panels above have their own scrolling sidebars and keep native scroll */}
+      <SmoothScroll />
       <CustomerNavbar />
       <main className="flex-1">{children}</main>
       <Footer />

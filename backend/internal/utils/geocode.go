@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type geocodeResponse struct {
 				Lng float64 `json:"lng"`
 			} `json:"location"`
 		} `json:"geometry"`
+		FormattedAddress  string `json:"formatted_address"`
 		AddressComponents []struct {
 			LongName string   `json:"long_name"`
 			Types    []string `json:"types"`
@@ -93,4 +95,93 @@ func GeocodePincode(pincode string) (GeocodeResult, bool) {
 	}
 
 	return result, true
+}
+
+// ReverseGeocode turns a GPS point into a short, readable place name for
+// people to read — "Sector 22, Chandigarh" rather than a full postal address
+// or raw coordinates. Neighbourhood (sublocality) + city when Google has
+// them, else the first two parts of its formatted address. ok=false when it
+// can't be resolved; callers keep the coordinates either way.
+func ReverseGeocode(lat, lng float64) (string, bool) {
+	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
+	if apiKey == "" {
+		return "", false
+	}
+
+	client := http.Client{Timeout: 5 * time.Second}
+	endpoint := fmt.Sprintf(
+		"https://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f&key=%s",
+		lat, lng, apiKey,
+	)
+	resp, err := client.Get(endpoint)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	var parsed geocodeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return "", false
+	}
+	if parsed.Status != "OK" || len(parsed.Results) == 0 {
+		return "", false
+	}
+
+	// Results run most specific first. The area is the best-ranked kind
+	// found in any of them — a sector/locality name over a "neighbourhood",
+	// which in India is often a shop label like "SCO:" — and junk labels
+	// (punctuation, no real word) are skipped.
+	areaKinds := []string{"sublocality_level_1", "sublocality", "neighborhood"}
+	var area, city string
+	bestRank := len(areaKinds)
+	for _, res := range parsed.Results {
+		for _, c := range res.AddressComponents {
+			for rank, kind := range areaKinds {
+				if rank < bestRank && hasType(c.Types, kind) && readablePlace(c.LongName) {
+					area, bestRank = c.LongName, rank
+				}
+			}
+			if city == "" && hasType(c.Types, "locality") {
+				city = c.LongName
+			}
+		}
+	}
+	switch {
+	case area != "" && city != "" && area != city:
+		return area + ", " + city, true
+	case city != "":
+		return city, true
+	case area != "":
+		return area, true
+	}
+
+	// fall back to the start of the formatted address, minus a leading
+	// plus code ("8Q7X+5V Chandigarh, ...")
+	parts := strings.Split(parsed.Results[0].FormattedAddress, ", ")
+	if len(parts) > 0 && strings.Contains(parts[0], "+") {
+		parts = parts[1:]
+	}
+	if len(parts) > 2 {
+		parts = parts[:2]
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, ", "), true
+}
+
+// readablePlace rejects labels that aren't a place name a person would
+// recognise: too short, or carrying ':' / digits-only shop codes.
+func readablePlace(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) < 3 || strings.ContainsAny(s, ":;") {
+		return false
+	}
+	letters := 0
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			letters++
+		}
+	}
+	return letters >= 3
 }

@@ -1,15 +1,18 @@
 package dailylogs
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 func getUserID(r *http.Request) uuid.UUID {
@@ -46,6 +49,23 @@ func SubmitMyDailyLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 			log.Printf("submit daily log error: %v", err)
 			http.Error(w, "could not save daily log", http.StatusInternalServerError)
 			return
+		}
+
+		// Look up a readable place name for the partner ("Sector 22,
+		// Chandigarh") — in the background, so saving never waits on Google;
+		// if it fails the log simply keeps its coordinates.
+		if body.Address == nil || *body.Address == "" {
+			go func(id uuid.UUID, lat, lng float64) {
+				addr, ok := utils.ReverseGeocode(lat, lng)
+				if !ok {
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				if err := models.SetDailyLogAddress(ctx, db, id, addr); err != nil {
+					log.Printf("daily log address error: %v", err)
+				}
+			}(id, *body.Latitude, *body.Longitude)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -110,6 +130,31 @@ func GetTeamDailyLogsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(logs)
+	}
+}
+
+// GET /team/visit-logs?year=&month= — a partner sees every doctor visit their
+// team logged that month, each with its distance from the doctor's clinic.
+func GetTeamVisitLogsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		role, _ := r.Context().Value("role").(string)
+		if role != "partner" {
+			http.Error(w, "only partners can review team visits", http.StatusForbidden)
+			return
+		}
+		year, month, err := parseYearMonth(r)
+		if err != nil {
+			http.Error(w, "year and month query params are required", http.StatusBadRequest)
+			return
+		}
+		logs, err := models.GetTeamVisitLogsByPartnerMonth(r.Context(), db, getUserID(r), year, month)
+		if err != nil {
+			log.Printf("get team visit logs error: %v", err)
+			http.Error(w, "could not fetch visits", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(logs)
 	}

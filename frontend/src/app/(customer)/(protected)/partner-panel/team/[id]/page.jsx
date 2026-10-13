@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
+import { STATUSES, NOT_MARKED, friendlyDate, UpdateItem, UpdateList, asVisits } from "@/components/team/attendanceUi";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -160,12 +161,17 @@ export default function TeamMemberPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [att, dailyLogs] = await Promise.all([
+      const [att, dailyLogs, visits] = await Promise.all([
         apiFetch(`/team/${id}/attendance/month?year=${year}&month=${month}`),
         apiFetch(`/team/${id}/daily-logs?year=${year}&month=${month}`),
+        apiFetch(`/team/visit-logs?year=${year}&month=${month}`).catch(() => []),
       ]);
       setAttendance(Array.isArray(att) ? att : []);
-      setLogs(Array.isArray(dailyLogs) ? dailyLogs : []);
+      // their daily updates plus the doctor visits they logged
+      setLogs([
+        ...(Array.isArray(dailyLogs) ? dailyLogs : []),
+        ...asVisits(visits).filter((v) => v.team_member_id === id),
+      ]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -460,50 +466,58 @@ export default function TeamMemberPage() {
               })}
             </div>
           )}
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+            {[...STATUSES, NOT_MARKED].map((st) => (
+              <span key={st.label} className="inline-flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${st.dot}`} /> {st.label}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* Mark attendance for selected day */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           {!selectedDate ? (
             <div className="h-full flex items-center justify-center min-h-[200px]">
-              <p className="text-sm text-gray-400 text-center">Click a day to mark attendance</p>
+              <p className="text-sm text-gray-400 text-center">Pick a day on the calendar to see their updates and mark attendance</p>
             </div>
           ) : (
             <div className="space-y-5">
-              <h3 className="text-sm font-semibold text-gray-800">{selectedDate} {MONTHS[month - 1]}</h3>
+              <h3 className="text-base font-semibold text-gray-900">
+                {friendlyDate(`${year}-${String(month).padStart(2, "0")}-${String(selectedDate).padStart(2, "0")}`)}
+              </h3>
 
               {/* Logs submitted for this day */}
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Logs for this day</p>
-                {(logsByDay[selectedDate] || []).length === 0 ? (
-                  <p className="text-xs text-gray-400">No logs submitted.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {logsByDay[selectedDate].map((l) => (
-                      <div key={l.id} className="border border-gray-100 rounded-lg p-2.5 bg-gray-50">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-gray-800 whitespace-pre-wrap flex-1">{l.notes}</p>
-                          {l.latitude != null && l.longitude != null && (
-                            <a
-                              href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[11px] text-teal-600 hover:underline ml-2 flex-shrink-0"
-                            >
-                              {l.address || "View location"}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                  {(logsByDay[selectedDate] || []).length === 0
+                    ? "No updates sent"
+                    : `${logsByDay[selectedDate].length} update${logsByDay[selectedDate].length > 1 ? "s" : ""}`}
+                </p>
+                {(logsByDay[selectedDate] || []).length > 0 && <UpdateList logs={logsByDay[selectedDate]} />}
               </div>
 
               <form onSubmit={handleMark} className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="block text-xs text-gray-500 mb-1.5">Attendance</p>
+                <div className="flex flex-wrap gap-2">
+                  {STATUSES.map((st) => (
+                    <button
+                      key={st.key}
+                      type="button"
+                      onClick={() => setForm({ ...form, status: st.key })}
+                      className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${
+                        form.status === st.key ? st.on : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Check-in</label>
+                  <label className="block text-xs text-gray-500 mb-1">Came in at</label>
                   <input
                     type="time"
                     value={form.check_in_time}
@@ -512,22 +526,9 @@ export default function TeamMemberPage() {
                     className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 outline-none focus:border-gray-400"
-                  >
-                    <option value="present">Present</option>
-                    <option value="late">Late</option>
-                    <option value="half-day">Half Day</option>
-                    <option value="absent">Absent</option>
-                  </select>
-                </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
                 <input
                   type="text"
                   value={form.description}
@@ -542,7 +543,7 @@ export default function TeamMemberPage() {
                   disabled={submitting}
                   className="flex-1 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50"
                 >
-                  {submitting ? "Saving..." : selectedRecord ? "Update" : "Mark"}
+                  {submitting ? "Saving..." : selectedRecord ? "Save changes" : "Save attendance"}
                 </button>
                 {selectedRecord && (
                   <button
@@ -618,33 +619,24 @@ export default function TeamMemberPage() {
 
       {/* Daily logs */}
       <div className="mt-8">
-        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Daily Logs</h3>
+        <h3 className="text-base font-semibold text-gray-900 mb-4">Updates this month</h3>
         {logs.length > 0 && <DailyLogsMap logs={logs} />}
         {logs.length === 0 ? (
           <p className="text-sm text-gray-400">No logs submitted for {MONTHS[month - 1]} {year}.</p>
         ) : (
-          <div className="space-y-3">
-            {logs.map((l) => (
-              <div key={l.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs text-gray-400">{l.date}</p>
-                  {l.latitude != null && l.longitude != null && (
-                    <a
-                      href={`https://www.google.com/maps?q=${l.latitude},${l.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-teal-600 hover:underline flex items-center gap-0.5"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.5-7.5 11.25-7.5 11.25S4.5 18 4.5 10.5a7.5 7.5 0 1115 0z" />
-                      </svg>
-                      {l.address || "Located"}
-                    </a>
-                  )}
+          <div className="space-y-4 mt-4">
+            {[...new Set(logs.map((l) => l.date))].sort().reverse().map((d) => (
+              <section key={d} className="bg-white rounded-xl border border-gray-200">
+                <div className="px-4 py-2.5 border-b border-gray-100 text-sm font-semibold text-gray-900">{friendlyDate(d)}</div>
+                <div className="px-4 py-4 space-y-4 border-l-2 border-teal-50 ml-4">
+                  {logs
+                    .filter((l) => l.date === d)
+                    .sort((x, y) => x.created_at.localeCompare(y.created_at))
+                    .map((l) => (
+                      <UpdateItem key={l.id} log={l} />
+                    ))}
                 </div>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{l.notes}</p>
-              </div>
+              </section>
             ))}
           </div>
         )}

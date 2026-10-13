@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
@@ -83,7 +84,7 @@ func ForgotPasswordHandler(db *pgxpool.Pool) http.HandlerFunc {
 		resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendBaseURL(), token)
 		name := "there"
 		if user.Username != nil && *user.Username != "" {
-			name = *user.Username
+			name = html.EscapeString(*user.Username)
 		}
 		subject := "Reset your Moulins password"
 		body := fmt.Sprintf(`

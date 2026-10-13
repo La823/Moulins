@@ -38,6 +38,45 @@ func InsertDailyLog(ctx context.Context, db *pgxpool.Pool, teamMemberID uuid.UUI
 	return id, err
 }
 
+// SetDailyLogAddress fills in a log's readable place name, looked up from its
+// coordinates after the log is saved. Never overwrites one already there.
+func SetDailyLogAddress(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, address string) error {
+	_, err := db.Exec(ctx,
+		`UPDATE daily_logs SET address = $2 WHERE id = $1 AND (address IS NULL OR address = '')`,
+		id, address)
+	return err
+}
+
+// DailyLogPoint is a located log still missing its place name.
+type DailyLogPoint struct {
+	ID  uuid.UUID
+	Lat float64
+	Lng float64
+}
+
+// ListDailyLogsWithoutAddress is every log that has coordinates but no place
+// name yet — for the one-off backfill of logs saved before lookups existed.
+func ListDailyLogsWithoutAddress(ctx context.Context, db *pgxpool.Pool) ([]DailyLogPoint, error) {
+	rows, err := db.Query(ctx,
+		`SELECT id, latitude, longitude FROM daily_logs
+		 WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		   AND (address IS NULL OR address = '')
+		 ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DailyLogPoint
+	for rows.Next() {
+		var p DailyLogPoint
+		if err := rows.Scan(&p.ID, &p.Lat, &p.Lng); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // DailyLogWithMember is a daily log annotated with whose log it is — used
 // for the partner's team-wide logs view, where entries from every team
 // member are interleaved and need to say who they belong to.

@@ -3,6 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.moulinspharma.app";
+
 const footerLinks = {
   products: {
     heading: "Products",
@@ -70,6 +72,26 @@ export default function Footer() {
                 +91 98155 35304
               </a>
             </div>
+
+            {/* The Moulins app on Google Play */}
+            <a
+              href={PLAY_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Get the Moulins app on Google Play"
+              className="mt-6 inline-flex items-center gap-3 rounded-xl border border-[#3A3A3A] bg-black px-4 py-2.5 hover:border-[#6B6560] transition-colors"
+            >
+              <svg viewBox="0 0 24 26" className="w-6 h-6 shrink-0" aria-hidden="true">
+                <path d="M1.2.6 13.4 12.8 1.2 25a1.9 1.9 0 0 1-.7-1.5V2.1c0-.6.3-1.1.7-1.5Z" fill="#00D7FE" />
+                <path d="m17.5 8.7-4.1 4.1-12.2-12.2c.6-.5 1.5-.6 2.3-.2l14 8.3Z" fill="#00F076" />
+                <path d="m17.5 16.9-14 8.2c-.8.5-1.7.4-2.3-.1l12.2-12.2 4.1 4.1Z" fill="#FF3A44" />
+                <path d="m22.3 11.5-4.8-2.8-4.1 4.1 4.1 4.1 4.8-2.8c1.3-.7 1.3-1.9 0-2.6Z" fill="#FFD400" />
+              </svg>
+              <span className="leading-tight text-left">
+                <span className="block text-[10px] uppercase tracking-wider text-[#B8B0A4]">Get it on</span>
+                <span className="block text-base font-semibold text-white">Google Play</span>
+              </span>
+            </a>
           </div>
 
           {/* Link columns */}

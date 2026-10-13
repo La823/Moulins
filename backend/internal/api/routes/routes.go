@@ -138,6 +138,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/team/attendance", attendance.PartnerAttendanceByDateHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/attendance/{id}", attendance.PartnerDeleteAttendanceHandler(db)).Methods("DELETE")
 	protected.HandleFunc("/team/daily-logs", dailylogs.GetTeamDailyLogsHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/visit-logs", dailylogs.GetTeamVisitLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}/attendance/month", attendance.PartnerAttendanceByMonthHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}/daily-logs", dailylogs.GetTeamMemberDailyLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}", team.GetTeamMemberHandler(db)).Methods("GET")

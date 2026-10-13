@@ -9,6 +9,12 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Lenis does the smoothing on the storefront; the CSS version on top of it
+   makes every scroll step ease twice and feel laggy */
+html.lenis {
+  scroll-behavior: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

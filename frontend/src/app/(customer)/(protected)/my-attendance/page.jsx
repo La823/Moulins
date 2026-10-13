@@ -3,19 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
+import { STATUSES, NOT_MARKED, StatusChip, clockTime, friendlyDate } from "@/components/team/attendanceUi";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const STATUS_COLORS = {
-  present: "bg-green-100 text-green-800",
-  late: "bg-yellow-100 text-yellow-800",
-  "half-day": "bg-orange-100 text-orange-800",
-  absent: "bg-red-100 text-red-800",
-};
 
 // Team member's own attendance, viewed on the customer site (as opposed to
 // /panel/my-attendance which is for Moulins employees only). Unlike that
@@ -72,13 +66,14 @@ export default function MyAttendancePage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
-      <h1 className="text-2xl font-light text-gray-900 mb-6">My Attendance</h1>
+      <h1 className="text-2xl font-semibold text-gray-900">My Attendance</h1>
+      <p className="text-sm text-gray-500 mt-1 mb-6">Your attendance for the month, as marked by your manager.</p>
 
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           { label: "Present", value: presentDays, color: "text-green-600 bg-green-50" },
           { label: "Late", value: lateDays, color: "text-yellow-600 bg-yellow-50" },
-          { label: "Half Day", value: halfDays, color: "text-orange-600 bg-orange-50" },
+          { label: "Half day", value: halfDays, color: "text-orange-600 bg-orange-50" },
           { label: "Absent", value: absentDays, color: "text-red-600 bg-red-50" },
         ].map((stat) => (
           <div key={stat.label} className={`rounded-xl p-4 ${stat.color}`}>
@@ -143,30 +138,39 @@ export default function MyAttendancePage() {
               })}
             </div>
           )}
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+            {[...STATUSES, NOT_MARKED].map((st) => (
+              <span key={st.label} className="inline-flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${st.dot}`} /> {st.label}
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           {!selectedDate ? (
             <div className="h-full flex items-center justify-center">
-              <p className="text-sm text-gray-400 text-center">Click a day to see details</p>
+              <p className="text-sm text-gray-400 text-center">Tap a day to see its details</p>
             </div>
           ) : selectedRecord ? (
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-4">{selectedDate} {MONTHS[month - 1]}</h3>
+              <h3 className="text-base font-semibold text-gray-900 mb-4">
+                {friendlyDate(`${year}-${String(month).padStart(2, "0")}-${String(selectedDate).padStart(2, "0")}`)}
+              </h3>
               <div className="space-y-3">
                 <div>
-                  <p className="text-xs text-gray-500">Status</p>
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[selectedRecord.status]}`}>
-                    {selectedRecord.status}
-                  </span>
+                  <p className="text-xs text-gray-500">Attendance</p>
+                  <StatusChip status={selectedRecord.status} className="mt-1" />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500">Check-in Time</p>
-                  <p className="text-sm text-gray-900 mt-0.5">{selectedRecord.check_in_time.slice(0, 5)}</p>
-                </div>
+                {selectedRecord.status !== "absent" && (
+                  <div>
+                    <p className="text-xs text-gray-500">Came in at</p>
+                    <p className="text-sm text-gray-900 mt-0.5">{clockTime(selectedRecord.check_in_time)}</p>
+                  </div>
+                )}
                 {selectedRecord.description && (
                   <div>
-                    <p className="text-xs text-gray-500">Notes</p>
+                    <p className="text-xs text-gray-500">Note from your manager</p>
                     <p className="text-sm text-gray-700 mt-0.5">{selectedRecord.description}</p>
                   </div>
                 )}
@@ -174,8 +178,10 @@ export default function MyAttendancePage() {
             </div>
           ) : (
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-4">{selectedDate} {MONTHS[month - 1]}</h3>
-              <p className="text-xs text-gray-400">No attendance recorded</p>
+              <h3 className="text-base font-semibold text-gray-900 mb-4">
+                {friendlyDate(`${year}-${String(month).padStart(2, "0")}-${String(selectedDate).padStart(2, "0")}`)}
+              </h3>
+              <p className="text-sm text-gray-400">Attendance not marked for this day.</p>
             </div>
           )}
         </div>
