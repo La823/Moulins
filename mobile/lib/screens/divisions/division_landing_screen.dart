@@ -7,6 +7,8 @@ import '../../services/product_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
+import '../../widgets/product_list_row.dart';
+import '../../widgets/product_view_toggle.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 
@@ -40,20 +42,65 @@ class DivisionLandingScreen extends ConsumerStatefulWidget {
 class _DivisionLandingScreenState extends ConsumerState<DivisionLandingScreen> {
   final List<Product> _products = [];
   bool _loading = true;
+  bool _listView = false;
+  // The backend returns at most 100 products a request and a division can
+  // have more (Matrix has 250+), so further pages load as you near the end.
+  int _page = 1;
+  bool _hasMore = false;
+  bool _loadingMore = false;
+  final _scrollCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    loadListView().then((list) {
+      if (mounted && list) setState(() => _listView = true);
+    });
     _load();
+    _scrollCtrl.addListener(() {
+      if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 400) _loadMore();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _setListView(bool list) {
+    setState(() => _listView = list);
+    saveListView(list);
   }
 
   Future<void> _load() async {
     try {
-      final res = await _productService.getProducts(categoryId: widget.categoryId, limit: 100);
-      if (mounted) setState(() { _products.addAll(res.products); _loading = false; });
+      final res = await _productService.getProducts(categoryId: widget.categoryId, page: _page, limit: 100);
+      if (mounted) {
+        setState(() {
+          _products.addAll(res.products);
+          _hasMore = _page < res.totalPages;
+          _loading = false;
+          _loadingMore = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      // a failed further page can be retried by scrolling again
+      if (mounted) {
+        setState(() {
+          if (_loadingMore) _page--;
+          _loading = false;
+          _loadingMore = false;
+        });
+      }
     }
+  }
+
+  void _loadMore() {
+    if (!_hasMore || _loading || _loadingMore) return;
+    _loadingMore = true;
+    _page++;
+    _load();
   }
 
   @override
@@ -66,6 +113,7 @@ class _DivisionLandingScreenState extends ConsumerState<DivisionLandingScreen> {
         actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: CustomScrollView(
+        controller: _scrollCtrl,
         slivers: [
           SliverToBoxAdapter(
             child: Stack(
@@ -114,6 +162,35 @@ class _DivisionLandingScreenState extends ConsumerState<DivisionLandingScreen> {
               ],
             ),
           ),
+          // Grid / list toggle
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: ProductViewToggle(listView: _listView, onChanged: _setListView),
+              ),
+            ),
+          ),
+          if (_listView && !_loading && _products.isNotEmpty) ...[
+            if (isWide(context))
+              const SliverToBoxAdapter(
+                child: Padding(padding: EdgeInsets.only(top: 12), child: ProductListHeader()),
+              ),
+            SliverPadding(
+              padding: EdgeInsets.only(top: isWide(context) ? 0 : 8, bottom: 16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => ProductListRow(
+                    product: _products[i],
+                    wide: isWide(context),
+                    onTap: () => context.push('/products/${_products[i].id}'),
+                  ),
+                  childCount: _products.length,
+                ),
+              ),
+            ),
+          ] else
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: _loading
@@ -149,6 +226,13 @@ class _DivisionLandingScreenState extends ConsumerState<DivisionLandingScreen> {
                         ),
                       ),
           ),
+          if (_hasMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 24),
+                child: Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4))),
+              ),
+            ),
         ],
       ),
     );

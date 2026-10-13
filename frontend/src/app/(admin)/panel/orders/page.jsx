@@ -319,6 +319,12 @@ function AdminOrdersPageInner() {
                       month: "short",
                       year: "numeric",
                     })}
+                    <span className="block text-gray-400 whitespace-nowrap">
+                      {new Date(order.created_at).toLocaleTimeString("en-IN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
                   </td>
                   <td className="px-5 py-3">
                     <select

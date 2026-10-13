@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
+import ProductListRow, { ProductListHeader } from "@/components/products/ProductListRow";
+import ProductViewToggle, { useProductView } from "@/components/products/ProductViewToggle";
 
 export default function CategoryLandingPage({ categoryName, heroImage, heroLabel, heroTitle }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [forms, setForms] = useState([]);
   const [activeForm, setActiveForm] = useState("");
+  const [view, setView] = useProductView();
   const { items } = useCart();
   const { user } = useAuth();
   const canOrder = user?.role !== "doctor";
@@ -24,15 +27,70 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
       .catch(() => setForms([]));
   }, []);
 
+  // The backend returns at most 100 products a request and a division can
+  // have more (Matrix has 250+), so further pages are added below as the
+  // reader nears the end — in both grid and list view.
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const hasMore = page < totalPages;
+
+  const changeForm = (f) => {
+    setActiveForm(f);
+    setPage(1);
+  };
+
   useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams({ category: categoryName, limit: "100" });
+    const append = page > 1;
+    let cancelled = false;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    const params = new URLSearchParams({ category: categoryName, page: String(page), limit: "100" });
     if (activeForm) params.set("form", activeForm);
     apiFetch(`/products?${params}`)
-      .then((data) => setProducts(data.products || []))
+      .then((data) => {
+        if (cancelled) return;
+        const list = data.products || [];
+        if (append) {
+          setProducts((prev) => {
+            const seen = new Set(prev.map((p) => p.id));
+            return [...prev, ...list.filter((p) => !seen.has(p.id))];
+          });
+        } else {
+          setProducts(list);
+        }
+        setTotal(data.total ?? list.length);
+        setTotalPages(data.total_pages || 0);
+      })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [categoryName, activeForm]);
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+        setLoadingMore(false);
+      });
+    // a newer request (type changed) supersedes this one
+    return () => {
+      cancelled = true;
+    };
+  }, [categoryName, activeForm, page]);
+
+  // Load the next page when the marker under the last product comes within
+  // ~600px of the screen, so products arrive before the reader gets there.
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    if (loading || loadingMore || !hasMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) setPage((p) => p + 1);
+      },
+      { rootMargin: "600px 0px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loading, loadingMore, hasMore]);
 
   return (
     <div>
@@ -61,31 +119,44 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
             <h2 className="text-2xl font-light text-gray-900">{heroTitle} Products</h2>
             {!loading && (
               <p className="text-sm text-gray-400 mt-1">
-                {products.length} product{products.length !== 1 ? "s" : ""}
+                {total} product{total !== 1 ? "s" : ""}
               </p>
             )}
           </div>
-          {forms.length > 0 && (
-            <div className="flex items-center gap-2">
-              <label htmlFor="type-filter" className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                Type
-              </label>
-              <select
-                id="type-filter"
-                value={activeForm}
-                onChange={(e) => setActiveForm(e.target.value)}
-                className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-gray-400 transition-colors"
-              >
-                <option value="">All</option>
-                {forms.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-4">
+            {forms.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="type-filter" className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                  Type
+                </label>
+                <select
+                  id="type-filter"
+                  value={activeForm}
+                  onChange={(e) => changeForm(e.target.value)}
+                  className="px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-white outline-none focus:border-gray-400 transition-colors"
+                >
+                  <option value="">All</option>
+                  {forms.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <ProductViewToggle view={view} onChange={setView} />
+          </div>
         </div>
 
-        {loading ? (
+        {loading && view === "list" ? (
+          <div className="border-t border-gray-200">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="animate-pulse px-4 py-4 border-b border-gray-100 flex gap-6">
+                <div className="h-4 bg-gray-100 rounded flex-1" />
+                <div className="h-4 bg-gray-100 rounded w-24" />
+                <div className="h-4 bg-gray-100 rounded w-16" />
+              </div>
+            ))}
+          </div>
+        ) : loading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="animate-pulse">
@@ -98,6 +169,13 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
         ) : products.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-gray-400 text-sm">No products found in this category yet</p>
+          </div>
+        ) : view === "list" ? (
+          <div className="border-t border-gray-200">
+            <ProductListHeader />
+            {products.map((p) => (
+              <ProductListRow key={p.id} product={p} />
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-12">
@@ -187,6 +265,30 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
               );
             })}
           </div>
+        )}
+
+        {!loading && products.length > 0 && (
+          <>
+            <div ref={sentinelRef} />
+            {(loadingMore || hasMore) && (
+              <div className="py-8 text-center text-xs text-gray-400">
+                {loadingMore ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+                    Loading more…
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => p + 1)}
+                    className="text-gray-500 hover:text-gray-900 underline underline-offset-2"
+                  >
+                    Load more
+                  </button>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

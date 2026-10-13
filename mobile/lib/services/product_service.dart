@@ -17,6 +17,15 @@ class ProductService {
     String tag = '',
     bool saltOnly = false,
   }) async {
+    // Only the plain first page of the whole catalogue is the offline copy.
+    // A division (category_id) or type (form) page must neither overwrite it
+    // nor fall back to it — either way offline would show the wrong products.
+    final unfiltered = page == 1 &&
+        search.isEmpty &&
+        category.isEmpty &&
+        categoryId.isEmpty &&
+        form.isEmpty &&
+        tag.isEmpty;
     try {
       final res = await _dio.get('/products', queryParameters: {
         'page': page,
@@ -34,15 +43,13 @@ class ProductService {
       // Caching each product individually here (not just on detail-view)
       // means any product seen in the list opens offline too, not just
       // ones the user happened to tap into while still online.
-      if (page == 1 && search.isEmpty && category.isEmpty && tag.isEmpty) {
-        OfflineCache.saveProductList(result.products);
-        for (final p in result.products) {
-          OfflineCache.saveProduct(p);
-        }
+      if (unfiltered) OfflineCache.saveProductList(result.products);
+      for (final p in result.products) {
+        OfflineCache.saveProduct(p);
       }
       return result;
     } catch (e) {
-      if (page == 1 && search.isEmpty && category.isEmpty && tag.isEmpty) {
+      if (unfiltered) {
         final cached = await OfflineCache.loadProductList();
         if (cached.isNotEmpty) {
           return ProductListResponse(

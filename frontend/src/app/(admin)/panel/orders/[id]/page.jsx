@@ -27,6 +27,12 @@ const STATUS_STYLES = {
   refunded: "bg-orange-50 text-orange-700",
 };
 
+// Marg stock comes back as a float; whole numbers drop the ".00".
+function formatStock(n) {
+  const v = Number(n) || 0;
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+
 // Marg batch expiry comes back as raw "YYYYMMDD" (e.g. "20270701") —
 // render it as a readable date, falling back to the raw string if it
 // doesn't parse (e.g. the placeholder all-spaces value for empty batches).
@@ -559,7 +565,7 @@ export default function AdminOrderDetail() {
   const trackingPhotos = (order.photos || []).filter((p) => p.photo_type === "tracking");
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       {/* Back link */}
       <Link
         href="/panel/orders"
@@ -777,6 +783,7 @@ export default function AdminOrderDetail() {
               No items in this order
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
@@ -791,6 +798,9 @@ export default function AdminOrderDetail() {
                   </th>
                   <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Expiry
+                  </th>
+                  <th className="text-right py-2 pr-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Stock
                   </th>
                   <th className="text-right py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-28">
                     Rate
@@ -851,14 +861,14 @@ export default function AdminOrderDetail() {
                       const currentBatch = batches.find((b) => b.code === currentCode);
                       if (!info || !info.margLinked) {
                         return (
-                          <td colSpan={2} className="py-3 pl-4 text-gray-300">
+                          <td colSpan={3} className="py-3 pl-4 text-gray-300">
                             {info?.margLinked === false ? "not Marg-linked" : "—"}
                           </td>
                         );
                       }
                       if (batches.length === 0) {
                         return (
-                          <td colSpan={2} className="py-3 pl-4 text-amber-600 text-xs">
+                          <td colSpan={3} className="py-3 pl-4 text-amber-600 text-xs">
                             No live batches
                           </td>
                         );
@@ -866,21 +876,54 @@ export default function AdminOrderDetail() {
                       return (
                         <>
                           <td className="py-3 pl-4">
+                            {/* The open list shows each batch's expiry and
+                                stock to choose by; the closed box shows only
+                                the batch code (expiry and stock have their
+                                own columns). A native select can't label
+                                itself differently from its options, so it
+                                sits invisible over a label of just the code. */}
+                            <div
+                              className={`relative inline-flex items-center gap-1.5 border border-gray-200 rounded-md py-1 pl-2 pr-1.5 bg-white text-sm text-blue-600 font-medium whitespace-nowrap focus-within:ring-1 focus-within:ring-gray-400 ${
+                                canEdit ? "" : "opacity-50"
+                              }`}
+                            >
+                              {currentBatch?.curbatch || "—"}
+                              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                              </svg>
                             <select
                               value={currentCode}
                               disabled={!canEdit}
                               onChange={(e) => handleSelectBatch(item, e.target.value)}
-                              className="text-blue-600 font-medium border border-gray-200 rounded-md py-1 px-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+                              aria-label="Batch"
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                             >
                               {batches.map((b) => (
                                 <option key={b.code} value={b.code}>
-                                  {b.curbatch || "—"}
+                                  {[
+                                    b.curbatch || "—",
+                                    formatBatchExpiry(b.exp) && `Exp ${formatBatchExpiry(b.exp)}`,
+                                    `Stock ${formatStock(b.stock)}`,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
                                 </option>
                               ))}
                             </select>
+                            </div>
                           </td>
                           <td className="py-3 text-red-600 font-medium">
                             {formatBatchExpiry(currentBatch?.exp) || <span className="text-gray-300 font-normal">—</span>}
+                          </td>
+                          {/* the chosen batch's stock in Marg — amber when it
+                              can't cover this line on its own */}
+                          <td
+                            className={`py-3 pr-2 text-right tabular-nums ${
+                              currentBatch && currentBatch.stock < item.quantity ? "text-amber-600 font-medium" : "text-gray-700"
+                            }`}
+                            title={currentBatch && currentBatch.stock < item.quantity ? `Only ${formatStock(currentBatch.stock)} in this batch` : undefined}
+                          >
+                            {currentBatch ? formatStock(currentBatch.stock) : <span className="text-gray-300">—</span>}
                           </td>
                         </>
                       );
@@ -1008,17 +1051,16 @@ export default function AdminOrderDetail() {
                   return (
                     <>
                       <tr className="border-t-2 border-gray-200">
-                        <td colSpan={5} className="pt-3 pb-1 text-right text-sm text-gray-500">
+                        <td colSpan={7} className="pt-3 pb-1 text-right text-sm text-gray-500">
                           {priced > 0 && priced < items.length
                             ? `Items (${priced} of ${items.length} lines priced)`
                             : "Items"}
                         </td>
-                        <td className="pt-3 pb-1 text-right tabular-nums text-gray-900">{cell(itemsTotal)}</td>
-                        <td colSpan={2} />
+                        <td colSpan={2} className="pt-3 pb-1 text-right tabular-nums text-gray-900">{cell(itemsTotal)}</td>
                       </tr>
                       <tr>
-                        <td colSpan={5} className="py-1 text-right text-sm text-gray-500">Freight</td>
-                        <td className="py-1 text-right">
+                        <td colSpan={7} className="py-1 text-right text-sm text-gray-500">Freight</td>
+                        <td colSpan={2} className="py-1 text-right">
                           <input
                             type="number"
                             min="0"
@@ -1036,20 +1078,19 @@ export default function AdminOrderDetail() {
                             }`}
                           />
                         </td>
-                        <td colSpan={2} />
                       </tr>
                       <tr>
-                        <td colSpan={5} className="pt-1 pb-3 text-right text-sm font-medium text-gray-700">
+                        <td colSpan={7} className="pt-1 pb-3 text-right text-sm font-medium text-gray-700">
                           Order total
                         </td>
-                        <td className="pt-1 pb-3 text-right tabular-nums text-gray-900">{cell(grand, true)}</td>
-                        <td colSpan={2} />
+                        <td colSpan={2} className="pt-1 pb-3 text-right tabular-nums text-gray-900">{cell(grand, true)}</td>
                       </tr>
                     </>
                   );
                 })()}
               </tfoot>
             </table>
+            </div>
           )}
 
           {canEdit && items.length > 0 && (

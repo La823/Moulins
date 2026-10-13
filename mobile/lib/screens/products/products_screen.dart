@@ -11,7 +11,7 @@ import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/product_list_row.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../widgets/product_view_toggle.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
@@ -67,8 +67,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   bool _saltOnly = false;
 
   // Grid of image cards, or a compact image-free list (composition first).
-  // Remembered on this device. Both keep loading more as you scroll.
-  static const _viewKey = 'products_view';
+  // Both keep loading more as you scroll.
   bool _listView = false;
 
   @override
@@ -85,9 +84,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       // which covers a link carrying a category's previous name.
     }
     _tag = widget.initialTag ?? '';
-    SharedPreferences.getInstance().then((prefs) {
-      if (mounted && prefs.getString(_viewKey) == 'list') setState(() => _listView = true);
-    }).catchError((_) {});
+    loadListView().then((list) {
+      if (mounted && list) setState(() => _listView = true);
+    });
     _load();
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.position.pixels >=
@@ -138,9 +137,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
 
   void _setListView(bool list) {
     setState(() => _listView = list);
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setString(_viewKey, list ? 'list' : 'grid'))
-        .catchError((_) => false);
+    saveListView(list);
   }
 
   void _loadMore() {
@@ -601,21 +598,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: SegmentedButton<bool>(
-                        segments: const [
-                          ButtonSegment(value: false, label: Text('Grid'), icon: Icon(Icons.grid_view_rounded, size: 16)),
-                          ButtonSegment(value: true, label: Text('List'), icon: Icon(Icons.view_list_rounded, size: 16)),
-                        ],
-                        selected: {_listView},
-                        showSelectedIcon: false,
-                        onSelectionChanged: (sel) => _setListView(sel.first),
-                        style: SegmentedButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                          selectedBackgroundColor: const Color(0xFF111827),
-                          selectedForegroundColor: Colors.white,
-                        ),
-                      ),
+                      child: ProductViewToggle(listView: _listView, onChanged: _setListView),
                     ),
                   ),
                 ),
