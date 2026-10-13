@@ -6,6 +6,7 @@ import '../../models/team_member.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/team_service.dart';
+import 'team_month_summary_screen.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -343,6 +344,15 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(_member.displayName, style: const TextStyle(color: _ink, fontWeight: FontWeight.w600)),
+        actions: [
+          IconButton(
+            tooltip: 'Month summary',
+            icon: const Icon(Icons.insights_outlined, color: _teal),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => TeamMonthSummaryScreen(initialMember: _member)),
+            ),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _teal))

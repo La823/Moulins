@@ -486,10 +486,52 @@ func ValidateAssignee(ctx context.Context, db *pgxpool.Pool, ownerID, assigneeID
 	}
 	var exists bool
 	err := db.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND team_owner_id = $2)`,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND team_owner_id = $2 AND deleted_at IS NULL)`,
 		assigneeID, ownerID,
 	).Scan(&exists)
 	return exists, err
+}
+
+// IsActiveTeamMember reports whether memberID is one of ownerID's team
+// members and has not been removed.
+func IsActiveTeamMember(ctx context.Context, db *pgxpool.Pool, ownerID, memberID uuid.UUID) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND team_owner_id = $2 AND role = 'team_member' AND deleted_at IS NULL)`,
+		memberID, ownerID,
+	).Scan(&ok)
+	return ok, err
+}
+
+// SoftDeleteTeamMember removes a team member from the team without deleting
+// anything: their row stays, so their attendance, daily logs, visits and the
+// name on their meetings all remain. They drop off the team list, can no
+// longer be assigned meetings, and can't log in (see middleware.RevokeUser).
+func SoftDeleteTeamMember(ctx context.Context, db *pgxpool.Pool, memberID uuid.UUID) error {
+	_, err := db.Exec(ctx,
+		`UPDATE users SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`,
+		memberID,
+	)
+	return err
+}
+
+// ListRemovedUserIDs is every account marked deleted — loaded once at
+// startup so their existing logins stop working.
+func ListRemovedUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `SELECT id FROM users WHERE deleted_at IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // CreateTeamMember creates a login for a partner's team member — same
@@ -516,12 +558,13 @@ func CreateDoctorUser(ctx context.Context, db *pgxpool.Pool, phone string) (uuid
 	return CreateUser(ctx, db, phone, phone, nil, nil, "doctor", nil, nil, nil)
 }
 
-// GetTeamMembers returns every team_member belonging to the given partner.
+// GetTeamMembers returns every current team_member belonging to the given
+// partner — removed members are left out.
 func GetTeamMembers(ctx context.Context, db *pgxpool.Pool, ownerID uuid.UUID) ([]User, error) {
 	rows, err := db.Query(ctx,
 		`SELECT id, phone_number, username, email, plain_password, role, customer_type, special_tile_image_key, team_owner_id,
 			is_phone_verified, onboarding_step, last_login_at, created_at, updated_at
-		 FROM users WHERE team_owner_id = $1 ORDER BY created_at DESC`,
+		 FROM users WHERE team_owner_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
 		ownerID,
 	)
 	if err != nil {

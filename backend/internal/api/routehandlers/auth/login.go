@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
@@ -49,6 +50,10 @@ func LoginHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		if err := utils.CheckPassword(user.PasswordHash, req.Password); err != nil {
 			http.Error(w, "invalid phone number or password", http.StatusUnauthorized)
+			return
+		}
+		if middleware.IsRevoked(user.ID) {
+			http.Error(w, "this account has been removed", http.StatusUnauthorized)
 			return
 		}
 

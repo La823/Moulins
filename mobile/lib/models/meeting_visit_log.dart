@@ -1,5 +1,6 @@
 class MeetingVisitLog {
   final String id;
+  final String? userId;
   final String userName;
   final DateTime recordedAt;
   final double latitude;
@@ -10,6 +11,7 @@ class MeetingVisitLog {
 
   MeetingVisitLog({
     required this.id,
+    this.userId,
     required this.userName,
     required this.recordedAt,
     required this.latitude,
@@ -21,6 +23,7 @@ class MeetingVisitLog {
 
   factory MeetingVisitLog.fromJson(Map<String, dynamic> json) => MeetingVisitLog(
         id: json['id'] ?? '',
+        userId: json['user_id'],
         userName: json['user_name'] ?? '',
         recordedAt: DateTime.tryParse(json['recorded_at'] ?? '') ?? DateTime.now(),
         latitude: (json['latitude'] as num?)?.toDouble() ?? 0,

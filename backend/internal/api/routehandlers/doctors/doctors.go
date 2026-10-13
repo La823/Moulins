@@ -84,7 +84,7 @@ func syncDoctorBirthdayMeeting(r *http.Request, db *pgxpool.Pool, doctorID, part
 	title := "Birthday"
 	notes := "Doctor's birthday"
 	req := models.CreateMeetingRequest{DoctorID: &doctorID, Title: &title, ScheduledAt: next, Notes: &notes}
-	if _, err := models.CreateMeeting(ctx, db, partnerID, partnerID, req); err != nil {
+	if _, err := models.CreateMeeting(ctx, db, partnerID, partnerID, nil, req); err != nil {
 		log.Printf("sync doctor birthday meeting: failed to create entry: %v", err)
 	}
 }
@@ -103,7 +103,7 @@ func syncDoctorAnniversaryMeeting(r *http.Request, db *pgxpool.Pool, doctorID, p
 	title := "Anniversary"
 	notes := "Doctor's anniversary"
 	req := models.CreateMeetingRequest{DoctorID: &doctorID, Title: &title, ScheduledAt: next, Notes: &notes}
-	if _, err := models.CreateMeeting(ctx, db, partnerID, partnerID, req); err != nil {
+	if _, err := models.CreateMeeting(ctx, db, partnerID, partnerID, nil, req); err != nil {
 		log.Printf("sync doctor anniversary meeting: failed to create entry: %v", err)
 	}
 }

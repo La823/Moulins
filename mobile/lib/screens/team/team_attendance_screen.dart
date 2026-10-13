@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
+import 'team_month_summary_screen.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -199,6 +200,13 @@ class _TeamAttendanceScreenState extends State<TeamAttendanceScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Team Attendance', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TeamMonthSummaryScreen())),
+            icon: const Icon(Icons.insights_outlined, size: 18, color: _teal),
+            label: const Text('Summary', style: TextStyle(color: _teal)),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _teal))

@@ -12,6 +12,17 @@ const STATUS_STYLES = {
   cancelled: "bg-red-50 text-red-700",
 };
 
+// What the meeting is about: the doctor, or its title when there's no doctor.
+const meetingName = (m) => (m.doctor_name ? `Dr. ${m.doctor_name}` : m.title || "Meeting");
+
+// Still "upcoming" but its day has passed — nobody closed it.
+const isOverdue = (m) => {
+  if (m.status !== "upcoming") return false;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return new Date(m.scheduled_at) < startOfToday;
+};
+
 function toLocalDateKey(dateLike) {
   const d = new Date(dateLike);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -266,6 +277,19 @@ function MeetingsPageInner() {
     }
   };
 
+  // Partner only: hand a meeting to someone else on the team
+  const reassign = async (id, assignedTo) => {
+    try {
+      await apiFetch(`/meetings/${id}/assignee`, {
+        method: "PUT",
+        body: JSON.stringify({ assigned_to: assignedTo }),
+      });
+      fetchMeetings();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const updateStatus = async (id, status) => {
     try {
       await apiFetch(`/meetings/${id}/status`, {
@@ -398,19 +422,15 @@ function MeetingsPageInner() {
                   <div key={m.id} className="border border-gray-200 rounded-lg px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-900">Dr. {m.doctor_name}</p>
+                        <p className="text-sm text-gray-900">{meetingName(m)}</p>
                         <p className="text-xs text-gray-500">
                           {new Date(m.scheduled_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                         </p>
                         {m.notes && <p className="text-xs text-gray-400 mt-1">{m.notes}</p>}
-                        {user?.role === "partner" && m.assigned_to_name && m.assigned_to !== user.id && (
-                          <p className="text-xs text-purple-600 mt-1">Assigned to {m.assigned_to_name}</p>
-                        )}
+                        <MeetingPeople meeting={m} user={user} teamMembers={teamMembers} onReassign={reassign} />
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[m.status]}`}>
-                          {m.status}
-                        </span>
+                        <StatusBadges meeting={m} />
                         {m.status === "upcoming" && (
                           <>
                             <button
@@ -480,10 +500,16 @@ function MeetingsPageInner() {
                           <span>{visitLogOpenByMeeting[m.id] ? "▾" : "▸"}</span>
                           <span>Visit Log{(visitLogsByMeeting[m.id] || []).length > 0 ? ` (${visitLogsByMeeting[m.id].length})` : ""}</span>
                         </button>
-                        {loggingVisitId !== m.id && (
-                          <button onClick={() => startLogVisit(m.id)} className="text-xs text-blue-600 hover:text-blue-700">
-                            + Log Visit
-                          </button>
+                        {/* one visit per person per meeting — once yours is
+                            logged the button gives way to a tick */}
+                        {(visitLogsByMeeting[m.id] || []).some((l) => l.user_id === user?.id) ? (
+                          <span className="text-xs text-green-600">✓ Your visit is logged</span>
+                        ) : (
+                          loggingVisitId !== m.id && (
+                            <button onClick={() => startLogVisit(m.id)} className="text-xs text-blue-600 hover:text-blue-700">
+                              + Log Visit
+                            </button>
+                          )
                         )}
                       </div>
 
@@ -691,16 +717,15 @@ function MeetingsPageInner() {
           {upcoming.map((m) => (
             <div key={m.id} className="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3">
               <div>
-                <p className="text-sm text-gray-900">Dr. {m.doctor_name}</p>
+                <p className="text-sm text-gray-900">{meetingName(m)}</p>
                 <p className="text-xs text-gray-500">
                   {new Date(m.scheduled_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                 </p>
                 {m.notes && <p className="text-xs text-gray-400 mt-1">{m.notes}</p>}
+                <MeetingPeople meeting={m} user={user} teamMembers={teamMembers} onReassign={reassign} />
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[m.status]}`}>
-                  {m.status}
-                </span>
+                <StatusBadges meeting={m} />
                 <button
                   onClick={() => updateStatus(m.id, "completed")}
                   className="text-xs text-green-600 hover:text-green-700"
@@ -717,6 +742,74 @@ function MeetingsPageInner() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Status, plus what needs attention: "Overdue" when its day passed with
+// nobody closing it, "No visit logged" when it was marked done without one,
+// and who marked it done or cancelled.
+function StatusBadges({ meeting: m }) {
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <span className="flex items-center gap-1.5">
+        {isOverdue(m) && (
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700">overdue</span>
+        )}
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[m.status]}`}>{m.status}</span>
+      </span>
+      {m.status === "completed" && !m.has_visit_log && (
+        <span className="text-[11px] text-amber-700">No visit logged</span>
+      )}
+      {m.status !== "upcoming" && m.status_changed_by_name && (
+        <span className="text-[11px] text-gray-400">by {m.status_changed_by_name}</span>
+      )}
+    </span>
+  );
+}
+
+// Who scheduled the meeting and who it's assigned to. The partner can hand
+// it to someone else on the team from here.
+function MeetingPeople({ meeting: m, user, teamMembers, onReassign }) {
+  const isOwner = user?.id === m.user_id;
+  const scheduledBy = m.created_by
+    ? m.created_by === user?.id
+      ? "you"
+      : m.created_by_name
+    : null;
+  const assignee = m.assigned_to === user?.id ? "you" : m.assigned_to_name;
+
+  return (
+    <div className="mt-1 space-y-0.5 text-xs">
+      {scheduledBy && <p className="text-gray-500">Scheduled by {scheduledBy}</p>}
+      {isOwner && teamMembers.length > 0 && m.status === "upcoming" ? (
+        <label className="flex items-center gap-1.5 text-purple-700">
+          Assigned to
+          <select
+            value={m.assigned_to || ""}
+            onChange={(e) => e.target.value && onReassign(m.id, e.target.value)}
+            className="px-1.5 py-0.5 border border-purple-200 rounded text-xs text-purple-700 bg-white"
+          >
+            {/* a removed member stays listed so the current value shows */}
+            {m.assigned_to_removed && <option value={m.assigned_to}>{m.assigned_to_name} (removed)</option>}
+            {!m.assigned_to && <option value="">Nobody</option>}
+            <option value={user.id}>Myself</option>
+            {teamMembers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.username || t.phone_number}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        assignee &&
+        m.assigned_to !== m.created_by && (
+          <p className="text-purple-600">
+            Assigned to {assignee}
+            {m.assigned_to_removed && <span className="text-gray-400"> (removed from team)</span>}
+          </p>
+        )
       )}
     </div>
   );

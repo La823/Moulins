@@ -64,14 +64,33 @@ func getRole(r *http.Request) string {
 	return role
 }
 
-// canAccessMeeting allows the pooled owner (the partner, who can see and
-// manage every meeting under their account) or the specific team member the
-// meeting is assigned to.
-func canAccessMeeting(meeting *models.Meeting, ownerID, rawID uuid.UUID) bool {
-	if meeting.UserID == ownerID {
+// Who may do what with a meeting. These compare the logged-in person's own
+// id — never the pooled partner id from getUserID, which a team member
+// resolves to as well and which used to let any team member open, edit or
+// delete every meeting on the team.
+//
+// isAccountOwner: the partner (or admin) whose account the meeting is under.
+func isAccountOwner(meeting *models.Meeting, rawID uuid.UUID) bool {
+	return meeting.UserID == rawID
+}
+
+// canAccessMeeting — view it, mark it done or cancelled, write its minutes,
+// log a visit: the account owner, the person it's assigned to, or whoever
+// scheduled it.
+func canAccessMeeting(meeting *models.Meeting, rawID uuid.UUID) bool {
+	if isAccountOwner(meeting, rawID) {
 		return true
 	}
-	return meeting.AssignedTo != nil && *meeting.AssignedTo == rawID
+	if meeting.AssignedTo != nil && *meeting.AssignedTo == rawID {
+		return true
+	}
+	return meeting.CreatedBy != nil && *meeting.CreatedBy == rawID
+}
+
+// canManageMeeting — change its details or delete it: the account owner, or
+// whoever scheduled it.
+func canManageMeeting(meeting *models.Meeting, rawID uuid.UUID) bool {
+	return isAccountOwner(meeting, rawID) || (meeting.CreatedBy != nil && *meeting.CreatedBy == rawID)
 }
 
 // POST /meetings
@@ -107,9 +126,14 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		// Defaults to whoever is scheduling it; a partner can instead assign
 		// it to one of their own team members so it shows up on that team
-		// member's portal.
-		assignedTo := rawUserID(r)
-		if req.AssignedTo != nil {
+		// member's portal. A team member can only schedule for themselves.
+		creator := rawUserID(r)
+		assignedTo := creator
+		if req.AssignedTo != nil && *req.AssignedTo != creator {
+			if creator != ownerID {
+				http.Error(w, "only the partner can assign a meeting to someone else", http.StatusForbidden)
+				return
+			}
 			ok, err := models.ValidateAssignee(r.Context(), db, ownerID, *req.AssignedTo)
 			if err != nil {
 				log.Printf("validate assignee error: %v", err)
@@ -123,7 +147,7 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			assignedTo = *req.AssignedTo
 		}
 
-		id, err := models.CreateMeeting(r.Context(), db, ownerID, assignedTo, req)
+		id, err := models.CreateMeeting(r.Context(), db, ownerID, assignedTo, &creator, req)
 		if err != nil {
 			log.Printf("create meeting error: %v", err)
 			http.Error(w, "could not create meeting", http.StatusInternalServerError)
@@ -147,9 +171,8 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
-		// A team member only sees meetings assigned to them; the partner
-		// (whether logged in directly or resolved as the owner) sees
-		// everything pooled under their account.
+		// A team member only sees meetings assigned to them or scheduled by
+		// them; the partner sees everything pooled under their account.
 		var assigneeID *uuid.UUID
 		if getRole(r) == "team_member" {
 			id := rawUserID(r)
@@ -182,7 +205,7 @@ func GetHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if !canAccessMeeting(meeting, getUserID(r, db), rawUserID(r)) {
+		if !canAccessMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -206,7 +229,7 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r, db) {
+		if !canManageMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -237,7 +260,7 @@ func UpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
-		if err := models.UpdateMeeting(r.Context(), db, id, req); err != nil {
+		if err := models.UpdateMeeting(r.Context(), db, id, req, rawUserID(r)); err != nil {
 			log.Printf("update meeting error: %v", err)
 			http.Error(w, "could not update meeting", http.StatusInternalServerError)
 			return
@@ -263,7 +286,7 @@ func UpdateMomHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if !canAccessMeeting(meeting, getUserID(r, db), rawUserID(r)) {
+		if !canAccessMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -276,7 +299,7 @@ func UpdateMomHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := models.UpdateMeetingMom(r.Context(), db, id, req.Mom); err != nil {
+		if err := models.UpdateMeetingMom(r.Context(), db, id, req.Mom, rawUserID(r)); err != nil {
 			log.Printf("update meeting mom error: %v", err)
 			http.Error(w, "could not update meeting notes", http.StatusInternalServerError)
 			return
@@ -302,7 +325,7 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if !canAccessMeeting(meeting, getUserID(r, db), rawUserID(r)) {
+		if !canAccessMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -319,7 +342,7 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := models.UpdateMeetingStatus(r.Context(), db, id, req.Status); err != nil {
+		if err := models.UpdateMeetingStatus(r.Context(), db, id, req.Status, rawUserID(r)); err != nil {
 			log.Printf("update meeting status error: %v", err)
 			http.Error(w, "could not update meeting status", http.StatusInternalServerError)
 			return
@@ -334,6 +357,56 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 				log.Printf("sync doctor last meeting error: %v", err)
 			}
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
+	}
+}
+
+// PUT /meetings/{id}/assignee — the partner hands a meeting to someone else
+// on their team (or back to themselves). Body: {"assigned_to": "<user id>"}.
+func UpdateAssigneeHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid meeting id", http.StatusBadRequest)
+			return
+		}
+
+		meeting, err := models.GetMeetingByID(r.Context(), db, id)
+		if err != nil {
+			http.Error(w, "meeting not found", http.StatusNotFound)
+			return
+		}
+		if !isAccountOwner(meeting, rawUserID(r)) {
+			http.Error(w, "only the partner can reassign a meeting", http.StatusForbidden)
+			return
+		}
+
+		var req struct {
+			AssignedTo *uuid.UUID `json:"assigned_to"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AssignedTo == nil {
+			http.Error(w, "assigned_to is required", http.StatusBadRequest)
+			return
+		}
+		ok, err := models.ValidateAssignee(r.Context(), db, meeting.UserID, *req.AssignedTo)
+		if err != nil {
+			log.Printf("validate assignee error: %v", err)
+			http.Error(w, "could not validate assignee", http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "assignee must be yourself or one of your team members", http.StatusForbidden)
+			return
+		}
+
+		if err := models.UpdateMeetingAssignee(r.Context(), db, id, *req.AssignedTo, rawUserID(r)); err != nil {
+			log.Printf("update meeting assignee error: %v", err)
+			http.Error(w, "could not reassign meeting", http.StatusInternalServerError)
+			return
+		}
+		syncMeetingVectorAsync(db, id)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "updated"})
@@ -356,7 +429,7 @@ func CreateVisitLogHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if !canAccessMeeting(meeting, getUserID(r, db), rawUserID(r)) {
+		if !canAccessMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -402,7 +475,7 @@ func ListVisitLogsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if !canAccessMeeting(meeting, getUserID(r, db), rawUserID(r)) {
+		if !canAccessMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}
@@ -433,7 +506,7 @@ func DeleteHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "meeting not found", http.StatusNotFound)
 			return
 		}
-		if meeting.UserID != getUserID(r, db) {
+		if !canManageMeeting(meeting, rawUserID(r)) {
 			http.Error(w, "not authorized", http.StatusForbidden)
 			return
 		}

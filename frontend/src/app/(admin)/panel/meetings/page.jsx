@@ -121,7 +121,9 @@ export default function AdminMeetingsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs text-gray-500 uppercase tracking-wider">
-                <th className="px-5 py-3 font-medium">User</th>
+                <th className="px-5 py-3 font-medium">Partner</th>
+                <th className="px-5 py-3 font-medium">Assigned to</th>
+                <th className="px-5 py-3 font-medium">Scheduled by</th>
                 <th className="px-5 py-3 font-medium">Doctor</th>
                 <th className="px-5 py-3 font-medium">Scheduled</th>
                 <th className="px-5 py-3 font-medium">Notes</th>
@@ -133,6 +135,15 @@ export default function AdminMeetingsPage() {
               {meetings.map((m) => (
                 <tr key={m.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                   <td className="px-5 py-3 text-gray-900">{m.user_name || "—"}</td>
+                  <td className="px-5 py-3 text-gray-700">
+                    {m.assigned_to_name || "—"}
+                    {m.assigned_to_removed && <span className="text-xs text-gray-400"> (removed)</span>}
+                  </td>
+                  <td className="px-5 py-3 text-gray-500">
+                    {/* blank for meetings made before this was recorded, and for
+                        the automatic birthday / anniversary entries */}
+                    {m.created_by_name || <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="px-5 py-3 text-gray-700">{m.doctor_name ? `Dr. ${m.doctor_name}` : m.title || "—"}</td>
                   <td className="px-5 py-3 text-gray-700">
                     {new Date(m.scheduled_at).toLocaleString(undefined, {
@@ -148,6 +159,9 @@ export default function AdminMeetingsPage() {
                     >
                       {m.status}
                     </span>
+                    {m.status !== "upcoming" && m.status_changed_by_name && (
+                      <p className="text-[11px] text-gray-400 mt-0.5">by {m.status_changed_by_name}</p>
+                    )}
                   </td>
                 </tr>
               ))}

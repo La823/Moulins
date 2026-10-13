@@ -53,6 +53,7 @@ class AttendanceRecord {
 // one member's own history).
 class TeamDailyLog {
   final String id;
+  final String teamMemberId;
   final String memberName;
   final String date;
   final String notes;
@@ -62,6 +63,7 @@ class TeamDailyLog {
 
   TeamDailyLog({
     required this.id,
+    this.teamMemberId = '',
     required this.memberName,
     required this.date,
     required this.notes,
@@ -72,6 +74,7 @@ class TeamDailyLog {
 
   factory TeamDailyLog.fromJson(Map<String, dynamic> json) => TeamDailyLog(
         id: json['id'] ?? '',
+        teamMemberId: json['team_member_id'] ?? '',
         memberName: json['member_name'] ?? '',
         date: json['date'] ?? '',
         notes: json['notes'] ?? '',
@@ -88,6 +91,7 @@ class DailyLog {
   final double? latitude;
   final double? longitude;
   final String? address;
+  final DateTime? createdAt;
 
   DailyLog({
     required this.id,
@@ -96,6 +100,7 @@ class DailyLog {
     this.latitude,
     this.longitude,
     this.address,
+    this.createdAt,
   });
 
   factory DailyLog.fromJson(Map<String, dynamic> json) => DailyLog(
@@ -105,5 +110,6 @@ class DailyLog {
         latitude: (json['latitude'] as num?)?.toDouble(),
         longitude: (json['longitude'] as num?)?.toDouble(),
         address: json['address'],
+        createdAt: DateTime.tryParse(json['created_at'] ?? '')?.toLocal(),
       );
 }

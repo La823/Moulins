@@ -1,5 +1,6 @@
 import '../config/api.dart';
 import '../models/team_member.dart';
+import '../models/team_visit_log.dart';
 
 class TeamService {
   final _dio = createDio();
@@ -68,6 +69,13 @@ class TeamService {
   }
 
   // Daily logs — partner reviewing every team member's logs together.
+  /// Every doctor visit the team logged in a month — one per person per
+  /// meeting — with its distance from the clinic.
+  Future<List<TeamVisitLog>> getTeamVisitLogs(int year, int month) async {
+    final res = await _dio.get('/team/visit-logs', queryParameters: {'year': year, 'month': month});
+    return (res.data as List? ?? []).map((e) => TeamVisitLog.fromJson(e)).toList();
+  }
+
   Future<List<TeamDailyLog>> getTeamDailyLogs(int year, int month) async {
     final res = await _dio.get('/team/daily-logs', queryParameters: {'year': year, 'month': month});
     return (res.data as List<dynamic>).map((e) => TeamDailyLog.fromJson(e)).toList();

@@ -40,6 +40,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   final _momCtrl = TextEditingController();
   bool _savingMom = false;
   String _upcomingFilter = 'all';
+  List<TeamMember> _teamMembers = [];
 
   static const _upcomingFilters = [
     ('all', 'All'),
@@ -79,6 +80,11 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   void initState() {
     super.initState();
     _load();
+    if (ref.read(authProvider).user?.role == 'partner') {
+      TeamService().getTeamMembers().then((m) {
+        if (mounted) setState(() => _teamMembers = m);
+      }).catchError((_) {});
+    }
     if (widget.preselectedDoctorId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showDaySheet(DateTime.now(), preselectedDoctorId: widget.preselectedDoctorId);
@@ -142,6 +148,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
         meetings: _meetings.where((m) => _dateKey(m.scheduledAt) == _dateKey(date)).toList(),
         preselectedDoctorId: preselectedDoctorId,
         isPartner: ref.read(authProvider).user?.role == 'partner',
+        currentUserId: ref.read(authProvider).user?.id,
         onChanged: _load,
       ),
     );
@@ -158,20 +165,25 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(m.displayTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          Row(
+            children: [
+              Expanded(child: Text(m.displayTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+              MeetingTags(meeting: m),
+            ],
+          ),
           const SizedBox(height: 4),
           Text(_formatDateTime(m.scheduledAt), style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
           if (m.notes != null && m.notes!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(m.notes!, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
           ],
-          if (ref.read(authProvider).user?.role == 'partner' &&
-              m.assignedToName != null &&
-              m.assignedToName!.isNotEmpty &&
-              m.assignedTo != ref.read(authProvider).user?.id) ...[
-            const SizedBox(height: 4),
-            Text('Assigned to ${m.assignedToName}', style: const TextStyle(fontSize: 12, color: Colors.purple)),
-          ],
+          MeetingPeople(
+            meeting: m,
+            currentUserId: ref.read(authProvider).user?.id,
+            isPartner: ref.read(authProvider).user?.role == 'partner',
+            teamMembers: _teamMembers,
+            onReassigned: _load,
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -450,6 +462,7 @@ class _DaySheet extends StatefulWidget {
   final List<Meeting> meetings;
   final String? preselectedDoctorId;
   final bool isPartner;
+  final String? currentUserId;
   final VoidCallback onChanged;
 
   const _DaySheet({
@@ -457,6 +470,7 @@ class _DaySheet extends StatefulWidget {
     required this.meetings,
     this.preselectedDoctorId,
     required this.isPartner,
+    this.currentUserId,
     required this.onChanged,
   });
 
@@ -468,7 +482,6 @@ class _DaySheetState extends State<_DaySheet> {
   List<Doctor> _doctors = [];
   String? _selectedDoctorId;
   TimeOfDay? _time = const TimeOfDay(hour: 11, minute: 0);
-  final _titleCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _momCtrl = TextEditingController();
   final _requestCtrl = TextEditingController();
@@ -554,16 +567,15 @@ class _DaySheetState extends State<_DaySheet> {
   @override
   void initState() {
     super.initState();
-    if (!widget.isPartner) {
-      _loadingDoctors = false;
-      return;
-    }
+    // Everyone picks a doctor, the same as on the website — a meeting with
+    // a doctor is one whose visit can be checked against the clinic.
     _selectedDoctorId = widget.preselectedDoctorId;
     DoctorService().getDoctors().then((d) {
       if (mounted) setState(() { _doctors = d; _loadingDoctors = false; });
     }).catchError((_) {
       if (mounted) setState(() => _loadingDoctors = false);
     });
+    if (!widget.isPartner) return;
     TeamService().getTeamMembers().then((m) {
       if (mounted) setState(() => _teamMembers = m);
     }).catchError((_) {});
@@ -574,20 +586,15 @@ class _DaySheetState extends State<_DaySheet> {
       setState(() => _error = 'Time is required');
       return;
     }
-    if (widget.isPartner && _selectedDoctorId == null) {
+    if (_selectedDoctorId == null) {
       setState(() => _error = 'Doctor is required');
-      return;
-    }
-    if (!widget.isPartner && _titleCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Title is required');
       return;
     }
     setState(() { _submitting = true; _error = null; });
     try {
       final scheduledAt = DateTime(widget.date.year, widget.date.month, widget.date.day, _time!.hour, _time!.minute);
       await MeetingService().createMeeting(
-        doctorId: widget.isPartner ? _selectedDoctorId : null,
-        title: widget.isPartner ? null : _titleCtrl.text.trim(),
+        doctorId: _selectedDoctorId,
         scheduledAt: scheduledAt,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         mom: _momCtrl.text.trim().isEmpty ? null : _momCtrl.text.trim(),
@@ -652,18 +659,30 @@ class _DaySheetState extends State<_DaySheet> {
                                 Text(_formatTime(m.scheduledAt), style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                                 if (m.notes != null && m.notes!.isNotEmpty)
                                   Text(m.notes!, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                                if (widget.isPartner && m.assignedToName != null && m.assignedToName!.isNotEmpty)
-                                  Text('Assigned to ${m.assignedToName}', style: const TextStyle(fontSize: 11.5, color: Colors.purple)),
+                                MeetingPeople(
+                                  meeting: m,
+                                  currentUserId: widget.currentUserId,
+                                  isPartner: widget.isPartner,
+                                  teamMembers: _teamMembers,
+                                  onReassigned: widget.onChanged,
+                                ),
                               ],
                             ),
                           ),
-                          Text(
-                            m.status,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: m.status == 'upcoming' ? Colors.blue : m.status == 'completed' ? Colors.green : Colors.red,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                m.status,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: m.status == 'upcoming' ? Colors.blue : m.status == 'completed' ? Colors.green : Colors.red,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              MeetingTags(meeting: m),
+                            ],
                           ),
                         ],
                       ),
@@ -692,7 +711,9 @@ class _DaySheetState extends State<_DaySheet> {
                               ],
                             ),
                           ),
-                          if (_loggingVisitId != m.id)
+                          if ((_visitLogsByMeeting[m.id] ?? []).any((l) => l.userId == widget.currentUserId))
+                            const Text('✓ Your visit is logged', style: TextStyle(fontSize: 12, color: Colors.green))
+                          else if (_loggingVisitId != m.id)
                             GestureDetector(
                               onTap: () => _startLogVisit(m.id),
                               child: const Text('+ Log Visit', style: TextStyle(fontSize: 12, color: Colors.blue)),
@@ -802,8 +823,7 @@ class _DaySheetState extends State<_DaySheet> {
             ),
             const SizedBox(height: 12),
 
-            if (widget.isPartner)
-              _loadingDoctors
+            _loadingDoctors
                   ? const Center(child: CircularProgressIndicator(color: _teal))
                   : DropdownButtonFormField<String>(
                       initialValue: _selectedDoctorId,
@@ -817,18 +837,7 @@ class _DaySheetState extends State<_DaySheet> {
                           .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name, overflow: TextOverflow.ellipsis)))
                           .toList(),
                       onChanged: (v) => setState(() => _selectedDoctorId = v),
-                    )
-            else
-              TextField(
-                controller: _titleCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Title',
-                  hintText: 'e.g. Team sync, Client call...',
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                ),
-              ),
+                    ),
             if (widget.isPartner && _teamMembers.isNotEmpty) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
@@ -927,6 +936,125 @@ class _DaySheetState extends State<_DaySheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "overdue" when the meeting's day passed and nobody closed it; "No visit
+/// logged" when it was marked done without one.
+class MeetingTags extends StatelessWidget {
+  final Meeting meeting;
+  const MeetingTags({super.key, required this.meeting});
+
+  @override
+  Widget build(BuildContext context) {
+    final tags = <String>[
+      if (meeting.isOverdue) 'overdue',
+      if (meeting.status == 'completed' && !meeting.hasVisitLog) 'No visit logged',
+    ];
+    if (tags.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 4,
+      children: [
+        for (final t in tags)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(color: const Color(0xFFFFFBEB), borderRadius: BorderRadius.circular(20)),
+            child: Text(t, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFFB45309))),
+          ),
+      ],
+    );
+  }
+}
+
+/// Who scheduled the meeting, who it's for, and who closed it. The partner
+/// can hand an upcoming meeting to someone else on the team from here.
+class MeetingPeople extends StatefulWidget {
+  final Meeting meeting;
+  final String? currentUserId;
+  final bool isPartner;
+  final List<TeamMember> teamMembers;
+  final VoidCallback onReassigned;
+
+  const MeetingPeople({
+    super.key,
+    required this.meeting,
+    required this.currentUserId,
+    required this.isPartner,
+    required this.teamMembers,
+    required this.onReassigned,
+  });
+
+  @override
+  State<MeetingPeople> createState() => _MeetingPeopleState();
+}
+
+class _MeetingPeopleState extends State<MeetingPeople> {
+  String? _assignee; // shown straight away, before the list reloads
+  bool _saving = false;
+
+  Future<void> _reassign(String? to) async {
+    if (to == null || to == (_assignee ?? widget.meeting.assignedTo)) return;
+    final before = _assignee;
+    setState(() { _assignee = to; _saving = true; });
+    try {
+      await MeetingService().reassignMeeting(widget.meeting.id, to);
+      widget.onReassigned();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Meeting reassigned')));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _assignee = before);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not reassign meeting')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.meeting;
+    final me = widget.currentUserId;
+    final small = TextStyle(fontSize: 11.5, color: Colors.grey.shade600);
+    final scheduledBy = m.createdBy == null ? null : (m.createdBy == me ? 'you' : m.createdByName);
+    final assigneeName = m.assignedTo == me ? 'you' : m.assignedToName;
+    final canReassign = widget.isPartner && widget.teamMembers.isNotEmpty && m.status == 'upcoming';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (scheduledBy != null && scheduledBy.isNotEmpty) Text('Scheduled by $scheduledBy', style: small),
+          if (canReassign)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Assigned to ', style: TextStyle(fontSize: 12, color: Colors.purple)),
+                DropdownButton<String>(
+                  value: _assignee ?? m.assignedTo,
+                  isDense: true,
+                  underline: const SizedBox.shrink(),
+                  style: const TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.w600),
+                  items: [
+                    // a removed member stays listed so the current value shows
+                    if (m.assignedToRemoved && m.assignedTo != null)
+                      DropdownMenuItem(value: m.assignedTo, child: Text('${m.assignedToName} (removed)')),
+                    if (me != null) DropdownMenuItem(value: me, child: const Text('Myself')),
+                    for (final t in widget.teamMembers) DropdownMenuItem(value: t.id, child: Text(t.displayName)),
+                  ],
+                  onChanged: _saving ? null : _reassign,
+                ),
+                if (_saving) const Padding(padding: EdgeInsets.only(left: 6), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))),
+              ],
+            )
+          else if (assigneeName != null && assigneeName.isNotEmpty && m.assignedTo != m.createdBy)
+            Text('Assigned to $assigneeName${m.assignedToRemoved ? ' (removed from team)' : ''}',
+                style: const TextStyle(fontSize: 11.5, color: Colors.purple)),
+          if (m.status != 'upcoming' && m.statusChangedByName != null && m.statusChangedByName!.isNotEmpty)
+            Text('${m.status == 'completed' ? 'Marked done' : 'Cancelled'} by ${m.statusChangedByName}', style: small),
+        ],
       ),
     );
   }

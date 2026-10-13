@@ -33,6 +33,10 @@ func Auth(next http.Handler) http.Handler {
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
+		if IsRevoked(claims.UserID) {
+			http.Error(w, "this account has been removed", http.StatusUnauthorized)
+			return
+		}
 
 		ctx := context.WithValue(r.Context(), "user_id", claims.UserID.String())
 		ctx = context.WithValue(ctx, "role", claims.Role)

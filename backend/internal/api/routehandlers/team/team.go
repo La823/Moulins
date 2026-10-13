@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
 )
@@ -98,8 +99,9 @@ func requireOwnedMember(w http.ResponseWriter, r *http.Request, db *pgxpool.Pool
 		http.Error(w, "invalid team member id", http.StatusBadRequest)
 		return uuid.Nil, false
 	}
-	target, err := models.GetUserByID(r.Context(), db, id)
-	if err != nil || target.TeamOwnerID == nil || *target.TeamOwnerID != getUserID(r) {
+	// removed members are gone from the team as far as these routes go
+	active, err := models.IsActiveTeamMember(r.Context(), db, getUserID(r), id)
+	if err != nil || !active {
 		http.Error(w, "team member not found", http.StatusNotFound)
 		return uuid.Nil, false
 	}
@@ -183,11 +185,14 @@ func DeleteTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := models.DeleteUser(r.Context(), db, id); err != nil {
+		// Marked removed, never deleted: their attendance, logs, visits and
+		// meetings stay, with their name on them.
+		if err := models.SoftDeleteTeamMember(r.Context(), db, id); err != nil {
 			log.Printf("delete team member error: %v", err)
 			http.Error(w, "could not delete team member", http.StatusInternalServerError)
 			return
 		}
+		middleware.RevokeUser(id)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})

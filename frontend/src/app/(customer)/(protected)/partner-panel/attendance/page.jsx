@@ -16,6 +16,7 @@ import {
   MonthSwitcher,
   asVisits,
 } from "@/components/team/attendanceUi";
+import MemberMonthDetail from "@/components/team/MemberMonthDetail";
 
 const nameOf = (m) => m.username || m.phone_number || "Team member";
 
@@ -455,7 +456,11 @@ function MonthView({ members, onOpenDay }) {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [byMember, setByMember] = useState({});
   const [logs, setLogs] = useState([]);
+  const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
+  // "" = the whole team; a member id = that person's month in detail
+  const [selectedId, setSelectedId] = useState("");
+  const selected = members.find((mem) => mem.id === selectedId);
 
   useEffect(() => {
     let cancelled = false;
@@ -463,10 +468,12 @@ function MonthView({ members, onOpenDay }) {
     Promise.all([
       Promise.all(members.map((mem) => apiFetch(`/team/${mem.id}/attendance/month?year=${year}&month=${month}`).catch(() => []))),
       apiFetch(`/team/daily-logs?year=${year}&month=${month}`).catch(() => []),
-    ]).then(([perMember, monthLogs]) => {
+      apiFetch(`/team/visit-logs?year=${year}&month=${month}`).catch(() => []),
+    ]).then(([perMember, monthLogs, monthVisits]) => {
       if (cancelled) return;
       setByMember(Object.fromEntries(members.map((mem, i) => [mem.id, Array.isArray(perMember[i]) ? perMember[i] : []])));
       setLogs(Array.isArray(monthLogs) ? monthLogs : []);
+      setVisits(asVisits(monthVisits));
       setLoading(false);
     });
     return () => {
@@ -481,7 +488,25 @@ function MonthView({ members, onOpenDay }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
-        <MonthSwitcher year={year} month={month} onChange={(yy, mm) => { setYear(yy); setMonth(mm); }} />
+        <div className="flex flex-wrap items-center gap-2">
+          <MonthSwitcher year={year} month={month} onChange={(yy, mm) => { setYear(yy); setMonth(mm); }} />
+          <select
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.target.value)}
+            aria-label="Team member"
+            className="px-3 py-1.5 text-sm text-gray-800 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
+          >
+            <option value="">Whole team</option>
+            {members.map((mem) => (
+              <option key={mem.id} value={mem.id}>{nameOf(mem)}</option>
+            ))}
+          </select>
+          {selected && (
+            <button onClick={() => setSelectedId("")} className="text-xs text-gray-500 hover:text-gray-900 underline">
+              Back to team
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
           {[...STATUSES, NOT_MARKED].map((s) => (
             <span key={s.label} className="inline-flex items-center gap-1.5">
@@ -496,6 +521,19 @@ function MonthView({ members, onOpenDay }) {
 
       {loading ? (
         <Loader />
+      ) : selected ? (
+        <div className="p-4 bg-gray-50/60 rounded-b-xl">
+          <MemberMonthDetail
+            member={selected}
+            name={nameOf(selected)}
+            year={year}
+            month={month}
+            records={byMember[selected.id] || []}
+            logs={logs.filter((l) => l.team_member_id === selected.id)}
+            visits={visits.filter((v) => v.team_member_id === selected.id)}
+            onOpenDay={onOpenDay}
+          />
+        </div>
       ) : (
         <div className="divide-y divide-gray-100">
           {members.map((mem) => {
@@ -503,13 +541,18 @@ function MonthView({ members, onOpenDay }) {
             const byDate = Object.fromEntries(recs.map((r) => [r.date, r]));
             const count = (k) => recs.filter((r) => r.status === k).length;
             const updates = logs.filter((l) => l.team_member_id === mem.id).length;
+            const visitCount = visits.filter((v) => v.team_member_id === mem.id).length;
             return (
               <div key={mem.id} className="px-4 py-4">
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                  <div className="flex items-center gap-3 w-48 min-w-0">
+                  <button
+                    onClick={() => setSelectedId(mem.id)}
+                    title={`See ${nameOf(mem)}'s month in detail`}
+                    className="group flex items-center gap-3 w-48 min-w-0 text-left"
+                  >
                     <Avatar name={nameOf(mem)} status="" size="w-8 h-8 text-xs" />
-                    <p className="font-medium text-gray-900 truncate">{nameOf(mem)}</p>
-                  </div>
+                    <p className="font-medium text-gray-900 truncate group-hover:text-blue-700 group-hover:underline underline-offset-2">{nameOf(mem)}</p>
+                  </button>
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
                     {STATUSES.map((s) => (
                       <span key={s.key} className="text-gray-600">
@@ -518,6 +561,9 @@ function MonthView({ members, onOpenDay }) {
                     ))}
                     <span className="text-gray-600">
                       <span className="font-semibold text-gray-900">{updates}</span> update{updates === 1 ? "" : "s"}
+                    </span>
+                    <span className="text-gray-600">
+                      <span className="font-semibold text-gray-900">{visitCount}</span> visit{visitCount === 1 ? "" : "s"}
                     </span>
                   </div>
                 </div>

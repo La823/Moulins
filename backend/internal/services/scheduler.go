@@ -113,7 +113,7 @@ func dispatchBirthdayMeetingSync(db *pgxpool.Pool) {
 		title := "Birthday"
 		notes := "Doctor's birthday"
 		req := models.CreateMeetingRequest{DoctorID: &d.ID, Title: &title, ScheduledAt: next, Notes: &notes}
-		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, d.PartnerID, req); err != nil {
+		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, d.PartnerID, nil, req); err != nil {
 			log.Printf("scheduler: failed to create birthday meeting for doctor %s: %v", d.ID, err)
 		}
 	}
@@ -203,7 +203,7 @@ func dispatchAnniversaryMeetingSync(db *pgxpool.Pool) {
 		title := "Anniversary"
 		notes := "Doctor's anniversary"
 		req := models.CreateMeetingRequest{DoctorID: &d.ID, Title: &title, ScheduledAt: next, Notes: &notes}
-		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, d.PartnerID, req); err != nil {
+		if _, err := models.CreateMeeting(ctx, db, d.PartnerID, d.PartnerID, nil, req); err != nil {
 			log.Printf("scheduler: failed to create anniversary meeting for doctor %s: %v", d.ID, err)
 		}
 	}
@@ -277,10 +277,12 @@ func dispatchMeetingReminders(db *pgxpool.Pool) {
 				when = "in 1 hour"
 			}
 			title := "Upcoming meeting reminder"
-			body := fmt.Sprintf("Your meeting with Dr. %s is %s (%s).", m.DoctorName, when, m.ScheduledAt.Format("Jan 2, 3:04 PM"))
+			body := fmt.Sprintf("Your meeting with %s is %s (%s).", m.DisplayName(), when, m.ScheduledAt.Format("Jan 2, 3:04 PM"))
 			deepLink := fmt.Sprintf("/meetings/%s", m.ID)
 
-			if err := SendDirectNotification(ctx, db, m.UserID, title, body, &deepLink); err != nil {
+			// To whoever is going: the assignee, or the partner when the
+			// meeting has no active assignee.
+			if err := SendDirectNotification(ctx, db, m.NotifyUserID, title, body, &deepLink); err != nil {
 				log.Printf("scheduler: failed to send %s reminder for meeting %s: %v", kind, m.ID, err)
 				continue
 			}

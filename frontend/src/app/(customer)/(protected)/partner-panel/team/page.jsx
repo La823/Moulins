@@ -62,7 +62,7 @@ export default function TeamPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Remove this team member? Their account will be deleted.")) return;
+    if (!confirm("Remove this team member? They will no longer be able to log in. Their attendance, logs and meetings are kept.")) return;
     try {
       await apiFetch(`/team/${id}`, { method: "DELETE" });
       setMembers((prev) => prev.filter((m) => m.id !== id));

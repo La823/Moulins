@@ -53,4 +53,10 @@ class MeetingService {
   Future<void> updateMeetingMom(String id, String? mom) async {
     await _dio.put('/meetings/$id/mom', data: {'mom': mom});
   }
+
+  /// Partner only: hand a meeting to someone else on the team (or back to
+  /// themselves).
+  Future<void> reassignMeeting(String id, String assignedTo) async {
+    await _dio.put('/meetings/$id/assignee', data: {'assigned_to': assignedTo});
+  }
 }

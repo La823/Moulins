@@ -80,6 +80,34 @@ func TestUserContract(t *testing.T) {
 	})
 }
 
+// Meetings gained created_by / status_changed_by names, has_visit_log and
+// assigned_to_removed, which the app ignores. These are the keys
+// mobile/lib/models/meeting.dart and meeting_visit_log.dart read.
+func TestMeetingContract(t *testing.T) {
+	check(t, Meeting{}, []fieldContract{
+		{"id", reflect.Array, reflect.Invalid},
+		{"doctor_id", reflect.Array, reflect.Invalid},
+		{"doctor_name", reflect.String, reflect.Invalid},
+		{"title", reflect.String, reflect.Invalid},
+		{"scheduled_at", reflect.Struct, reflect.Invalid}, // time.Time
+		{"notes", reflect.String, reflect.Invalid},
+		{"mom", reflect.String, reflect.Invalid},
+		{"status", reflect.String, reflect.Invalid},
+		{"assigned_to", reflect.Array, reflect.Invalid},
+		{"assigned_to_name", reflect.String, reflect.Invalid},
+	})
+	check(t, MeetingVisitLog{}, []fieldContract{
+		{"id", reflect.Array, reflect.Invalid},
+		{"user_name", reflect.String, reflect.Invalid},
+		{"recorded_at", reflect.Struct, reflect.Invalid},
+		{"latitude", reflect.Float64, reflect.Invalid},
+		{"longitude", reflect.Float64, reflect.Invalid},
+		{"notes", reflect.String, reflect.Invalid},
+		{"distance_from_clinic_m", reflect.Float64, reflect.Invalid},
+		{"within_expected_proximity", reflect.Bool, reflect.Invalid},
+	})
+}
+
 // Orders gained rate/line_total/order_total, which the app ignores because it
 // reads only named keys. These are the fields it does read.
 func TestOrderContract(t *testing.T) {

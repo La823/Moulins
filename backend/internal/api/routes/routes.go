@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"context"
+
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/api/handlers"
@@ -58,6 +60,8 @@ import (
 )
 
 func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, chatHub *services.ChatHub) {
+	// removed team members' logins stop working (see middleware.RevokeUser)
+	middleware.LoadRevokedUsers(context.Background(), db)
 
 	// records request count/latency for every route matched below —
 	// registered first so it wraps the whole router via mux's own
@@ -187,6 +191,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/meetings/{id}", meetings.UpdateHandler(db)).Methods("PUT")
 	protected.HandleFunc("/meetings/{id}/status", meetings.UpdateStatusHandler(db)).Methods("PUT")
 	protected.HandleFunc("/meetings/{id}/mom", meetings.UpdateMomHandler(db)).Methods("PUT")
+	protected.HandleFunc("/meetings/{id}/assignee", meetings.UpdateAssigneeHandler(db)).Methods("PUT")
 	protected.HandleFunc("/meetings/{id}/visit-log", meetings.CreateVisitLogHandler(db)).Methods("POST")
 	protected.HandleFunc("/meetings/{id}/visit-log", meetings.ListVisitLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/meetings/{id}", meetings.DeleteHandler(db)).Methods("DELETE")

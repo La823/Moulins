@@ -138,7 +138,16 @@ function VisitItem({ visit, showName }) {
         </a>
       </div>
       <p className="mt-1 text-sm text-gray-900">
-        <span className="font-semibold">Doctor visit</span> — Dr. {visit.doctor_name?.replace(/^dr\.?\s*/i, "")}
+        {visit.doctor_name ? (
+          <>
+            <span className="font-semibold">Doctor visit</span> — Dr. {visit.doctor_name.replace(/^dr\.?\s*/i, "")}
+          </>
+        ) : (
+          // a meeting with no doctor, only a title
+          <>
+            <span className="font-semibold">Meeting</span> — {visit.meeting_title || "Untitled"}
+          </>
+        )}
         {visit.clinic_name ? <span className="text-gray-500"> · {visit.clinic_name}</span> : null}
       </p>
       <div className="mt-1">

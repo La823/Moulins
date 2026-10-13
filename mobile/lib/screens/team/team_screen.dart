@@ -41,7 +41,7 @@ class _TeamScreenState extends State<TeamScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remove team member?'),
-        content: Text('"${m.displayName}" will be removed. Their account will be deleted.'),
+        content: Text('"${m.displayName}" will be removed and can no longer log in. Their attendance, logs and meetings are kept.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
