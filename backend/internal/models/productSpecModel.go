@@ -26,24 +26,39 @@ type PMSFieldOption struct {
 }
 
 type PMSField struct {
-	ID        int              `json:"id"`
-	TypeID    int              `json:"type_id"`
-	FieldName string           `json:"field_name"`
-	FieldType string           `json:"field_type"` // "text" | "boolean" | "dropdown"
-	SortOrder int              `json:"sort_order"`
-	Options   []PMSFieldOption `json:"options"`
+	ID        int    `json:"id"`
+	TypeID    int    `json:"type_id"`
+	FieldName string `json:"field_name"`
+	FieldType string `json:"field_type"` // "text" | "boolean" | "dropdown" | "image"
+	SortOrder int    `json:"sort_order"`
+	// IsRequired: values can't be saved with this field left empty.
+	IsRequired bool             `json:"is_required"`
+	Options    []PMSFieldOption `json:"options"`
+	// ShowIfFieldID / ShowIfValues: shown only when that field (a Yes/No or
+	// dropdown of the same type) has one of these answers. Nil = always.
+	ShowIfFieldID *int  `json:"show_if_field_id"`
+	ShowIfValues  []any `json:"show_if_values"`
 }
 
+// PMSType is the specification set for one product form. Name is the
+// form's current name, read live from product_forms, so a rename carries
+// through; ProductFormID is the link.
 type PMSType struct {
-	ID     int        `json:"id"`
-	Name   string     `json:"name"`
-	Fields []PMSField `json:"fields"`
+	ID            int        `json:"id"`
+	Name          string     `json:"name"`
+	ProductFormID *int       `json:"product_form_id"`
+	Fields        []PMSField `json:"fields"`
 }
 
 // ListPMSTypes returns every product type with its fields and (for dropdown
 // fields) their options, nested — the shape the config UI renders directly.
 func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
-	typeRows, err := db.Query(ctx, "SELECT id, name FROM pms_types ORDER BY name")
+	// current forms first; then types whose form was removed (kept so
+	// their specifications aren't lost)
+	typeRows, err := db.Query(ctx,
+		`SELECT t.id, COALESCE(f.name, t.name, ''), t.product_form_id
+		 FROM pms_types t LEFT JOIN product_forms f ON f.id = t.product_form_id
+		 ORDER BY (t.product_form_id IS NULL), lower(COALESCE(f.name, t.name, ''))`)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +66,7 @@ func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
 	typeIndex := map[int]*PMSType{}
 	for typeRows.Next() {
 		var t PMSType
-		if err := typeRows.Scan(&t.ID, &t.Name); err != nil {
+		if err := typeRows.Scan(&t.ID, &t.Name, &t.ProductFormID); err != nil {
 			typeRows.Close()
 			return nil, err
 		}
@@ -67,16 +82,20 @@ func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
 		typeIndex[types[i].ID] = &types[i]
 	}
 
-	fieldRows, err := db.Query(ctx, "SELECT id, type_id, field_name, field_type, sort_order FROM pms_fields ORDER BY sort_order, id")
+	fieldRows, err := db.Query(ctx, "SELECT id, type_id, field_name, field_type, sort_order, is_required, show_if_field_id, show_if_values FROM pms_fields ORDER BY sort_order, id")
 	if err != nil {
 		return nil, err
 	}
 	fieldIndex := map[int]*PMSField{}
 	for fieldRows.Next() {
 		var f PMSField
-		if err := fieldRows.Scan(&f.ID, &f.TypeID, &f.FieldName, &f.FieldType, &f.SortOrder); err != nil {
+		var showIf []byte
+		if err := fieldRows.Scan(&f.ID, &f.TypeID, &f.FieldName, &f.FieldType, &f.SortOrder, &f.IsRequired, &f.ShowIfFieldID, &showIf); err != nil {
 			fieldRows.Close()
 			return nil, err
+		}
+		if len(showIf) > 0 {
+			_ = json.Unmarshal(showIf, &f.ShowIfValues)
 		}
 		f.Options = []PMSFieldOption{}
 		t, ok := typeIndex[f.TypeID]
@@ -115,44 +134,242 @@ func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
 	return types, optRows.Err()
 }
 
-// CreatePMSType adds a new product type (e.g. "Capsule").
-func CreatePMSType(ctx context.Context, db *pgxpool.Pool, name string) (int, error) {
+// CreatePMSField adds a specification field to a product type.
+func CreatePMSField(ctx context.Context, db *pgxpool.Pool, typeID int, fieldName, fieldType string, sortOrder int, isRequired bool) (int, error) {
 	var id int
-	err := db.QueryRow(ctx, "INSERT INTO pms_types (name) VALUES ($1) RETURNING id", name).Scan(&id)
+	err := db.QueryRow(ctx,
+		"INSERT INTO pms_fields (type_id, field_name, field_type, sort_order, is_required) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		typeID, fieldName, fieldType, sortOrder, isRequired,
+	).Scan(&id)
 	return id, err
 }
 
-// DeletePMSType removes a product type and (via ON DELETE CASCADE) all of
-// its fields and their dropdown options.
-func DeletePMSType(ctx context.Context, db *pgxpool.Pool, id int) error {
-	tx, err := db.Begin(ctx)
+// SetPMSFieldRequired turns a field's "mandatory" setting on or off.
+// Returns pgx.ErrNoRows when there is no such field.
+func SetPMSFieldRequired(ctx context.Context, db *pgxpool.Pool, id int, required bool) error {
+	tag, err := db.Exec(ctx, "UPDATE pms_fields SET is_required = $1 WHERE id = $2", required, id)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
-
-	// Products keep their answers in a JSONB blob, which no foreign key
-	// reaches. Dropping the type cascades to its fields and nulls
-	// products.pms_type_id, but the blob would survive with every key now
-	// orphaned, so clear it for the affected products first.
-	if _, err := tx.Exec(ctx,
-		"UPDATE products SET pms_specifications = NULL WHERE pms_type_id = $1", id); err != nil {
-		return err
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
 	}
-	if _, err := tx.Exec(ctx, "DELETE FROM pms_types WHERE id = $1", id); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return nil
 }
 
-// CreatePMSField adds a specification field to a product type.
-func CreatePMSField(ctx context.Context, db *pgxpool.Pool, typeID int, fieldName, fieldType string, sortOrder int) (int, error) {
-	var id int
-	err := db.QueryRow(ctx,
-		"INSERT INTO pms_fields (type_id, field_name, field_type, sort_order) VALUES ($1, $2, $3, $4) RETURNING id",
-		typeID, fieldName, fieldType, sortOrder,
-	).Scan(&id)
-	return id, err
+// MissingRequiredError lists the mandatory fields left empty; its message is
+// shown to the person saving as-is.
+type MissingRequiredError struct{ Fields []string }
+
+func (e *MissingRequiredError) Error() string {
+	return "Please fill in the required fields: " + strings.Join(e.Fields, ", ")
+}
+
+// specValueFilled: a yes/no answered either way, any non-blank text or
+// dropdown choice, an uploaded image's URL.
+func specValueFilled(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(x) != ""
+	default:
+		return true
+	}
+}
+
+// VisibleFields reports, for each field of t, whether it is shown given
+// these values: a field with a rule shows only when the field it depends on
+// is itself shown and holds one of the rule's answers.
+func VisibleFields(t *PMSType, values map[string]any) map[int]bool {
+	byID := make(map[int]*PMSField, len(t.Fields))
+	for i := range t.Fields {
+		byID[t.Fields[i].ID] = &t.Fields[i]
+	}
+	memo := map[int]bool{}
+	var visible func(f *PMSField, depth int) bool
+	visible = func(f *PMSField, depth int) bool {
+		if v, ok := memo[f.ID]; ok {
+			return v
+		}
+		result := true
+		if f.ShowIfFieldID != nil {
+			ctrl, ok := byID[*f.ShowIfFieldID]
+			switch {
+			case !ok:
+				result = true // the field it depended on is gone
+			case depth > len(t.Fields):
+				result = false // a loop; never saved, but never hang on one
+			default:
+				result = visible(ctrl, depth+1) && answerMatches(values[strconv.Itoa(ctrl.ID)], f.ShowIfValues)
+			}
+		}
+		memo[f.ID] = result
+		return result
+	}
+	out := make(map[int]bool, len(t.Fields))
+	for i := range t.Fields {
+		out[t.Fields[i].ID] = visible(&t.Fields[i], 0)
+	}
+	return out
+}
+
+// answerMatches: the controlling field's value is one of the rule's answers.
+// Yes/No answers compare as booleans, dropdown answers as text.
+func answerMatches(value any, answers []any) bool {
+	for _, a := range answers {
+		switch av := a.(type) {
+		case bool:
+			if vb, ok := value.(bool); ok && vb == av {
+				return true
+			}
+		case string:
+			if vs, ok := value.(string); ok && vs == av {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// missingRequired returns the names of t's mandatory fields with no value.
+// A hidden field is never required.
+func missingRequired(t *PMSType, values map[string]any) error {
+	shown := VisibleFields(t, values)
+	var missing []string
+	for _, f := range t.Fields {
+		if f.IsRequired && shown[f.ID] && !specValueFilled(values[strconv.Itoa(f.ID)]) {
+			missing = append(missing, f.FieldName)
+		}
+	}
+	if len(missing) > 0 {
+		return &MissingRequiredError{Fields: missing}
+	}
+	return nil
+}
+
+// NormalizeSpecs checks a specifications blob (keyed by field id) against
+// its type: mandatory fields that are shown must be filled, and values of
+// fields hidden by a rule are dropped. Returns the blob to store. No type,
+// or no blob, passes through unchanged.
+func NormalizeSpecs(ctx context.Context, db *pgxpool.Pool, typeID *int, specs json.RawMessage) (json.RawMessage, error) {
+	if typeID == nil {
+		return specs, nil
+	}
+	values := map[string]any{}
+	if len(specs) > 0 && string(specs) != "null" {
+		if err := json.Unmarshal(specs, &values); err != nil {
+			return nil, fmt.Errorf("specifications must be an object keyed by field id")
+		}
+	}
+	types, err := ListPMSTypes(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	for i := range types {
+		t := &types[i]
+		if t.ID != *typeID {
+			continue
+		}
+		if err := missingRequired(t, values); err != nil {
+			return nil, err
+		}
+		if len(specs) == 0 || string(specs) == "null" {
+			return specs, nil
+		}
+		shown := VisibleFields(t, values)
+		kept := map[string]any{}
+		for k, v := range values {
+			if id, err := strconv.Atoi(k); err == nil {
+				if isShown, isField := shown[id]; isField && !isShown {
+					continue // a field hidden by its rule
+				}
+			}
+			kept[k] = v
+		}
+		return json.Marshal(kept)
+	}
+	return specs, nil
+}
+
+// ErrBadCondition explains why a field's rule can't be saved; shown as-is.
+type ErrBadCondition struct{ Msg string }
+
+func (e *ErrBadCondition) Error() string { return e.Msg }
+
+// SetPMSFieldCondition sets (or, with controllerID nil, removes) the rule
+// "show this field only when <controller> is one of <answers>". The
+// controller must be a Yes/No or dropdown field of the same type, not the
+// field itself, and not one that already depends on it (no loops).
+func SetPMSFieldCondition(ctx context.Context, db *pgxpool.Pool, fieldID int, controllerID *int, answers []any) error {
+	if controllerID == nil {
+		tag, err := db.Exec(ctx, `UPDATE pms_fields SET show_if_field_id = NULL, show_if_values = NULL WHERE id = $1`, fieldID)
+		if err == nil && tag.RowsAffected() == 0 {
+			return pgx.ErrNoRows
+		}
+		return err
+	}
+
+	types, err := ListPMSTypes(ctx, db)
+	if err != nil {
+		return err
+	}
+	var t *PMSType
+	var field, ctrl *PMSField
+	for i := range types {
+		for j := range types[i].Fields {
+			f := &types[i].Fields[j]
+			if f.ID == fieldID {
+				t, field = &types[i], f
+			}
+		}
+	}
+	if field == nil {
+		return pgx.ErrNoRows
+	}
+	for j := range t.Fields {
+		if t.Fields[j].ID == *controllerID {
+			ctrl = &t.Fields[j]
+		}
+	}
+	switch {
+	case ctrl == nil:
+		return &ErrBadCondition{"the field it depends on must be in the same type"}
+	case ctrl.ID == field.ID:
+		return &ErrBadCondition{"a field can't depend on itself"}
+	case ctrl.FieldType != "boolean" && ctrl.FieldType != "dropdown":
+		return &ErrBadCondition{"only a Yes/No or dropdown field can control another field"}
+	case len(answers) == 0:
+		return &ErrBadCondition{"choose at least one answer that shows this field"}
+	}
+	for _, a := range answers {
+		if _, ok := a.(bool); ctrl.FieldType == "boolean" && !ok {
+			return &ErrBadCondition{"a Yes/No field's answer must be Yes or No"}
+		}
+		if _, ok := a.(string); ctrl.FieldType == "dropdown" && !ok {
+			return &ErrBadCondition{"a dropdown field's answers must be its options"}
+		}
+	}
+	// no loops: walk up from the controller; reaching this field means the
+	// controller already depends on it
+	byID := map[int]*PMSField{}
+	for j := range t.Fields {
+		byID[t.Fields[j].ID] = &t.Fields[j]
+	}
+	for cur, steps := ctrl, 0; cur != nil && cur.ShowIfFieldID != nil && steps <= len(t.Fields); steps++ {
+		if *cur.ShowIfFieldID == field.ID {
+			return &ErrBadCondition{fmt.Sprintf("%q already depends on %q — that would be a loop", ctrl.FieldName, field.FieldName)}
+		}
+		cur = byID[*cur.ShowIfFieldID]
+	}
+
+	blob, err := json.Marshal(answers)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, `UPDATE pms_fields SET show_if_field_id = $1, show_if_values = $2::jsonb WHERE id = $3`,
+		*controllerID, string(blob), fieldID)
+	return err
 }
 
 // DeletePMSField removes a field and (via ON DELETE CASCADE) any dropdown
@@ -178,6 +395,10 @@ func DeletePMSField(ctx context.Context, db *pgxpool.Pool, id int) error {
 		WHERE pms_specifications ? $1::text`, key); err != nil {
 		return err
 	}
+	// fields that depended on this one lose their rule (always shown)
+	if _, err := tx.Exec(ctx, "UPDATE pms_fields SET show_if_field_id = NULL, show_if_values = NULL WHERE show_if_field_id = $1", id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, "DELETE FROM pms_fields WHERE id = $1", id); err != nil {
 		return err
 	}
@@ -195,9 +416,36 @@ func CreatePMSFieldOption(ctx context.Context, db *pgxpool.Pool, fieldID int, op
 }
 
 // DeletePMSFieldOption removes one dropdown option.
+//
+// A rule that showed a field on this option loses that answer; a rule left
+// with no answers is removed, so the field is shown rather than hidden for
+// good.
 func DeletePMSFieldOption(ctx context.Context, db *pgxpool.Pool, id int) error {
-	_, err := db.Exec(ctx, "DELETE FROM pms_field_options WHERE id = $1", id)
-	return err
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var fieldID int
+	var value string
+	err = tx.QueryRow(ctx, "DELETE FROM pms_field_options WHERE id = $1 RETURNING field_id, option_value", id).Scan(&fieldID, &value)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE pms_fields SET show_if_values = show_if_values - $2::text
+		 WHERE show_if_field_id = $1 AND show_if_values ? $2::text`, fieldID, value); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE pms_fields SET show_if_field_id = NULL, show_if_values = NULL
+		 WHERE show_if_field_id = $1 AND jsonb_array_length(show_if_values) = 0`, fieldID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ProductSpecRow is the trimmed view the "assign specs to products" page
@@ -311,4 +559,96 @@ func GetProductSpecByName(ctx context.Context, db *pgxpool.Pool, name string) (*
 		return nil, nil
 	}
 	return &r, nil
+}
+
+// ProductDefaultSpecs is what the product page needs to show and edit a
+// product's default specifications: its product form, the specification
+// type set up for that form (nil if none yet), and the values saved so far.
+type ProductDefaultSpecs struct {
+	ProductFormID  *int            `json:"product_form_id"`
+	ProductForm    string          `json:"product_form"`
+	Type           *PMSType        `json:"type"`
+	SavedPMSTypeID *int            `json:"saved_pms_type_id"`
+	SavedTypeName  string          `json:"saved_type_name,omitempty"`
+	Specifications json.RawMessage `json:"specifications"`
+}
+
+// ErrNoSpecTypeForForm: the product's form has no specification type yet.
+var ErrNoSpecTypeForForm = fmt.Errorf("this product's form has no specification fields set up yet")
+
+// GetProductDefaultSpecs loads a product's default specifications. The
+// type is the one linked to the product's form — not whatever was saved
+// before — so changing a product's form shows the new form's fields.
+func GetProductDefaultSpecs(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID) (*ProductDefaultSpecs, error) {
+	var d ProductDefaultSpecs
+	var formName *string
+	err := db.QueryRow(ctx,
+		`SELECT p.product_form_id, f.name, p.pms_type_id, p.pms_specifications
+		 FROM products p LEFT JOIN product_forms f ON f.id = p.product_form_id
+		 WHERE p.id = $1`, productID,
+	).Scan(&d.ProductFormID, &formName, &d.SavedPMSTypeID, &d.Specifications)
+	if err != nil {
+		return nil, err
+	}
+	if formName != nil {
+		d.ProductForm = *formName
+	}
+	if len(d.Specifications) == 0 {
+		d.Specifications = json.RawMessage("{}")
+	}
+
+	types, err := ListPMSTypes(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	for i := range types {
+		t := &types[i]
+		if d.ProductFormID != nil && t.ProductFormID != nil && *t.ProductFormID == *d.ProductFormID {
+			d.Type = t
+		}
+		if d.SavedPMSTypeID != nil && t.ID == *d.SavedPMSTypeID {
+			d.SavedTypeName = t.Name
+		}
+	}
+	return &d, nil
+}
+
+// SaveProductDefaultSpecs stores a product's default specification values
+// against the type of the product's own form. Only keys that are fields of
+// that type are kept, so stale or foreign keys never get saved.
+func SaveProductDefaultSpecs(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID, values map[string]any) error {
+	d, err := GetProductDefaultSpecs(ctx, db, productID)
+	if err != nil {
+		return err
+	}
+	if d.Type == nil {
+		return ErrNoSpecTypeForForm
+	}
+	if err := missingRequired(d.Type, values); err != nil {
+		return err
+	}
+	shown := VisibleFields(d.Type, values)
+	kept := map[string]any{}
+	for _, f := range d.Type.Fields {
+		if !shown[f.ID] {
+			continue // hidden by its rule: cleared
+		}
+		key := strconv.Itoa(f.ID)
+		v, ok := values[key]
+		if !ok || v == nil {
+			continue
+		}
+		if s, isStr := v.(string); isStr && strings.TrimSpace(s) == "" {
+			continue
+		}
+		kept[key] = v
+	}
+	blob, err := json.Marshal(kept)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx,
+		`UPDATE products SET pms_type_id = $1, pms_specifications = $2::jsonb WHERE id = $3`,
+		d.Type.ID, string(blob), productID)
+	return err
 }

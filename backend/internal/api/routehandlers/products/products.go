@@ -1,7 +1,6 @@
 package products
 
 import (
-	"sync"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -195,10 +195,10 @@ func loadProductRelationsBatch(r *http.Request, db *pgxpool.Pool, products []mod
 	// independent lookups, run at the same time — see loadProductRelations
 	ctx := r.Context()
 	var (
-		imagesMap         map[uuid.UUID][]models.ProductImage
-		docsMap           map[uuid.UUID][]models.ProductDocument
-		catsMap, tagsMap  map[uuid.UUID][]string
-		wg                sync.WaitGroup
+		imagesMap        map[uuid.UUID][]models.ProductImage
+		docsMap          map[uuid.UUID][]models.ProductDocument
+		catsMap, tagsMap map[uuid.UUID][]string
+		wg               sync.WaitGroup
 	)
 	wg.Add(4)
 	go func() { defer wg.Done(); imagesMap, _ = models.GetProductImagesBatch(ctx, db, ids) }()
@@ -308,12 +308,12 @@ func CreateProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 }
 
 type productListResult struct {
-	Products   []models.Product `json:"products"`
-	Total      int              `json:"total"`
-	Page       int              `json:"page"`
-	Limit      int              `json:"limit"`
-	TotalPages int              `json:"total_pages"`
-	Suggestions []string        `json:"suggestions,omitempty"`
+	Products    []models.Product `json:"products"`
+	Total       int              `json:"total"`
+	Page        int              `json:"page"`
+	Limit       int              `json:"limit"`
+	TotalPages  int              `json:"total_pages"`
+	Suggestions []string         `json:"suggestions,omitempty"`
 	// InventoryCodes is only populated for the admin (activeOnly=false)
 	// listing — keyed by product id (as a string, since JSON object keys
 	// must be strings) — so the public storefront/mobile response shape is
@@ -494,9 +494,9 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		category := r.URL.Query().Get("category")
 		form := r.URL.Query().Get("form")
 		tag := r.URL.Query().Get("tag")
-		imageCount := r.URL.Query().Get("image_count")     // "", "1", "2", "3plus"
-		licenceType := r.URL.Query().Get("licence_type")  // "", "<id>", "none"
-		zone := r.URL.Query().Get("zone")                 // "", "<zone code>", "none"
+		imageCount := r.URL.Query().Get("image_count")   // "", "1", "2", "3plus"
+		licenceType := r.URL.Query().Get("licence_type") // "", "<id>", "none"
+		zone := r.URL.Query().Get("zone")                // "", "<zone code>", "none"
 		// Preferred over category: a uuid survives renaming, a name does not.
 		categoryID := r.URL.Query().Get("category_id")
 		nameOnly := r.URL.Query().Get("name_only") == "true"
@@ -537,11 +537,11 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		}
 
 		result := productListResult{
-			Products:   products,
-			Total:      total,
-			Page:       page,
-			Limit:      limit,
-			TotalPages: totalPages,
+			Products:    products,
+			Total:       total,
+			Page:        page,
+			Limit:       limit,
+			TotalPages:  totalPages,
 			Suggestions: suggestions,
 		}
 

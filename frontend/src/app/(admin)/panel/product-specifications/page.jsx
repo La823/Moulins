@@ -21,9 +21,6 @@ export default function ProductSpecificationsPage() {
   const [error, setError] = useState("");
   const [expandedTypeId, setExpandedTypeId] = useState(null);
 
-  const [newTypeName, setNewTypeName] = useState("");
-  const [creatingType, setCreatingType] = useState(false);
-
   const [newField, setNewField] = useState({}); // { [typeId]: { field_name, field_type } }
   const [creatingFieldFor, setCreatingFieldFor] = useState(null);
 
@@ -43,36 +40,6 @@ export default function ProductSpecificationsPage() {
     loadTypes();
   }, []);
 
-  async function createType() {
-    const name = newTypeName.trim();
-    if (!name) return;
-    setCreatingType(true);
-    setError("");
-    try {
-      await apiFetch("/admin/product-specs/types", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      });
-      setNewTypeName("");
-      loadTypes();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCreatingType(false);
-    }
-  }
-
-  async function deleteType(id) {
-    if (!confirm("Delete this product type and all of its specification fields?")) return;
-    setError("");
-    try {
-      await apiFetch(`/admin/product-specs/types/${id}`, { method: "DELETE" });
-      loadTypes();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
   async function createField(typeId) {
     const draft = newField[typeId] || {};
     const fieldName = (draft.field_name || "").trim();
@@ -83,14 +50,47 @@ export default function ProductSpecificationsPage() {
     try {
       await apiFetch(`/admin/product-specs/types/${typeId}/fields`, {
         method: "POST",
-        body: JSON.stringify({ field_name: fieldName, field_type: fieldType, sort_order: 0 }),
+        body: JSON.stringify({ field_name: fieldName, field_type: fieldType, sort_order: 0, is_required: !!draft.is_required }),
       });
-      setNewField((prev) => ({ ...prev, [typeId]: { field_name: "", field_type: "text" } }));
+      setNewField((prev) => ({ ...prev, [typeId]: { field_name: "", field_type: "text", is_required: false } }));
       loadTypes();
     } catch (err) {
       setError(err.message);
     } finally {
       setCreatingFieldFor(null);
+    }
+  }
+
+  // Mandatory or optional — saved straight away, shown at once
+  async function setRequired(fieldId, isRequired) {
+    setError("");
+    setTypes((prev) =>
+      prev.map((t) => ({ ...t, fields: t.fields.map((f) => (f.id === fieldId ? { ...f, is_required: isRequired } : f)) }))
+    );
+    try {
+      await apiFetch(`/admin/product-specs/fields/${fieldId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_required: isRequired }),
+      });
+    } catch (err) {
+      setError(err.message);
+      loadTypes();
+    }
+  }
+
+  // "Show only when…" — cond is { field_id, values } or null for always shown
+  async function setShowIf(fieldId, cond) {
+    setError("");
+    try {
+      await apiFetch(`/admin/product-specs/fields/${fieldId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ show_if: cond }),
+      });
+      loadTypes();
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
     }
   }
 
@@ -139,44 +139,36 @@ export default function ProductSpecificationsPage() {
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-gray-900">Product Specifications</h2>
         <p className="text-sm text-gray-500">
-          Define a set of specification fields per product type (capsule, tablet, syrup, ...) — each field can be
-          text, a yes/no boolean, a dropdown with its own persisted options, or an image.
+          The specification fields for each product form — every form is listed, and a new form appears here as
+          soon as it&apos;s created. A field can be text, yes/no, a dropdown with its own options, or an image.
         </p>
       </div>
 
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex items-center gap-2">
-        <input
-          type="text"
-          value={newTypeName}
-          onChange={(e) => setNewTypeName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") createType();
-          }}
-          placeholder="New product type name, e.g. Capsule"
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-        />
-        <button
-          onClick={createType}
-          disabled={creatingType || !newTypeName.trim()}
-          className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-        >
-          {creatingType ? "Adding…" : "Add Type"}
-        </button>
-      </div>
-
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
       {!loading && types.length === 0 && (
-        <p className="text-sm text-gray-500">No product types defined yet.</p>
+        <p className="text-sm text-gray-500">No product forms yet — they come from the products page.</p>
       )}
 
       <div className="space-y-3">
-        {types.map((t) => {
+        {types.map((t, index) => {
           const isExpanded = expandedTypeId === t.id;
           const draft = newField[t.id] || { field_name: "", field_type: "text" };
+          // types come current forms first, then those whose form was removed
+          const firstRemoved = t.product_form_id == null && (index === 0 || types[index - 1].product_form_id != null);
           return (
-            <div key={t.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div key={t.id}>
+            {firstRemoved && (
+              <div className="pt-4 pb-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Removed forms</p>
+                <p className="text-xs text-gray-400">
+                  These forms were deleted. Their specifications are kept — create a form with the same name and it
+                  gets them back.
+                </p>
+              </div>
+            )}
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div
                 className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50"
                 onClick={() => setExpandedTypeId(isExpanded ? null : t.id)}
@@ -187,16 +179,12 @@ export default function ProductSpecificationsPage() {
                   <span className="text-xs text-gray-400">
                     {t.fields.length} field{t.fields.length === 1 ? "" : "s"}
                   </span>
+                  {t.product_form_id == null && (
+                    <span className="text-[10px] uppercase tracking-wide text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                      form removed
+                    </span>
+                  )}
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteType(t.id);
-                  }}
-                  className="text-xs text-red-500 hover:text-red-700"
-                >
-                  Delete type
-                </button>
               </div>
 
               {isExpanded && (
@@ -212,14 +200,32 @@ export default function ProductSpecificationsPage() {
                           <span className="text-[10px] uppercase tracking-wide text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
                             {f.field_type}
                           </span>
+                          {f.is_required && (
+                            <span className="text-[10px] uppercase tracking-wide text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                              Required
+                            </span>
+                          )}
                         </div>
-                        <button
-                          onClick={() => deleteField(f.id)}
-                          className="text-xs text-red-500 hover:text-red-700"
-                        >
-                          Delete field
-                        </button>
+                        <div className="flex items-center gap-4">
+                          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={!!f.is_required}
+                              onChange={(e) => setRequired(f.id, e.target.checked)}
+                              className="rounded border-gray-300"
+                            />
+                            Required
+                          </label>
+                          <button
+                            onClick={() => deleteField(f.id)}
+                            className="text-xs text-red-500 hover:text-red-700"
+                          >
+                            Delete field
+                          </button>
+                        </div>
                       </div>
+
+                      <ShowIfEditor field={f} fields={t.fields} onSave={(cond) => setShowIf(f.id, cond)} />
 
                       {f.field_type === "dropdown" && (
                         <div className="mt-2 pl-1">
@@ -289,6 +295,17 @@ export default function ProductSpecificationsPage() {
                         </option>
                       ))}
                     </select>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.is_required}
+                        onChange={(e) =>
+                          setNewField((prev) => ({ ...prev, [t.id]: { ...draft, is_required: e.target.checked } }))
+                        }
+                        className="rounded border-gray-300"
+                      />
+                      Required
+                    </label>
                     <button
                       onClick={() => createField(t.id)}
                       disabled={creatingFieldFor === t.id || !draft.field_name.trim()}
@@ -300,8 +317,116 @@ export default function ProductSpecificationsPage() {
                 </div>
               )}
             </div>
+            </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+const answerLabel = (v) => (v === true ? "Yes" : v === false ? "No" : String(v));
+
+// The "Show only when <field> is <answer>" rule on one field. Only Yes/No and
+// dropdown fields of the same type can control it; a dropdown rule can match
+// several options.
+function ShowIfEditor({ field, fields, onSave }) {
+  const controllers = fields.filter(
+    (c) => c.id !== field.id && (c.field_type === "boolean" || c.field_type === "dropdown")
+  );
+  const current = fields.find((c) => c.id === field.show_if_field_id);
+  const [editing, setEditing] = useState(false);
+  const [ctrlId, setCtrlId] = useState(field.show_if_field_id ?? "");
+  const [answers, setAnswers] = useState(field.show_if_values || []);
+  const [saving, setSaving] = useState(false);
+  const ctrl = fields.find((c) => c.id === Number(ctrlId));
+
+  const start = () => {
+    setCtrlId(field.show_if_field_id ?? "");
+    setAnswers(field.show_if_values || []);
+    setEditing(true);
+  };
+  const save = async (cond) => {
+    setSaving(true);
+    const ok = await onSave(cond);
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+  const toggle = (v) => setAnswers((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+
+  if (!editing) {
+    return (
+      <div className="mt-1.5 text-xs">
+        {current ? (
+          <span className="text-indigo-700">
+            Shown only when <span className="font-medium">{current.field_name}</span> is{" "}
+            <span className="font-medium">{(field.show_if_values || []).map(answerLabel).join(" or ")}</span>
+            <button onClick={start} className="ml-2 text-gray-500 hover:text-gray-900 underline">
+              Change
+            </button>
+            <button onClick={() => save(null)} disabled={saving} className="ml-2 text-gray-500 hover:text-red-600 underline">
+              Always show
+            </button>
+          </span>
+        ) : controllers.length > 0 ? (
+          <button onClick={start} className="text-gray-500 hover:text-gray-900">
+            + Show only when…
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-lg bg-indigo-50/60 border border-indigo-100 p-2.5 space-y-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-gray-600">Show only when</span>
+        <select
+          value={ctrlId}
+          onChange={(e) => {
+            setCtrlId(e.target.value ? Number(e.target.value) : "");
+            setAnswers([]);
+          }}
+          className="px-2 py-1 border border-gray-300 rounded-md bg-white"
+        >
+          <option value="">choose a field…</option>
+          {controllers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.field_name}
+            </option>
+          ))}
+        </select>
+        {ctrl && <span className="text-gray-600">is</span>}
+        {ctrl?.field_type === "boolean" &&
+          [true, false].map((v) => (
+            <label key={String(v)} className="flex items-center gap-1 cursor-pointer">
+              <input type="radio" name={`showif-${field.id}`} checked={answers[0] === v} onChange={() => setAnswers([v])} />
+              {answerLabel(v)}
+            </label>
+          ))}
+        {ctrl?.field_type === "dropdown" &&
+          (ctrl.options.length === 0 ? (
+            <span className="text-gray-400">that dropdown has no options yet</span>
+          ) : (
+            ctrl.options.map((o) => (
+              <label key={o.id} className="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={answers.includes(o.option_value)} onChange={() => toggle(o.option_value)} />
+                {o.option_value}
+              </label>
+            ))
+          ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => save({ field_id: Number(ctrlId), values: answers })}
+          disabled={saving || !ctrl || answers.length === 0}
+          className="px-2.5 py-1 bg-gray-900 text-white rounded-md font-medium disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save rule"}
+        </button>
+        <button onClick={() => setEditing(false)} className="text-gray-500 hover:text-gray-900">
+          Cancel
+        </button>
       </div>
     </div>
   );

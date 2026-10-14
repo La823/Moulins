@@ -120,7 +120,14 @@ func UpdateSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if err := models.UpdatePOSpecifications(r.Context(), db, id, req.PMSTypeID, req.Specifications); err != nil {
+		// the field rules apply to a PO's own specifications too: mandatory
+		// fields filled, hidden fields' values dropped
+		specs, err := models.NormalizeSpecs(r.Context(), db, req.PMSTypeID, req.Specifications)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := models.UpdatePOSpecifications(r.Context(), db, id, req.PMSTypeID, specs); err != nil {
 			log.Printf("update PO specifications error: %v", err)
 			http.Error(w, "could not save specifications", http.StatusInternalServerError)
 			return
@@ -563,39 +570,138 @@ func LogsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// poMailRow is the subset of a master row needed to compose the
-// manufacturer email — its own small SELECT rather than reusing
-// PurchaseOrderMasterRow, since the email doesn't need every column.
-type poMailRow struct {
-	PoNumber       *string
-	PoDate         *string
-	ProductName    *string
-	ProductCode    *string
-	Composition    *string
-	Quantity       *float64
-	Mrp            *string
-	Rate           *float64
-	Specifications *string
-	Type           *string
-	Company        *string
+// poDoc is one manufacturer PO as it reads on paper — every value already
+// resolved to the text that goes on the PDF and in the email, so the two
+// can never disagree.
+type poDoc struct {
+	PoNumber     string
+	PoDate       string // "2026-10-13"
+	ProductName  string
+	Composition  string // salts and strength
+	Packing      string // e.g. "10*10 Blister" (the row's specifications)
+	Type         string
+	Company      string
+	Quantity     int
+	QuantityText string
+	MRPText      string // "Rs. 161.84 Per Strip", "Rs. 225/STRIP", "DPCO"
+	RateText     string // "Rs. 52.00", "" when not set
 }
 
-func fetchPOMailRow(ctx context.Context, db *pgxpool.Pool, id int) (*poMailRow, error) {
-	var row poMailRow
+// loadPODoc reads a master row and resolves it for print.
+//
+// Composition: the row's own when filled in; otherwise the catalogue
+// product's, found by the row's product code. Never guessed from the name —
+// a wrong composition on a PO is worse than a blank one. Packing is never
+// used in its place (that was the bug that printed "10*10 Blister" as the
+// composition).
+func loadPODoc(ctx context.Context, db *pgxpool.Pool, id int) (*poDoc, error) {
+	var (
+		poNumber, poDate, productName, productCode, composition *string
+		mrp, specifications, typ, company                       *string
+		unit                                                    *string
+		quantity, rate                                          *float64
+	)
 	err := db.QueryRow(ctx,
-		`SELECT po_number, po_date::text, product_name, product_code, composition, quantity, mrp, rate, specifications, type, company
-		 FROM purchase_order_master WHERE id = $1`, id,
-	).Scan(&row.PoNumber, &row.PoDate, &row.ProductName, &row.ProductCode, &row.Composition,
-		&row.Quantity, &row.Mrp, &row.Rate, &row.Specifications, &row.Type, &row.Company)
+		`SELECT po_number, po_date::text, product_name, product_code, composition, quantity, mrp, rate,
+		        specifications, type, company,
+		        (SELECT name FROM units WHERE id = pom.mrp_unit_id)
+		 FROM purchase_order_master pom WHERE id = $1`, id,
+	).Scan(&poNumber, &poDate, &productName, &productCode, &composition, &quantity, &mrp, &rate,
+		&specifications, &typ, &company, &unit)
 	if err != nil {
 		return nil, err
 	}
-	return &row, nil
+
+	str := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return strings.TrimSpace(*p)
+	}
+	d := &poDoc{
+		PoNumber:    str(poNumber),
+		PoDate:      str(poDate),
+		ProductName: str(productName),
+		Composition: str(composition),
+		Packing:     str(specifications),
+		Type:        str(typ),
+		Company:     str(company),
+	}
+
+	if d.Composition == "" && str(productCode) != "" {
+		if p, err := models.LookupProductByMargCode(ctx, db, str(productCode)); err != nil {
+			log.Printf("po doc: composition lookup by code error: %v", err)
+		} else if p != nil && p.KeyIngredients != nil {
+			d.Composition = strings.TrimSpace(*p.KeyIngredients)
+		}
+	}
+
+	if quantity != nil {
+		d.Quantity = int(*quantity)
+		d.QuantityText = strconv.FormatFloat(*quantity, 'f', -1, 64)
+	}
+	if rate != nil {
+		d.RateText = fmt.Sprintf("Rs. %.2f", *rate)
+	}
+	d.MRPText = mrpText(str(mrp), str(unit))
+	return d, nil
+}
+
+// mrpText renders a stored MRP for print. Stored MRPs are free text —
+// "161.84", "225/STRIP", "45/sachet", "DPCO" — so a number gets "Rs." and
+// two decimals plus its unit when one is set, anything else is kept as
+// written (with "Rs." in front when it starts with an amount). Parsing
+// failures used to print "Rs. 0.00".
+func mrpText(raw, unit string) string {
+	if raw == "" {
+		return ""
+	}
+	if v, err := strconv.ParseFloat(raw, 64); err == nil {
+		if unit != "" {
+			return fmt.Sprintf("Rs. %.2f %s", v, unit)
+		}
+		return fmt.Sprintf("Rs. %.2f", v)
+	}
+	if raw[0] >= '0' && raw[0] <= '9' {
+		return "Rs. " + raw
+	}
+	return raw
+}
+
+func (d *poDoc) pdf() ([]byte, error) {
+	return utils.GeneratePOPDF(utils.POPDFData{
+		PONumber:         d.PoNumber,
+		Date:             d.PoDate,
+		ManufacturerName: d.Company,
+		CompanyName:      d.Company,
+		ProductName:      d.ProductName,
+		Composition:      d.Composition,
+		Packing:          d.Packing,
+		Type:             d.Type,
+		Quantity:         d.Quantity,
+		MRPText:          d.MRPText,
+		RateText:         d.RateText,
+		// Category ("3rd Party", "Ortho") and Remarks ("OK PROCEED", "HOLD",
+		// "Track final design") are internal tracking, not for the
+		// manufacturer — this PDF is the one they receive.
+	})
+}
+
+func (d *poDoc) pdfFileName() string {
+	name := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '-'
+	}, d.PoNumber)
+	if name == "" {
+		name = "purchase-order"
+	}
+	return "PO-" + name + ".pdf"
 }
 
 // GET /admin/purchase-order-master/{id}/pdf — printable PDF of this
-// manufacturer PO, using the same GeneratePOPDF template already built for
-// this purpose (previously unused — this is its first caller).
+// manufacturer PO; the same file the send-mail action attaches.
 func PDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(mux.Vars(r)["id"])
@@ -603,132 +709,108 @@ func PDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid id", http.StatusBadRequest)
 			return
 		}
-
-		var row struct {
-			PoNumber       *string
-			PoDate         *string
-			ProductName    *string
-			Composition    *string
-			Quantity       *float64
-			Mrp            *string
-			Rate           *float64
-			Specifications *string
-			Type           *string
-			Company        *string
-			Category       *string
-			Remarks        *string
-		}
-		err = db.QueryRow(r.Context(),
-			`SELECT po_number, po_date::text, product_name, composition, quantity, mrp, rate, specifications, type, company, category, remarks
-			 FROM purchase_order_master WHERE id = $1`, id,
-		).Scan(&row.PoNumber, &row.PoDate, &row.ProductName, &row.Composition, &row.Quantity, &row.Mrp,
-			&row.Rate, &row.Specifications, &row.Type, &row.Company, &row.Category, &row.Remarks)
+		doc, err := loadPODoc(r.Context(), db, id)
 		if err != nil {
 			http.Error(w, "purchase order not found", http.StatusNotFound)
 			return
 		}
-
-		strVal := func(s *string) string {
-			if s == nil {
-				return ""
-			}
-			return *s
-		}
-		var quantity int
-		if row.Quantity != nil {
-			quantity = int(*row.Quantity)
-		}
-		var mrp float64
-		if row.Mrp != nil {
-			mrp, _ = strconv.ParseFloat(strings.TrimSpace(*row.Mrp), 64)
-		}
-		var rate float64
-		if row.Rate != nil {
-			rate = *row.Rate
-		}
-		// Specifications/packing falls back to composition when the
-		// free-text specifications field wasn't filled in — either is
-		// reasonable content for the "COMPOSITION"/"PACKING" table rows.
-		specs := strVal(row.Specifications)
-		if specs == "" {
-			specs = strVal(row.Composition)
-		}
-
-		pdfBytes, err := utils.GeneratePOPDF(utils.POPDFData{
-			PONumber:         strVal(row.PoNumber),
-			Date:             strVal(row.PoDate),
-			ManufacturerName: strVal(row.Company),
-			CompanyName:      strVal(row.Company),
-			ProductName:      strVal(row.ProductName),
-			Specifications:   specs,
-			Type:             strVal(row.Type),
-			Quantity:         quantity,
-			MRP:              mrp,
-			Rate:             rate,
-			Category:         strVal(row.Category),
-			Remarks:          strVal(row.Remarks),
-		})
+		pdfBytes, err := doc.pdf()
 		if err != nil {
 			log.Printf("po pdf generation error: %v", err)
 			http.Error(w, "could not generate PDF", http.StatusInternalServerError)
 			return
 		}
-
 		w.Header().Set("Content-Type", "application/pdf")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=po-%s.pdf", strVal(row.PoNumber)))
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%s", doc.pdfFileName()))
 		w.Write(pdfBytes)
 	}
 }
 
-func mailField(label string, value *string) string {
-	if value == nil || *value == "" {
-		return ""
+// formatPODate turns "2026-10-13" into "13 Oct 2026" for the email.
+func formatPODate(d string) string {
+	t, err := time.Parse("2006-01-02", d)
+	if err != nil {
+		return d
 	}
-	return fmt.Sprintf(`<tr><td style="padding:4px 12px 4px 0;color:#6b7280;">%s</td><td style="padding:4px 0;color:#111827;">%s</td></tr>`,
-		html.EscapeString(label), html.EscapeString(*value))
+	return t.Format("2 Jan 2006")
 }
 
-func buildPOMailBody(row *poMailRow) (subject, body string) {
-	poNumber := ""
-	if row.PoNumber != nil {
-		poNumber = *row.PoNumber
+// buildPOMailBody writes the manufacturer email: a short covering letter
+// pointing at the attached PO, the order at a glance, what to reply with,
+// the standing notes from the PO, and a proper signature. Inline styles and
+// a table layout only — mail clients ignore stylesheets.
+func buildPOMailBody(d *poDoc, attachmentName string) (subject, body string) {
+	subject = "Purchase Order " + d.PoNumber
+	if d.ProductName != "" {
+		subject += " - " + d.ProductName
 	}
-	subject = fmt.Sprintf("Purchase Order %s", poNumber)
+	subject += " | Moulins Pharmaceuticals"
 
-	var qty, mrp, rate *string
-	if row.Quantity != nil {
-		s := fmt.Sprintf("%g", *row.Quantity)
-		qty = &s
+	e := html.EscapeString
+	row := func(label, value string) string {
+		if strings.TrimSpace(value) == "" {
+			return ""
+		}
+		return fmt.Sprintf(`<tr>
+  <td style="padding:9px 14px;border-bottom:1px solid #eef0f3;color:#6b7280;font-size:13px;width:150px;vertical-align:top;">%s</td>
+  <td style="padding:9px 14px;border-bottom:1px solid #eef0f3;color:#111827;font-size:14px;vertical-align:top;">%s</td>
+</tr>`, e(label), e(value))
 	}
-	mrp = row.Mrp
-	if row.Rate != nil {
-		s := fmt.Sprintf("%.2f", *row.Rate)
-		rate = &s
+
+	var rows strings.Builder
+	rows.WriteString(row("Product", d.ProductName))
+	rows.WriteString(row("Composition", d.Composition))
+	rows.WriteString(row("Packing", d.Packing))
+	rows.WriteString(row("Type", d.Type))
+	rows.WriteString(row("Quantity", d.QuantityText))
+	rows.WriteString(row("M.R.P", d.MRPText))
+	rows.WriteString(row("Rate", d.RateText))
+	// no Category / Remarks: internal tracking, see poDoc.pdf
+	dated := ""
+	if d.PoDate != "" {
+		dated = " dated <strong>" + e(formatPODate(d.PoDate)) + "</strong>"
+	}
+	greeting := "Dear Sir/Madam,"
+	if d.Company != "" {
+		greeting = "Dear " + e(d.Company) + " team,"
 	}
 
-	var rowsHTML strings.Builder
-	rowsHTML.WriteString(mailField("P-O Number", row.PoNumber))
-	rowsHTML.WriteString(mailField("P-O Date", row.PoDate))
-	rowsHTML.WriteString(mailField("Product Name", row.ProductName))
-	rowsHTML.WriteString(mailField("Product Code", row.ProductCode))
-	rowsHTML.WriteString(mailField("Composition", row.Composition))
-	rowsHTML.WriteString(mailField("Quantity", qty))
-	rowsHTML.WriteString(mailField("MRP", mrp))
-	rowsHTML.WriteString(mailField("Rate", rate))
-	rowsHTML.WriteString(mailField("Specifications", row.Specifications))
-	rowsHTML.WriteString(mailField("Type", row.Type))
+	body = fmt.Sprintf(`<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.55;max-width:640px;">
+<p style="margin:0 0 14px;font-size:14px;">%s</p>
+<p style="margin:0 0 14px;font-size:14px;">Please find attached our Purchase Order <strong>%s</strong>%s. The details are summarised below for your reference.</p>
 
-	body = fmt.Sprintf(`
-		<div style="font-family:sans-serif;font-size:14px;">
-			<p>Please find the purchase order details below.</p>
-			<table style="border-collapse:collapse;">%s</table>
-		</div>`, rowsHTML.String())
+<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%%;max-width:600px;border:1px solid #e5e7eb;border-radius:6px;">
+<tr><td colspan="2" style="padding:10px 14px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:bold;color:#374151;">P.O. %s</td></tr>
+%s
+</table>
+
+<p style="margin:18px 0 6px;font-size:14px;">Kindly:</p>
+<ul style="margin:0 0 14px;padding-left:20px;font-size:14px;">
+  <li>confirm receipt of this order, and</li>
+  <li>share the expected dispatch date.</li>
+</ul>
+
+<p style="margin:0 0 4px;font-size:13px;color:#374151;"><strong>Please note:</strong></p>
+<ul style="margin:0 0 18px;padding-left:20px;font-size:13px;color:#374151;">
+  <li>No change in the design or colour of the artwork will be accepted for repeat orders.</li>
+  <li>No variation will be accepted in the strength of the carton or foil.</li>
+  <li>Any change in MRP or rate must be informed before the order is processed.</li>
+</ul>
+
+<p style="margin:0 0 2px;font-size:14px;">Thanks &amp; regards,</p>
+<p style="margin:0;font-size:14px;"><strong>Moulins Pharmaceuticals Pvt. Ltd.</strong></p>
+<p style="margin:0;font-size:13px;color:#4b5563;">Plot No. 363, 1st Floor, Industrial Area, Phase II, Panchkula, Haryana 134113</p>
+<p style="margin:0;font-size:13px;color:#4b5563;">Contact: 98155 35304, 98780 20363</p>
+
+<p style="margin:18px 0 0;font-size:12px;color:#9ca3af;">Attachment: %s</p>
+</div>`,
+		greeting, e(d.PoNumber), dated, e(d.PoNumber), rows.String(), e(attachmentName))
 	return subject, body
 }
 
 // POST /admin/purchase-order-master/{id}/send-mail
-// Emails the PO's details to every address on file for the manufacturer
-// named in the row's `company` column. 400 if there's no manufacturer match
+// Emails the PO — a covering letter with the PO PDF attached — to every
+// address on file for the manufacturer named in the row's `company` column. 400 if there's no manufacturer match
 // or it has no emails; the send itself is logged like any other field
 // change for an audit trail.
 func SendMailHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -739,24 +821,24 @@ func SendMailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		row, err := fetchPOMailRow(r.Context(), db, id)
+		doc, err := loadPODoc(r.Context(), db, id)
 		if err != nil {
 			http.Error(w, "purchase order not found", http.StatusNotFound)
 			return
 		}
-		if row.Company == nil || *row.Company == "" {
+		if doc.Company == "" {
 			http.Error(w, "this purchase order has no manufacturer set", http.StatusBadRequest)
 			return
 		}
 
-		mfr, err := models.GetManufacturerByName(r.Context(), db, *row.Company)
+		mfr, err := models.GetManufacturerByName(r.Context(), db, doc.Company)
 		if err != nil {
 			log.Printf("send PO mail: manufacturer lookup error: %v", err)
 			http.Error(w, "could not look up manufacturer", http.StatusInternalServerError)
 			return
 		}
 		if mfr == nil {
-			http.Error(w, fmt.Sprintf("no manufacturer record matches %q", *row.Company), http.StatusBadRequest)
+			http.Error(w, fmt.Sprintf("no manufacturer record matches %q", doc.Company), http.StatusBadRequest)
 			return
 		}
 		emails := make([]string, 0, len(mfr.Emails))
@@ -770,18 +852,33 @@ func SendMailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		subject, body := buildPOMailBody(row)
-		messageID, conversationID, internetMessageID, err := mailer.SendMultipleTracked(r.Context(), mailer.ConfigFromEnv(), emails, subject, body)
+		// The PO itself goes with the email — the same PDF the PDF button
+		// downloads. No PDF, no send: a PO email without its PO is the
+		// thing this replaced.
+		pdfBytes, err := doc.pdf()
+		if err != nil {
+			log.Printf("send PO mail: pdf generation error: %v", err)
+			http.Error(w, "could not generate the PO PDF to attach", http.StatusInternalServerError)
+			return
+		}
+		attachment := mailer.Attachment{Name: doc.pdfFileName(), ContentType: "application/pdf", Content: pdfBytes}
+
+		subject, body := buildPOMailBody(doc, attachment.Name)
+		messageID, conversationID, internetMessageID, err := mailer.SendMultipleTracked(r.Context(), mailer.ConfigFromEnv(), emails, subject, body, attachment)
 		if err != nil {
 			log.Printf("send PO mail: send failed: %v", err)
 			http.Error(w, "could not send email", http.StatusInternalServerError)
 			return
 		}
 
-		if err := models.RecordPurchaseOrderEmail(r.Context(), db, id, row.PoNumber, messageID, conversationID, internetMessageID, emails, subject, body, actorID(r)); err != nil {
+		poNumber := &doc.PoNumber
+		if doc.PoNumber == "" {
+			poNumber = nil
+		}
+		if err := models.RecordPurchaseOrderEmail(r.Context(), db, id, poNumber, messageID, conversationID, internetMessageID, emails, subject, body, actorID(r)); err != nil {
 			log.Printf("send PO mail: record email error: %v", err)
 		}
-		models.LogPOFieldChange(r.Context(), db, models.POSourceMaster, strconv.Itoa(id), row.PoNumber, "email_sent", nil, strPtr(strings.Join(emails, ", ")), actorID(r))
+		models.LogPOFieldChange(r.Context(), db, models.POSourceMaster, strconv.Itoa(id), poNumber, "email_sent", nil, strPtr(strings.Join(emails, ", ")), actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"status": "sent", "sent_to": emails})

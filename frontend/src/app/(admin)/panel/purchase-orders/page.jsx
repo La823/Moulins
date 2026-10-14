@@ -273,7 +273,7 @@ export default function PurchaseOrdersPage() {
         method: "POST",
       });
       const sentTo = (res.sent_to || []).join(", ");
-      setMailStatus((prev) => ({ ...prev, [rowId]: { type: "ok", text: `Sent to ${sentTo}` } }));
+      setMailStatus((prev) => ({ ...prev, [rowId]: { type: "ok", text: `Sent with the PO PDF attached to ${sentTo}` } }));
       setActiveRows((prev) =>
         prev.map((r) => (r.id === rowId ? { ...r, last_mail_sent_at: new Date().toISOString() } : r))
       );

@@ -11,6 +11,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/broadcastlists"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/cart"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/dailylogs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/designfiles"
@@ -22,22 +23,20 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homefocus"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homehighlights"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/hsncodes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/jobs"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/learning"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/ledger"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/licencetypes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/margmaster"
 	margsyncHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/margsync"
-	"github.com/lavanyaarora/server/internal/api/routehandlers/cart"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
-	"github.com/lavanyaarora/server/internal/api/routehandlers/hsncodes"
-	"github.com/lavanyaarora/server/internal/api/routehandlers/licencetypes"
-	"github.com/lavanyaarora/server/internal/api/routehandlers/warehousezones"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/productspec"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseordermaster"
@@ -50,8 +49,9 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transports"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
-	"github.com/lavanyaarora/server/internal/api/routehandlers/warehouse"
 	vectorsearchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/vectorsearch"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/warehouse"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/warehousezones"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/services"
@@ -476,10 +476,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecEditStaff := protected.PathPrefix("/admin").Subrouter()
 	productSpecEditStaff.Use(middleware.StaffOnly)
 	productSpecEditStaff.Use(middleware.RequirePermission(db, "purchase_orders_edit", rdb))
-	productSpecEditStaff.HandleFunc("/product-specs/types", productspec.CreateTypeHandler(db)).Methods("POST")
-	productSpecEditStaff.HandleFunc("/product-specs/types/{id}", productspec.DeleteTypeHandler(db)).Methods("DELETE")
 	productSpecEditStaff.HandleFunc("/product-specs/types/{id}/fields", productspec.CreateFieldHandler(db)).Methods("POST")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}", productspec.DeleteFieldHandler(db)).Methods("DELETE")
+	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}", productspec.UpdateFieldHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}/options", productspec.CreateFieldOptionHandler(db)).Methods("POST")
 	productSpecEditStaff.HandleFunc("/product-specs/products/{id}", productspec.UpdateProductSpecificationsHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.DeleteFieldOptionHandler(db)).Methods("DELETE")
@@ -657,6 +656,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productViewStaff := protected.PathPrefix("/admin").Subrouter()
 	productViewStaff.Use(middleware.StaffOnly)
 	productViewStaff.Use(middleware.RequirePermission(db, "products_view", rdb))
+	productViewStaff.HandleFunc("/products/{id}/specifications", productspec.GetProductDefaultSpecsHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/products", products.ListProductsHandler(db, false, rdb)).Methods("GET")
 	productViewStaff.HandleFunc("/products/forms", products.AdminListProductFormsHandler(db)).Methods("GET")
 	productViewStaff.HandleFunc("/products/{id}/inventory-code", products.GetProductInventoryCodeHandler(db)).Methods("GET")
@@ -696,6 +696,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productStaff.HandleFunc("/products/upload-url", products.UploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/document-upload-url", products.DocumentUploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/{id}", products.UpdateProductHandler(db, rdb)).Methods("PUT")
+	// default product specifications, edited on the product page
+	productStaff.HandleFunc("/products/{id}/specifications", productspec.SaveProductDefaultSpecsHandler(db)).Methods("PUT")
+	productStaff.HandleFunc("/products/{id}/specifications/upload-url", productspec.UploadURLHandler()).Methods("POST")
 	productStaff.HandleFunc("/products/{id}/images", products.AddImageHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/{id}/documents", products.AddDocumentHandler(db, rdb)).Methods("POST")
 	productStaff.HandleFunc("/products/{id}/audio", products.SetProductAudioHandler(db, rdb)).Methods("PUT")

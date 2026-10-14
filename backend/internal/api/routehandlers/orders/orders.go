@@ -758,9 +758,9 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 					// Prefer the explicitly saved selection; if none was ever
 					// made, fall back to the same earliest-expiry (FEFO)
 					// default the order page's dropdown shows before any
-					// pick is saved — batches[0], since the batch list is
-					// already sorted by expiry ascending.
-					chosen := batches[0]
+					// pick is saved — the earliest-expiring batch in stock
+					// (models.DefaultBatch).
+					chosen := models.DefaultBatch(batches)
 					if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
 						for _, b := range batches {
 							if b.Code == *oi.SelectedBatchCode {
@@ -1178,6 +1178,24 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// A batch with no stock can't be chosen — nothing would ship from it.
+		if body.BatchCode != "" {
+			stock, found, err := models.MargBatchStock(r.Context(), db, body.BatchCode)
+			if err != nil {
+				log.Printf("update order item batch: stock lookup error: %v", err)
+				http.Error(w, "could not check the batch's stock", http.StatusInternalServerError)
+				return
+			}
+			if !found {
+				http.Error(w, "that batch is no longer available", http.StatusBadRequest)
+				return
+			}
+			if stock <= 0 {
+				http.Error(w, "that batch has no stock — choose another", http.StatusBadRequest)
+				return
+			}
+		}
+
 		if err := models.UpdateOrderItemBatch(r.Context(), db, itemID, body.BatchCode); err != nil {
 			log.Printf("update order item batch error: %v", err)
 			http.Error(w, "could not update batch selection", http.StatusInternalServerError)
@@ -1194,8 +1212,9 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 // single Save button.
 //
 // Body: {"rates":   [{"item_id": "...", "rate": 12.5 | null}],
-//        "remarks": [{"item_id": "...", "remarks": "..." | null}],
-//        "freight": 150 | null}            <- omit to leave freight alone
+//
+//	"remarks": [{"item_id": "...", "remarks": "..." | null}],
+//	"freight": 150 | null}            <- omit to leave freight alone
 //
 // Like the batch pick, this logs no order_event: order events are
 // partner-visible history, and what we charge is not something the partner
@@ -1358,7 +1377,8 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 				out.Batches = append(out.Batches, margBatchOption{Code: b.Code, CurBatch: b.CurBatch, Exp: b.Exp, Stock: b.Stock})
 			}
 			if len(out.Batches) > 0 {
-				out.DefaultCode = out.Batches[0].Code
+				// the earliest-expiring batch in stock — a zero-stock one can't be picked
+				out.DefaultCode = models.DefaultBatch(batchesByBaseCode[baseCode]).Code
 			}
 			items = append(items, out)
 		}
@@ -1476,7 +1496,7 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 					missing = append(missing, oi.ProductName)
 					continue
 				}
-				batchByItem[oi.ID.String()] = batches[0].Code
+				batchByItem[oi.ID.String()] = models.DefaultBatch(batches).Code
 			}
 		}
 		if len(missing) > 0 {

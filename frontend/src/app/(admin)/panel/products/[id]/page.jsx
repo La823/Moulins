@@ -8,6 +8,7 @@ import ToastStack, { useToasts } from "@/components/admin/Toast";
 import { HsnResult, useHsnLookup } from "@/components/admin/HsnLookup";
 import ProductVisibilityPanel from "@/components/admin/ProductVisibilityPanel";
 import ProductThumbnailCard from "@/components/admin/ProductThumbnailCard";
+import ProductSpecsSection from "@/components/admin/ProductSpecsSection";
 
 // Marg's raw "YYYYMMDD" batch expiry, shown as "MM/YYYY". The day is dropped
 // deliberately: a batch expires at the end of its stated month, and Marg
@@ -180,6 +181,10 @@ export default function EditProduct() {
     }
   };
 
+  // The product form as last saved — the specification fields follow it,
+  // and bumping specsKey reloads them after a save changes it.
+  const [savedProductForm, setSavedProductForm] = useState("");
+  const [specsKey, setSpecsKey] = useState(0);
   const [form, setForm] = useState({
     product_id: "",
     name: "",
@@ -233,6 +238,7 @@ export default function EditProduct() {
 
     apiFetch(`/products/${id}`)
       .then((p) => {
+        setSavedProductForm(p.product_form || "");
         setForm({
           product_id: p.product_id != null ? String(p.product_id) : "",
           name: p.name || "",
@@ -399,6 +405,8 @@ export default function EditProduct() {
       // Refresh product data
       const updated = await apiFetch(`/products/${id}`);
       setImages(updated.images || []);
+      setSavedProductForm(updated.product_form || "");
+      setSpecsKey((k) => k + 1);
       setThumb({ url: updated.thumb_url || "", source: updated.thumb_source_key || "" });
       // a product's first thumbnail is made in the background after its first
       // image is added — pick it up a moment later
@@ -1165,6 +1173,13 @@ export default function EditProduct() {
             </div>
           </div>
         </section>
+
+        {/* Default product specifications, for this product's form */}
+        <ProductSpecsSection
+          key={specsKey}
+          productId={id}
+          formChanged={(form.product_form || "") !== savedProductForm}
+        />
 
         {/* Ingredients & Usage */}
         <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">

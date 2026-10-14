@@ -129,6 +129,8 @@ func ClearProductForm(ctx context.Context, db *pgxpool.Pool, name string) (int64
 		return 0, fmt.Errorf("product form %q not found: %w", name, err)
 	}
 
+	// Its specification type stays (the link is cleared by the database),
+	// so clearing a form never loses specifications.
 	tag, err := tx.Exec(ctx,
 		`UPDATE products SET product_form = NULL, product_form_id = NULL, inventory_code = NULL WHERE product_form_id = $1`,
 		formID,

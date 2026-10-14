@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -525,3 +526,29 @@ var (
 	ErrBatchNotFound = fmt.Errorf("batch not found for this product")
 	ErrBatchNoStock  = fmt.Errorf("batch has no stock")
 )
+
+// DefaultBatch is the batch an order line uses before anyone picks one: the
+// earliest-expiring batch that has stock (FEFO among what can actually
+// ship). Only when every batch is out of stock does it fall back to the
+// earliest-expiring one. batches must be non-empty and sorted FEFO, as
+// GetLiveMargBatchesByBaseCodes returns them.
+func DefaultBatch(batches []MargProductBatch) MargProductBatch {
+	for _, b := range batches {
+		if b.Stock > 0 {
+			return b
+		}
+	}
+	return batches[0]
+}
+
+// MargBatchStock returns a live batch's stock by its code; found is false
+// when there is no such live batch.
+func MargBatchStock(ctx context.Context, db *pgxpool.Pool, code string) (stock float64, found bool, err error) {
+	err = db.QueryRow(ctx,
+		`SELECT stock FROM margmaster_product_batches WHERE code = $1 AND is_deleted = FALSE LIMIT 1`, code,
+	).Scan(&stock)
+	if err == pgx.ErrNoRows {
+		return 0, false, nil
+	}
+	return stock, err == nil, err
+}

@@ -186,6 +186,7 @@ export default function AdminOrderDetail() {
   }, [id]);
 
   const handleSelectBatch = async (item, batchCode) => {
+    const previous = item.selected_batch_code ?? null;
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, selected_batch_code: batchCode } : i))
     );
@@ -195,6 +196,10 @@ export default function AdminOrderDetail() {
         body: JSON.stringify({ batch_code: batchCode }),
       });
     } catch (err) {
+      // refused (e.g. the batch just ran out) — put the old choice back
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, selected_batch_code: previous } : i))
+      );
       setError(err.message);
     }
   };
@@ -898,12 +903,14 @@ export default function AdminOrderDetail() {
                               aria-label="Batch"
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                             >
+                              {/* a batch with no stock can't be chosen — it stays
+                                  listed (greyed) so staff can see it exists */}
                               {batches.map((b) => (
-                                <option key={b.code} value={b.code}>
+                                <option key={b.code} value={b.code} disabled={!(b.stock > 0)}>
                                   {[
                                     b.curbatch || "—",
                                     formatBatchExpiry(b.exp) && `Exp ${formatBatchExpiry(b.exp)}`,
-                                    `Stock ${formatStock(b.stock)}`,
+                                    b.stock > 0 ? `Stock ${formatStock(b.stock)}` : "Out of stock",
                                   ]
                                     .filter(Boolean)
                                     .join(" · ")}

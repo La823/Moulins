@@ -6,12 +6,14 @@ package productspec
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
@@ -37,45 +39,6 @@ func ListTypesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// POST /admin/product-specs/types  { "name": "Capsule" }
-func CreateTypeHandler(db *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Name string `json:"name"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
-			return
-		}
-		if req.Name == "" {
-			http.Error(w, "name is required", http.StatusBadRequest)
-			return
-		}
-		id, err := models.CreatePMSType(r.Context(), db, req.Name)
-		if err != nil {
-			http.Error(w, "could not create product type — it may already exist", http.StatusBadRequest)
-			return
-		}
-		writeJSON(w, http.StatusCreated, map[string]int{"id": id})
-	}
-}
-
-// DELETE /admin/product-specs/types/{id}
-func DeleteTypeHandler(db *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.Atoi(mux.Vars(r)["id"])
-		if err != nil {
-			http.Error(w, "invalid id", http.StatusBadRequest)
-			return
-		}
-		if err := models.DeletePMSType(r.Context(), db, id); err != nil {
-			http.Error(w, "could not delete product type", http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}
-}
-
 // POST /admin/product-specs/types/{id}/fields  { "field_name": "...", "field_type": "text|boolean|dropdown", "sort_order": 0 }
 func CreateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +48,10 @@ func CreateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		var req struct {
-			FieldName string `json:"field_name"`
-			FieldType string `json:"field_type"`
-			SortOrder int    `json:"sort_order"`
+			FieldName  string `json:"field_name"`
+			FieldType  string `json:"field_type"`
+			SortOrder  int    `json:"sort_order"`
+			IsRequired bool   `json:"is_required"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -101,12 +65,84 @@ func CreateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, `field_type must be "text", "boolean", "dropdown", or "image"`, http.StatusBadRequest)
 			return
 		}
-		id, err := models.CreatePMSField(r.Context(), db, typeID, req.FieldName, req.FieldType, req.SortOrder)
+		id, err := models.CreatePMSField(r.Context(), db, typeID, req.FieldName, req.FieldType, req.SortOrder, req.IsRequired)
 		if err != nil {
 			http.Error(w, "could not create field", http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]int{"id": id})
+	}
+}
+
+// PATCH /admin/product-specs/fields/{id}
+// Either or both of:
+//
+//	{ "is_required": true }                                  mandatory or not
+//	{ "show_if": { "field_id": 20, "values": [true] } }      show only when…
+//	{ "show_if": null }                                      always show
+func UpdateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var req map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		rawRequired, hasRequired := req["is_required"]
+		rawShowIf, hasShowIf := req["show_if"]
+		if !hasRequired && !hasShowIf {
+			http.Error(w, "send is_required and/or show_if", http.StatusBadRequest)
+			return
+		}
+
+		fail := func(err error) {
+			var bad *models.ErrBadCondition
+			switch {
+			case errors.Is(err, pgx.ErrNoRows):
+				http.Error(w, "field not found", http.StatusNotFound)
+			case errors.As(err, &bad):
+				http.Error(w, bad.Msg, http.StatusBadRequest)
+			default:
+				log.Printf("update pms field error: %v", err)
+				http.Error(w, "could not update field", http.StatusInternalServerError)
+			}
+		}
+
+		if hasRequired {
+			var required bool
+			if err := json.Unmarshal(rawRequired, &required); err != nil {
+				http.Error(w, "is_required must be true or false", http.StatusBadRequest)
+				return
+			}
+			if err := models.SetPMSFieldRequired(r.Context(), db, id, required); err != nil {
+				fail(err)
+				return
+			}
+		}
+		if hasShowIf {
+			var cond *struct {
+				FieldID int   `json:"field_id"`
+				Values  []any `json:"values"`
+			}
+			if err := json.Unmarshal(rawShowIf, &cond); err != nil {
+				http.Error(w, "show_if must be null or {field_id, values}", http.StatusBadRequest)
+				return
+			}
+			var controller *int
+			var values []any
+			if cond != nil {
+				controller, values = &cond.FieldID, cond.Values
+			}
+			if err := models.SetPMSFieldCondition(r.Context(), db, id, controller, values); err != nil {
+				fail(err)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
@@ -274,10 +310,71 @@ func UpdateProductSpecificationsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if err := models.UpdateProductSpecifications(r.Context(), db, id, req.PMSTypeID, req.Specifications); err != nil {
+		// mandatory fields must be filled; values of hidden fields are dropped
+		specs, err := models.NormalizeSpecs(r.Context(), db, req.PMSTypeID, req.Specifications)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := models.UpdateProductSpecifications(r.Context(), db, id, req.PMSTypeID, specs); err != nil {
 			http.Error(w, "could not save specifications", http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// GET /admin/products/{id}/specifications — the product page's default
+// specifications: the fields of the product form's type, and saved values.
+func GetProductDefaultSpecsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		d, err := models.GetProductDefaultSpecs(r.Context(), db, id)
+		if err != nil {
+			http.Error(w, "product not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, d)
+	}
+}
+
+// PUT /admin/products/{id}/specifications
+// { "specifications": { "19": "Red", "20": true } } — keyed by field id.
+// The type is taken from the product's form on the server.
+func SaveProductDefaultSpecsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Specifications map[string]any `json:"specifications"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		err = models.SaveProductDefaultSpecs(r.Context(), db, id, req.Specifications)
+		var missing *models.MissingRequiredError
+		if errors.Is(err, models.ErrNoSpecTypeForForm) || errors.As(err, &missing) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			log.Printf("save product default specs error: %v", err)
+			http.Error(w, "could not save specifications", http.StatusInternalServerError)
+			return
+		}
+		d, err := models.GetProductDefaultSpecs(r.Context(), db, id)
+		if err != nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(w, http.StatusOK, d)
 	}
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import SpecFieldInput, { SpecFieldLabel, missingRequired, visibleFieldIds, withoutHidden } from "@/components/admin/SpecFieldInput";
 
 const PAGE_SIZE = 20;
 
@@ -103,8 +104,8 @@ export default function ProductSpecAssignmentPage() {
     setDraft(row.id, (d) => ({ ...d, values: { ...d.values, [fieldId]: value } }));
   }
 
-  async function uploadFieldImage(row, fieldId, file) {
-    if (!file) return;
+  // uploads an image field's file and returns its URL (SpecFieldInput sets it)
+  async function uploadFieldImage(fieldId, file) {
     setUploadingFieldId(fieldId);
     setError("");
     try {
@@ -113,9 +114,10 @@ export default function ProductSpecAssignmentPage() {
         body: JSON.stringify({ filename: file.name }),
       });
       await fetch(upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      setFieldValue(row, fieldId, image_url);
+      return image_url;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       setUploadingFieldId(null);
     }
@@ -127,6 +129,11 @@ export default function ProductSpecAssignmentPage() {
 
   async function saveRow(row) {
     const draft = draftFor(row);
+    const missing = missingRequired(typeById(draft.pms_type_id)?.fields, draft.values);
+    if (missing.length) {
+      setError(`${row.name}: please fill in the required fields: ${missing.join(", ")}`);
+      return;
+    }
     setSavingFor(row.id);
     setError("");
     try {
@@ -134,7 +141,7 @@ export default function ProductSpecAssignmentPage() {
         method: "PATCH",
         body: JSON.stringify({
           pms_type_id: draft.pms_type_id,
-          specifications: draft.pms_type_id ? draft.values : null,
+          specifications: draft.pms_type_id ? withoutHidden(typeById(draft.pms_type_id)?.fields, draft.values) : null,
         }),
       });
       setRows((prev) =>
@@ -143,7 +150,7 @@ export default function ProductSpecAssignmentPage() {
             ? {
                 ...r,
                 pms_type_id: draft.pms_type_id,
-                specifications: draft.pms_type_id ? draft.values : null,
+                specifications: draft.pms_type_id ? withoutHidden(typeById(draft.pms_type_id)?.fields, draft.values) : null,
               }
             : r
         )
@@ -254,63 +261,17 @@ export default function ProductSpecAssignmentPage() {
 
                   {type && type.fields.length > 0 && (
                     <div className="grid grid-cols-2 gap-3">
-                      {type.fields.map((f) => (
+                      {type.fields.filter((f) => visibleFieldIds(type.fields, draft.values).has(f.id)).map((f) => (
                         <div key={f.id}>
-                          <label className="block text-xs text-gray-500 mb-1">{f.field_name}</label>
-                          {f.field_type === "text" && (
-                            <input
-                              type="text"
-                              value={draft.values[f.id] ?? ""}
-                              onChange={(e) => setFieldValue(row, f.id, e.target.value)}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            />
-                          )}
-                          {f.field_type === "boolean" && (
-                            <select
-                              value={draft.values[f.id] === true ? "true" : draft.values[f.id] === false ? "false" : ""}
-                              onChange={(e) =>
-                                setFieldValue(row, f.id, e.target.value === "" ? null : e.target.value === "true")
-                              }
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            >
-                              <option value="">—</option>
-                              <option value="true">Yes</option>
-                              <option value="false">No</option>
-                            </select>
-                          )}
-                          {f.field_type === "dropdown" && (
-                            <select
-                              value={draft.values[f.id] ?? ""}
-                              onChange={(e) => setFieldValue(row, f.id, e.target.value || null)}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
-                            >
-                              <option value="">—</option>
-                              {f.options.map((o) => (
-                                <option key={o.id} value={o.option_value}>
-                                  {o.option_value}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          {f.field_type === "image" && (
-                            <div className="space-y-1.5">
-                              {draft.values[f.id] && (
-                                <img
-                                  src={draft.values[f.id]}
-                                  alt={f.field_name}
-                                  className="h-16 w-16 object-cover rounded-md border border-gray-200"
-                                />
-                              )}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => uploadFieldImage(row, f.id, e.target.files?.[0])}
-                                disabled={uploadingFieldId === f.id}
-                                className="block w-full text-xs text-gray-500 file:mr-2 file:px-2 file:py-1 file:rounded-md file:border file:border-gray-300 file:text-xs file:bg-white hover:file:bg-gray-50"
-                              />
-                              {uploadingFieldId === f.id && <p className="text-xs text-gray-400">Uploading…</p>}
-                            </div>
-                          )}
+                          <SpecFieldLabel field={f} className="block text-xs text-gray-500 mb-1" />
+                          <SpecFieldInput
+                            field={f}
+                            value={draft.values[f.id]}
+                            onChange={(v) => setFieldValue(row, f.id, v)}
+                            onUpload={(file) => uploadFieldImage(f.id, file)}
+                            uploading={uploadingFieldId === f.id}
+                            size="xs"
+                          />
                         </div>
                       ))}
                     </div>

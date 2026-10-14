@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -115,9 +116,39 @@ type sendMailRequest struct {
 			ContentType string `json:"contentType"`
 			Content     string `json:"content"`
 		} `json:"body"`
-		ToRecipients []recipient `json:"toRecipients"`
+		ToRecipients []recipient      `json:"toRecipients"`
+		Attachments  []fileAttachment `json:"attachments,omitempty"`
 	} `json:"message"`
 	SaveToSentItems bool `json:"saveToSentItems"`
+}
+
+// Attachment is a file sent with an email, e.g. a purchase order PDF.
+type Attachment struct {
+	Name        string // "PO-MP1868.pdf"
+	ContentType string // "application/pdf"
+	Content     []byte
+}
+
+// fileAttachment is Graph's shape for an inline file. Fine for files up to
+// 3 MB, which a one-page PO PDF is far under.
+type fileAttachment struct {
+	ODataType    string `json:"@odata.type"`
+	Name         string `json:"name"`
+	ContentType  string `json:"contentType"`
+	ContentBytes string `json:"contentBytes"` // base64
+}
+
+func toGraphAttachments(atts []Attachment) []fileAttachment {
+	out := make([]fileAttachment, 0, len(atts))
+	for _, a := range atts {
+		out = append(out, fileAttachment{
+			ODataType:    "#microsoft.graph.fileAttachment",
+			Name:         a.Name,
+			ContentType:  a.ContentType,
+			ContentBytes: base64.StdEncoding.EncodeToString(a.Content),
+		})
+	}
+	return out
 }
 
 // Send emails htmlBody to `to` with the given subject, as the configured
@@ -174,8 +205,9 @@ func Send(ctx context.Context, c Config, to, subject, htmlBody string) error {
 }
 
 // SendMultiple is Send for more than one recipient (e.g. a manufacturer with
-// several contact emails on file) — all addresses go in To, one message.
-func SendMultiple(ctx context.Context, c Config, tos []string, subject, htmlBody string) error {
+// several contact emails on file) — all addresses go in To, one message —
+// with any files attached.
+func SendMultiple(ctx context.Context, c Config, tos []string, subject, htmlBody string, attachments ...Attachment) error {
 	if !c.enabled() {
 		log.Printf("mailer: not configured, skipping email %q to %v", subject, tos)
 		return nil
@@ -201,6 +233,9 @@ func SendMultiple(ctx context.Context, c Config, tos []string, subject, htmlBody
 	}
 	if len(reqBody.Message.ToRecipients) == 0 {
 		return fmt.Errorf("mailer: no recipients")
+	}
+	if len(attachments) > 0 {
+		reqBody.Message.Attachments = toGraphAttachments(attachments)
 	}
 	reqBody.SaveToSentItems = true
 
@@ -284,7 +319,7 @@ func ReplyToMessage(ctx context.Context, c Config, messageID, comment string) er
 // doesn't have it yet (or the lookup fails for any other reason), the send
 // itself has already succeeded, so this only logs and returns empty ids
 // rather than failing the whole call. Delivery never depends on tracking.
-func SendMultipleTracked(ctx context.Context, c Config, tos []string, subject, htmlBody string) (messageID, conversationID, internetMessageID string, err error) {
+func SendMultipleTracked(ctx context.Context, c Config, tos []string, subject, htmlBody string, attachments ...Attachment) (messageID, conversationID, internetMessageID string, err error) {
 	// Captured before the send so findSentMessage can reject anything Sent
 	// Items returns that predates this call — a timestamp guard alone.
 	sentAfter := time.Now().Add(-10 * time.Second)
@@ -299,7 +334,7 @@ func SendMultipleTracked(ctx context.Context, c Config, tos []string, subject, h
 	trackingToken := newTrackingToken()
 	taggedBody := injectTrackingToken(htmlBody, trackingToken)
 
-	if err := SendMultiple(ctx, c, tos, subject, taggedBody); err != nil {
+	if err := SendMultiple(ctx, c, tos, subject, taggedBody, attachments...); err != nil {
 		return "", "", "", err
 	}
 	if !c.enabled() {

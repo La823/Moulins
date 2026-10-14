@@ -14,13 +14,28 @@ type POPDFData struct {
 	ManufacturerName string
 	CompanyName      string
 	ProductName      string
-	Specifications   string
-	Type             string
-	Quantity         int
-	MRP              float64
-	Rate             float64
-	Category         string
-	Remarks          string
+	// Composition is the salt(s) and strength; Packing is the pack, e.g.
+	// "10*10 Blister". Separate on purpose: printing one value in both rows
+	// used to put the packing where the composition belongs.
+	Composition string
+	Packing     string
+	Type        string
+	Quantity    int
+	// MRPText is the MRP as it should read, e.g. "Rs. 161.84 Per Strip" or
+	// "DPCO" — built by the caller, since stored MRPs are free text.
+	MRPText  string
+	RateText string // "Rs. 52.00", or "" when no rate is set
+	Category string
+	Remarks  string
+}
+
+// blankDash prints "-" for a value that isn't known rather than an empty
+// box, so a manufacturer can tell "not given" from "left off".
+func blankDash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "-"
+	}
+	return s
 }
 
 // formatDate converts YYYY-MM-DD to DD.MM.YYYY
@@ -36,6 +51,21 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(20, 20, 20)
 	pdf.AddPage()
+
+	// cp1252 fonts: make pasted text (dashes, quotes, "µ") print cleanly
+	tr := pdf.UnicodeTranslatorFromDescriptor("")
+	f := func(s string) string { return tr(pdfTextReplacer.Replace(s)) }
+	data.PONumber = f(data.PONumber)
+	data.ManufacturerName = f(data.ManufacturerName)
+	data.CompanyName = f(data.CompanyName)
+	data.ProductName = f(data.ProductName)
+	data.Composition = f(data.Composition)
+	data.Packing = f(data.Packing)
+	data.Type = f(data.Type)
+	data.MRPText = f(data.MRPText)
+	data.RateText = f(data.RateText)
+	data.Category = f(data.Category)
+	data.Remarks = f(data.Remarks)
 
 	pageW := 170.0 // usable width (210 - 20 - 20)
 
@@ -76,11 +106,11 @@ func GeneratePOPDF(data POPDFData) ([]byte, error) {
 		{"COMPANY NAME", data.CompanyName},
 		{"BRAND NAME", data.ProductName},
 		{"TRADE MARK", "TM"},
-		{"COMPOSITION", data.Specifications},
-		{"PACKING", data.Specifications},
+		{"COMPOSITION", blankDash(data.Composition)},
+		{"PACKING", blankDash(data.Packing)},
 		{"QUANTITY", fmt.Sprintf("%d", data.Quantity)},
-		{"M.R.P", fmt.Sprintf("Rs. %.2f per strip", data.MRP)},
-		{"RATE", fmt.Sprintf("Rs. %.2f", data.Rate)},
+		{"M.R.P", blankDash(data.MRPText)},
+		{"RATE", blankDash(data.RateText)},
 	}
 
 	if data.Type != "" {
@@ -204,8 +234,8 @@ type OrderPDFData struct {
 	ItemsTotal *float64
 	Freight    *float64
 	OrderTotal *float64
-	PrintedBy     string
-	PrintedAt     string
+	PrintedBy  string
+	PrintedAt  string
 }
 
 // gofpdf's built-in fonts are cp1252, so a UTF-8 character outside it prints
