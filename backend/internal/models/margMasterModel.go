@@ -277,31 +277,77 @@ type MargParty struct {
 type MargPartyPage struct {
 	Parties []MargParty `json:"parties"`
 	Total   int         `json:"total"`
+	// StatusCounts: how many parties match the search in each status
+	// (active / inactive / duplicate), for the filter buttons.
+	StatusCounts map[string]int `json:"status_counts"`
+	// StatusTotals: the ledger report per status for the search — worked
+	// out on every request, never stored.
+	StatusTotals map[string]LedgerTotals `json:"status_totals"`
+}
+
+// LedgerTotals sums the Marg balances of a set of parties.
+type LedgerTotals struct {
+	Parties     int     `json:"parties"`
+	Net         float64 `json:"net"`          // all balances added up
+	Receivable  float64 `json:"receivable"`   // positive balances only
+	Credit      float64 `json:"credit"`       // negative balances only
+	ZeroBalance int     `json:"zero_balance"` // parties with nothing outstanding
 }
 
 // GetMargParties returns one page of synced Marg parties, ordered by name.
 // search filters on name/code/area/rid (case-insensitive substring), pass
 // "" for none.
-func GetMargParties(ctx context.Context, db *pgxpool.Pool, search string, limit, offset int) (MargPartyPage, error) {
-	var page MargPartyPage
+// status narrows to one of MargPartyStatuses; "" means all.
+func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status string, limit, offset int) (MargPartyPage, error) {
+	page := MargPartyPage{
+		StatusCounts: map[string]int{"active": 0, "inactive": 0, "duplicate": 0},
+		StatusTotals: map[string]LedgerTotals{"active": {}, "inactive": {}, "duplicate": {}},
+	}
 
-	if err := db.QueryRow(ctx, `
-		SELECT COUNT(*) FROM margmaster_party
-		WHERE $1 = '' OR name ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%' OR area ILIKE '%' || $1 || '%' OR rid ILIKE '%' || $1 || '%'`,
+	// counts and ledger totals per status for the search (ignoring the
+	// status filter), in one query; Total is the count for the chosen status
+	rows, err := db.Query(ctx, `
+		SELECT status, COUNT(*),
+		       COALESCE(SUM(balance), 0)::float8,
+		       COALESCE(SUM(balance) FILTER (WHERE balance > 0), 0)::float8,
+		       COALESCE(SUM(balance) FILTER (WHERE balance < 0), 0)::float8,
+		       COUNT(*) FILTER (WHERE COALESCE(balance, 0) = 0)
+		FROM margmaster_party
+		WHERE $1 = '' OR name ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%' OR area ILIKE '%' || $1 || '%' OR rid ILIKE '%' || $1 || '%'
+		GROUP BY status`,
 		search,
-	).Scan(&page.Total); err != nil {
+	)
+	if err != nil {
+		return page, err
+	}
+	for rows.Next() {
+		var st string
+		var t LedgerTotals
+		if err := rows.Scan(&st, &t.Parties, &t.Net, &t.Receivable, &t.Credit, &t.ZeroBalance); err != nil {
+			rows.Close()
+			return page, err
+		}
+		page.StatusCounts[st] = t.Parties
+		page.StatusTotals[st] = t
+		if status == "" || status == st {
+			page.Total += t.Parties
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return page, err
 	}
 
-	rows, err := db.Query(ctx, `
+	rows, err = db.Query(ctx, `
 		SELECT mp.id, mp.rid, mp.code, mp.name, mp.area, mp.address, mp.balance, mp.gcode, mp.is_deleted,
 		       mp.phone1, mp.email1, mp.gstin, mp.ledgercode, mp.synced_at, u.id, mp.status
 		FROM margmaster_party mp
 		LEFT JOIN users u ON u.rid = mp.rid AND u.role = 'partner'
-		WHERE $1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%'
+		WHERE ($1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%')
+		  AND ($4 = '' OR mp.status = $4)
 		ORDER BY mp.name
 		LIMIT $2 OFFSET $3`,
-		search, limit, offset,
+		search, limit, offset, status,
 	)
 	if err != nil {
 		return page, err
@@ -344,9 +390,9 @@ func GetMargPartyByRid(ctx context.Context, db *pgxpool.Pool, rid string) (*Marg
 
 // MargPartyStatuses is the allowed set, mirroring the column's CHECK
 // constraint so a bad value is rejected before it reaches the database.
-var MargPartyStatuses = map[string]bool{"active": true, "duplicate": true}
+var MargPartyStatuses = map[string]bool{"active": true, "inactive": true, "duplicate": true}
 
-// SetMargPartyStatus marks a synced party active or duplicate. The status is
+// SetMargPartyStatus marks a synced party active, inactive or duplicate. The status is
 // ours and the sync does not overwrite it, so it survives the next pull.
 func SetMargPartyStatus(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, status string) error {
 	if !MargPartyStatuses[status] {

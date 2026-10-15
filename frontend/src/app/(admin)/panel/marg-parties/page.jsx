@@ -10,6 +10,25 @@ import CreatePartnerFromMargPartyModal from "@/components/admin/CreatePartnerFro
 const PAGE_SIZE = 50;
 
 const fmtMoney = (v) => (v == null ? "—" : `₹${Number(v).toFixed(2)}`);
+// report figures: Indian grouping, e.g. ₹1,89,14,089.34
+const fmtTotal = (v) =>
+  `₹${Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const STATUS_KEYS = ["active", "inactive", "duplicate"];
+const EMPTY_TOTALS = { parties: 0, net: 0, receivable: 0, credit: 0, zero_balance: 0 };
+
+// adds up the per-status ledger totals the server returns
+const sumTotals = (list) =>
+  list.reduce(
+    (a, t) => ({
+      parties: a.parties + (t?.parties || 0),
+      net: a.net + (t?.net || 0),
+      receivable: a.receivable + (t?.receivable || 0),
+      credit: a.credit + (t?.credit || 0),
+      zero_balance: a.zero_balance + (t?.zero_balance || 0),
+    }),
+    { ...EMPTY_TOTALS }
+  );
 
 export default function MargPartiesPage() {
   const [parties, setParties] = useState([]);
@@ -22,6 +41,11 @@ export default function MargPartiesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [creatingFor, setCreatingFor] = useState(null); // party object, or null
   const [savingStatusId, setSavingStatusId] = useState(null);
+  // filter: "" = all, or one status; counts come back with each page
+  const [statusFilter, setStatusFilter] = useState("");
+  const [statusCounts, setStatusCounts] = useState({ active: 0, inactive: 0, duplicate: 0 });
+  // ledger report per status — worked out by the server on every load, never stored
+  const [statusTotals, setStatusTotals] = useState({});
   const [statusError, setStatusError] = useState("");
 
   // Our own status against a synced party — "active" or "duplicate". Written
@@ -35,6 +59,7 @@ export default function MargPartiesPage() {
     // Shown immediately, reverted below if the write fails, so the dropdown
     // never sits on a value the database does not hold.
     setParties((prev) => prev.map((x) => (x.id === party.id ? { ...x, status } : x)));
+    setStatusCounts((c) => ({ ...c, [previous]: Math.max(0, (c[previous] || 0) - 1), [status]: (c[status] || 0) + 1 }));
     try {
       await apiFetch(`/admin/marg-parties/${party.id}/status`, {
         method: "PUT",
@@ -42,6 +67,7 @@ export default function MargPartiesPage() {
       });
     } catch (err) {
       setParties((prev) => prev.map((x) => (x.id === party.id ? { ...x, status: previous } : x)));
+      setStatusCounts((c) => ({ ...c, [status]: Math.max(0, (c[status] || 0) - 1), [previous]: (c[previous] || 0) + 1 }));
       setStatusError(err.message || "Could not update status");
     } finally {
       setSavingStatusId(null);
@@ -63,14 +89,17 @@ export default function MargPartiesPage() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (search) params.set("search", search);
+    if (statusFilter) params.set("status", statusFilter);
     apiFetch(`/admin/marg-parties?${params.toString()}`)
       .then((data) => {
         setParties(Array.isArray(data.parties) ? data.parties : []);
         setTotal(data.total || 0);
+        if (data.status_counts) setStatusCounts(data.status_counts);
+        if (data.status_totals) setStatusTotals(data.status_totals);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, page, refreshKey]);
+  }, [search, statusFilter, page, refreshKey]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -114,6 +143,60 @@ export default function MargPartiesPage() {
           </form>
         </div>
       </div>
+
+      {/* Filter by our status */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {[
+          ["", "All", "border-gray-300 text-gray-700", "bg-gray-900 text-white border-gray-900"],
+          ["active", "Active", "border-green-200 text-green-700 bg-green-50", "bg-green-600 text-white border-green-600"],
+          ["inactive", "Inactive", "border-amber-200 text-amber-800 bg-amber-50", "bg-amber-500 text-white border-amber-500"],
+          ["duplicate", "Duplicate", "border-red-200 text-red-700 bg-red-50", "bg-red-600 text-white border-red-600"],
+        ].map(([key, label, idle, on]) => {
+          const n = key ? statusCounts[key] || 0 : (statusCounts.active || 0) + (statusCounts.inactive || 0) + (statusCounts.duplicate || 0);
+          return (
+            <button
+              key={key || "all"}
+              onClick={() => {
+                setStatusFilter(key);
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${statusFilter === key ? on : idle + " hover:opacity-80"}`}
+            >
+              {label} <span className="opacity-75">({n})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Ledger report for what's filtered (status + search) */}
+      {(() => {
+        const t = statusFilter ? statusTotals[statusFilter] || EMPTY_TOTALS : sumTotals(STATUS_KEYS.map((k) => statusTotals[k]));
+        const label = statusFilter ? statusFilter[0].toUpperCase() + statusFilter.slice(1) : "All";
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
+              Ledger report — {label} parties{search ? ` matching "${search}"` : ""}
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <ReportFigure label="Ledgers" value={t.parties.toLocaleString("en-IN")} />
+              <ReportFigure label="Net balance" value={fmtTotal(t.net)} strong />
+              <ReportFigure label="Receivable (positive)" value={fmtTotal(t.receivable)} tone="text-green-700" />
+              <ReportFigure label="Credit (negative)" value={fmtTotal(t.credit)} tone="text-red-600" />
+              <ReportFigure label="Zero balance" value={t.zero_balance.toLocaleString("en-IN")} />
+            </div>
+            {!statusFilter && (
+              <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600">
+                {STATUS_KEYS.map((k) => (
+                  <span key={k}>
+                    <span className="font-medium capitalize">{k}</span>: {(statusTotals[k]?.parties || 0).toLocaleString("en-IN")} ledgers ·{" "}
+                    {fmtTotal(statusTotals[k]?.net)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {loading ? (
         <Loader />
@@ -197,10 +280,32 @@ export default function MargPartiesPage() {
   );
 }
 
+function ReportFigure({ label, value, strong = false, tone = "text-gray-900" }) {
+  return (
+    <div>
+      <p className="text-[11px] text-gray-400">{label}</p>
+      <p className={`tabular-nums ${strong ? "text-lg font-semibold" : "text-base font-medium"} ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+// Our status colours: green Active, yellow Inactive, red Duplicate — a light
+// tint on the row, a stronger one on the dropdown.
+const STATUS_ROW = {
+  active: "bg-green-50/40 hover:bg-green-50",
+  inactive: "bg-amber-50/60 hover:bg-amber-50",
+  duplicate: "bg-red-50/60 hover:bg-red-50",
+};
+const STATUS_SELECT = {
+  active: "border-green-300 text-green-800 bg-green-100",
+  inactive: "border-amber-300 text-amber-900 bg-amber-100",
+  duplicate: "border-red-300 text-red-800 bg-red-100",
+};
+
 function PartyRow({ p, open, onToggle, onCreateClick, onStatusChange, saving }) {
   return (
     <>
-      <tr className={`hover:bg-gray-50 transition-colors ${p.is_deleted ? "opacity-40" : ""}`}>
+      <tr className={`transition-colors ${STATUS_ROW[p.status || "active"]} ${p.is_deleted ? "opacity-40" : ""}`}>
         <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.rid}</td>
         <td className="px-4 py-3">
           <button
@@ -233,13 +338,12 @@ function PartyRow({ p, open, onToggle, onCreateClick, onStatusChange, saving }) 
             value={p.status || "active"}
             disabled={saving}
             onChange={(e) => onStatusChange(e.target.value)}
-            className={`text-xs px-2 py-1 rounded-lg border bg-white focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 ${
-              (p.status || "active") === "duplicate"
-                ? "border-amber-300 text-amber-700 bg-amber-50"
-                : "border-gray-200 text-gray-700"
+            className={`text-xs font-medium px-2 py-1 rounded-lg border focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 ${
+              STATUS_SELECT[p.status || "active"]
             }`}
           >
             <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
             <option value="duplicate">Duplicate</option>
           </select>
         </td>

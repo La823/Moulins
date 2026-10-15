@@ -48,18 +48,24 @@ func ListProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/marg-parties?search=&page= — one page (50 per page) of synced
-// Marg party/ledger accounts, plus the total matching count.
+// GET /admin/marg-parties?search=&status=&page= — one page (50 per page) of
+// synced Marg party/ledger accounts, plus the total matching count and a
+// count per status. status: active | inactive | duplicate, or empty for all.
 func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		search := r.URL.Query().Get("search")
+		status := r.URL.Query().Get("status")
+		if status != "" && !models.MargPartyStatuses[status] {
+			http.Error(w, "status must be active, inactive or duplicate", http.StatusBadRequest)
+			return
+		}
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
 			page = 1
 		}
 		offset := (page - 1) * margPartiesPageSize
 
-		result, err := models.GetMargParties(r.Context(), db, search, margPartiesPageSize, offset)
+		result, err := models.GetMargParties(r.Context(), db, search, status, margPartiesPageSize, offset)
 		if err != nil {
 			log.Printf("list marg parties error: %v", err)
 			http.Error(w, "could not fetch marg parties", http.StatusInternalServerError)
@@ -67,10 +73,12 @@ func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"parties":   result.Parties,
-			"total":     result.Total,
-			"page":      page,
-			"page_size": margPartiesPageSize,
+			"parties":       result.Parties,
+			"total":         result.Total,
+			"status_counts": result.StatusCounts,
+			"status_totals": result.StatusTotals,
+			"page":          page,
+			"page_size":     margPartiesPageSize,
 		})
 	}
 }
@@ -95,7 +103,7 @@ func UpdatePartyStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		if !models.MargPartyStatuses[body.Status] {
-			http.Error(w, "status must be \"active\" or \"duplicate\"", http.StatusBadRequest)
+			http.Error(w, "status must be \"active\", \"inactive\" or \"duplicate\"", http.StatusBadRequest)
 			return
 		}
 
