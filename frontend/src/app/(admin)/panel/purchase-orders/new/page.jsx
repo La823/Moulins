@@ -3,9 +3,22 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import SpecFieldInput, {
+  SpecFieldLabel,
+  missingRequired,
+  visibleFieldIds,
+  withoutHidden,
+  hiddenWithValues,
+} from "@/components/admin/SpecFieldInput";
 
 const CATEGORIES = ["Ortho", "Neuro", "Gastro", "Respiratory", "Dema", "Gynae", "General", "Misc", "Cardio", "Diabetic"];
 const TYPES = ["TABLET", "CAPSULE", "SOFTGEL CAPSULE", "SACHET", "DRY SYRUP", "SYRUP", "OINTMENT", "SPRAY", "ROLL ON", "INJECTION", "DROPS"];
+
+// The product is now picked from the product catalog (not the PO master
+// list's names), and its specifications are brought onto the PO. The older
+// name-search / spec-preview code below is kept, switched off by this flag,
+// until the new flow has settled.
+const USE_CATALOG = true;
 
 export default function NewPurchaseOrderPage() {
   const router = useRouter();
@@ -49,6 +62,23 @@ export default function NewPurchaseOrderPage() {
   const [productSpecPreview, setProductSpecPreview] = useState(null);
   const [pmsTypes, setPmsTypes] = useState([]);
 
+  // Catalog flow: search results, the picked product, and its
+  // specifications (its form's fields + the product's default values),
+  // which can be changed for this PO — and optionally saved back as the
+  // product's defaults.
+  const [catalogResults, setCatalogResults] = useState([]);
+  const [catalogSearching, setCatalogSearching] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [productSpecs, setProductSpecs] = useState(null); // { product_form, type: {fields}, ... }
+  const [specValues, setSpecValues] = useState({});
+  const [specsLoading, setSpecsLoading] = useState(false);
+  const [saveSpecsAsDefault, setSaveSpecsAsDefault] = useState(false);
+  const [uploadingFieldId, setUploadingFieldId] = useState(null);
+  const [composition, setComposition] = useState("");
+  // "Save as product's default" — straight from the specifications box
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [defaultMsg, setDefaultMsg] = useState(null); // { ok, text }
+
   useEffect(() => {
     apiFetch("/admin/manufacturers")
       .then((mfrs) => setManufacturers(Array.isArray(mfrs) ? mfrs : []))
@@ -76,7 +106,7 @@ export default function NewPurchaseOrderPage() {
   // 1800+ rows, too many to load client-side — a name suggestion list,
   // not autofill of other fields).
   useEffect(() => {
-    if (isBlank) return;
+    if (isBlank || USE_CATALOG) return;
     const name = form.product_name.trim();
     if (!name) {
       setLastPoPreview(null);
@@ -156,12 +186,169 @@ export default function NewPurchaseOrderPage() {
     }
   };
 
+  // Catalog search, debounced. Only while nothing is picked — picking a
+  // product fills the box with its name.
+  useEffect(() => {
+    if (isBlank || !USE_CATALOG || selectedProduct) return;
+    const q = form.product_name.trim();
+    if (!q) {
+      setCatalogResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setCatalogSearching(true);
+      apiFetch(`/admin/purchase-order-master/catalog-products?search=${encodeURIComponent(q)}&limit=20`)
+        .then((list) => !cancelled && setCatalogResults(Array.isArray(list) ? list : []))
+        .catch(() => !cancelled && setCatalogResults([]))
+        .finally(() => !cancelled && setCatalogSearching(false));
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form.product_name, selectedProduct, isBlank]);
+
+  // Picking a catalog product: name, Type (its form), Packing, MRP and
+  // Composition from the catalog; Quantity, Rate, Manufacturer and Category
+  // from the last PO for it; and its specifications, ready to edit.
+  const selectCatalogProduct = async (p) => {
+    setSelectedProduct(p);
+    setShowProductDropdown(false);
+    setCatalogResults([]);
+    setPrefillNotice("");
+    setComposition(p.key_ingredients || "");
+    setSaveSpecsAsDefault(false);
+    // A new pick starts clean: nothing left over from the previous product.
+    // The catalog fills type / packing / MRP; the last PO (below), if there
+    // is one, fills quantity / rate / manufacturer / category.
+    setDefaultMsg(null);
+    setForm((prev) => ({
+      ...prev,
+      product_id: p.id,
+      product_name: p.name,
+      quantity: 0,
+      rate: "",
+      manufacturer_id: "",
+      category: "",
+      remarks: "",
+      type: p.product_form || "",
+      specifications: p.pack_size || "",
+      mrp: p.mrp != null ? String(p.mrp) : "",
+    }));
+
+    setSpecsLoading(true);
+    setProductSpecs(null);
+    setSpecValues({});
+    apiFetch(`/admin/purchase-order-master/catalog-products/${p.id}`)
+      .then((d) => {
+        const specs = d?.specs || null;
+        setProductSpecs(specs);
+        let v = specs?.specifications || {};
+        if (typeof v === "string") {
+          try {
+            v = JSON.parse(v);
+          } catch {
+            v = {};
+          }
+        }
+        // defaults saved under a different form's type don't apply
+        setSpecValues(specs?.type && specs.saved_pms_type_id === specs.type.id ? v || {} : {});
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setSpecsLoading(false));
+
+    try {
+      const last = await apiFetch(`/admin/purchase-orders/last-by-product?product_name=${encodeURIComponent(p.name)}`);
+      setLastPoPreview(last || null);
+      if (last) {
+        setForm((prev) => ({
+          ...prev,
+          quantity: last.quantity != null ? String(last.quantity) : prev.quantity,
+          rate: last.rate != null ? String(last.rate) : prev.rate,
+          manufacturer_id: resolveManufacturerId(last) || prev.manufacturer_id,
+          category: last.category || prev.category,
+        }));
+        setPrefillNotice(
+          `po:Quantity, rate and manufacturer from ${last.po_number} (${new Date(last.po_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})`
+        );
+      } else {
+        setPrefillNotice("none:No previous PO for this product");
+      }
+    } catch {
+      setLastPoPreview(null);
+      setPrefillNotice("none:No previous PO for this product");
+    }
+  };
+
+  const clearSelectedProduct = () => {
+    setSelectedProduct(null);
+    setProductSpecs(null);
+    setSpecValues({});
+    setLastPoPreview(null);
+    setComposition("");
+    setPrefillNotice("");
+  };
+
+  const uploadSpecImage = async (fieldId, file) => {
+    setUploadingFieldId(fieldId);
+    try {
+      const { upload_url, image_url } = await apiFetch("/admin/product-specs/upload-url", {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name }),
+      });
+      await fetch(upload_url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      return image_url;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setUploadingFieldId(null);
+    }
+  };
+
+  // Saves what's in the specifications box as the product's own defaults,
+  // right away — no PO needed. Same rules as the product page.
+  const saveAsProductDefault = async () => {
+    const missing = missingRequired(specFields, specValues);
+    if (missing.length) {
+      setDefaultMsg({ ok: false, text: `Fill in the required fields first: ${missing.join(", ")}` });
+      return;
+    }
+    setSavingDefault(true);
+    setDefaultMsg(null);
+    try {
+      const updated = await apiFetch(`/admin/purchase-order-master/catalog-products/${selectedProduct.id}/specifications`, {
+        method: "PUT",
+        body: JSON.stringify({ specifications: withoutHidden(specFields, specValues) }),
+      });
+      if (updated) setProductSpecs(updated);
+      setDefaultMsg({ ok: true, text: `Saved as ${selectedProduct.name}'s default specifications` });
+    } catch (err) {
+      setDefaultMsg({ ok: false, text: err.message });
+    } finally {
+      setSavingDefault(false);
+    }
+  };
+
+  const specFields = productSpecs?.type?.fields || [];
+  const shownSpecIds = visibleFieldIds(specFields, specValues);
+
   const estimate = (parseFloat(form.quantity) || 0) * (parseFloat(form.rate) || 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.manufacturer_id || !form.product_name.trim()) {
       setError("Manufacturer and product name are required");
+      return;
+    }
+    if (USE_CATALOG && !isBlank && !selectedProduct) {
+      setError("Pick the product from the catalog list");
+      return;
+    }
+    const missing = missingRequired(specFields, specValues);
+    if (missing.length) {
+      setError(`Please fill in the required specifications: ${missing.join(", ")}`);
       return;
     }
     setSubmitting(true);
@@ -182,8 +369,21 @@ export default function NewPurchaseOrderPage() {
           manufacturer_id: form.manufacturer_id,
           category: form.category || null,
           remarks: form.remarks.trim() || null,
+          // catalog flow: the product by id, its composition, and the
+          // specifications as set on this page
+          ...(selectedProduct
+            ? {
+                catalog_product_id: selectedProduct.id,
+                composition: composition.trim() || null,
+                pms_specifications: productSpecs?.type ? withoutHidden(specFields, specValues) : null,
+                save_specs_as_default: saveSpecsAsDefault,
+              }
+            : {}),
         }),
       });
+      if (res.default_specs_saved === false) {
+        alert(`${res.po_number} was created, but the product's default specifications weren't updated: ${res.default_specs_error}`);
+      }
       router.push(`/panel/purchase-order-master?highlight=${res.id}`);
     } catch (err) {
       setError(err.message);
@@ -240,14 +440,54 @@ export default function NewPurchaseOrderPage() {
               value={form.product_name}
               onChange={(e) => {
                 setForm({ ...form, product_name: e.target.value, product_id: null });
+                if (USE_CATALOG && selectedProduct) clearSelectedProduct();
                 if (!isBlank) setShowProductDropdown(true);
                 setPrefillNotice("");
               }}
               onFocus={() => !isBlank && setShowProductDropdown(true)}
-              placeholder={isBlank ? "Enter the new product's name..." : "Search or type product name..."}
+              placeholder={
+                isBlank
+                  ? "Enter the new product's name..."
+                  : USE_CATALOG
+                  ? "Search the product catalog by name or code..."
+                  : "Search or type product name..."
+              }
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
             />
-            {!isBlank && showProductDropdown && masterProductNames.length > 0 && (
+            {/* catalog products — the only choices under the catalog flow */}
+            {USE_CATALOG && !isBlank && showProductDropdown && !selectedProduct && form.product_name.trim() && (
+              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+                {catalogSearching && catalogResults.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-gray-400">Searching the catalog…</p>
+                )}
+                {!catalogSearching && catalogResults.length === 0 && (
+                  <p className="px-3 py-2 text-sm text-gray-400">
+                    No catalog product matches. A brand-new product goes through{" "}
+                    <a href="/panel/purchase-orders/new?blank=1" className="text-blue-600 hover:underline">
+                      New product PO
+                    </a>
+                    .
+                  </p>
+                )}
+                {catalogResults.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => selectCatalogProduct(p)}
+                    className="w-full px-3 py-2 text-left hover:bg-gray-50"
+                  >
+                    <span className={`block text-sm truncate ${p.is_active ? "text-gray-900" : "text-gray-400"}`}>
+                      {p.name}
+                      {!p.is_active && " (inactive)"}
+                    </span>
+                    <span className="block text-[11px] text-gray-400 truncate">
+                      {[p.product_form, p.pack_size, p.inventory_code || p.marg_code].filter(Boolean).join(" · ")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!USE_CATALOG && !isBlank && showProductDropdown && masterProductNames.length > 0 && (
               <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
                 {masterProductNames.map((name) => (
                   <button
@@ -264,6 +504,20 @@ export default function NewPurchaseOrderPage() {
               <p className="text-[11px] text-gray-400 mt-1">
                 New product \u2014 nothing to prefill, fill in every field below manually.
               </p>
+            ) : USE_CATALOG ? (
+              <p className="text-[11px] text-gray-400 mt-1">
+                {selectedProduct ? (
+                  <>
+                    Catalog product{selectedProduct.product_form ? ` · ${selectedProduct.product_form}` : ""}
+                    {selectedProduct.inventory_code ? ` · ${selectedProduct.inventory_code}` : ""} —{" "}
+                    <button type="button" onClick={() => { clearSelectedProduct(); setForm((f) => ({ ...f, product_name: "", product_id: null })); }} className="text-blue-600 hover:underline">
+                      change
+                    </button>
+                  </>
+                ) : (
+                  "Pick the product from the catalog — its type, packing, MRP, composition and specifications fill in"
+                )}
+              </p>
             ) : (
               <p className="text-[11px] text-gray-400 mt-1">
                 Pick a name from the list to prefill from its last PO, or type a new product name
@@ -278,7 +532,7 @@ export default function NewPurchaseOrderPage() {
             })()}
 
             {/* Live preview: last PO for this exact name (searched only against past POs) */}
-            {!isBlank && form.product_name.trim() && (
+            {!isBlank && form.product_name.trim() && (!USE_CATALOG || selectedProduct) && (
               <div className="mt-3 space-y-2">
                 {previewLoading && <p className="text-[11px] text-gray-400">Searching...</p>}
 
@@ -307,11 +561,11 @@ export default function NewPurchaseOrderPage() {
                   </div>
                 )}
 
-                {!previewLoading && !lastPoPreview && (
+                {!USE_CATALOG && !previewLoading && !lastPoPreview && (
                   <p className="text-[11px] text-gray-400">No previous PO found for this name.</p>
                 )}
 
-                {!previewLoading && productSpecPreview && (() => {
+                {!USE_CATALOG && !previewLoading && productSpecPreview && (() => {
                   const pmsType = pmsTypes.find((t) => t.id === productSpecPreview.pms_type_id);
                   const specs = productSpecPreview.specifications || {};
                   return (
@@ -386,9 +640,92 @@ export default function NewPurchaseOrderPage() {
               >
                 <option value="">Select type</option>
                 {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                {/* the picked product's form, when it isn't one of the fixed names */}
+                {form.type && !TYPES.includes(form.type) && <option value={form.type}>{form.type}</option>}
               </select>
             </div>
           </div>
+
+          {USE_CATALOG && selectedProduct && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Composition</label>
+              <input
+                type="text"
+                value={composition}
+                onChange={(e) => setComposition(e.target.value)}
+                placeholder="e.g. Rifaximin 200 mg + Ornidazole 400 mg"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">From the catalog — printed on the PO PDF.</p>
+            </div>
+          )}
+
+          {/* The product's specifications, from its form's fields — filled
+              with the product's defaults, changeable for this PO */}
+          {USE_CATALOG && selectedProduct && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-800">
+                  Product specifications{productSpecs?.type ? ` — ${productSpecs.type.name}` : ""}
+                </p>
+                {specsLoading && <span className="text-[11px] text-gray-400">Loading…</span>}
+              </div>
+              {!specsLoading && !productSpecs?.product_form_id && (
+                <p className="text-xs text-gray-500">This product has no form set, so it has no specification fields.</p>
+              )}
+              {!specsLoading && productSpecs?.product_form_id && !productSpecs?.type?.fields?.length && (
+                <p className="text-xs text-gray-500">
+                  No specification fields are set up for {productSpecs.product_form} yet.
+                </p>
+              )}
+              {!specsLoading && specFields.length > 0 && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {specFields
+                      .filter((f) => shownSpecIds.has(f.id))
+                      .map((f) => (
+                        <div key={f.id}>
+                          <SpecFieldLabel field={f} />
+                          <SpecFieldInput
+                            field={f}
+                            value={specValues[f.id]}
+                            onChange={(v) => setSpecValues((prev) => ({ ...prev, [f.id]: v }))}
+                            onUpload={(file) => uploadSpecImage(f.id, file)}
+                            uploading={uploadingFieldId === f.id}
+                          />
+                        </div>
+                      ))}
+                  </div>
+                  {hiddenWithValues(specFields, specValues).length > 0 && (
+                    <p className="text-[11px] text-gray-500">
+                      Answers in hidden fields ({hiddenWithValues(specFields, specValues).map((f) => f.field_name).join(", ")}) won&apos;t be saved.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={saveAsProductDefault}
+                      disabled={savingDefault}
+                      className="px-3 py-1.5 border border-blue-300 bg-white text-blue-700 rounded-md text-xs font-medium hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      {savingDefault ? "Saving…" : "Save as product's default"}
+                    </button>
+                    {defaultMsg && (
+                      <span className={`text-xs ${defaultMsg.ok ? "text-green-700" : "text-red-600"}`}>
+                        {defaultMsg.ok ? "✓ " : ""}
+                        {defaultMsg.text}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    Filled from {selectedProduct.name}&apos;s default specifications (empty fields are ones not set yet).
+                    Changes here go on this PO; press &quot;Save as product&apos;s default&quot; to also keep them as the
+                    product&apos;s defaults.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Qty / MRP / Rate / Estimate */}
           <div className="grid grid-cols-4 gap-4">

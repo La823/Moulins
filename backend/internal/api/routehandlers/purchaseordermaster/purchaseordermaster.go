@@ -7,6 +7,7 @@ package purchaseordermaster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log"
@@ -183,8 +184,20 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// a catalog pick is recorded under the product's own name
+		if req.CatalogProductID != nil {
+			if p, err := models.GetCatalogProductForPO(r.Context(), db, *req.CatalogProductID); err == nil {
+				req.ProductName = p.Name
+			}
+		}
+
 		id, poNumber, err := models.CreatePurchaseOrderInMaster(r.Context(), db, req)
 		if err != nil {
+			var missing *models.MissingRequiredError
+			if errors.As(err, &missing) || errors.Is(err, models.ErrCatalogProductNotFound) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			log.Printf("create master PO error: %v", err)
 			http.Error(w, "could not create purchase order", http.StatusInternalServerError)
 			return
@@ -192,12 +205,111 @@ func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		models.LogPOFieldChange(r.Context(), db, models.POSourceMaster, strconv.Itoa(id), &poNumber, "created", nil, &req.ProductName, actorID(r))
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]any{
+		resp := map[string]any{
 			"id":        id,
 			"po_number": poNumber,
-		})
+		}
+		// "Also save as this product's defaults" — after the PO, so a
+		// problem here never loses the PO; reported back instead.
+		if req.SaveSpecsAsDefault && req.CatalogProductID != nil {
+			values := map[string]any{}
+			if len(req.PMSSpecifications) > 0 && string(req.PMSSpecifications) != "null" {
+				_ = json.Unmarshal(req.PMSSpecifications, &values)
+			}
+			if err := models.SaveProductDefaultSpecs(r.Context(), db, *req.CatalogProductID, values); err != nil {
+				log.Printf("create master PO: save default specs error: %v", err)
+				resp["default_specs_saved"] = false
+				resp["default_specs_error"] = err.Error()
+			} else {
+				resp["default_specs_saved"] = true
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+// GET /admin/purchase-order-master/catalog-products?search=&limit=
+// The create-PO page's product dropdown: catalog products only.
+func CatalogProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		list, err := models.SearchCatalogProductsForPO(r.Context(), db, r.URL.Query().Get("search"), limit)
+		if err != nil {
+			log.Printf("catalog products for PO error: %v", err)
+			http.Error(w, "could not search products", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+	}
+}
+
+// GET /admin/purchase-order-master/catalog-products/{productId}
+// One catalog product with its specifications (its form's fields and the
+// product's default values) for the create-PO page.
+func CatalogProductHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		productID, err := uuid.Parse(mux.Vars(r)["productId"])
+		if err != nil {
+			http.Error(w, "invalid product id", http.StatusBadRequest)
+			return
+		}
+		p, err := models.GetCatalogProductForPO(r.Context(), db, productID)
+		if err != nil {
+			http.Error(w, "product not found", http.StatusNotFound)
+			return
+		}
+		specs, err := models.GetProductDefaultSpecs(r.Context(), db, productID)
+		if err != nil {
+			log.Printf("catalog product specs for PO error: %v", err)
+			http.Error(w, "could not load the product's specifications", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"product": p, "specs": specs})
+	}
+}
+
+// PUT /admin/purchase-order-master/catalog-products/{productId}/specifications
+// { "specifications": { "28": true, "30": "Bottle" } } — the create-PO
+// page's "Save as product's default": updates the product's default
+// specifications straight away (same rules as the product page: its form's
+// fields only, mandatory ones filled, hidden ones dropped).
+func SaveCatalogProductSpecsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		productID, err := uuid.Parse(mux.Vars(r)["productId"])
+		if err != nil {
+			http.Error(w, "invalid product id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Specifications map[string]any `json:"specifications"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		err = models.SaveProductDefaultSpecs(r.Context(), db, productID, req.Specifications)
+		var missing *models.MissingRequiredError
+		if errors.Is(err, models.ErrNoSpecTypeForForm) || errors.As(err, &missing) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			log.Printf("save catalog product specs from PO page error: %v", err)
+			http.Error(w, "could not save the product's default specifications", http.StatusInternalServerError)
+			return
+		}
+		specs, err := models.GetProductDefaultSpecs(r.Context(), db, productID)
+		if err != nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(specs)
 	}
 }
 

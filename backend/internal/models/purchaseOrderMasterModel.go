@@ -626,7 +626,84 @@ type CreateMasterPORequest struct {
 	Remarks        *string    `json:"remarks,omitempty"`
 	Category       *string    `json:"category,omitempty"`
 	Status         string     `json:"status,omitempty"`
+
+	// Set when the product was picked from the catalog (the create-PO page
+	// now only offers catalog products). The PO keeps the link by id, takes
+	// the product's code, and its specifications come from this product's
+	// form — PMSSpecifications when staff edited them on the PO page,
+	// otherwise the product's defaults. Older callers leave these empty and
+	// get the old name-matched snapshot.
+	CatalogProductID  *uuid.UUID      `json:"catalog_product_id,omitempty"`
+	Composition       *string         `json:"composition,omitempty"`
+	PMSSpecifications json.RawMessage `json:"pms_specifications,omitempty"`
+	// SaveSpecsAsDefault: also make these the product's default
+	// specifications. Applied by the handler after the PO is created.
+	SaveSpecsAsDefault bool `json:"save_specs_as_default,omitempty"`
 }
+
+// CatalogProductForPO is a catalog product as the create-PO page offers it.
+type CatalogProductForPO struct {
+	ID             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	IsActive       bool      `json:"is_active"`
+	ProductFormID  *int      `json:"product_form_id"`
+	ProductForm    string    `json:"product_form"`
+	PackSize       string    `json:"pack_size"`
+	MRP            *float64  `json:"mrp"`
+	MRPUnit        string    `json:"mrp_unit"`
+	KeyIngredients string    `json:"key_ingredients"`
+	MargCode       string    `json:"marg_code"`
+	InventoryCode  string    `json:"inventory_code"`
+}
+
+const catalogProductForPOSelect = `
+	SELECT p.id, p.name, COALESCE(p.is_active, TRUE), p.product_form_id, COALESCE(f.name, p.product_form, ''),
+	       COALESCE(p.pack_size, ''), p.mrp, COALESCE(p.mrp_unit, ''), COALESCE(p.key_ingredients, ''),
+	       COALESCE(p.marg_code, ''), COALESCE(p.inventory_code, '')
+	FROM products p LEFT JOIN product_forms f ON f.id = p.product_form_id`
+
+func scanCatalogProductForPO(row pgx.Row) (*CatalogProductForPO, error) {
+	var c CatalogProductForPO
+	if err := row.Scan(&c.ID, &c.Name, &c.IsActive, &c.ProductFormID, &c.ProductForm, &c.PackSize, &c.MRP,
+		&c.MRPUnit, &c.KeyIngredients, &c.MargCode, &c.InventoryCode); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// SearchCatalogProductsForPO finds catalog products by name, Marg code or
+// inventory code — active ones first.
+func SearchCatalogProductsForPO(ctx context.Context, db *pgxpool.Pool, search string, limit int) ([]CatalogProductForPO, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	q := "%" + strings.TrimSpace(search) + "%"
+	rows, err := db.Query(ctx, catalogProductForPOSelect+`
+		WHERE p.name ILIKE $1 OR p.marg_code ILIKE $1 OR p.inventory_code ILIKE $1
+		ORDER BY COALESCE(p.is_active, TRUE) DESC, lower(p.name)
+		LIMIT $2`, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CatalogProductForPO{}
+	for rows.Next() {
+		c, err := scanCatalogProductForPO(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, rows.Err()
+}
+
+// GetCatalogProductForPO loads one catalog product by id.
+func GetCatalogProductForPO(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) (*CatalogProductForPO, error) {
+	return scanCatalogProductForPO(db.QueryRow(ctx, catalogProductForPOSelect+` WHERE p.id = $1`, id))
+}
+
+// ErrCatalogProductNotFound: the picked catalog product no longer exists.
+var ErrCatalogProductNotFound = fmt.Errorf("that catalog product no longer exists — pick it again")
 
 // CreatePurchaseOrderInMaster inserts a new PO directly into the master
 // list, continuing its existing sr_no/po_number sequence (MP1864, MP1865,
@@ -669,20 +746,53 @@ func CreatePurchaseOrderInMaster(ctx context.Context, db *pgxpool.Pool, req Crea
 	// has no spec assigned yet — that's not an error, just nothing to copy.
 	var pmsTypeID *int
 	var pmsSpecs json.RawMessage
-	_ = db.QueryRow(ctx,
-		`SELECT pms_type_id, pms_specifications FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))`,
-		req.ProductName,
-	).Scan(&pmsTypeID, &pmsSpecs)
+	var productCode *string
+	if req.CatalogProductID != nil {
+		// Picked from the catalog: the product's own name and code, and the
+		// specifications of its form's type — as edited on the PO page, or
+		// the product's defaults. The rules apply: mandatory fields filled,
+		// hidden fields dropped.
+		p, err := GetCatalogProductForPO(ctx, db, *req.CatalogProductID)
+		if err != nil {
+			return 0, "", ErrCatalogProductNotFound
+		}
+		req.ProductName = p.Name
+		if p.MargCode != "" {
+			productCode = &p.MargCode
+		}
+		d, err := GetProductDefaultSpecs(ctx, db, *req.CatalogProductID)
+		if err != nil {
+			return 0, "", err
+		}
+		if d.Type != nil {
+			specs := req.PMSSpecifications
+			if len(specs) == 0 || string(specs) == "null" {
+				specs = d.Specifications
+			}
+			normalized, err := NormalizeSpecs(ctx, db, &d.Type.ID, specs)
+			if err != nil {
+				return 0, "", err
+			}
+			pmsTypeID, pmsSpecs = &d.Type.ID, normalized
+		}
+	} else {
+		_ = db.QueryRow(ctx,
+			`SELECT pms_type_id, pms_specifications FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))`,
+			req.ProductName,
+		).Scan(&pmsTypeID, &pmsSpecs)
+	}
 
 	var id int
 	err := db.QueryRow(ctx,
 		`INSERT INTO purchase_order_master (
 			sr_no, po_date, po_number, product_name, quantity, mrp, mrp_unit_id, rate, estimate,
-			specifications, type, company, remarks, category, status, pms_type_id, pms_specifications
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			specifications, type, company, remarks, category, status, pms_type_id, pms_specifications,
+			catalog_product_id, composition, product_code
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING id`,
 		nextSrNo, req.PODate, poNumber, req.ProductName, req.Quantity, mrpText, req.MrpUnitID, req.Rate, estimate,
 		req.Specifications, req.Type, manufacturerName, req.Remarks, req.Category, req.Status, pmsTypeID, pmsSpecs,
+		req.CatalogProductID, req.Composition, productCode,
 	).Scan(&id)
 	return id, poNumber, err
 }
