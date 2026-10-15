@@ -218,7 +218,7 @@ const NAV_ITEMS = [
     icon: ICONS.others,
     group: [
       { label: "Assignments", href: "/panel/assignments", permission: "assignments_view" },
-      { label: "Attendance", href: "/panel/attendance", permission: "attendance_view" },
+      { label: "Attendance", href: "/panel/attendance", permission: "etime_view" },
       { label: "My Attendance", href: "/panel/my-attendance", employeeOnly: true },
       { label: "Meetings", href: "/panel/meetings", permission: "meetings_view" },
       { label: "Requests", href: "/panel/requests", permission: "requests_view" },

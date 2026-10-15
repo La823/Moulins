@@ -66,9 +66,11 @@ var ValidPermissions = []PermissionDef{
 	{Key: "assignments_delete", Label: "Assignments (Delete)", Desc: "Remove client-employee assignments", Group: "Employees"},
 
 	// Attendance
-	{Key: "attendance_view", Label: "Attendance (View)", Desc: "View employee attendance records", Group: "Employees"},
-	{Key: "attendance_edit", Label: "Attendance (Edit)", Desc: "Mark employee attendance", Group: "Employees"},
-	{Key: "attendance_delete", Label: "Attendance (Delete)", Desc: "Delete attendance records", Group: "Employees"},
+	{Key: "attendance_view", Label: "Manual Attendance (View)", Desc: "View hand-marked attendance records (old Attendance page; no longer in the web menu)", Group: "Employees"},
+	{Key: "attendance_edit", Label: "Manual Attendance (Edit)", Desc: "Mark attendance by hand (old Attendance page; no longer in the web menu)", Group: "Employees"},
+	{Key: "attendance_delete", Label: "Manual Attendance (Delete)", Desc: "Delete hand-marked attendance records", Group: "Employees"},
+	{Key: "etime_view", Label: "Attendance (View)", Desc: "Open the Attendance page: fingerprint-scanner attendance from eTimeOffice", Group: "Employees"},
+	{Key: "etime_edit", Label: "Attendance (Sync)", Desc: "Sync attendance from eTimeOffice and hide employees who have left", Group: "Employees"},
 
 	// Meetings
 	{Key: "meetings_view", Label: "Meetings (View)", Desc: "View and analyze partner/employee doctor meetings", Group: "Meetings & Requests"},

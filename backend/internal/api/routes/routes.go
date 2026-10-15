@@ -18,6 +18,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/dllookup"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/doctors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/emailtemplates"
+	etimeHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/etimeoffice"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/gstlookup"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/health"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/homecarousel"
@@ -382,6 +383,24 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	attendanceDeleteStaff.Use(middleware.StaffOnly)
 	attendanceDeleteStaff.Use(middleware.RequirePermission(db, "attendance_delete", rdb))
 	attendanceDeleteStaff.HandleFunc("/attendance/{id}", attendance.DeleteAttendanceHandler(db)).Methods("DELETE")
+
+	// staff routes — biometric attendance pulled from eTimeOffice (separate
+	// from the manual attendance above)
+	etimeViewStaff := protected.PathPrefix("/admin/etime").Subrouter()
+	etimeViewStaff.Use(middleware.StaffOnly)
+	etimeViewStaff.Use(middleware.RequirePermission(db, "etime_view", rdb))
+	etimeViewStaff.HandleFunc("/status", etimeHandlers.StatusHandler(db)).Methods("GET")
+	etimeViewStaff.HandleFunc("/day", etimeHandlers.DayHandler(db)).Methods("GET")
+	etimeViewStaff.HandleFunc("/month", etimeHandlers.MonthHandler(db)).Methods("GET")
+	etimeViewStaff.HandleFunc("/punches", etimeHandlers.PunchesHandler(db)).Methods("GET")
+	etimeViewStaff.HandleFunc("/employees", etimeHandlers.EmployeesHandler(db)).Methods("GET")
+	etimeViewStaff.HandleFunc("/employees/{code}/month", etimeHandlers.EmployeeMonthHandler(db)).Methods("GET")
+
+	etimeEditStaff := protected.PathPrefix("/admin/etime").Subrouter()
+	etimeEditStaff.Use(middleware.StaffOnly)
+	etimeEditStaff.Use(middleware.RequirePermission(db, "etime_edit", rdb))
+	etimeEditStaff.HandleFunc("/sync", etimeHandlers.SyncHandler(db)).Methods("POST")
+	etimeEditStaff.HandleFunc("/employees/{code}", etimeHandlers.UpdateEmployeeHandler(db)).Methods("PUT")
 
 	// staff routes — settings
 	settingsViewStaff := protected.PathPrefix("/admin").Subrouter()
