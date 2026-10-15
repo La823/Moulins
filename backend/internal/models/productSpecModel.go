@@ -137,11 +137,69 @@ func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
 // CreatePMSField adds a specification field to a product type.
 func CreatePMSField(ctx context.Context, db *pgxpool.Pool, typeID int, fieldName, fieldType string, sortOrder int, isRequired bool) (int, error) {
 	var id int
+	// No position given: the new field goes last, after any reordering.
 	err := db.QueryRow(ctx,
-		"INSERT INTO pms_fields (type_id, field_name, field_type, sort_order, is_required) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		`INSERT INTO pms_fields (type_id, field_name, field_type, sort_order, is_required)
+		 SELECT $1, $2, $3,
+		        CASE WHEN $4 > 0 THEN $4 ELSE COALESCE((SELECT MAX(sort_order) FROM pms_fields WHERE type_id = $1), 0) + 1 END,
+		        $5
+		 RETURNING id`,
 		typeID, fieldName, fieldType, sortOrder, isRequired,
 	).Scan(&id)
 	return id, err
+}
+
+// ErrFieldOrder: the list sent isn't exactly this type's fields.
+var ErrFieldOrder = fmt.Errorf("the field order must list each of this type's fields exactly once")
+
+// ReorderPMSFields sets a type's field order to fieldIDs (first = top), in
+// one statement. fieldIDs must be exactly the type's fields, so a stale
+// page can't scramble an order someone else changed.
+func ReorderPMSFields(ctx context.Context, db *pgxpool.Pool, typeID int, fieldIDs []int) error {
+	var current []int
+	rows, err := db.Query(ctx, "SELECT id FROM pms_fields WHERE type_id = $1", typeID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		current = append(current, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	seen := make(map[int]bool, len(fieldIDs))
+	for _, id := range fieldIDs {
+		if seen[id] {
+			return ErrFieldOrder
+		}
+		seen[id] = true
+	}
+	if len(fieldIDs) != len(current) {
+		return ErrFieldOrder
+	}
+	for _, id := range current {
+		if !seen[id] {
+			return ErrFieldOrder
+		}
+	}
+
+	ids := make([]int32, len(fieldIDs))
+	for i, id := range fieldIDs {
+		ids[i] = int32(id)
+	}
+	_, err = db.Exec(ctx,
+		`UPDATE pms_fields f SET sort_order = x.ord
+		 FROM unnest($1::int[]) WITH ORDINALITY AS x(id, ord)
+		 WHERE f.id = x.id AND f.type_id = $2`,
+		ids, typeID)
+	return err
 }
 
 // SetPMSFieldRequired turns a field's "mandatory" setting on or off.

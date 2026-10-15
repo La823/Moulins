@@ -74,6 +74,36 @@ func CreateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// PUT /admin/product-specs/types/{id}/field-order  { "field_ids": [21, 19, 20] }
+// Saves the order of a type's fields (first = top) after a drag.
+func ReorderFieldsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		typeID, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid type id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			FieldIDs []int `json:"field_ids"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		err = models.ReorderPMSFields(r.Context(), db, typeID, req.FieldIDs)
+		if errors.Is(err, models.ErrFieldOrder) {
+			http.Error(w, err.Error()+" — reload the page and try again", http.StatusConflict)
+			return
+		}
+		if err != nil {
+			log.Printf("reorder pms fields error: %v", err)
+			http.Error(w, "could not save the order", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // PATCH /admin/product-specs/fields/{id}
 // Either or both of:
 //

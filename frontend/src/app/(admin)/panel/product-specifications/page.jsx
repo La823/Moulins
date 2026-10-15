@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { apiFetch } from "@/lib/api";
 
 const FIELD_TYPES = [
@@ -91,6 +100,32 @@ export default function ProductSpecificationsPage() {
     } catch (err) {
       setError(err.message);
       return false;
+    }
+  }
+
+  // drag-and-drop field order — moved at once, then saved; a refusal
+  // (e.g. someone else changed the fields) reloads the real order
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  async function onFieldDragEnd(typeId, event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const type = types.find((t) => t.id === typeId);
+    const from = type.fields.findIndex((f) => f.id === active.id);
+    const to = type.fields.findIndex((f) => f.id === over.id);
+    const fields = arrayMove(type.fields, from, to);
+    setTypes((prev) => prev.map((t) => (t.id === typeId ? { ...t, fields } : t)));
+    setError("");
+    try {
+      await apiFetch(`/admin/product-specs/types/${typeId}/field-order`, {
+        method: "PUT",
+        body: JSON.stringify({ field_ids: fields.map((f) => f.id) }),
+      });
+    } catch (err) {
+      setError(err.message);
+      loadTypes();
     }
   }
 
@@ -192,10 +227,25 @@ export default function ProductSpecificationsPage() {
                   {t.fields.length === 0 && (
                     <p className="text-xs text-gray-400">No specification fields yet.</p>
                   )}
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => onFieldDragEnd(t.id, e)}>
+                  <SortableContext items={t.fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
                   {t.fields.map((f) => (
-                    <div key={f.id} className="border border-gray-200 rounded-lg p-3">
+                    <SortableField key={f.id} id={f.id}>
+                    {(handle) => (
+                    <div className="border border-gray-200 rounded-lg p-3 bg-white">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            {...handle}
+                            title="Drag to reorder"
+                            aria-label={`Move ${f.field_name}`}
+                            className="-ml-1 px-1 text-gray-300 hover:text-gray-600 cursor-grab active:cursor-grabbing touch-none"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M7 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-1.5 7.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM16 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-1.5 7.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM16 16a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                            </svg>
+                          </button>
                           <span className="text-sm text-gray-800 font-medium">{f.field_name}</span>
                           <span className="text-[10px] uppercase tracking-wide text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
                             {f.field_type}
@@ -267,7 +317,11 @@ export default function ProductSpecificationsPage() {
                         </div>
                       )}
                     </div>
+                    )}
+                    </SortableField>
                   ))}
+                  </SortableContext>
+                  </DndContext>
 
                   <div className="flex items-center gap-2 pt-1">
                     <input
@@ -428,6 +482,27 @@ function ShowIfEditor({ field, fields, onSave }) {
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+// One field card in the drag-to-reorder list. Only the grip handle starts a
+// drag, so the card's checkboxes, buttons and inputs work as normal.
+function SortableField({ id, children }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        position: "relative",
+        zIndex: isDragging ? 10 : undefined,
+        opacity: isDragging ? 0.85 : 1,
+      }}
+      className={isDragging ? "shadow-lg rounded-lg" : ""}
+    >
+      {children({ ref: setActivatorNodeRef, ...attributes, ...listeners })}
     </div>
   );
 }

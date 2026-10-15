@@ -477,6 +477,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecEditStaff.Use(middleware.StaffOnly)
 	productSpecEditStaff.Use(middleware.RequirePermission(db, "purchase_orders_edit", rdb))
 	productSpecEditStaff.HandleFunc("/product-specs/types/{id}/fields", productspec.CreateFieldHandler(db)).Methods("POST")
+	productSpecEditStaff.HandleFunc("/product-specs/types/{id}/field-order", productspec.ReorderFieldsHandler(db)).Methods("PUT")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}", productspec.DeleteFieldHandler(db)).Methods("DELETE")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}", productspec.UpdateFieldHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}/options", productspec.CreateFieldOptionHandler(db)).Methods("POST")
