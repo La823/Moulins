@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import Loader from "@/components/Loader";
 import MargSyncButton from "@/components/admin/MargSyncButton";
 import CreatePartnerFromMargPartyModal from "@/components/admin/CreatePartnerFromMargPartyModal";
@@ -46,6 +47,9 @@ export default function MargPartiesPage() {
   const [statusCounts, setStatusCounts] = useState({ active: 0, inactive: 0, duplicate: 0 });
   // ledger report per status — worked out by the server on every load, never stored
   const [statusTotals, setStatusTotals] = useState({});
+  // the ledger report is admin-only (the server only sends it to admins)
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [statusError, setStatusError] = useState("");
 
   // Our own status against a synced party — "active" or "duplicate". Written
@@ -168,8 +172,8 @@ export default function MargPartiesPage() {
         })}
       </div>
 
-      {/* Ledger report for what's filtered (status + search) */}
-      {(() => {
+      {/* Ledger report for what's filtered (status + search) — admins only */}
+      {isAdmin && (() => {
         const t = statusFilter ? statusTotals[statusFilter] || EMPTY_TOTALS : sumTotals(STATUS_KEYS.map((k) => statusTotals[k]));
         const label = statusFilter ? statusFilter[0].toUpperCase() + statusFilter.slice(1) : "All";
         return (

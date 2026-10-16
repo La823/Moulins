@@ -71,15 +71,20 @@ func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not fetch marg parties", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		resp := map[string]interface{}{
 			"parties":       result.Parties,
 			"total":         result.Total,
 			"status_counts": result.StatusCounts,
-			"status_totals": result.StatusTotals,
 			"page":          page,
 			"page_size":     margPartiesPageSize,
-		})
+		}
+		// The ledger report (balance totals) is for admins only — other
+		// staff never receive it, not just never see it.
+		if role, _ := r.Context().Value("role").(string); role == "admin" {
+			resp["status_totals"] = result.StatusTotals
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
