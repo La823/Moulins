@@ -21,9 +21,9 @@ workflows:
       - name: Get Flutter packages
         script: |
           # Force the CocoaPods-only path — Flutter's new default of
-          # auto-enabling Swift Package Manager (when no Podfile exists
-          # yet, as here) pulls in a Firebase SDK build that needs
-          # Swift 6, and 3 of our plugins don't support SPM yet anyway.
+          # auto-enabling Swift Package Manager pulls in a Firebase SDK
+          # build that needs Swift 6, and 3 of our plugins don't support
+          # SPM yet anyway. ios/Podfile pins the platform to iOS 14.
           flutter config --no-enable-swift-package-manager
           flutter pub get
       - name: Install CocoaPods dependencies
@@ -68,9 +68,9 @@ workflows:
       - name: Get Flutter packages
         script: |
           # Force the CocoaPods-only path — Flutter's new default of
-          # auto-enabling Swift Package Manager (when no Podfile exists
-          # yet, as here) pulls in a Firebase SDK build that needs
-          # Swift 6, and 3 of our plugins don't support SPM yet anyway.
+          # auto-enabling Swift Package Manager pulls in a Firebase SDK
+          # build that needs Swift 6, and 3 of our plugins don't support
+          # SPM yet anyway. ios/Podfile pins the platform to iOS 14.
           flutter config --no-enable-swift-package-manager
           flutter pub get
       - name: Fetch signing files
