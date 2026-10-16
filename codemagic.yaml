@@ -38,9 +38,10 @@ workflows:
           cp -r build/ios/iphoneos/Runner.app Payload/Runner.app
           zip -r build/ios/iphoneos/app-unsigned.ipa Payload
           rm -rf Payload
+          ls -la "$CM_BUILD_DIR/mobile/build/ios/iphoneos/"
     artifacts:
-      - mobile/build/ios/iphoneos/*.ipa
-      - mobile/build/ios/iphoneos/*.app
+      - $CM_BUILD_DIR/mobile/build/ios/iphoneos/*.ipa
+      - $CM_BUILD_DIR/mobile/build/ios/iphoneos/*.app
 
   ios-testflight:
     name: iOS signed build → TestFlight (needs paid Apple Developer account)
@@ -89,7 +90,7 @@ workflows:
           flutter build ipa --release \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
-      - mobile/build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/mobile/build/ios/ipa/*.ipa
     # Publishing to TestFlight needs a named App Store Connect integration
     # (Codemagic → Team settings → Integrations → App Store Connect →
     # connect with an API key from a paid Apple Developer account), then
