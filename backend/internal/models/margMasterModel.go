@@ -288,6 +288,15 @@ type MargPartyPage struct {
 	AccountCounts map[string]int `json:"account_counts"`
 }
 
+// MargPartySorts are the orders the parties list can be shown in, by the
+// name the page sends. Fixed strings only — the request picks a key, never
+// SQL. Ties fall back to name then id, so paging is stable.
+var MargPartySorts = map[string]string{
+	"name":         "mp.name, mp.id",
+	"balance_desc": "mp.balance DESC NULLS LAST, mp.name, mp.id",
+	"balance_asc":  "mp.balance ASC NULLS LAST, mp.name, mp.id",
+}
+
 // partyHasAccountSQL: a partner login (not removed) carries the party's RID.
 const partyHasAccountSQL = `EXISTS (SELECT 1 FROM users ua WHERE ua.rid = mp.rid AND ua.role = 'partner' AND ua.deleted_at IS NULL)`
 
@@ -304,8 +313,13 @@ type LedgerTotals struct {
 // search filters on name/code/area/rid (case-insensitive substring), pass
 // "" for none.
 // status narrows to one of MargPartyStatuses; "" means all. account is
-// "yes" (has a partner account), "no" (doesn't) or "" for both.
-func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status, account string, limit, offset int) (MargPartyPage, error) {
+// "yes" (has a partner account), "no" (doesn't) or "" for both. sort is a
+// key of MargPartySorts ("" = by name).
+func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status, account, sort string, limit, offset int) (MargPartyPage, error) {
+	orderBy, ok := MargPartySorts[sort]
+	if !ok {
+		orderBy = MargPartySorts["name"]
+	}
 	page := MargPartyPage{
 		StatusCounts:  map[string]int{"active": 0, "inactive": 0, "duplicate": 0},
 		StatusTotals:  map[string]LedgerTotals{"active": {}, "inactive": {}, "duplicate": {}},
@@ -374,7 +388,7 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status, accou
 		WHERE ($1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%')
 		  AND ($4 = '' OR mp.status = $4)
 		  AND ($5 = '' OR ($5 = 'yes') = `+partyHasAccountSQL+`)
-		ORDER BY mp.name
+		ORDER BY `+orderBy+`
 		LIMIT $2 OFFSET $3`,
 		search, limit, offset, status, account,
 	)

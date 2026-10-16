@@ -48,7 +48,7 @@ func ListProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/marg-parties?search=&status=&page= — one page (50 per page) of
+// GET /admin/marg-parties?search=&status=&account=&sort=&page= — one page (50 per page) of
 // synced Marg party/ledger accounts, plus the total matching count and a
 // count per status. status: active | inactive | duplicate, or empty for all.
 func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -64,13 +64,18 @@ func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "account must be yes or no", http.StatusBadRequest)
 			return
 		}
+		sort := r.URL.Query().Get("sort")
+		if _, ok := models.MargPartySorts[sort]; sort != "" && !ok {
+			http.Error(w, "sort must be name, balance_desc or balance_asc", http.StatusBadRequest)
+			return
+		}
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
 			page = 1
 		}
 		offset := (page - 1) * margPartiesPageSize
 
-		result, err := models.GetMargParties(r.Context(), db, search, status, account, margPartiesPageSize, offset)
+		result, err := models.GetMargParties(r.Context(), db, search, status, account, sort, margPartiesPageSize, offset)
 		if err != nil {
 			log.Printf("list marg parties error: %v", err)
 			http.Error(w, "could not fetch marg parties", http.StatusInternalServerError)

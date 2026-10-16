@@ -48,6 +48,15 @@ export default function MargPartiesPage() {
   // filter: "" = all, "yes" = has a partner account, "no" = no account yet
   const [accountFilter, setAccountFilter] = useState("");
   const [accountCounts, setAccountCounts] = useState({ yes: 0, no: 0 });
+  // order: "name" (A–Z), or by ledger balance "balance_desc" / "balance_asc"
+  const [sort, setSort] = useState("name");
+  const changeSort = (v) => {
+    setSort(v);
+    setPage(1);
+  };
+  // the Balance heading cycles: high→low, low→high, back to name
+  const cycleBalanceSort = () =>
+    changeSort(sort === "balance_desc" ? "balance_asc" : sort === "balance_asc" ? "name" : "balance_desc");
   // ledger report per status — worked out by the server on every load, never stored
   const [statusTotals, setStatusTotals] = useState({});
   // the ledger report is admin-only (the server only sends it to admins)
@@ -98,6 +107,7 @@ export default function MargPartiesPage() {
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (accountFilter) params.set("account", accountFilter);
+    if (sort !== "name") params.set("sort", sort);
     apiFetch(`/admin/marg-parties?${params.toString()}`)
       .then((data) => {
         setParties(Array.isArray(data.parties) ? data.parties : []);
@@ -108,7 +118,7 @@ export default function MargPartiesPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, statusFilter, accountFilter, page, refreshKey]);
+  }, [search, statusFilter, accountFilter, sort, page, refreshKey]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -138,6 +148,16 @@ export default function MargPartiesPage() {
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           <MargSyncButton onDone={() => setRefreshKey((k) => k + 1)} />
+          <select
+            value={sort}
+            onChange={(e) => changeSort(e.target.value)}
+            aria-label="Sort parties"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
+          >
+            <option value="name">Sort: Name (A–Z)</option>
+            <option value="balance_desc">Sort: Balance, high to low</option>
+            <option value="balance_asc">Sort: Balance, low to high</option>
+          </select>
           <form onSubmit={handleSearch} className="flex gap-2">
             <input
               type="text"
@@ -253,7 +273,17 @@ export default function MargPartiesPage() {
                   <th className="px-4 py-3">Area</th>
                   <th className="px-4 py-3">Phone</th>
                   <th className="px-4 py-3">GSTIN</th>
-                  <th className="px-4 py-3 text-right">Balance</th>
+                  <th className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={cycleBalanceSort}
+                      title="Sort by balance"
+                      className={`inline-flex items-center gap-1 uppercase tracking-wide ${sort !== "name" ? "text-gray-900" : "hover:text-gray-700"}`}
+                    >
+                      Balance
+                      <span aria-hidden="true">{sort === "balance_desc" ? "↓" : sort === "balance_asc" ? "↑" : "↕"}</span>
+                    </button>
+                  </th>
                   {/* Two different things: what Marg says about the record,
                       and the status we keep against it. */}
                   <th className="px-4 py-3">Marg Status</th>
