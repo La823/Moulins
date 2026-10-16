@@ -401,6 +401,33 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	etimeEditStaff.Use(middleware.RequirePermission(db, "etime_edit", rdb))
 	etimeEditStaff.HandleFunc("/sync", etimeHandlers.SyncHandler(db)).Methods("POST")
 	etimeEditStaff.HandleFunc("/employees/{code}", etimeHandlers.UpdateEmployeeHandler(db)).Methods("PUT")
+	etimeEditStaff.HandleFunc("/staff-logins", etimeHandlers.StaffLoginsHandler(db)).Methods("GET")
+	etimeEditStaff.HandleFunc("/leaves-per-month", etimeHandlers.SetAllAllowanceHandler(db)).Methods("PUT")
+
+	// Leave on top of the biometric attendance: admins see and decide
+	// requests, and can record leave for staff who have no login.
+	leavesViewStaff := protected.PathPrefix("/admin/etime").Subrouter()
+	leavesViewStaff.Use(middleware.StaffOnly)
+	leavesViewStaff.Use(middleware.RequirePermission(db, "leaves_view", rdb))
+	leavesViewStaff.HandleFunc("/leaves", etimeHandlers.ListLeavesHandler(db)).Methods("GET")
+	leavesViewStaff.HandleFunc("/employees/{code}/balance", etimeHandlers.BalanceHandler(db)).Methods("GET")
+
+	leavesEditStaff := protected.PathPrefix("/admin/etime").Subrouter()
+	leavesEditStaff.Use(middleware.StaffOnly)
+	leavesEditStaff.Use(middleware.RequirePermission(db, "leaves_edit", rdb))
+	leavesEditStaff.HandleFunc("/leaves", etimeHandlers.AdminAddLeaveHandler(db)).Methods("POST")
+	leavesEditStaff.HandleFunc("/leaves/{id}/approve", etimeHandlers.ApproveLeaveHandler(db)).Methods("POST")
+	leavesEditStaff.HandleFunc("/leaves/{id}/reject", etimeHandlers.RejectLeaveHandler(db)).Methods("POST")
+	leavesEditStaff.HandleFunc("/leaves/{id}/cancel", etimeHandlers.AdminCancelLeaveHandler(db)).Methods("POST")
+
+	// Staff self-service: their own leave and scanner attendance, for any
+	// staff login linked to a scanner employee.
+	etimeMe := protected.PathPrefix("/etime/me").Subrouter()
+	etimeMe.Use(middleware.StaffOnly)
+	etimeMe.HandleFunc("", etimeHandlers.MeHandler(db)).Methods("GET")
+	etimeMe.HandleFunc("/month", etimeHandlers.MyMonthHandler(db)).Methods("GET")
+	etimeMe.HandleFunc("/leaves", etimeHandlers.ApplyLeaveHandler(db)).Methods("POST")
+	etimeMe.HandleFunc("/leaves/{id}/cancel", etimeHandlers.CancelMyLeaveHandler(db)).Methods("POST")
 
 	// staff routes — settings
 	settingsViewStaff := protected.PathPrefix("/admin").Subrouter()

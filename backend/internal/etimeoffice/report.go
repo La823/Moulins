@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -11,19 +12,40 @@ import (
 // Day is one employee's day as the dashboard shows it: eTimeOffice's own
 // figures plus State, our reading of them (see stateOf).
 type Day struct {
-	EmpCode         string   `json:"emp_code"`
-	Name            string   `json:"name"`
-	Date            string   `json:"date"`
-	Status          *string  `json:"status"` // eTimeOffice code; null = not synced yet
-	State           string   `json:"state"`
-	InTime          *string  `json:"in_time"`
-	OutTime         *string  `json:"out_time"`
-	WorkMinutes     int      `json:"work_minutes"`
-	OvertimeMinutes int      `json:"overtime_minutes"`
-	LateMinutes     int      `json:"late_minutes"`
-	EarlyOutMinutes int      `json:"early_out_minutes"`
-	Remark          *string  `json:"remark"`
-	Punches         []PunchT `json:"punches"`
+	EmpCode         string    `json:"emp_code"`
+	Name            string    `json:"name"`
+	Date            string    `json:"date"`
+	Status          *string   `json:"status"` // eTimeOffice code; null = not synced yet
+	State           string    `json:"state"`
+	InTime          *string   `json:"in_time"`
+	OutTime         *string   `json:"out_time"`
+	WorkMinutes     int       `json:"work_minutes"`
+	OvertimeMinutes int       `json:"overtime_minutes"`
+	LateMinutes     int       `json:"late_minutes"`
+	EarlyOutMinutes int       `json:"early_out_minutes"`
+	Remark          *string   `json:"remark"`
+	Punches         []PunchT  `json:"punches"`
+	Leave           *DayLeave `json:"leave"` // approved leave on this day, if any
+}
+
+type DayLeave struct {
+	RequestID int     `json:"request_id"`
+	Portion   float64 `json:"portion"` // 1 or 0.5
+	Paid      bool    `json:"paid"`
+}
+
+// withLeave folds approved leave into a day's state. Leave only replaces an
+// absence: someone who came in anyway keeps their eTimeOffice state (the
+// leave stays attached and still counts against the balance). A half-day
+// leave next to a half day worked stays "half_day".
+func withLeave(state string, leave *DayLeave) string {
+	if leave == nil {
+		return state
+	}
+	if state == "absent" || state == "not_synced" || state == "upcoming" {
+		return "leave"
+	}
+	return state
 }
 
 type PunchT struct {
@@ -76,6 +98,7 @@ type Totals struct {
 	MissedPunch     int     `json:"missed_punch"`
 	WeeklyOff       int     `json:"weekly_off"`
 	Holiday         int     `json:"holiday"`
+	Leave           float64 `json:"leave"` // days away on approved leave; half days count 0.5
 	Late            int     `json:"late"`
 	LateMinutes     int     `json:"late_minutes"`
 	EarlyOut        int     `json:"early_out"`
@@ -102,6 +125,9 @@ func (t *Totals) add(d Day) {
 	case "holiday":
 		t.Holiday++
 	}
+	if d.Leave != nil && (d.State == "leave" || d.State == "half_day") {
+		t.Leave += d.Leave.Portion
+	}
 	if d.LateMinutes > 0 && d.InTime != nil {
 		t.Late++
 		t.LateMinutes += d.LateMinutes
@@ -123,7 +149,8 @@ func loadDays(ctx context.Context, db *pgxpool.Pool, from, to time.Time, empCode
 		       d.status, d.in_time, d.out_time,
 		       COALESCE(d.work_minutes, 0), COALESCE(d.overtime_minutes, 0),
 		       COALESCE(d.late_minutes, 0), COALESCE(d.early_out_minutes, 0), d.remark,
-		       COALESCE(p.times, '{}'), COALESCE(p.manual, '{}')
+		       COALESCE(p.times, '{}'), COALESCE(p.manual, '{}'),
+		       l.request_id, l.portion::float8, l.paid
 		FROM etime_employees e
 		CROSS JOIN generate_series($1::timestamp, $2::timestamp, interval '1 day') AS g(d)
 		LEFT JOIN etime_daily d ON d.emp_code = e.emp_code AND d.work_date = g.d::date
@@ -134,6 +161,7 @@ func loadDays(ctx context.Context, db *pgxpool.Pool, from, to time.Time, empCode
 			WHERE emp_code = e.emp_code
 			  AND punch_time >= g.d AND punch_time < g.d + interval '1 day'
 		) p ON TRUE
+		LEFT JOIN etime_leave_days l ON l.emp_code = e.emp_code AND l.leave_date = g.d::date
 		WHERE ($3 = '' AND e.active) OR e.emp_code = $3
 		ORDER BY e.emp_code, g.d`,
 		from.Format(isoDate), to.Format(isoDate), empCode)
@@ -144,14 +172,24 @@ func loadDays(ctx context.Context, db *pgxpool.Pool, from, to time.Time, empCode
 		var d Day
 		var times []string
 		var manual []bool
+		var leaveID *int
+		var leavePortion *float64
+		var leavePaid *bool
 		err := row.Scan(&d.EmpCode, &d.Name, &d.Date, &d.Status, &d.InTime, &d.OutTime,
 			&d.WorkMinutes, &d.OvertimeMinutes, &d.LateMinutes, &d.EarlyOutMinutes, &d.Remark,
-			&times, &manual)
+			&times, &manual, &leaveID, &leavePortion, &leavePaid)
+		if leaveID != nil {
+			d.Leave = &DayLeave{RequestID: *leaveID, Portion: *leavePortion, Paid: *leavePaid}
+		}
 		d.Punches = make([]PunchT, len(times))
 		for i := range times {
 			d.Punches[i] = PunchT{Time: times[i], Manual: i < len(manual) && manual[i]}
 		}
-		d.State = stateOf(d.Status, d.InTime, d.OutTime, d.Date == today)
+		state := stateOf(d.Status, d.InTime, d.OutTime, d.Date == today)
+		if d.Date > today {
+			state = "upcoming" // shown so booked leave appears ahead of time
+		}
+		d.State = withLeave(state, d.Leave)
 		return d, err
 	})
 }
@@ -188,18 +226,13 @@ type MonthReport struct {
 	Employees []MonthEmployee `json:"employees"`
 }
 
-// GetMonth returns month (any date within it) per employee. For the current
-// month, days after today are left out.
+// GetMonth returns month (any date within it) per employee, every day of
+// it. Days after today have State "upcoming" — or "leave" when leave is
+// booked — so approved leave shows ahead of time.
 func GetMonth(ctx context.Context, db *pgxpool.Pool, month time.Time, empCode string) (*MonthReport, error) {
 	from := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, istZone)
 	to := from.AddDate(0, 1, -1)
-	if today := Today(); to.After(today) {
-		to = today
-	}
 	r := &MonthReport{Month: from.Format("2006-01"), Dates: []string{}, Employees: []MonthEmployee{}}
-	if from.After(to) {
-		return r, nil
-	}
 	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
 		r.Dates = append(r.Dates, d.Format(isoDate))
 	}
@@ -252,31 +285,111 @@ func ListPunches(ctx context.Context, db *pgxpool.Pool, from, to time.Time, empC
 }
 
 type Employee struct {
-	EmpCode   string  `json:"emp_code"`
-	Name      string  `json:"name"`
-	Active    bool    `json:"active"`
-	LastPunch *string `json:"last_punch"`
+	EmpCode        string     `json:"emp_code"`
+	Name           string     `json:"name"`
+	Active         bool       `json:"active"`
+	LastPunch      *string    `json:"last_punch"`
+	UserID         *uuid.UUID `json:"user_id"` // linked staff login, so they can apply for leave
+	UserName       *string    `json:"user_name"`
+	LeavesPerMonth float64    `json:"leaves_per_month"`
 }
 
 func ListEmployees(ctx context.Context, db *pgxpool.Pool) ([]Employee, error) {
+	return listEmployees(ctx, db, ``)
+}
+
+func listEmployees(ctx context.Context, db *pgxpool.Pool, where string, args ...any) ([]Employee, error) {
 	rows, err := db.Query(ctx, `
 		SELECT e.emp_code, e.name, e.active,
-		       (SELECT to_char(MAX(punch_time), 'YYYY-MM-DD HH24:MI') FROM etime_punches p WHERE p.emp_code = e.emp_code)
-		FROM etime_employees e ORDER BY e.emp_code`)
+		       (SELECT to_char(MAX(punch_time), 'YYYY-MM-DD HH24:MI') FROM etime_punches p WHERE p.emp_code = e.emp_code),
+		       e.user_id, u.username, e.leaves_per_month::float8
+		FROM etime_employees e LEFT JOIN users u ON u.id = e.user_id
+		`+where+` ORDER BY e.emp_code`, args...)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Employee, error) {
 		var e Employee
-		err := row.Scan(&e.EmpCode, &e.Name, &e.Active, &e.LastPunch)
+		err := row.Scan(&e.EmpCode, &e.Name, &e.Active, &e.LastPunch, &e.UserID, &e.UserName, &e.LeavesPerMonth)
 		return e, err
 	})
 }
 
-// SetEmployeeActive reports false when no such employee exists.
-func SetEmployeeActive(ctx context.Context, db *pgxpool.Pool, empCode string, active bool) (bool, error) {
-	tag, err := db.Exec(ctx, `UPDATE etime_employees SET active = $2, updated_at = NOW() WHERE emp_code = $1`, empCode, active)
+// EmployeeUpdate changes only the fields that are set.
+type EmployeeUpdate struct {
+	Active         *bool
+	LeavesPerMonth *float64
+	SetUser        bool // true to change the link (UserID nil unlinks)
+	UserID         *uuid.UUID
+}
+
+func validAllowance(v float64) error {
+	if v < 0 || v > 31 || v*2 != float64(int(v*2)) {
+		return leaveErr("leaves per month must be between 0 and 31, in steps of 0.5")
+	}
+	return nil
+}
+
+// UpdateEmployee reports false when no such employee exists.
+func UpdateEmployee(ctx context.Context, db *pgxpool.Pool, empCode string, u EmployeeUpdate) (bool, error) {
+	if u.LeavesPerMonth != nil {
+		if err := validAllowance(*u.LeavesPerMonth); err != nil {
+			return false, err
+		}
+	}
+	if u.SetUser && u.UserID != nil {
+		var role string
+		var deleted bool
+		err := db.QueryRow(ctx, `SELECT role, deleted_at IS NOT NULL FROM users WHERE id = $1`, *u.UserID).Scan(&role, &deleted)
+		if err != nil || role != "employee" || deleted {
+			return false, leaveErr("that login is not an active staff account")
+		}
+		var other string
+		err = db.QueryRow(ctx, `SELECT name FROM etime_employees WHERE user_id = $1 AND emp_code <> $2`, *u.UserID, empCode).Scan(&other)
+		if err == nil {
+			return false, leaveErr("that login is already linked to %s", other)
+		}
+	}
+	tag, err := db.Exec(ctx, `
+		UPDATE etime_employees SET
+			active           = COALESCE($2, active),
+			leaves_per_month = COALESCE($3, leaves_per_month),
+			user_id          = CASE WHEN $4 THEN $5 ELSE user_id END,
+			updated_at       = NOW()
+		WHERE emp_code = $1`, empCode, u.Active, u.LeavesPerMonth, u.SetUser, u.UserID)
 	return tag.RowsAffected() > 0, err
+}
+
+// SetAllLeavesPerMonth gives every active employee the same allowance.
+func SetAllLeavesPerMonth(ctx context.Context, db *pgxpool.Pool, v float64) (int, error) {
+	if err := validAllowance(v); err != nil {
+		return 0, err
+	}
+	tag, err := db.Exec(ctx, `UPDATE etime_employees SET leaves_per_month = $1, updated_at = NOW() WHERE active`, v)
+	return int(tag.RowsAffected()), err
+}
+
+type StaffLogin struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	LinkedTo *string   `json:"linked_to"` // emp_code already using this login
+}
+
+// StaffLogins lists active staff accounts that can be linked to an employee.
+func StaffLogins(ctx context.Context, db *pgxpool.Pool) ([]StaffLogin, error) {
+	rows, err := db.Query(ctx, `
+		SELECT u.id, COALESCE(NULLIF(TRIM(u.username), ''), u.phone_number, ''), e.emp_code
+		FROM users u LEFT JOIN etime_employees e ON e.user_id = u.id
+		WHERE u.role = 'employee' AND u.team_owner_id IS NULL AND u.deleted_at IS NULL
+		ORDER BY 2`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (StaffLogin, error) {
+		var s StaffLogin
+		err := row.Scan(&s.ID, &s.Username, &s.LinkedTo)
+		return s, err
+	})
 }
 
 // LatestDate is the newest day stored, "" when nothing has been synced.

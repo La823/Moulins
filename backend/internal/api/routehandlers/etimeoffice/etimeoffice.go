@@ -208,21 +208,37 @@ func EmployeesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// PUT /admin/etime/employees/{code} — {"active": false} hides someone who
-// has left from the dashboard.
+// PUT /admin/etime/employees/{code} — any of:
+//
+//	{"active": false}            hide someone who has left from the dashboard
+//	{"leaves_per_month": 1.5}    their monthly leave allowance
+//	{"user_id": "<uuid>"|null}   link (or unlink) their staff login
 func UpdateEmployeeHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Active *bool `json:"active"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Active == nil {
-			http.Error(w, `body must be {"active": true|false}`, http.StatusBadRequest)
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body) == 0 {
+			http.Error(w, "body must set active, leaves_per_month or user_id", http.StatusBadRequest)
 			return
 		}
-		ok, err := etimeoffice.SetEmployeeActive(r.Context(), db, mux.Vars(r)["code"], *body.Active)
+		var u etimeoffice.EmployeeUpdate
+		if raw, ok := body["active"]; ok && json.Unmarshal(raw, &u.Active) != nil {
+			http.Error(w, "active must be true or false", http.StatusBadRequest)
+			return
+		}
+		if raw, ok := body["leaves_per_month"]; ok && json.Unmarshal(raw, &u.LeavesPerMonth) != nil {
+			http.Error(w, "leaves_per_month must be a number", http.StatusBadRequest)
+			return
+		}
+		if raw, ok := body["user_id"]; ok {
+			u.SetUser = true // a JSON null unlinks
+			if json.Unmarshal(raw, &u.UserID) != nil {
+				http.Error(w, "user_id must be a login id or null", http.StatusBadRequest)
+				return
+			}
+		}
+		ok, err := etimeoffice.UpdateEmployee(r.Context(), db, mux.Vars(r)["code"], u)
 		if err != nil {
-			log.Printf("etime update employee: %v", err)
-			http.Error(w, "could not update employee", http.StatusInternalServerError)
+			leaveError(w, "update the employee", err)
 			return
 		}
 		if !ok {
