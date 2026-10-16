@@ -59,24 +59,30 @@ func ListPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "status must be active, inactive or duplicate", http.StatusBadRequest)
 			return
 		}
+		account := r.URL.Query().Get("account")
+		if account != "" && account != "yes" && account != "no" {
+			http.Error(w, "account must be yes or no", http.StatusBadRequest)
+			return
+		}
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
 			page = 1
 		}
 		offset := (page - 1) * margPartiesPageSize
 
-		result, err := models.GetMargParties(r.Context(), db, search, status, margPartiesPageSize, offset)
+		result, err := models.GetMargParties(r.Context(), db, search, status, account, margPartiesPageSize, offset)
 		if err != nil {
 			log.Printf("list marg parties error: %v", err)
 			http.Error(w, "could not fetch marg parties", http.StatusInternalServerError)
 			return
 		}
 		resp := map[string]interface{}{
-			"parties":       result.Parties,
-			"total":         result.Total,
-			"status_counts": result.StatusCounts,
-			"page":          page,
-			"page_size":     margPartiesPageSize,
+			"parties":        result.Parties,
+			"total":          result.Total,
+			"status_counts":  result.StatusCounts,
+			"account_counts": result.AccountCounts,
+			"page":           page,
+			"page_size":      margPartiesPageSize,
 		}
 		// The ledger report (balance totals) is for admins only — other
 		// staff never receive it, not just never see it.

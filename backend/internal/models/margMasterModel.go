@@ -283,7 +283,13 @@ type MargPartyPage struct {
 	// StatusTotals: the ledger report per status for the search — worked
 	// out on every request, never stored.
 	StatusTotals map[string]LedgerTotals `json:"status_totals"`
+	// AccountCounts: how many have a partner account ("yes") and how many
+	// don't ("no"), for the search and the chosen status.
+	AccountCounts map[string]int `json:"account_counts"`
 }
+
+// partyHasAccountSQL: a partner login (not removed) carries the party's RID.
+const partyHasAccountSQL = `EXISTS (SELECT 1 FROM users ua WHERE ua.rid = mp.rid AND ua.role = 'partner' AND ua.deleted_at IS NULL)`
 
 // LedgerTotals sums the Marg balances of a set of parties.
 type LedgerTotals struct {
@@ -297,24 +303,28 @@ type LedgerTotals struct {
 // GetMargParties returns one page of synced Marg parties, ordered by name.
 // search filters on name/code/area/rid (case-insensitive substring), pass
 // "" for none.
-// status narrows to one of MargPartyStatuses; "" means all.
-func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status string, limit, offset int) (MargPartyPage, error) {
+// status narrows to one of MargPartyStatuses; "" means all. account is
+// "yes" (has a partner account), "no" (doesn't) or "" for both.
+func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status, account string, limit, offset int) (MargPartyPage, error) {
 	page := MargPartyPage{
-		StatusCounts: map[string]int{"active": 0, "inactive": 0, "duplicate": 0},
-		StatusTotals: map[string]LedgerTotals{"active": {}, "inactive": {}, "duplicate": {}},
+		StatusCounts:  map[string]int{"active": 0, "inactive": 0, "duplicate": 0},
+		StatusTotals:  map[string]LedgerTotals{"active": {}, "inactive": {}, "duplicate": {}},
+		AccountCounts: map[string]int{"yes": 0, "no": 0},
 	}
 
-	// counts and ledger totals per status for the search (ignoring the
-	// status filter), in one query; Total is the count for the chosen status
+	// One query, split by status and by whether there's an account. Each
+	// set of filter buttons counts within the other filter's choice: the
+	// status counts follow the account filter, the account counts follow
+	// the status filter, and Total follows both.
 	rows, err := db.Query(ctx, `
-		SELECT status, COUNT(*),
-		       COALESCE(SUM(balance), 0)::float8,
-		       COALESCE(SUM(balance) FILTER (WHERE balance > 0), 0)::float8,
-		       COALESCE(SUM(balance) FILTER (WHERE balance < 0), 0)::float8,
-		       COUNT(*) FILTER (WHERE COALESCE(balance, 0) = 0)
-		FROM margmaster_party
-		WHERE $1 = '' OR name ILIKE '%' || $1 || '%' OR code ILIKE '%' || $1 || '%' OR area ILIKE '%' || $1 || '%' OR rid ILIKE '%' || $1 || '%'
-		GROUP BY status`,
+		SELECT mp.status, `+partyHasAccountSQL+` AS has_account, COUNT(*),
+		       COALESCE(SUM(mp.balance), 0)::float8,
+		       COALESCE(SUM(mp.balance) FILTER (WHERE mp.balance > 0), 0)::float8,
+		       COALESCE(SUM(mp.balance) FILTER (WHERE mp.balance < 0), 0)::float8,
+		       COUNT(*) FILTER (WHERE COALESCE(mp.balance, 0) = 0)
+		FROM margmaster_party mp
+		WHERE $1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%'
+		GROUP BY 1, 2`,
 		search,
 	)
 	if err != nil {
@@ -322,14 +332,32 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status string
 	}
 	for rows.Next() {
 		var st string
+		var hasAccount bool
 		var t LedgerTotals
-		if err := rows.Scan(&st, &t.Parties, &t.Net, &t.Receivable, &t.Credit, &t.ZeroBalance); err != nil {
+		if err := rows.Scan(&st, &hasAccount, &t.Parties, &t.Net, &t.Receivable, &t.Credit, &t.ZeroBalance); err != nil {
 			rows.Close()
 			return page, err
 		}
-		page.StatusCounts[st] = t.Parties
-		page.StatusTotals[st] = t
-		if status == "" || status == st {
+		acct := "no"
+		if hasAccount {
+			acct = "yes"
+		}
+		accountMatches := account == "" || account == acct
+		statusMatches := status == "" || status == st
+		if accountMatches {
+			page.StatusCounts[st] += t.Parties
+			sum := page.StatusTotals[st]
+			sum.Parties += t.Parties
+			sum.Net += t.Net
+			sum.Receivable += t.Receivable
+			sum.Credit += t.Credit
+			sum.ZeroBalance += t.ZeroBalance
+			page.StatusTotals[st] = sum
+		}
+		if statusMatches {
+			page.AccountCounts[acct] += t.Parties
+		}
+		if accountMatches && statusMatches {
 			page.Total += t.Parties
 		}
 	}
@@ -345,9 +373,10 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status string
 		LEFT JOIN users u ON u.rid = mp.rid AND u.role = 'partner'
 		WHERE ($1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%')
 		  AND ($4 = '' OR mp.status = $4)
+		  AND ($5 = '' OR ($5 = 'yes') = `+partyHasAccountSQL+`)
 		ORDER BY mp.name
 		LIMIT $2 OFFSET $3`,
-		search, limit, offset, status,
+		search, limit, offset, status, account,
 	)
 	if err != nil {
 		return page, err

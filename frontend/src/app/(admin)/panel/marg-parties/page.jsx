@@ -45,6 +45,9 @@ export default function MargPartiesPage() {
   // filter: "" = all, or one status; counts come back with each page
   const [statusFilter, setStatusFilter] = useState("");
   const [statusCounts, setStatusCounts] = useState({ active: 0, inactive: 0, duplicate: 0 });
+  // filter: "" = all, "yes" = has a partner account, "no" = no account yet
+  const [accountFilter, setAccountFilter] = useState("");
+  const [accountCounts, setAccountCounts] = useState({ yes: 0, no: 0 });
   // ledger report per status — worked out by the server on every load, never stored
   const [statusTotals, setStatusTotals] = useState({});
   // the ledger report is admin-only (the server only sends it to admins)
@@ -94,16 +97,18 @@ export default function MargPartiesPage() {
     const params = new URLSearchParams({ page: String(page) });
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
+    if (accountFilter) params.set("account", accountFilter);
     apiFetch(`/admin/marg-parties?${params.toString()}`)
       .then((data) => {
         setParties(Array.isArray(data.parties) ? data.parties : []);
         setTotal(data.total || 0);
         if (data.status_counts) setStatusCounts(data.status_counts);
+        if (data.account_counts) setAccountCounts(data.account_counts);
         if (data.status_totals) setStatusTotals(data.status_totals);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [search, statusFilter, page, refreshKey]);
+  }, [search, statusFilter, accountFilter, page, refreshKey]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -149,7 +154,8 @@ export default function MargPartiesPage() {
       </div>
 
       {/* Filter by our status */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <span className="text-xs font-medium text-gray-400 w-16">Status</span>
         {[
           ["", "All", "border-gray-300 text-gray-700", "bg-gray-900 text-white border-gray-900"],
           ["active", "Active", "border-green-200 text-green-700 bg-green-50", "bg-green-600 text-white border-green-600"],
@@ -172,6 +178,31 @@ export default function MargPartiesPage() {
         })}
       </div>
 
+      {/* Filter by whether a partner account exists for the party */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="text-xs font-medium text-gray-400 w-16">Account</span>
+        {[
+          ["", "All", (accountCounts.yes || 0) + (accountCounts.no || 0)],
+          ["yes", "Has account", accountCounts.yes || 0],
+          ["no", "No account", accountCounts.no || 0],
+        ].map(([key, label, n]) => (
+          <button
+            key={key || "all"}
+            onClick={() => {
+              setAccountFilter(key);
+              setPage(1);
+            }}
+            className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+              accountFilter === key
+                ? "bg-gray-900 text-white border-gray-900"
+                : "border-gray-300 text-gray-700 bg-white hover:border-gray-400"
+            }`}
+          >
+            {label} <span className="opacity-75">({n})</span>
+          </button>
+        ))}
+      </div>
+
       {/* Ledger report for what's filtered (status + search) — admins only */}
       {isAdmin && (() => {
         const t = statusFilter ? statusTotals[statusFilter] || EMPTY_TOTALS : sumTotals(STATUS_KEYS.map((k) => statusTotals[k]));
@@ -179,7 +210,9 @@ export default function MargPartiesPage() {
         return (
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
-              Ledger report — {label} parties{search ? ` matching "${search}"` : ""}
+              Ledger report — {label} parties
+              {accountFilter === "yes" ? " with an account" : accountFilter === "no" ? " without an account" : ""}
+              {search ? ` matching "${search}"` : ""}
             </p>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <ReportFigure label="Ledgers" value={t.parties.toLocaleString("en-IN")} />
