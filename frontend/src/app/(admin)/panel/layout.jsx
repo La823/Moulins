@@ -174,6 +174,7 @@ const NAV_ITEMS = [
       { label: "HSN Search", href: "/panel/hsn-search", permission: "products_view" },
       { label: "HSN Codes & GST", href: "/panel/hsn-codes", permission: "products_view" },
       { label: "Marg Products", href: "/panel/marg-products", permission: "marg_master_view" },
+      { label: "Marg Stock", href: "/panel/marg-stock", permission: "marg_master_view" },
     ],
   },
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },

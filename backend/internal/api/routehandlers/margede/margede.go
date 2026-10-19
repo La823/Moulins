@@ -64,6 +64,25 @@ func ListLedgerHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/marg-stock?view=negative&company=IB&search=&page=1 — products
+// with their batch-wise stock.
+func ListStockHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		page, _ := strconv.Atoi(q.Get("page"))
+		list, err := margede.ListStock(r.Context(), db, margede.StockFilter{
+			Search: q.Get("search"), Company: q.Get("company"), View: q.Get("view"), Page: page,
+		})
+		if err != nil {
+			log.Printf("marg stock list: %v", err)
+			http.Error(w, "could not list stock", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+	}
+}
+
 // GET /admin/marg-bills/{voucher} — one bill with its lines.
 func GetBillHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

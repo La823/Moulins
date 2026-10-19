@@ -144,6 +144,45 @@ func commodityCodeMap(stype []MargStypeRow) map[string]string {
 	return m
 }
 
+// commodityCodes returns the HSN list to resolve with: the saved copy
+// (margmaster_commodity_codes) overlaid with this pull's Stype, which is
+// saved first when present.
+func commodityCodes(ctx context.Context, db *pgxpool.Pool, stype []MargStypeRow) (map[string]string, error) {
+	fresh := commodityCodeMap(stype)
+	if len(fresh) > 0 {
+		scodes := make([]string, 0, len(fresh))
+		hsns := make([]string, 0, len(fresh))
+		for k, v := range fresh {
+			scodes = append(scodes, k)
+			hsns = append(hsns, v)
+		}
+		if _, err := db.Exec(ctx, `
+			INSERT INTO margmaster_commodity_codes (scode, hsn, synced_at)
+			SELECT t.scode, t.hsn, NOW() FROM unnest($1::text[], $2::text[]) AS t(scode, hsn)
+			ON CONFLICT (scode) DO UPDATE SET hsn = EXCLUDED.hsn, synced_at = NOW()`,
+			scodes, hsns); err != nil {
+			return nil, fmt.Errorf("save commodity codes: %w", err)
+		}
+	}
+	m := map[string]string{}
+	rows, err := db.Query(ctx, `SELECT scode, hsn FROM margmaster_commodity_codes`)
+	if err != nil {
+		return nil, fmt.Errorf("read commodity codes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		m[k] = v
+	}
+	for k, v := range fresh {
+		m[k] = v
+	}
+	return m, rows.Err()
+}
+
 // ValidatePull checks a parsed response for the failure modes that would
 // otherwise be applied silently as if complete.
 //
@@ -227,7 +266,13 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 		}
 	}
 
-	commcd := commodityCodeMap(details.Stype)
+	// Only full pulls carry Stype. Save the HSN list whenever it comes, and
+	// resolve from the saved copy otherwise — a delta that creates a product
+	// would else leave it with no hsn_code until the next full pull.
+	commcd, err := commodityCodes(ctx, db, details.Stype)
+	if err != nil {
+		return result, err
+	}
 
 	// pro_N is always returned; pro_U only on delta pulls. Same row shape,
 	// so just process them as one combined batch list.
@@ -432,6 +477,29 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 			ProductsTotal: len(order), ProductsDone: result.ProductsUpserted,
 			ProductsNew: result.ProductsNew, PartiesTotal: len(details.Party),
 		})
+	}
+
+	// Products this pull didn't touch can still be missing an HSN (created
+	// by an earlier delta). Fill them from the saved list too.
+	if len(commcd) > 0 {
+		brows, err := db.Query(ctx, `
+			UPDATE margmaster_products p SET hsn_code = c.hsn
+			FROM margmaster_commodity_codes c
+			WHERE p.hsn_code IS NULL AND TRIM(p.gcode6) = c.scode
+			RETURNING p.base_code, p.hsn_code`)
+		if err != nil {
+			return result, fmt.Errorf("backfill hsn codes: %w", err)
+		}
+		for brows.Next() {
+			var base, hsn string
+			if brows.Scan(&base, &hsn) == nil {
+				resolvedHSN[base] = hsn
+			}
+		}
+		brows.Close()
+		if err := brows.Err(); err != nil {
+			return result, fmt.Errorf("backfill hsn codes: %w", err)
+		}
 	}
 
 	// ---- push resolved HSN codes into the live catalog -------------------
@@ -682,6 +750,26 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 			log.Printf("marg sync: advance current batches: %v", err)
 		} else if n > 0 {
 			log.Printf("marg sync: current batch moved on for %d product(s)", n)
+		}
+
+		// A product's own MRP/rates follow its current batch (the one the app
+		// sells from). Before, they came from whichever batch row a pull
+		// happened to list last, and a pro_R rate change never reached them at
+		// all — IROKOT's purchase rate sat at 16 for days after Marg had 16.5,
+		// and 29 products disagreed with their current batch on 19 Oct 2026.
+		// Products with no current batch keep what the pull gave them.
+		if _, err := db.Exec(ctx, `
+			UPDATE margmaster_products p
+			SET mrp = b.mrp, rate = b.rate, prate = b.prate,
+			    rate_b = b.rate_b, rate_c = b.rate_c, rate_d = b.rate_d, rate_f = b.rate_f
+			FROM margmaster_product_batches b
+			WHERE p.id = ANY($1::uuid[])
+			  AND b.margmaster_product_id = p.id AND b.is_current AND NOT b.is_deleted
+			  AND (p.mrp IS DISTINCT FROM b.mrp OR p.rate IS DISTINCT FROM b.rate
+			       OR p.prate IS DISTINCT FROM b.prate OR p.rate_b IS DISTINCT FROM b.rate_b
+			       OR p.rate_c IS DISTINCT FROM b.rate_c OR p.rate_d IS DISTINCT FROM b.rate_d
+			       OR p.rate_f IS DISTINCT FROM b.rate_f)`, touched); err != nil {
+			return result, fmt.Errorf("product prices from current batch: %w", err)
 		}
 	}
 

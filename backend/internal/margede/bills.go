@@ -11,7 +11,8 @@ import (
 
 // Party names and groups come from marg_ede_ledger (this API's full
 // ledger), falling back to margmaster_party. Product names come from
-// margmaster_products, so ### charge items show their code only.
+// marg_ede_products (this API's Product list, which includes the ###
+// charge items), falling back to margmaster_products.
 
 const BillsPageSize = 50
 
@@ -22,7 +23,7 @@ type BillFilter struct {
 	Dir    string // asc | desc (default desc)
 	From   string // yyyy-mm-dd
 	To     string // yyyy-mm-dd
-	Search string // bill no, party code or party name
+	Search string // bill no, party code/name, or a product name/code on its lines
 	Kind   string // party kind from the ledger: customer, supplier, ...
 	Status string // "" all | active | cancelled | incomplete
 	Page   int
@@ -142,7 +143,15 @@ func (f BillFilter) where(withType bool) (string, []any) {
 		add("b.bill_date <= ?::date", f.To)
 	}
 	if s := strings.TrimSpace(f.Search); s != "" {
-		add("(b.bill_no ILIKE ? OR b.party_code ILIKE ? OR "+partyNameExpr+" ILIKE ?)", "%"+s+"%")
+		// Also matches bills with a line whose product name or code matches
+		// ("insurance", "coxcalm", "###10").
+		add(`(b.bill_no ILIKE ? OR b.party_code ILIKE ? OR `+partyNameExpr+` ILIKE ?
+			OR EXISTS (
+				SELECT 1 FROM marg_ede_bill_items si
+				LEFT JOIN marg_ede_products sp ON sp.product_pid = si.product_pid
+				LEFT JOIN margmaster_products sm ON sm.base_code = si.product_pid::text
+				WHERE si.voucher = b.voucher AND NOT si.is_deleted
+				  AND (sp.name ILIKE ? OR sp.code ILIKE ? OR sm.name ILIKE ?)))`, "%"+s+"%")
 	}
 	if f.Kind != "" {
 		add("lg.kind = ?", f.Kind)
@@ -287,11 +296,12 @@ func GetBill(ctx context.Context, db *pgxpool.Pool, voucher int64) (BillDetail, 
 	}
 
 	rows, err := db.Query(ctx, `
-		SELECT i.marg_line_id, i.line_type, i.line_kind, i.line_bill_no, i.product_pid, mp.name,
+		SELECT i.marg_line_id, i.line_type, i.line_kind, i.line_bill_no, i.product_pid, COALESCE(ep.name, mp.name),
 		       i.item_company_code, i.batch, i.expiry, i.qty::float8, i.free::float8, i.mrp::float8,
 		       i.rate::float8, i.discount::float8, i.amount::float8, i.gst_percent::float8,
 		       i.gst_amount::float8, (i.amount + i.gst_amount)::float8, i.salesman, i.challan_no, i.challan_date
 		FROM marg_ede_bill_items i
+		LEFT JOIN marg_ede_products ep ON ep.product_pid = i.product_pid
 		LEFT JOIN margmaster_products mp ON mp.base_code = i.product_pid::text
 		WHERE i.voucher = $1 AND NOT i.is_deleted
 		ORDER BY i.line_kind DESC, i.marg_line_id`, voucher)

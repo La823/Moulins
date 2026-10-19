@@ -34,6 +34,8 @@ type Result struct {
 	LedgerNew      int
 	LedgerChanged  int
 	LedgerDeleted  int
+	Products       SetCounts
+	Stock          SetCounts
 	Warning        string
 }
 
@@ -216,6 +218,9 @@ func Apply(ctx context.Context, db *pgxpool.Pool, d Details, full bool) (Result,
 	}
 
 	if err := applyLedger(ctx, tx, d.Parties, full, &res); err != nil {
+		return res, err
+	}
+	if err := applyProductsAndStock(ctx, tx, d, full, &res); err != nil {
 		return res, err
 	}
 

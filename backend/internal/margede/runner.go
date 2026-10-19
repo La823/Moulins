@@ -16,34 +16,41 @@ const staleRunAfter = 30 * time.Minute
 
 // Run is one row of marg_ede_sync_runs.
 type Run struct {
-	ID             int        `json:"id"`
-	Status         string     `json:"status"`
-	TriggerSource  string     `json:"trigger_source"`
-	DatetimeFrom   string     `json:"datetime_from"`
-	StartedAt      time.Time  `json:"started_at"`
-	FinishedAt     *time.Time `json:"finished_at"`
-	MargDateTime   string     `json:"marg_datetime"`
-	MargDatastatus string     `json:"marg_datastatus"`
-	BillsReceived  int        `json:"bills_received"`
-	ItemsReceived  int        `json:"items_received"`
-	BillsNew       int        `json:"bills_new"`
-	BillsChanged   int        `json:"bills_changed"`
-	ItemsNew       int        `json:"items_new"`
-	ItemsChanged   int        `json:"items_changed"`
-	BillsDeleted   int        `json:"bills_deleted"`
-	ItemsDeleted   int        `json:"items_deleted"`
-	LedgerReceived int        `json:"ledger_received"`
-	LedgerNew      int        `json:"ledger_new"`
-	LedgerChanged  int        `json:"ledger_changed"`
-	LedgerDeleted  int        `json:"ledger_deleted"`
-	Warning        string     `json:"warning"`
-	Error          string     `json:"error"`
+	ID              int        `json:"id"`
+	Status          string     `json:"status"`
+	TriggerSource   string     `json:"trigger_source"`
+	DatetimeFrom    string     `json:"datetime_from"`
+	StartedAt       time.Time  `json:"started_at"`
+	FinishedAt      *time.Time `json:"finished_at"`
+	MargDateTime    string     `json:"marg_datetime"`
+	MargDatastatus  string     `json:"marg_datastatus"`
+	BillsReceived   int        `json:"bills_received"`
+	ItemsReceived   int        `json:"items_received"`
+	BillsNew        int        `json:"bills_new"`
+	BillsChanged    int        `json:"bills_changed"`
+	ItemsNew        int        `json:"items_new"`
+	ItemsChanged    int        `json:"items_changed"`
+	BillsDeleted    int        `json:"bills_deleted"`
+	ItemsDeleted    int        `json:"items_deleted"`
+	LedgerReceived  int        `json:"ledger_received"`
+	LedgerNew       int        `json:"ledger_new"`
+	LedgerChanged   int        `json:"ledger_changed"`
+	LedgerDeleted   int        `json:"ledger_deleted"`
+	ProductsNew     int        `json:"products_new"`
+	ProductsChanged int        `json:"products_changed"`
+	StockReceived   int        `json:"stock_received"`
+	StockNew        int        `json:"stock_new"`
+	StockChanged    int        `json:"stock_changed"`
+	StockDeleted    int        `json:"stock_deleted"`
+	Warning         string     `json:"warning"`
+	Error           string     `json:"error"`
 }
 
 const runColumns = `id, status, trigger_source, COALESCE(datetime_from,''), started_at, finished_at,
 	COALESCE(marg_datetime,''), COALESCE(marg_datastatus,''), bills_received, items_received,
 	bills_new, bills_changed, items_new, items_changed, bills_deleted, items_deleted,
 	ledger_received, ledger_new, ledger_changed, ledger_deleted,
+	products_new, products_changed, stock_received, stock_new, stock_changed, stock_deleted,
 	COALESCE(warning,''), COALESCE(error,'')`
 
 func scanRun(scan func(dest ...any) error) (Run, error) {
@@ -52,6 +59,7 @@ func scanRun(scan func(dest ...any) error) (Run, error) {
 		&r.MargDateTime, &r.MargDatastatus, &r.BillsReceived, &r.ItemsReceived,
 		&r.BillsNew, &r.BillsChanged, &r.ItemsNew, &r.ItemsChanged, &r.BillsDeleted, &r.ItemsDeleted,
 		&r.LedgerReceived, &r.LedgerNew, &r.LedgerChanged, &r.LedgerDeleted,
+		&r.ProductsNew, &r.ProductsChanged, &r.StockReceived, &r.StockNew, &r.StockChanged, &r.StockDeleted,
 		&r.Warning, &r.Error)
 	return r, err
 }
@@ -140,18 +148,24 @@ func finish(ctx context.Context, db *pgxpool.Pool, runID int, datetime string, f
 		SET status='completed', finished_at=NOW(), marg_datetime=$2, marg_datastatus=$3,
 		    bills_received=$4, items_received=$5, bills_new=$6, bills_changed=$7,
 		    items_new=$8, items_changed=$9, bills_deleted=$10, items_deleted=$11, warning=NULLIF($12,''),
-		    ledger_received=$13, ledger_new=$14, ledger_changed=$15, ledger_deleted=$16
+		    ledger_received=$13, ledger_new=$14, ledger_changed=$15, ledger_deleted=$16,
+		    products_received=$17, products_new=$18, products_changed=$19, products_deleted=$20,
+		    stock_received=$21, stock_new=$22, stock_changed=$23, stock_deleted=$24
 		WHERE id=$1`,
 		runID, d.DateTime, d.Datastatus, res.BillsReceived, res.ItemsReceived, res.BillsNew, res.BillsChanged,
 		res.ItemsNew, res.ItemsChanged, res.BillsDeleted, res.ItemsDeleted, res.Warning,
-		res.LedgerReceived, res.LedgerNew, res.LedgerChanged, res.LedgerDeleted)
+		res.LedgerReceived, res.LedgerNew, res.LedgerChanged, res.LedgerDeleted,
+		res.Products.Received, res.Products.New, res.Products.Changed, res.Products.Deleted,
+		res.Stock.Received, res.Stock.New, res.Stock.Changed, res.Stock.Deleted)
 	if err != nil {
 		log.Printf("marg ede sync run %d: could not record result: %v", runID, err)
 	}
-	log.Printf("marg ede sync run %d complete — %d bills (%d new, %d changed, %d deleted), %d lines (%d new, %d changed, %d deleted), %d ledger accounts (%d new, %d changed, %d deleted)",
+	log.Printf("marg ede sync run %d complete — %d bills (%d new, %d changed, %d deleted), %d lines (%d new, %d changed, %d deleted), %d ledger accounts (%d new, %d changed, %d deleted), %d products (%d new, %d changed, %d deleted), %d stock batches (%d new, %d changed, %d deleted)",
 		runID, res.BillsReceived, res.BillsNew, res.BillsChanged, res.BillsDeleted,
 		res.ItemsReceived, res.ItemsNew, res.ItemsChanged, res.ItemsDeleted,
-		res.LedgerReceived, res.LedgerNew, res.LedgerChanged, res.LedgerDeleted)
+		res.LedgerReceived, res.LedgerNew, res.LedgerChanged, res.LedgerDeleted,
+		res.Products.Received, res.Products.New, res.Products.Changed, res.Products.Deleted,
+		res.Stock.Received, res.Stock.New, res.Stock.Changed, res.Stock.Deleted)
 	return GetRun(context.Background(), db, runID)
 }
 

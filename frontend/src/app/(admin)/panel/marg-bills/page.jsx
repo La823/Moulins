@@ -8,7 +8,7 @@ import { KIND_LABELS } from "@/lib/margLedger";
 
 // Bills synced from Marg's Corporate EDE API every 15 minutes (backend
 // internal/margede). Party names and groups come from the Marg ledger;
-// product names from Marg Products, so ### charge lines show codes only.
+// product names from Marg's product list (incl. ### charge items).
 
 const fmtMoney = (v) =>
   v == null ? "—" : `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -179,7 +179,7 @@ export default function MargBillsPage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Bill no, party code or name..."
+              placeholder="Bill no, party or product..."
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-64"
             />
             <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">

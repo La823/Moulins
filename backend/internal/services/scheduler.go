@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,9 +24,24 @@ func StartScheduler(db *pgxpool.Pool) {
 	defer ticker.Stop()
 
 	var lastBirthdayRunDate string
+	var margSlot time.Time
+	var lastMargFullDate string
 
 	for range ticker.C {
 		dispatchMeetingReminders(db)
+
+		// Marg product/party quick sync on every quarter hour, plus one full
+		// pull a night (see dispatchMargSync).
+		if slot := time.Now().Truncate(15 * time.Minute); !slot.Equal(margSlot) {
+			margSlot = slot
+			ist := time.Now().In(margsyncIST)
+			window := "last"
+			if day := ist.Format("2006-01-02"); ist.Hour() == margFullSyncHourIST && day != lastMargFullDate {
+				window = "full"
+				lastMargFullDate = day
+			}
+			dispatchMargSync(db, window)
+		}
 
 		today := time.Now().Format("2006-01-02")
 		if today != lastBirthdayRunDate {
@@ -32,18 +49,33 @@ func StartScheduler(db *pgxpool.Pool) {
 			dispatchBirthdayMeetingSync(db)
 			dispatchAnniversaryReminders(db)
 			dispatchAnniversaryMeetingSync(db)
-			dispatchMargSync(db)
 			dispatchCartPurge(db)
 			lastBirthdayRunDate = today
 		}
 	}
 }
 
-// dispatchMargSync runs the Marg ERP master-data sync once a day (piggy-
-// backing on the same daily gate as the birthday jobs — this data doesn't
-// need finer granularity, and admins can always trigger it on demand via
-// POST /admin/marg-sync/trigger). A no-op if MARG_* env vars aren't set.
-func dispatchMargSync(db *pgxpool.Pool) {
+var margsyncIST = time.FixedZone("IST", 5*3600+1800)
+
+// margFullSyncHourIST: the first slot in this hour each day runs a full
+// pull instead of a delta (only in this hour, so a restart later in the day
+// doesn't spend Marg's full-pull allowance). Deltas never carry deletions or Marg's HSN
+// list, so without a regular full pull the mirror drifts (19 Oct 2026: two
+// deleted products still live, 42 products with no HSN). Full pulls are
+// rate-limited by Marg, hence once a night.
+const margFullSyncHourIST = 3
+
+// dispatchMargSync runs the Marg ERP master-data sync: a delta since the
+// last sync every 15 minutes, and a full pull once a night. It used to run
+// once a day, so stock, rates and party balances in the mirror were up to a
+// day behind Marg. Admins can still trigger one via POST
+// /admin/marg-sync/trigger. A no-op if MARG_* env vars aren't set, or if
+// MARG_SYNC_SCHEDULE=off (local development, so a laptop and the server
+// don't both call Marg every 15 minutes).
+func dispatchMargSync(db *pgxpool.Pool, window string) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("MARG_SYNC_SCHEDULE")), "off") {
+		return
+	}
 	creds, err := margsync.CredentialsFromEnv()
 	if err != nil {
 		return // Marg integration not configured — nothing to do
@@ -55,15 +87,16 @@ func dispatchMargSync(db *pgxpool.Pool) {
 	// on margmaster_sync_runs enforces that).
 	//
 	// "last" resumes from the stored cursor, falling back to a one-month
-	// window when there is none — never a full pull, which Marg rate-limits.
-	runID, err := margsync.Launch(db, creds, "scheduled", "last")
+	// window when there is none. "full" is only passed for the nightly slot,
+	// since Marg rate-limits full pulls.
+	runID, err := margsync.Launch(db, creds, "scheduled", window)
 	if err != nil {
 		// An already-running sync is the normal case when a long run
 		// overlaps the next tick, not something to alarm about.
 		log.Printf("scheduler: marg sync not started: %v", err)
 		return
 	}
-	log.Printf("scheduler: marg sync started (run #%d)", runID)
+	log.Printf("scheduler: marg sync (%s) started (run #%d)", window, runID)
 }
 
 // dispatchCartPurge removes abandoned cart_items rows older than 2 months

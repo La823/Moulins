@@ -131,22 +131,63 @@ type PartyRow struct {
 	IsDeleted string  `json:"Is_Deleted"`
 }
 
-// ProductRow is read only to tell charge lines (### codes) from items.
+// ProductRow is one Product entry exactly as Marg sends it.
 type ProductRow struct {
-	PID  float64 `json:"PID"`
-	Code string  `json:"Code"`
+	ID       int64   `json:"ID"`
+	PID      float64 `json:"PID"`
+	Code     string  `json:"Code"`
+	Name     string  `json:"Name"`
+	Unit     string  `json:"Unit"`
+	Pack     float64 `json:"Pack"`
+	GCode    string  `json:"GCode"`
+	GCode3   string  `json:"GCode3"`
+	GCode6   string  `json:"GCode6"`
+	GST      float64 `json:"GST"`
+	AddField string  `json:"AddField"`
+}
+
+// StockRow is one Stock (product batch) entry exactly as Marg sends it.
+type StockRow struct {
+	ID       int64   `json:"ID"`
+	PID      float64 `json:"PID"`
+	GCode    string  `json:"GCode"`
+	Batch    string  `json:"Batch"`
+	BatDate  string  `json:"BatDate"`
+	Expiry   string  `json:"Expiry"`
+	SupInvo  string  `json:"SupInvo"`
+	SupDate  string  `json:"SupDate"`
+	SupCode  string  `json:"SupCode"`
+	Opening  float64 `json:"Opening"`
+	Stock    float64 `json:"Stock"`
+	BrkStock float64 `json:"BrkStock"`
+	LPRate   float64 `json:"LPRate"`
+	PRate    float64 `json:"PRate"`
+	MRP      float64 `json:"MRP"`
+	RateA    float64 `json:"RateA"`
+	RateB    float64 `json:"RateB"`
+	RateC    float64 `json:"RateC"`
+	AddField string  `json:"AddField"`
+}
+
+// SaleTypeRow is one entry of Marg's code lists (HSN, company, form, ...).
+type SaleTypeRow struct {
+	SGCode string `json:"SGCode"`
+	SCode  string `json:"SCode"`
+	Name   string `json:"Name"`
 }
 
 // Details is the part of the response this package uses.
 type Details struct {
-	Bills      []BillRow    `json:"MDis"`
-	Lines      []LineRow    `json:"Dis"`
-	Products   []ProductRow `json:"Product"`
-	Parties    []PartyRow   `json:"Party"`
-	Index      string       `json:"Index"`
-	Datastatus string       `json:"Datastatus"`
-	Status     string       `json:"Status"`
-	DateTime   string       `json:"DateTime"`
+	Bills      []BillRow     `json:"MDis"`
+	Lines      []LineRow     `json:"Dis"`
+	Products   []ProductRow  `json:"Product"`
+	Parties    []PartyRow    `json:"Party"`
+	Stock      []StockRow    `json:"Stock"`
+	SaleTypes  []SaleTypeRow `json:"SaleType"`
+	Index      string        `json:"Index"`
+	Datastatus string        `json:"Datastatus"`
+	Status     string        `json:"Status"`
+	DateTime   string        `json:"DateTime"`
 }
 
 type response struct {
@@ -192,6 +233,8 @@ func Fetch(creds Credentials, datetime string) (Details, error) {
 		all.Lines = append(all.Lines, d.Lines...)
 		all.Products = append(all.Products, d.Products...)
 		all.Parties = append(all.Parties, d.Parties...)
+		all.Stock = append(all.Stock, d.Stock...)
+		all.SaleTypes = append(all.SaleTypes, d.SaleTypes...)
 		all.Index, all.Datastatus, all.Status, all.DateTime = d.Index, d.Datastatus, d.Status, d.DateTime
 
 		if strings.EqualFold(d.Datastatus, "Completed") || d.Index == "" || d.Index == index {

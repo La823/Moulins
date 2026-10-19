@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-// Rows copied from a real MOULINSPHARMACE3 pull (2026-10-19).
+// Rows shaped like a real Marg pull (field layout, padding, AddField
+// positions); party details are made up.
 
 func TestToBillCreditNoteAndCancellation(t *testing.T) {
 	cn := ToBill(BillRow{
@@ -81,27 +82,55 @@ func TestHashChangesWithContent(t *testing.T) {
 
 func TestToLedger(t *testing.T) {
 	l := ToLedger(PartyRow{
-		ID: 8798006, SCode: "C6    ", CID: "HII   ",
-		ParNam:    "KALIMATA ENTERPRISE           HOOGHLY        ",
-		ParAdd:    "VILL. APURBAPUR. PLOT NO 2973. KH NO 2693/1  ",
+		ID: 1001, SCode: "C6    ", CID: "TST   ",
+		ParNam:    "SAMPLE MEDICAL AGENCY         TESTPUR        ",
+		ParAdd:    "12 MAIN ROAD                                 ",
 		GSTNo:     "               ",
-		Phone2:    "9433458941  ",
-		DlNo:      "20B/DL(BD)10067-SW(HL                        ",
-		Pin:       "712409",
+		Phone2:    "9000000001  ",
+		DlNo:      "20B/TEST/0001                                ",
+		Pin:       "100001",
 		IsDeleted: "0",
 	})
-	if l.MargID != 8798006 || *l.PartyCode != "HII" || l.Kind != "customer" || *l.GroupName != "Customers" {
+	if l.MargID != 1001 || *l.PartyCode != "TST" || l.Kind != "customer" || *l.GroupName != "Customers" {
 		t.Fatalf("ids/group: %+v", l)
 	}
-	if l.Name != "KALIMATA ENTERPRISE HOOGHLY" || *l.ShortName != "KALIMATA ENTERPRISE" || *l.City != "HOOGHLY" {
+	if l.Name != "SAMPLE MEDICAL AGENCY TESTPUR" || *l.ShortName != "SAMPLE MEDICAL AGENCY" || *l.City != "TESTPUR" {
 		t.Fatalf("name split: %q %v %v", l.Name, *l.ShortName, *l.City)
 	}
-	if l.GSTIN != nil || *l.Phone2 != "9433458941" || l.Phone1 != nil || l.MargDeleted {
+	if l.GSTIN != nil || *l.Phone2 != "9000000001" || l.Phone1 != nil || l.MargDeleted {
 		t.Fatalf("blanks/phones: %+v", l)
 	}
 
 	tax := ToLedger(PartyRow{ID: 1, SCode: "D1�", ParNam: "EXCISE P.L.A."})
 	if tax.Kind != "tax" || tax.City != nil {
 		t.Fatalf("D1 prefix group / short name: %+v", tax)
+	}
+}
+
+func TestToProductAndStock(t *testing.T) {
+	lk := BuildLookups([]SaleTypeRow{
+		{SGCode: "ZZZZZZ", SCode: "IB    ", Name: "SAMPLE PHARMA"},
+		{SGCode: "SALT  ", SCode: "SGB   ", Name: "TABLET"},
+		{SGCode: "COMMCD", SCode: "SGB   ", Name: "30049099       30049099"}, // same code, other list
+	})
+	p := ToProduct(ProductRow{ID: 7, PID: 1000111.0, Code: "30        ", Name: "TESTOMAX TAB  10*10",
+		Unit: "BOX ", GCode: "IB    ", GCode3: "SGB   ", GCode6: "SGB   ", GST: 5}, lk)
+	if p.PID != 1000111 || *p.Code != "30" || p.Name != "TESTOMAX TAB 10*10" || p.Kind != "item" {
+		t.Fatalf("basic fields: %+v", p)
+	}
+	if *p.CompanyName != "SAMPLE PHARMA" || *p.FormName != "TABLET" || *p.HSNCode != "30049099" {
+		t.Fatalf("lookups: %v %v %v", *p.CompanyName, *p.FormName, *p.HSNCode)
+	}
+	if c := ToProduct(ProductRow{PID: 1000020.0, Code: "###5", Name: "FREIGHT OUTWARD SALE 18%"}, lk); c.Kind != "charge" || c.CompanyName != nil {
+		t.Fatalf("charge product: %+v", c)
+	}
+
+	s := ToStock(StockRow{ID: 9, PID: 1000111.0, Batch: "TB001       ", Expiry: "2027-09-01T00:00:00",
+		BatDate: "1900-01-01T00:00:00", SupInvo: "            ", Stock: -16, Opening: 3, PRate: 300, MRP: 2430})
+	if s.ProductPID != 1000111 || *s.Batch != "TB001" || *s.Expiry != "2027-09-01" || s.Stock != -16 {
+		t.Fatalf("stock fields: %+v", s)
+	}
+	if s.BatchDate != nil || s.SupplierInvoice != nil || s.RateA != nil {
+		t.Fatalf("blank/1900 handling: %+v", s)
 	}
 }

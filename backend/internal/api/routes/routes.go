@@ -334,6 +334,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterStaff.HandleFunc("/marg-bills", margedeHandlers.ListBillsHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-bills/{voucher}", margedeHandlers.GetBillHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-ledger", margedeHandlers.ListLedgerHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-stock", margedeHandlers.ListStockHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone
 	// editor's Python persistence layer; see backend/warehouse_layout_editor)

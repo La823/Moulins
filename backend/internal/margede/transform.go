@@ -427,3 +427,134 @@ func ToLedger(r PartyRow) Ledger {
 	l.Hash = hashOf(r)
 	return l
 }
+
+// Lookups resolves Marg's list codes: (list, code) -> name, e.g.
+// ("COMMCD", "ZSP") -> "30042019". Codes repeat across lists, so the list
+// is always part of the key.
+type Lookups map[[2]string]string
+
+// BuildLookups indexes the SaleType blob.
+func BuildLookups(rows []SaleTypeRow) Lookups {
+	l := Lookups{}
+	for _, r := range rows {
+		l[[2]string{strings.TrimSpace(r.SGCode), strings.TrimSpace(r.SCode)}] = strings.Join(strings.Fields(r.Name), " ")
+	}
+	return l
+}
+
+func (l Lookups) name(list, code string) *string {
+	if code == "" {
+		return nil
+	}
+	if v, ok := l[[2]string{list, code}]; ok && v != "" {
+		return &v
+	}
+	return nil
+}
+
+// Product is a cleaned Product row.
+type Product struct {
+	PID         int64
+	MargID      int64
+	Code        *string
+	Name        string
+	Unit        *string
+	Pack        *float64
+	Kind        string
+	CompanyCode *string
+	CompanyName *string
+	FormCode    *string
+	FormName    *string
+	HSNCode     *string
+	GSTPercent  float64
+	AddField    string
+	Hash        string
+}
+
+// ToProduct cleans one Product row. Company comes from the ZZZZZZ list,
+// dosage form from SALT, HSN from COMMCD (GCode6 is a code into it).
+func ToProduct(r ProductRow, lk Lookups) Product {
+	company := strings.TrimSpace(r.GCode)
+	form := strings.TrimSpace(r.GCode3)
+	hsnCode := strings.TrimSpace(r.GCode6)
+	p := Product{
+		PID:         int64(r.PID),
+		MargID:      r.ID,
+		Code:        text(r.Code),
+		Name:        strings.Join(strings.Fields(r.Name), " "),
+		Unit:        text(r.Unit),
+		Pack:        nonZero(r.Pack),
+		Kind:        "item",
+		CompanyCode: text(company),
+		CompanyName: lk.name("ZZZZZZ", company),
+		FormCode:    text(form),
+		FormName:    lk.name("SALT", form),
+		HSNCode:     lk.name("COMMCD", hsnCode),
+		GSTPercent:  r.GST,
+		AddField:    r.AddField,
+	}
+	if p.HSNCode != nil {
+		// Some COMMCD names repeat the code ("96190040       96190040").
+		h := strings.Fields(*p.HSNCode)[0]
+		p.HSNCode = &h
+	}
+	if strings.HasPrefix(strings.TrimSpace(r.Code), "###") {
+		p.Kind = "charge"
+	}
+	p.Hash = hashOf(struct {
+		R       ProductRow
+		C, F, H *string
+	}{r, p.CompanyName, p.FormName, p.HSNCode})
+	return p
+}
+
+// StockBatch is a cleaned Stock row.
+type StockBatch struct {
+	MargID          int64
+	ProductPID      int64
+	Batch           *string
+	ItemCompanyCode *string
+	BatchDate       *string
+	Expiry          *string
+	SupplierInvoice *string
+	SupplierDate    *string
+	SupplierCode    *string
+	Opening         float64
+	Stock           float64
+	BrokenStock     float64
+	CostRate        float64
+	PurchaseRate    float64
+	MRP             float64
+	RateA           *float64
+	RateB           *float64
+	RateC           *float64
+	AddField        string
+	Hash            string
+}
+
+// ToStock cleans one Stock row.
+func ToStock(r StockRow) StockBatch {
+	s := StockBatch{
+		MargID:          r.ID,
+		ProductPID:      int64(r.PID),
+		Batch:           text(r.Batch),
+		ItemCompanyCode: text(r.GCode),
+		BatchDate:       isoDate(r.BatDate),
+		Expiry:          isoDate(r.Expiry),
+		SupplierInvoice: text(r.SupInvo),
+		SupplierDate:    isoDate(r.SupDate),
+		SupplierCode:    text(r.SupCode),
+		Opening:         r.Opening,
+		Stock:           r.Stock,
+		BrokenStock:     r.BrkStock,
+		CostRate:        r.LPRate,
+		PurchaseRate:    r.PRate,
+		MRP:             r.MRP,
+		RateA:           nonZero(r.RateA),
+		RateB:           nonZero(r.RateB),
+		RateC:           nonZero(r.RateC),
+		AddField:        r.AddField,
+	}
+	s.Hash = hashOf(r)
+	return s
+}
