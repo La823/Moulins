@@ -28,6 +28,7 @@ firebase/
 .aws/
 appcerts/
 api test/
+apiTest2Corporate/
 
 # OS
 .DS_Store

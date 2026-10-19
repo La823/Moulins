@@ -172,6 +172,21 @@ func post(endpoint string, payload interface{}) (string, error) {
 	return text, nil
 }
 
+// PostAndUnwrap calls any eOnlineData endpoint and returns the decrypted,
+// decompressed JSON text, BOM stripped. Used by the margede package for
+// MargCorporateEDE, which shares this API's transport and encryption.
+func PostAndUnwrap(endpoint string, payload interface{}, key string) (string, error) {
+	respText, err := post(endpoint, payload)
+	if err != nil {
+		return "", err
+	}
+	jsonText, err := unwrapResponse(respText, key)
+	if err != nil {
+		return "", fmt.Errorf("unwrap %s response: %w", endpoint, err)
+	}
+	return string(bytes.TrimPrefix([]byte(jsonText), []byte{0xEF, 0xBB, 0xBF})), nil
+}
+
 type mst2017Request struct {
 	CompanyCode string `json:"CompanyCode"`
 	MargID      int    `json:"MargID"`

@@ -30,6 +30,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/ledger"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/licencetypes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/manufacturers"
+	margedeHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/margede"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/margmaster"
 	margsyncHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/margsync"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
@@ -318,6 +319,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterEditStaff.Use(middleware.StaffOnly)
 	margMasterEditStaff.Use(middleware.RequirePermission(db, "marg_master_edit", rdb))
 	margMasterEditStaff.HandleFunc("/marg-sync/trigger", margsyncHandlers.TriggerHandler(db)).Methods("POST")
+	margMasterEditStaff.HandleFunc("/marg-bills-sync/trigger", margedeHandlers.TriggerHandler(db)).Methods("POST")
 
 	// staff routes — Marg master data viewer (synced products/party ledgers)
 	margMasterStaff := protected.PathPrefix("/admin").Subrouter()
@@ -327,6 +329,11 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterStaff.HandleFunc("/marg-parties", margmaster.ListPartiesHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/status", margsyncHandlers.StatusHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/runs/{id}", margsyncHandlers.RunHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-bills-sync/status", margedeHandlers.StatusHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-bills-sync/runs/{id}", margedeHandlers.RunHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-bills", margedeHandlers.ListBillsHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-bills/{voucher}", margedeHandlers.GetBillHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-ledger", margedeHandlers.ListLedgerHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone
 	// editor's Python persistence layer; see backend/warehouse_layout_editor)

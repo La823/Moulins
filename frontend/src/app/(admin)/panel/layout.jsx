@@ -178,6 +178,7 @@ const NAV_ITEMS = [
   },
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },
   { label: "Payments", href: "/panel/payments", permission: "payments_view", icon: ICONS.payments },
+  { label: "Marg Bills", href: "/panel/marg-bills", permission: "marg_master_view", icon: ICONS.orders },
   { label: "Transports", href: "/panel/transports", permission: "transports_edit", icon: ICONS.truck },
   {
     label: "Users",
@@ -191,6 +192,7 @@ const NAV_ITEMS = [
       { label: "Product Visibility", href: "/panel/product-visibility", permission: "partners_view" },
       { label: "Doctors Map", href: "/panel/doctors-map", permission: "partners_view" },
       { label: "Marg Parties", href: "/panel/marg-parties", permission: "marg_master_view" },
+      { label: "Marg Ledger", href: "/panel/marg-ledger", permission: "marg_master_view" },
     ],
   },
   {
