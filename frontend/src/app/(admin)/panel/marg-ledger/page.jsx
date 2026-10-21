@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import { KIND_LABELS } from "@/lib/margLedger";
@@ -47,9 +48,10 @@ export default function MargLedgerPage() {
   return (
     <>
       <div className="mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">Marg Ledger</h2>
+        <h2 className="text-lg font-semibold text-gray-800">Marg Accounts</h2>
         <p className="text-xs text-gray-400 mt-0.5">
-          Every ledger account in Marg: customers, suppliers, expense vendors, banks and tax accounts. Synced with the bills every 15 minutes.
+          Every party and ledger account in Marg: customers, suppliers, manufacturers, expense vendors, banks and tax accounts.
+          Open one to see all its bills. Synced every 15 minutes.
         </p>
       </div>
 
@@ -132,7 +134,15 @@ export default function MargLedgerPage() {
                   <tr key={a.marg_id} className="hover:bg-gray-50 align-top">
                     <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{a.party_code || "—"}</td>
                     <td className="px-4 py-3">
-                      <div className="text-gray-900">{a.short_name || a.name}</div>
+                      <div className="text-gray-900">
+                        {a.party_code ? (
+                          <Link href={`/panel/marg-ledger/${encodeURIComponent(a.party_code)}`} className="hover:underline">
+                            {a.short_name || a.name}
+                          </Link>
+                        ) : (
+                          a.short_name || a.name
+                        )}
+                      </div>
                       <div className="text-xs text-gray-400">
                         {[a.city, a.pin].filter(Boolean).join(" · ") || "—"}
                       </div>

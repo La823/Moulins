@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import LedgerPanel from "@/components/admin/LedgerPanel";
+import MargPartnerBills from "@/components/admin/MargPartnerBills";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
 import SpecialProductsPanel from "@/components/admin/SpecialProductsPanel";
 import PartnerProductVisibilityPanel from "@/components/admin/PartnerProductVisibilityPanel";
@@ -117,6 +118,9 @@ export default function PartnerDetailPage() {
   const [welcomeEmailError, setWelcomeEmailError] = useState("");
   const [welcomeEmailSuccess, setWelcomeEmailSuccess] = useState("");
   const [sendLog, setSendLog] = useState([]);
+  // Top-of-page tabs: the profile as it always was, and the partner's Marg
+  // bills, chart and timeline.
+  const [view, setView] = useState("profile");
 
   const loadSendLog = () =>
     apiFetch(`/admin/partners/${id}/send-log`)
@@ -444,6 +448,28 @@ export default function PartnerDetailPage() {
         All Partners
       </Link>
 
+      <div className="flex gap-1 border-b border-gray-200 mb-5">
+        {[
+          ["profile", "Profile"],
+          ["bills", "Bills & reports"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setView(key)}
+            className={`px-4 py-2 text-sm -mb-px border-b-2 transition-colors ${
+              view === key
+                ? "border-gray-900 text-gray-900 font-medium"
+                : "border-transparent text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "bills" ? (
+        <MargPartnerBills partnerId={partner.id} partnerName={partner.username} />
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left column — partner info */}
         <div className="lg:col-span-1 space-y-5">
@@ -1208,6 +1234,7 @@ export default function PartnerDetailPage() {
           <AssignmentPanel mode="client" userId={partner.id} />
         </div>
       </div>
+      )}
     </>
   );
 }

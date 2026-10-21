@@ -2,10 +2,12 @@ package margede
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/margede"
@@ -34,7 +36,7 @@ func ListBillsHandler(db *pgxpool.Pool) http.HandlerFunc {
 		list, err := margede.ListBills(r.Context(), db, margede.BillFilter{
 			Type: q.Get("type"), From: q.Get("from"), To: q.Get("to"),
 			Search: q.Get("search"), Status: q.Get("status"), Page: page,
-			Sort: q.Get("sort"), Dir: q.Get("dir"), Kind: q.Get("kind"),
+			Sort: q.Get("sort"), Dir: q.Get("dir"), Kind: q.Get("kind"), Party: q.Get("party"),
 		})
 		if err != nil {
 			log.Printf("marg bills list: %v", err)
@@ -80,6 +82,51 @@ func ListStockHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(list)
+	}
+}
+
+// GET /admin/marg-ledger/{code} — one party: account, totals per bill
+// type, top products. Its bills come from /admin/marg-bills?party={code}.
+func GetPartyHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		code := mux.Vars(r)["code"]
+		d, err := margede.GetParty(r.Context(), db, code)
+		if errors.Is(err, margede.ErrPartyNotFound) {
+			http.Error(w, "party not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("marg party %q: %v", code, err)
+			http.Error(w, "could not load party", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(d)
+	}
+}
+
+// GET /admin/partners/{id}/marg-bills — a partner's Marg bills summary,
+// monthly series and timeline (bills, app orders, joined), for the partner
+// page. linked=false when the partner has no Marg party (rid).
+func PartnerBillsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid partner id", http.StatusBadRequest)
+			return
+		}
+		d, err := margede.GetPartnerBills(r.Context(), db, id)
+		if errors.Is(err, margede.ErrPartyNotFound) {
+			http.Error(w, "partner not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("partner %s marg bills: %v", id, err)
+			http.Error(w, "could not load partner bills", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(d)
 	}
 }
 

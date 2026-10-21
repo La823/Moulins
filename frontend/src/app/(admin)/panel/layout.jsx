@@ -151,6 +151,11 @@ const ICONS = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 21v-6h4.5v6M13.5 12h4.5v4.5h-4.5z" />
     </svg>
   ),
+  analysis: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3v18h18M7 15l4-4 3 3 5-6" />
+    </svg>
+  ),
   chevron: (
     <svg className="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
@@ -180,6 +185,7 @@ const NAV_ITEMS = [
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },
   { label: "Payments", href: "/panel/payments", permission: "payments_view", icon: ICONS.payments },
   { label: "Marg Bills", href: "/panel/marg-bills", permission: "marg_master_view", icon: ICONS.orders },
+  { label: "Analysis", href: "/panel/marg-analysis", permission: "marg_master_view", icon: ICONS.analysis },
   { label: "Transports", href: "/panel/transports", permission: "transports_edit", icon: ICONS.truck },
   {
     label: "Users",
@@ -193,7 +199,7 @@ const NAV_ITEMS = [
       { label: "Product Visibility", href: "/panel/product-visibility", permission: "partners_view" },
       { label: "Doctors Map", href: "/panel/doctors-map", permission: "partners_view" },
       { label: "Marg Parties", href: "/panel/marg-parties", permission: "marg_master_view" },
-      { label: "Marg Ledger", href: "/panel/marg-ledger", permission: "marg_master_view" },
+      { label: "Marg Accounts", href: "/panel/marg-ledger", permission: "marg_master_view" },
     ],
   },
   {

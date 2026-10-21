@@ -336,7 +336,7 @@ var ledgerGroups = map[string]struct{ name, kind string }{
 	"C6":  {"Customers", "customer"},
 	"C6z": {"Customers (MargMart)", "customer"},
 	"D3":  {"Suppliers", "supplier"},
-	"D34": {"Suppliers (manufacturers)", "supplier"},
+	"D34": {"Manufacturers", "manufacturer"}, // Baddi/Solan/Sirmour makers, all with a DL
 	"D33": {"Expense vendors", "expense_vendor"},
 	"D32": {"Staff", "staff"},
 	"B":   {"Capital", "other"},

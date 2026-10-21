@@ -334,6 +334,14 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterStaff.HandleFunc("/marg-bills", margedeHandlers.ListBillsHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-bills/{voucher}", margedeHandlers.GetBillHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-ledger", margedeHandlers.ListLedgerHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-ledger/{code}", margedeHandlers.GetPartyHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/partners/{id}/marg-bills", margedeHandlers.PartnerBillsHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-analysis/parties", margedeHandlers.AnalysisPartiesHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-analysis/products", margedeHandlers.AnalysisProductsHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-analysis/products/{pid}", margedeHandlers.AnalysisProductHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
+	margMasterStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-stock", margedeHandlers.ListStockHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone

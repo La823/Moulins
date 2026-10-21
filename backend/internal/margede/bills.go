@@ -25,6 +25,7 @@ type BillFilter struct {
 	To     string // yyyy-mm-dd
 	Search string // bill no, party code/name, or a product name/code on its lines
 	Kind   string // party kind from the ledger: customer, supplier, ...
+	Party  string // exact party code
 	Status string // "" all | active | cancelled | incomplete
 	Page   int
 }
@@ -155,6 +156,9 @@ func (f BillFilter) where(withType bool) (string, []any) {
 	}
 	if f.Kind != "" {
 		add("lg.kind = ?", f.Kind)
+	}
+	if f.Party != "" {
+		add("b.party_code = ?", f.Party)
 	}
 	// Cancelled bills are listed by default (so bill numbers have no gaps)
 	// but never counted in SumTotal.

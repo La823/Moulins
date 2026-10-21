@@ -2,6 +2,7 @@
 export const KIND_LABELS = {
   customer: "Customers",
   supplier: "Suppliers",
+  manufacturer: "Manufacturers",
   expense_vendor: "Expense vendors",
   staff: "Staff",
   bank_cash: "Bank & cash",
