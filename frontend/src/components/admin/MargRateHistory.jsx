@@ -188,7 +188,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
   const header = (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sales history to this party</div>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">History with this party</div>
         {count > 1 && (
           <div className="text-[10px] text-gray-400 whitespace-nowrap">
             {position + 1} of {count} · <kbd className="px-1 border border-gray-200 rounded">↑</kbd>{" "}
@@ -242,15 +242,8 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
     }
     g.purchases = purchasesOf.get(k) || [];
   }
-  // The list: sales and purchases together, newest first; on the same day a
-  // purchase sits below the sale (it came in first).
-  const rows = [
-    ...bills.map((p) => ({ ...p, kind: "sale" })),
-    ...[...purchasesOf.values()].flat(),
-  ].sort((a, b) => {
-    const d = new Date(b.date || 0) - new Date(a.date || 0);
-    return d !== 0 ? d : (a.kind === "sale" ? 0 : 1) - (b.kind === "sale" ? 0 : 1);
-  });
+  // The purchases box: every purchase of the sold batches, newest first.
+  const purchases = [...purchasesOf.values()].flat().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
   return (
     <div>
@@ -264,6 +257,8 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
         <p className="text-xs text-gray-400 py-2">Never sold to this party before.</p>
       ) : (
         <>
+          <section className="border border-blue-200 rounded-xl p-2.5 mb-3">
+          <h4 className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide mb-2">Sales to this party</h4>
           <div className="grid grid-cols-4 gap-2 mb-3 text-[10px]">
             <Stat label="Last" value={money(history.last?.rate)} sub={history.last ? day(history.last.date, false) : null} />
             <Stat label="Lowest" value={money(history.min_rate)} />
@@ -278,7 +273,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                 {qty(bills.reduce((t, p) => t + p.qty + p.free, 0))} units
               </div>
               <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-[10px]">
-                {[["list", "All bills"], ["batch", "By batch"]].map(([k, label]) => (
+                {[["list", "All sales"], ["batch", "By batch"]].map(([k, label]) => (
                   <button
                     key={k}
                     onClick={() => setView(k)}
@@ -306,8 +301,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {rows.map((p, i) => {
-                    if (p.kind !== "sale") return <PurchaseRow key={`pu-${p.ref}-${i}`} p={p} onOpen={setOpenBill} />;
+                  {bills.map((p, i) => {
                     const margin = p.purchase_rate && p.rate ? ((p.rate - p.purchase_rate) / p.purchase_rate) * 100 : null;
                     return (
                       <tr
@@ -369,25 +363,6 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {g.purchases.map((pu, i) => (
-                        <tr
-                          key={`pu-${pu.ref}-${i}`}
-                          onClick={() => pu.voucher && setOpenBill(pu)}
-                          className={`bg-amber-50/60 ${pu.voucher ? "cursor-pointer hover:bg-amber-100" : ""}`}
-                        >
-                          <td className="px-1.5 py-1 text-gray-600 whitespace-nowrap">{pu.date ? day(pu.date) : "—"}</td>
-                          <td className="px-1.5 py-1 text-gray-800">
-                            <span className="text-amber-800 font-medium">{pu.kind === "earlier" ? "Bought earlier" : "Purchase"}</span>{" "}
-                            <span className={pu.voucher ? "text-blue-700 underline decoration-dotted underline-offset-2" : ""}>{pu.ref}</span>
-                            {pu.supplier && <div className="text-gray-500 truncate max-w-[9rem]">{pu.supplier}</div>}
-                          </td>
-                          <td className="px-1.5 py-1 text-right text-green-700 whitespace-nowrap">
-                            {pu.kind === "earlier" ? "—" : <>+{qty(pu.qty)}{pu.free > 0 && <> +{qty(pu.free)}</>}</>}
-                          </td>
-                          <td className="px-1.5 py-1 text-right font-medium text-amber-800 whitespace-nowrap">{money(pu.rate)}</td>
-                          <td className="px-1.5 py-1"></td>
-                        </tr>
-                      ))}
                       {g.sales.map((p, i) => {
                         const margin = g.purchaseRate && p.rate ? ((p.rate - g.purchaseRate) / g.purchaseRate) * 100 : null;
                         return (
@@ -439,9 +414,39 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
               </div>
             )}
           </div>
+          </section>
+
+          <section className="border border-amber-200 rounded-xl p-2.5">
+            <h4 className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-2">
+              Purchases of these batches
+            </h4>
+            {purchases.length === 0 ? (
+              <p className="text-[10px] text-gray-400">No purchase found for the batches sold to this party.</p>
+            ) : (
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead className="bg-amber-50 text-gray-500">
+                    <tr>
+                      <th className="px-1.5 py-1 text-left font-medium">Date / bill</th>
+                      <th className="px-1.5 py-1 text-left font-medium">Supplier</th>
+                      <th className="px-1.5 py-1 text-left font-medium">Batch</th>
+                      <th className="px-1.5 py-1 text-right font-medium">Qty in</th>
+                      <th className="px-1.5 py-1 text-right font-medium">MRP</th>
+                      <th className="px-1.5 py-1 text-right font-medium">Purchase</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {purchases.map((pu, i) => (
+                      <PurchaseRow key={`pu-${pu.ref}-${i}`} p={pu} onOpen={setOpenBill} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
           <p className="text-[10px] text-gray-400 mt-2">
-            Rates before GST. Purchases are the amber rows. Margin is over the batch&apos;s purchase rate. Bills are from Marg (this financial
-            year); click a bill to see all of it.
+            Rates before GST. Margin is over the batch&apos;s purchase rate. Bills are from Marg (this financial year);
+            click a bill to see all of it.
           </p>
         </>
       )}
@@ -488,32 +493,30 @@ function BillModal({ point, onClose }) {
   );
 }
 
-// A purchase that brought a batch in, as a row of the all-bills list: a
+// A purchase that brought a batch in, as a row of the purchases box: a
 // purchase bill this financial year, or the supplier invoice of a batch
 // bought before it ("earlier", no bill to open).
 function PurchaseRow({ p, onOpen }) {
   return (
     <tr
       onClick={() => p.voucher && onOpen(p)}
-      className={`bg-amber-50/60 ${p.voucher ? "cursor-pointer hover:bg-amber-100" : ""}`}
+      className={p.voucher ? "cursor-pointer hover:bg-amber-50" : ""}
       title={p.voucher ? "Open the whole purchase bill" : "Bought before this financial year; Marg's stock records the supplier invoice"}
     >
       <td className="px-1.5 py-1 whitespace-nowrap">
         <div className="text-gray-600">{p.date ? day(p.date) : "—"}</div>
-        <div>
-          <span className="text-amber-800 font-medium">{p.kind === "earlier" ? "Bought earlier" : "Purchase"}</span>{" "}
-          <span className={p.voucher ? "text-blue-700 underline decoration-dotted underline-offset-2" : "text-gray-700"}>{p.ref}</span>
-        </div>
-        {p.supplier && <div className="text-gray-500 truncate max-w-[9rem]">{p.supplier}</div>}
+        <span className={p.voucher ? "text-blue-700 underline decoration-dotted underline-offset-2" : "text-gray-700"}>{p.ref}</span>
+        {p.kind === "earlier" && <div className="text-gray-400">bought earlier</div>}
+      </td>
+      <td className="px-1.5 py-1 text-gray-700">
+        <div className="truncate max-w-[8rem]" title={p.supplier || undefined}>{p.supplier || "—"}</div>
       </td>
       <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">{p.batch || "—"}</td>
       <td className="px-1.5 py-1 text-right text-green-700 whitespace-nowrap">
         {p.kind === "earlier" ? "—" : <>+{qty(p.qty)}{p.free > 0 && <> +{qty(p.free)}</>}</>}
       </td>
-      <td className="px-1.5 py-1 text-right text-gray-300">—</td>
       <td className="px-1.5 py-1 text-right text-gray-600 whitespace-nowrap">{money(p.mrp)}</td>
       <td className="px-1.5 py-1 text-right font-medium text-amber-800 whitespace-nowrap">{money(p.rate)}</td>
-      <td className="px-1.5 py-1 text-right text-gray-300">—</td>
     </tr>
   );
 }

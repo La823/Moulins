@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
@@ -567,6 +567,22 @@ export default function AdminOrderDetail() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [items, selectedLine]);
+  // The side panel starts level with the Order Items card, not the top of
+  // the page; re-measured whenever the content above the card changes height.
+  const layoutRef = useRef(null);
+  const itemsCardRef = useRef(null);
+  const [panelTop, setPanelTop] = useState(0);
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    const layout = layoutRef.current;
+    const card = itemsCardRef.current;
+    if (!layout || !card) return;
+    const ro = new ResizeObserver(() => {
+      setPanelTop(Math.max(0, card.getBoundingClientRect().top - layout.getBoundingClientRect().top));
+    });
+    ro.observe(layout.firstElementChild || layout);
+    return () => ro.disconnect();
+  }, [hasItems, loading]);
   const historyPanel = (
     <ProductHistoryPanel
       productName={selectedItem?.product_name}
@@ -606,7 +622,7 @@ export default function AdminOrderDetail() {
   const trackingPhotos = (order.photos || []).filter((p) => p.photo_type === "tracking");
 
   return (
-    <div className="xl:flex xl:items-start xl:gap-4">
+    <div ref={layoutRef} className="xl:flex xl:items-start xl:gap-4">
     <div className="max-w-6xl xl:flex-1 min-w-0">
       {/* Back link */}
       <Link
@@ -808,7 +824,7 @@ export default function AdminOrderDetail() {
         </div>
 
         {/* Order Items — Editable */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div ref={itemsCardRef} className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-700">
               Order Items ({items.length})
@@ -1475,7 +1491,7 @@ export default function AdminOrderDetail() {
       {/* Side panel: the selected line's sales history to this party, in
           the space beside the page on wide screens. */}
       {items.length > 0 && (
-        <aside className="hidden xl:block w-[27rem] shrink-0 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl border border-gray-200 p-4">
+        <aside style={{ marginTop: panelTop }} className="hidden xl:block w-[27rem] shrink-0 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl border border-gray-200 p-4">
           {historyPanel}
         </aside>
       )}
