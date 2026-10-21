@@ -427,12 +427,12 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                 <table className="w-full text-[10px]">
                   <thead className="bg-amber-50 text-gray-500">
                     <tr>
-                      <th className="px-1.5 py-1 text-left font-medium">Date / bill</th>
-                      <th className="px-1.5 py-1 text-left font-medium">Supplier</th>
                       <th className="px-1.5 py-1 text-left font-medium">Batch</th>
-                      <th className="px-1.5 py-1 text-right font-medium">Qty in</th>
+                      <th className="px-1.5 py-1 text-right font-medium">Purchase rate</th>
                       <th className="px-1.5 py-1 text-right font-medium">MRP</th>
-                      <th className="px-1.5 py-1 text-right font-medium">Purchase</th>
+                      <th className="px-1.5 py-1 text-right font-medium">Qty in</th>
+                      <th className="px-1.5 py-1 text-left font-medium">Purchase no.</th>
+                      <th className="px-1.5 py-1 text-left font-medium">Supplier</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -503,20 +503,19 @@ function PurchaseRow({ p, onOpen }) {
       className={p.voucher ? "cursor-pointer hover:bg-amber-50" : ""}
       title={p.voucher ? "Open the whole purchase bill" : "Bought before this financial year; Marg's stock records the supplier invoice"}
     >
+      <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">{p.batch || "—"}</td>
+      <td className="px-1.5 py-1 text-right font-medium text-amber-800 whitespace-nowrap">{money(p.rate)}</td>
+      <td className="px-1.5 py-1 text-right text-gray-600 whitespace-nowrap">{money(p.mrp)}</td>
+      <td className="px-1.5 py-1 text-right text-green-700 whitespace-nowrap">
+        {p.kind === "earlier" ? "—" : <>+{qty(p.qty)}{p.free > 0 && <> +{qty(p.free)}</>}</>}
+      </td>
       <td className="px-1.5 py-1 whitespace-nowrap">
-        <div className="text-gray-600">{p.date ? day(p.date) : "—"}</div>
         <span className={p.voucher ? "text-blue-700 underline decoration-dotted underline-offset-2" : "text-gray-700"}>{p.ref}</span>
-        {p.kind === "earlier" && <div className="text-gray-400">bought earlier</div>}
+        <div className="text-gray-400">{p.date ? day(p.date) : "—"}{p.kind === "earlier" && " · bought earlier"}</div>
       </td>
       <td className="px-1.5 py-1 text-gray-700">
         <div className="truncate max-w-[8rem]" title={p.supplier || undefined}>{p.supplier || "—"}</div>
       </td>
-      <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">{p.batch || "—"}</td>
-      <td className="px-1.5 py-1 text-right text-green-700 whitespace-nowrap">
-        {p.kind === "earlier" ? "—" : <>+{qty(p.qty)}{p.free > 0 && <> +{qty(p.free)}</>}</>}
-      </td>
-      <td className="px-1.5 py-1 text-right text-gray-600 whitespace-nowrap">{money(p.mrp)}</td>
-      <td className="px-1.5 py-1 text-right font-medium text-amber-800 whitespace-nowrap">{money(p.rate)}</td>
     </tr>
   );
 }
