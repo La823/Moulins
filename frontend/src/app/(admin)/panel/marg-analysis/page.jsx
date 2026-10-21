@@ -224,9 +224,18 @@ function PartyRanking({ mode, period, includeCurrent }) {
 
 // ---- products ---------------------------------------------------------------
 
+// Item company in Marg (Product.GCode).
+const PRODUCT_COMPANIES = [
+  { code: "", label: "All products" },
+  { code: "IB", label: "Moulins" },
+  { code: "ID", label: "Third party" },
+  { code: "IC", label: "Others" },
+];
+
 function ProductRanking({ period, includeCurrent }) {
   const [sort, sortBy] = useSort("avg");
   const [search, setSearch] = useState("");
+  const [company, setCompany] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -236,14 +245,33 @@ function ProductRanking({ period, includeCurrent }) {
     const p = new URLSearchParams({ sort: sort.key, dir: sort.dir, page: String(page), period: String(period) });
     if (includeCurrent) p.set("current", "1");
     if (search) p.set("search", search);
+    if (company) p.set("company", company);
     apiFetch(`/admin/marg-analysis/products?${p}`).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [sort, search, page, period, includeCurrent]);
+  }, [sort, search, company, page, period, includeCurrent]);
 
   const onSort = (k) => { setPage(1); sortBy(k); };
   const offset = data ? (data.page - 1) * data.page_size : 0;
 
   return (
     <>
+      <div className="flex gap-2 flex-wrap mb-3">
+        {PRODUCT_COMPANIES.map((c) => {
+          const counts = data?.company_counts || {};
+          const n = c.code ? counts[c.code] || 0 : Object.values(counts).reduce((a, b) => a + b, 0);
+          return (
+            <button
+              key={c.code}
+              onClick={() => { setPage(1); setCompany(c.code); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                company === c.code ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+              }`}
+            >
+              {c.label}
+              {data && <span className={company === c.code ? "text-gray-300" : "text-gray-400"}> {n}</span>}
+            </button>
+          );
+        })}
+      </div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
         <p className="text-sm text-gray-600">
           {data && (

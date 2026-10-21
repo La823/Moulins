@@ -130,6 +130,12 @@ var ValidPermissions = []PermissionDef{
 	// Marg ERP
 	{Key: "marg_master_view", Label: "Marg Master Data (View)", Desc: "View Marg ERP synced products and party accounts", Group: "Marg ERP"},
 	{Key: "marg_master_edit", Label: "Marg Master Data (Edit)", Desc: "Trigger a Marg ERP master-data sync", Group: "Marg ERP"},
+	{Key: "marg_bills_view", Label: "Marg Bills (View)", Desc: "See all Marg bills and their lines, and the bills sync status", Group: "Marg ERP"},
+	{Key: "marg_bills_sync", Label: "Marg Bills (Sync now)", Desc: "Start a Marg bills sync by hand (it also runs every 15 minutes)", Group: "Marg ERP"},
+	{Key: "marg_accounts_view", Label: "Marg Accounts (View)", Desc: "See Marg accounts (customers, suppliers, manufacturers…) and each party's page with its bills", Group: "Marg ERP"},
+	{Key: "marg_stock_view", Label: "Marg Stock (View)", Desc: "See batch-wise stock and each batch's sales and movements", Group: "Marg ERP"},
+	{Key: "marg_analysis_view", Label: "Analysis (View)", Desc: "See the Analysis reports: rankings, product sales and buyers, monthly trend", Group: "Marg ERP"},
+	{Key: "partner_bills_view", Label: "Partner Bills & Reports (View)", Desc: "See the Bills & reports tab on a partner's page", Group: "Marg ERP"},
 
 	// Settings
 	{Key: "settings_view", Label: "Settings (View)", Desc: "View system settings", Group: "Settings"},

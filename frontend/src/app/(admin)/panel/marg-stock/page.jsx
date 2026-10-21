@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
+import Link from "next/link";
 
 // Product-wise, batch-wise stock from Marg's Corporate EDE API, synced with
 // the bills every 15 minutes. Each batch is compared with the product
@@ -288,7 +289,15 @@ function ProductRow({ p, open, onToggle }) {
                       : "";
                     return (
                       <tr key={b.marg_id} className={b.stock === 0 ? "text-gray-400" : ""}>
-                        <td className="px-3 py-2 text-gray-800">{b.batch || <span className="text-gray-400">No batch</span>}</td>
+                        <td className="px-3 py-2">
+                          <Link
+                            href={`/panel/marg-stock/batches/${b.marg_id}`}
+                            title="Who this batch was sold to, and every movement"
+                            className="text-gray-800 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-800"
+                          >
+                            {b.batch || "No batch"}
+                          </Link>
+                        </td>
                         <td className={`px-3 py-2 ${b.stock > 0 && isExpired(b.expiry) ? "text-red-600 font-medium" : "text-gray-600"}`}>{fmtExpiry(b.expiry)}</td>
                         <td className={`px-3 py-2 text-right font-medium ${b.stock < 0 ? "text-red-600" : "text-gray-900"}`}>{fmtQty(b.stock)}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{fmtQty(b.opening)}</td>

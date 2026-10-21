@@ -94,6 +94,8 @@ type RankFilter struct {
 	// IncludeCurrent counts the running month (see windowCTEs).
 	Period         int
 	IncludeCurrent bool
+	// Company (products only): IB Moulins, ID third party, IC others.
+	Company string
 }
 
 // PartyRankList is the ranking response.
@@ -247,6 +249,8 @@ type ProductRankList struct {
 	PageSize int              `json:"page_size"`
 	Months   int              `json:"months"`
 	Window   Window           `json:"window"`
+	// Products per company under the other filters: {"IB": 540, ...}.
+	CompanyCounts map[string]int `json:"company_counts"`
 }
 
 var productSorts = map[string]string{
@@ -259,7 +263,7 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 	if f.Page < 1 {
 		f.Page = 1
 	}
-	out := ProductRankList{Rows: []ProductRankRow{}, Page: f.Page, PageSize: BillsPageSize}
+	out := ProductRankList{Rows: []ProductRankRow{}, Page: f.Page, PageSize: BillsPageSize, CompanyCounts: map[string]int{}}
 	order, ok := productSorts[f.Sort]
 	if !ok {
 		order = "avg_monthly"
@@ -269,13 +273,19 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 	args := []any{}
 	if s := strings.TrimSpace(f.Search); s != "" {
 		args = append(args, "%"+s+"%")
-		where += " AND (r.name ILIKE $1 OR r.code ILIKE $1 OR r.product_pid::text ILIKE $1)"
+		where += fmt.Sprintf(" AND (r.name ILIKE $%d OR r.code ILIKE $%d OR r.product_pid::text ILIKE $%d)", len(args), len(args), len(args))
+	}
+	// The per-company counts ignore the company filter itself.
+	countWhere, countArgs := where, append([]any{}, args...)
+	if f.Company != "" {
+		args = append(args, f.Company)
+		where += fmt.Sprintf(" AND r.company_code = $%d", len(args))
 	}
 	q := `
 		WITH ` + windowCTEs(f.Period, f.IncludeCurrent) + `,
 		lines AS (
 			SELECT i.product_pid, b.party_code, b.voucher, b.bill_date, date_trunc('month', b.bill_date) AS mon,
-			       i.amount, i.qty, i.free
+			       i.amount, i.qty, i.free, i.item_company_code
 			FROM marg_ede_bill_items i
 			JOIN marg_ede_bills b ON b.voucher = i.voucher
 			WHERE ` + saleCond + ` AND NOT b.is_deleted AND NOT b.is_cancelled
@@ -294,6 +304,7 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 		),
 		r AS (
 			SELECT l.product_pid, p.code, COALESCE(p.name, mp.name) AS name, p.company_name AS company,
+			       COALESCE(p.company_code, MAX(l.item_company_code)) AS company_code,
 			       SUM(l.amount) AS amount, SUM(l.qty) AS qty, SUM(l.free) AS free,
 			       SUM(l.amount) / (SELECT n FROM months) AS avg_monthly,
 			       MAX(bt.best_month) AS best_month, MAX(bt.best_amount) AS best_amount,
@@ -305,8 +316,26 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 			LEFT JOIN tb ON tb.product_pid = l.product_pid
 			LEFT JOIN marg_ede_products p ON p.product_pid = l.product_pid
 			LEFT JOIN margmaster_products mp ON mp.base_code = l.product_pid::text
-			GROUP BY l.product_pid, p.code, p.name, mp.name, p.company_name
+			GROUP BY l.product_pid, p.code, p.name, mp.name, p.company_name, p.company_code
 		)`
+	crows, err := db.Query(ctx, q+` SELECT COALESCE(r.company_code, ''), COUNT(*)::int FROM r `+countWhere+` GROUP BY 1`, countArgs...)
+	if err != nil {
+		return out, err
+	}
+	for crows.Next() {
+		var code string
+		var n int
+		if err := crows.Scan(&code, &n); err != nil {
+			crows.Close()
+			return out, err
+		}
+		out.CompanyCounts[code] = n
+	}
+	crows.Close()
+	if err := crows.Err(); err != nil {
+		return out, err
+	}
+
 	if err := db.QueryRow(ctx, q+` SELECT COUNT(*)::int, (SELECT n FROM months)::int, (SELECT s FROM win), (SELECT e FROM win)
 		FROM r `+where, args...).
 		Scan(&out.Total, &out.Months, &out.Window.From, &out.Window.To); err != nil {

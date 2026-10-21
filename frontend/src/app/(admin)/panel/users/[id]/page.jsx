@@ -72,6 +72,9 @@ export default function PartnerDetailPage() {
   // Matches the partners_edit gate on the staff document routes.
   const canEditPartner =
     user?.role === "admin" || (user?.permissions || []).includes("partners_edit");
+  // The Bills & reports tab (Marg data) is its own permission.
+  const canSeeBills =
+    user?.role === "admin" || (user?.permissions || []).includes("partner_bills_view");
   const [partner, setPartner] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -448,6 +451,7 @@ export default function PartnerDetailPage() {
         All Partners
       </Link>
 
+      {canSeeBills && (
       <div className="flex gap-1 border-b border-gray-200 mb-5">
         {[
           ["profile", "Profile"],
@@ -466,8 +470,9 @@ export default function PartnerDetailPage() {
           </button>
         ))}
       </div>
+      )}
 
-      {view === "bills" ? (
+      {view === "bills" && canSeeBills ? (
         <MargPartnerBills partnerId={partner.id} partnerName={partner.username} />
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

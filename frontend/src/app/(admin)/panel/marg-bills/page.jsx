@@ -348,7 +348,7 @@ function SyncBar({ onSynced }) {
             {overview && ` · ${overview.bills.toLocaleString("en-IN")} bills, ${overview.items.toLocaleString("en-IN")} lines`}
           </div>
         </div>
-        {user?.role === "admin" && (
+        {(user?.role === "admin" || (user?.permissions || []).includes("marg_bills_sync")) && (
           <button
             onClick={syncNow}
             disabled={running || starting}

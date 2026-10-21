@@ -22,7 +22,7 @@ func rankFilter(r *http.Request) margede.RankFilter {
 	page, _ := strconv.Atoi(q.Get("page"))
 	period, _ := strconv.Atoi(q.Get("period"))
 	return margede.RankFilter{Mode: q.Get("mode"), Search: q.Get("search"), Sort: q.Get("sort"), Dir: q.Get("dir"), Page: page,
-		Period: period, IncludeCurrent: q.Get("current") == "1"}
+		Period: period, IncludeCurrent: q.Get("current") == "1", Company: q.Get("company")}
 }
 
 // GET /admin/marg-analysis/parties?mode=sales|purchases&sort=avg&dir=desc&search=&page=
@@ -40,7 +40,7 @@ func AnalysisPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/marg-analysis/products?sort=avg&dir=desc&search=&page=
+// GET /admin/marg-analysis/products?sort=avg&dir=desc&search=&page=&company=IB|ID|IC
 func AnalysisProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		out, err := margede.RankProducts(r.Context(), db, rankFilter(r))
@@ -113,6 +113,30 @@ func AnalysisProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if err != nil {
 			log.Printf("marg analysis product %d: %v", pid, err)
 			http.Error(w, "could not build report", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, out)
+	}
+}
+
+// GET /admin/marg-stock/batches/{id} — one stock batch (Marg stock id): its
+// opening, every bill line that moved it, and how that compares with
+// Marg's current stock.
+func BatchHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 64)
+		if err != nil {
+			http.Error(w, "invalid batch", http.StatusBadRequest)
+			return
+		}
+		out, err := margede.GetBatchHistory(r.Context(), db, id)
+		if errors.Is(err, margede.ErrBatchNotFound) {
+			http.Error(w, "batch not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("marg batch %d history: %v", id, err)
+			http.Error(w, "could not load batch", http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, out)

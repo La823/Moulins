@@ -2,10 +2,12 @@ package margede
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -201,4 +203,129 @@ func ListStock(ctx context.Context, db *pgxpool.Pool, f StockFilter) (StockList,
 		}
 	}
 	return out, brows.Err()
+}
+
+// Batch movement history: the batch's opening stock (1 April, from Marg)
+// plus every bill line that moved it, with a running balance.
+//
+// Direction by voucher type, checked against Marg's own closing stock on
+// 21 Oct 2026 (it matched for 91% of batches): purchases (P), credit notes
+// (R) and stock adjustments (D, signed qty) add; sales invoices and
+// challans (S), debit notes (B), purchase-return (u) and sales (T) challans
+// take away. Cancelled bills don't count. Where Marg's stock is lower than
+// this explains, stock left the batch without a bill line the API sends
+// (breakage/sample issues, or lines Marg omits from an edited bill) — the
+// page shows that gap instead of hiding it.
+
+// BatchMovement is one bill line that moved a batch.
+type BatchMovement struct {
+	Date         time.Time `json:"date"`
+	Voucher      int64     `json:"voucher"`
+	BillNo       string    `json:"bill_no"`
+	BillType     string    `json:"bill_type"`
+	BillTypeName *string   `json:"bill_type_name"`
+	PartyCode    *string   `json:"party_code"`
+	PartyName    *string   `json:"party_name"`
+	Qty          float64   `json:"qty"`
+	Free         float64   `json:"free"`
+	Change       float64   `json:"change"` // signed: + into stock, - out
+	Rate         float64   `json:"rate"`
+	Amount       float64   `json:"amount"` // before GST
+	Balance      float64   `json:"balance"`
+}
+
+// BatchHistory is the batch page.
+type BatchHistory struct {
+	MargID          int64           `json:"marg_id"`
+	ProductPID      int64           `json:"product_pid"`
+	ProductName     *string         `json:"product_name"`
+	Batch           *string         `json:"batch"`
+	Expiry          *time.Time      `json:"expiry"`
+	MRP             *float64        `json:"mrp"`
+	PurchaseRate    *float64        `json:"purchase_rate"`
+	SupplierInvoice *string         `json:"supplier_invoice"`
+	SupplierDate    *time.Time      `json:"supplier_invoice_date"`
+	Opening         float64         `json:"opening"`
+	In              float64         `json:"in"`
+	Out             float64         `json:"out"`
+	SoldQty         float64         `json:"sold_qty"`   // on sale invoices and challans, incl. free
+	SoldValue       float64         `json:"sold_value"` // before GST
+	Calculated      float64         `json:"calculated"` // opening + in - out
+	MargStock       float64         `json:"marg_stock"`
+	Unexplained     float64         `json:"unexplained"` // marg_stock - calculated
+	Movements       []BatchMovement `json:"movements"`
+}
+
+// ErrBatchNotFound: no such stock row.
+var ErrBatchNotFound = errors.New("batch not found")
+
+// GetBatchHistory returns one stock batch (by its Marg stock id) and its
+// movements this financial year, oldest first.
+func GetBatchHistory(ctx context.Context, db *pgxpool.Pool, margID int64) (BatchHistory, error) {
+	h := BatchHistory{MargID: margID, Movements: []BatchMovement{}}
+	err := db.QueryRow(ctx, `
+		SELECT s.product_pid, COALESCE(p.name, mp.name), s.batch, s.expiry, s.mrp::float8, s.purchase_rate::float8,
+		       s.supplier_invoice, s.supplier_invoice_date, s.opening::float8, s.stock::float8
+		FROM marg_ede_stock s
+		LEFT JOIN marg_ede_products p ON p.product_pid = s.product_pid
+		LEFT JOIN margmaster_products mp ON mp.base_code = s.product_pid::text
+		WHERE s.marg_id = $1`, margID).
+		Scan(&h.ProductPID, &h.ProductName, &h.Batch, &h.Expiry, &h.MRP, &h.PurchaseRate,
+			&h.SupplierInvoice, &h.SupplierDate, &h.Opening, &h.MargStock)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return h, ErrBatchNotFound
+	}
+	if err != nil {
+		return h, err
+	}
+
+	batch := ""
+	if h.Batch != nil {
+		batch = *h.Batch
+	}
+	rows, err := db.Query(ctx, `
+		SELECT b.bill_date, b.voucher, b.bill_no, `+kindExpr+`, `+kindNameExpr+`, b.party_code, lg.name,
+		       i.qty::float8, i.free::float8,
+		       (CASE WHEN b.bill_type IN ('P', 'R', 'D') THEN 1 ELSE -1 END * (i.qty + i.free))::float8,
+		       COALESCE(i.rate, 0)::float8, i.amount::float8
+		FROM marg_ede_bill_items i
+		JOIN marg_ede_bills b ON b.voucher = i.voucher
+		LEFT JOIN LATERAL (
+			SELECT l.name FROM marg_ede_ledger l
+			WHERE l.party_code = b.party_code AND NOT l.is_deleted ORDER BY l.marg_id LIMIT 1
+		) lg ON TRUE
+		WHERE i.product_pid = $1 AND COALESCE(i.batch, '') = $2 AND i.line_kind = 'item'
+		  AND NOT i.is_deleted AND NOT b.is_deleted AND NOT b.is_cancelled
+		ORDER BY b.bill_date, CASE WHEN b.bill_type IN ('P', 'R', 'D') THEN 0 ELSE 1 END, b.bill_no, i.marg_line_id`,
+		h.ProductPID, batch)
+	if err != nil {
+		return h, err
+	}
+	defer rows.Close()
+	bal := h.Opening
+	for rows.Next() {
+		var m BatchMovement
+		if err := rows.Scan(&m.Date, &m.Voucher, &m.BillNo, &m.BillType, &m.BillTypeName, &m.PartyCode, &m.PartyName,
+			&m.Qty, &m.Free, &m.Change, &m.Rate, &m.Amount); err != nil {
+			return h, err
+		}
+		bal += m.Change
+		m.Balance = bal
+		if m.Change >= 0 {
+			h.In += m.Change
+		} else {
+			h.Out -= m.Change
+		}
+		if m.BillType == "S" || m.BillType == ChallanType {
+			h.SoldQty += m.Qty + m.Free
+			h.SoldValue += m.Amount
+		}
+		h.Movements = append(h.Movements, m)
+	}
+	if err := rows.Err(); err != nil {
+		return h, err
+	}
+	h.Calculated = bal
+	h.Unexplained = h.MargStock - h.Calculated
+	return h, nil
 }

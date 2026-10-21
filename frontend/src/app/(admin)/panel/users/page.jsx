@@ -11,6 +11,7 @@ export default function PartnersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [noPincodeOnly, setNoPincodeOnly] = useState(false);
 
   // Add partner form
   const [showForm, setShowForm] = useState(false);
@@ -83,6 +84,8 @@ export default function PartnersPage() {
     }
   };
 
+  const hasPincode = (c) => !!(c.pincode && c.pincode.trim());
+
   const hasPendingDoc = (c) =>
     [c.doc_summary?.gst, ...(c.doc_summary?.licenses || [])].some((d) => d?.status === "pending");
 
@@ -97,7 +100,10 @@ export default function PartnersPage() {
         (c.rid || "").toLowerCase().includes(q)
       );
     })
-    .filter((c) => !pendingOnly || hasPendingDoc(c));
+    .filter((c) => !pendingOnly || hasPendingDoc(c))
+    .filter((c) => !noPincodeOnly || !hasPincode(c));
+  const noPincodeCount = partners.filter((c) => !hasPincode(c)).length;
+  const anyFilter = search || pendingOnly || noPincodeOnly;
 
   return (
     <>
@@ -258,6 +264,18 @@ export default function PartnersPage() {
           >
             ⏳ Pending only{pendingOnly ? " ✓" : ""}
           </button>
+          <button
+            type="button"
+            onClick={() => setNoPincodeOnly((v) => !v)}
+            title="Partners with no pincode on their profile"
+            className={`px-3 py-2 text-xs font-semibold rounded-lg border whitespace-nowrap ${
+              noPincodeOnly
+                ? "bg-blue-50 text-blue-700 border-blue-300"
+                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            📍 No pincode ({noPincodeCount}){noPincodeOnly ? " ✓" : ""}
+          </button>
         </div>
       )}
 
@@ -277,9 +295,9 @@ export default function PartnersPage() {
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <p className="text-sm text-gray-400">
-            {search || pendingOnly ? "No partners match your filters" : "No partners yet"}
+            {anyFilter ? "No partners match your filters" : "No partners yet"}
           </p>
-          {!search && !pendingOnly && (
+          {!anyFilter && (
             <button
               onClick={() => setShowForm(true)}
               className="mt-3 text-sm text-gray-600 hover:text-gray-900 underline"
@@ -332,7 +350,7 @@ export default function PartnersPage() {
 
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500">
             {filtered.length} partner{filtered.length !== 1 ? "s" : ""}
-            {(search || pendingOnly) && filtered.length !== partners.length
+            {anyFilter && filtered.length !== partners.length
               ? ` (filtered from ${partners.length})`
               : ""}
           </div>

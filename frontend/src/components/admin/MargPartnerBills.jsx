@@ -9,7 +9,7 @@ import MonthlyChart from "@/components/admin/MargMonthlyChart";
 // The partner page's "Bills & reports" tab: this year's totals, a monthly
 // line chart, top products, a timeline (bills, app orders, joined) and the
 // full bills list.
-// Linked through the partner's Marg RID; needs marg_master_view (the section
+// Linked through the partner's Marg RID; needs partner_bills_view (the section
 // stays hidden without it).
 
 const ORDER_STATUS_STYLES = {
@@ -37,7 +37,7 @@ export default function MargPartnerBills({ partnerId, partnerName }) {
     apiFetch(`/admin/partners/${partnerId}/marg-bills`)
       .then(setData)
       .catch((e) => {
-        // No marg_master_view permission: leave the section out entirely.
+        // No partner_bills_view permission: say so instead of showing an error.
         if (/forbidden|permission|403/i.test(e.message || "")) setHidden(true);
         else setError(e.message || "Could not load Marg bills");
       });

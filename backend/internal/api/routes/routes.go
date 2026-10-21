@@ -319,7 +319,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterEditStaff.Use(middleware.StaffOnly)
 	margMasterEditStaff.Use(middleware.RequirePermission(db, "marg_master_edit", rdb))
 	margMasterEditStaff.HandleFunc("/marg-sync/trigger", margsyncHandlers.TriggerHandler(db)).Methods("POST")
-	margMasterEditStaff.HandleFunc("/marg-bills-sync/trigger", margedeHandlers.TriggerHandler(db)).Methods("POST")
 
 	// staff routes — Marg master data viewer (synced products/party ledgers)
 	margMasterStaff := protected.PathPrefix("/admin").Subrouter()
@@ -329,20 +328,58 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margMasterStaff.HandleFunc("/marg-parties", margmaster.ListPartiesHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/status", margsyncHandlers.StatusHandler(db)).Methods("GET")
 	margMasterStaff.HandleFunc("/marg-sync/runs/{id}", margsyncHandlers.RunHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-bills-sync/status", margedeHandlers.StatusHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-bills-sync/runs/{id}", margedeHandlers.RunHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-bills", margedeHandlers.ListBillsHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-bills/{voucher}", margedeHandlers.GetBillHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-ledger", margedeHandlers.ListLedgerHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-ledger/{code}", margedeHandlers.GetPartyHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/partners/{id}/marg-bills", margedeHandlers.PartnerBillsHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-analysis/parties", margedeHandlers.AnalysisPartiesHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-analysis/products", margedeHandlers.AnalysisProductsHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-analysis/products/{pid}", margedeHandlers.AnalysisProductHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
-	margMasterStaff.HandleFunc("/marg-stock", margedeHandlers.ListStockHandler(db)).Methods("GET")
+
+	// staff routes — Marg bills, accounts, stock and analysis (Corporate EDE
+	// data). Each area has its own permission, none granted to employees by
+	// default: admins see everything, employees only what's switched on for
+	// them on the Employees page.
+	margBillsSyncStaff := protected.PathPrefix("/admin").Subrouter()
+	margBillsSyncStaff.Use(middleware.StaffOnly)
+	margBillsSyncStaff.Use(middleware.RequirePermission(db, "marg_bills_sync", rdb))
+	margBillsSyncStaff.HandleFunc("/marg-bills-sync/trigger", margedeHandlers.TriggerHandler(db)).Methods("POST")
+
+	// Bill lists and bill details are also how the account, stock and
+	// partner pages show their bills, so any of those permissions reads them.
+	margBillsReadStaff := protected.PathPrefix("/admin").Subrouter()
+	margBillsReadStaff.Use(middleware.StaffOnly)
+	margBillsReadStaff.Use(middleware.RequireAnyPermission(db, []string{
+		"marg_bills_view", "marg_accounts_view", "marg_stock_view", "partner_bills_view",
+	}, rdb))
+	margBillsReadStaff.HandleFunc("/marg-bills", margedeHandlers.ListBillsHandler(db)).Methods("GET")
+	margBillsReadStaff.HandleFunc("/marg-bills/{voucher}", margedeHandlers.GetBillHandler(db)).Methods("GET")
+
+	margBillsStaff := protected.PathPrefix("/admin").Subrouter()
+	margBillsStaff.Use(middleware.StaffOnly)
+	margBillsStaff.Use(middleware.RequirePermission(db, "marg_bills_view", rdb))
+	margBillsStaff.HandleFunc("/marg-bills-sync/status", margedeHandlers.StatusHandler(db)).Methods("GET")
+	margBillsStaff.HandleFunc("/marg-bills-sync/runs/{id}", margedeHandlers.RunHandler(db)).Methods("GET")
+
+	margAccountsStaff := protected.PathPrefix("/admin").Subrouter()
+	margAccountsStaff.Use(middleware.StaffOnly)
+	margAccountsStaff.Use(middleware.RequirePermission(db, "marg_accounts_view", rdb))
+	margAccountsStaff.HandleFunc("/marg-ledger", margedeHandlers.ListLedgerHandler(db)).Methods("GET")
+	margAccountsStaff.HandleFunc("/marg-ledger/{code}", margedeHandlers.GetPartyHandler(db)).Methods("GET")
+
+	margStockStaff := protected.PathPrefix("/admin").Subrouter()
+	margStockStaff.Use(middleware.StaffOnly)
+	margStockStaff.Use(middleware.RequirePermission(db, "marg_stock_view", rdb))
+	margStockStaff.HandleFunc("/marg-stock", margedeHandlers.ListStockHandler(db)).Methods("GET")
+	margStockStaff.HandleFunc("/marg-stock/batches/{id}", margedeHandlers.BatchHistoryHandler(db)).Methods("GET")
+
+	margAnalysisStaff := protected.PathPrefix("/admin").Subrouter()
+	margAnalysisStaff.Use(middleware.StaffOnly)
+	margAnalysisStaff.Use(middleware.RequirePermission(db, "marg_analysis_view", rdb))
+	margAnalysisStaff.HandleFunc("/marg-analysis/parties", margedeHandlers.AnalysisPartiesHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/products", margedeHandlers.AnalysisProductsHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/products/{pid}", margedeHandlers.AnalysisProductHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
+
+	partnerBillsStaff := protected.PathPrefix("/admin").Subrouter()
+	partnerBillsStaff.Use(middleware.StaffOnly)
+	partnerBillsStaff.Use(middleware.RequirePermission(db, "partner_bills_view", rdb))
+	partnerBillsStaff.HandleFunc("/partners/{id}/marg-bills", margedeHandlers.PartnerBillsHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone
 	// editor's Python persistence layer; see backend/warehouse_layout_editor)
