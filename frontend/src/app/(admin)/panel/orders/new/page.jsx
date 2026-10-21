@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { useRateHistory, RateHint } from "@/components/admin/MargRateHistory";
 import { visibleImages } from "@/lib/productImages";
 
 // Divisible by 2/3/4/6 so the grid's last row stays full at every breakpoint.
@@ -34,6 +35,8 @@ export default function NewOrderForStaffPage() {
 
   // Order being built
   const [items, setItems] = useState([]); // [{product_id, product_name, quantity}]
+  // What the chosen partner was charged before for each product in the cart.
+  const rateHistory = useRateHistory(selectedCustomer?.id, items.map((i) => i.product_id));
   const [notes, setNotes] = useState("");
   const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState("");
@@ -368,6 +371,11 @@ export default function NewOrderForStaffPage() {
                     }}
                     className="mt-1.5 w-full px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
+                  {selectedCustomer && (
+                    <div className="mt-1 flex justify-end">
+                      <RateHint history={rateHistory?.products?.[i.product_id]} data={rateHistory} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

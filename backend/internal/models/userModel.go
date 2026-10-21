@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,6 +76,10 @@ func CreateUser(
 
 	if role == "" {
 		role = "partner"
+	}
+	if pincode != nil {
+		p := strings.TrimSpace(*pincode)
+		pincode = &p
 	}
 
 	var lat, lng *float64
@@ -386,6 +391,7 @@ func UpdateAddresses(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, bi
 // from it, mirroring the geocoding CreateUser does at signup. An empty
 // pincode clears the pincode along with the geocoded fields it drove.
 func UpdatePincode(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, pincode string) error {
+	pincode = strings.TrimSpace(pincode)
 	if pincode == "" {
 		_, err := db.Exec(ctx,
 			`UPDATE users SET pincode = NULL, city = NULL, state = NULL, latitude = NULL, longitude = NULL, updated_at = NOW() WHERE id = $1`,
@@ -406,6 +412,62 @@ func UpdatePincode(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, pinc
 		pincode, city, state, lat, lng, userID,
 	)
 	return err
+}
+
+// FillMissingCoordinates looks up map coordinates for partners who have a
+// pincode but none — left that way when the lookup failed at the moment
+// they were saved, which nothing used to retry. Only latitude/longitude
+// are written (and city/state where empty): a city or state someone typed
+// is kept. At most limit partners per call; returns how many were filled.
+// Run daily by the scheduler.
+func FillMissingCoordinates(ctx context.Context, db *pgxpool.Pool, limit int) (int, error) {
+	rows, err := db.Query(ctx, `
+		SELECT id, pincode FROM users
+		WHERE role = 'partner' AND deleted_at IS NULL
+		  AND pincode IS NOT NULL AND TRIM(pincode) <> ''
+		  AND (latitude IS NULL OR longitude IS NULL)
+		ORDER BY created_at
+		LIMIT $1`, limit)
+	if err != nil {
+		return 0, err
+	}
+	type todo struct {
+		id      uuid.UUID
+		pincode string
+	}
+	var list []todo
+	for rows.Next() {
+		var t todo
+		if err := rows.Scan(&t.id, &t.pincode); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		list = append(list, t)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	filled := 0
+	for _, t := range list {
+		res, ok := utils.GeocodePincode(t.pincode)
+		if !ok {
+			continue
+		}
+		tag, err := db.Exec(ctx, `
+			UPDATE users
+			SET latitude = $2, longitude = $3,
+			    city = COALESCE(NULLIF(TRIM(city), ''), NULLIF($4, '')),
+			    state = COALESCE(NULLIF(TRIM(state), ''), NULLIF($5, ''))
+			WHERE id = $1 AND (latitude IS NULL OR longitude IS NULL)`,
+			t.id, res.Lat, res.Lng, res.City, res.State)
+		if err != nil {
+			return filled, err
+		}
+		filled += int(tag.RowsAffected())
+	}
+	return filled, nil
 }
 
 // ErrPhoneTaken is returned by UpdatePhoneNumber when the new phone number

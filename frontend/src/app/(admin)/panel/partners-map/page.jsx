@@ -92,6 +92,11 @@ export default function PartnersMapPage() {
 
   const withLocation = partners.filter((c) => c.latitude != null && c.longitude != null);
   const withoutLocation = partners.length - withLocation.length;
+  // Not on the map = no coordinates: either no pincode at all, or a pincode
+  // the geocoder couldn't place (often a typo). Counted apart so this
+  // matches the Partners list's "No pincode" filter.
+  const noPincode = partners.filter((c) => !(c.pincode && c.pincode.trim())).length;
+  const notFound = withoutLocation - noPincode;
 
   return (
     <>
@@ -99,7 +104,14 @@ export default function PartnersMapPage() {
         <h2 className="text-lg font-semibold text-gray-800">Partner Map</h2>
         <p className="text-xs text-gray-500">
           {withLocation.length} of {partners.length} partner{partners.length !== 1 ? "s" : ""} shown
-          {withoutLocation > 0 && ` · ${withoutLocation} missing a pincode`}
+          {withoutLocation > 0 && ` · ${withoutLocation} not on the map`}
+          {withoutLocation > 0 && (
+            <span className="text-gray-400">
+              {" "}({[noPincode > 0 && `${noPincode} without a pincode`, notFound > 0 && `${notFound} with a pincode that couldn't be located`]
+                .filter(Boolean)
+                .join(", ")})
+            </span>
+          )}
         </p>
       </div>
 

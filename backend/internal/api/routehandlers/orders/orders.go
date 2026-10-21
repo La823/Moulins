@@ -1293,10 +1293,11 @@ func DeleteOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 type margBatchOption struct {
-	Code     string  `json:"code"`
-	CurBatch string  `json:"curbatch"`
-	Exp      string  `json:"exp"`
-	Stock    float64 `json:"stock"`
+	Code     string   `json:"code"`
+	CurBatch string   `json:"curbatch"`
+	Exp      string   `json:"exp"`
+	Stock    float64  `json:"stock"`
+	MRP      *float64 `json:"mrp,omitempty"`
 }
 
 type margBatchOptionsItem struct {
@@ -1374,7 +1375,7 @@ func MargBatchOptionsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			out.MargLinked = true
 
 			for _, b := range batchesByBaseCode[baseCode] {
-				out.Batches = append(out.Batches, margBatchOption{Code: b.Code, CurBatch: b.CurBatch, Exp: b.Exp, Stock: b.Stock})
+				out.Batches = append(out.Batches, margBatchOption{Code: b.Code, CurBatch: b.CurBatch, Exp: b.Exp, Stock: b.Stock, MRP: b.MRP})
 			}
 			if len(out.Batches) > 0 {
 				// the earliest-expiring batch in stock — a zero-stock one can't be picked

@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -49,10 +50,30 @@ func hasType(types []string, target string) bool {
 // resolved — callers should treat that as non-fatal (e.g. the partner is
 // still created, just without a map marker / city / state).
 func GeocodePincode(pincode string) (GeocodeResult, bool) {
+	pincode = strings.Trim(strings.TrimSpace(pincode), ".,")
 	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
 	if apiKey == "" || pincode == "" {
 		return GeocodeResult{}, false
 	}
+	// One retry: a single slow or failed call used to leave a partner with
+	// no coordinates for good (three partners created on 18-20 Aug 2026
+	// never appeared on the map although Google knows their pincodes).
+	// ZERO_RESULTS is a real answer and isn't retried.
+	result, ok, retry := geocodeOnce(apiKey, pincode)
+	if !ok && retry {
+		time.Sleep(time.Second)
+		result, ok, _ = geocodeOnce(apiKey, pincode)
+	}
+	if !ok {
+		log.Printf("geocode: could not locate pincode %q", pincode)
+	}
+	return result, ok
+}
+
+// geocodeOnce is one Geocoding API call; retry reports whether a failure
+// was transient (network, timeout, Google-side error) rather than "no such
+// place".
+func geocodeOnce(apiKey, pincode string) (GeocodeResult, bool, bool) {
 
 	client := http.Client{Timeout: 5 * time.Second}
 	endpoint := fmt.Sprintf(
@@ -63,17 +84,17 @@ func GeocodePincode(pincode string) (GeocodeResult, bool) {
 
 	resp, err := client.Get(endpoint)
 	if err != nil {
-		return GeocodeResult{}, false
+		return GeocodeResult{}, false, true
 	}
 	defer resp.Body.Close()
 
 	var parsed geocodeResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return GeocodeResult{}, false
+		return GeocodeResult{}, false, true
 	}
 
 	if parsed.Status != "OK" || len(parsed.Results) == 0 {
-		return GeocodeResult{}, false
+		return GeocodeResult{}, false, parsed.Status != "ZERO_RESULTS"
 	}
 
 	top := parsed.Results[0]
@@ -94,7 +115,7 @@ func GeocodePincode(pincode string) (GeocodeResult, bool) {
 		}
 	}
 
-	return result, true
+	return result, true, false
 }
 
 // ReverseGeocode turns a GPS point into a short, readable place name for

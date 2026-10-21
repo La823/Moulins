@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
 
@@ -541,6 +542,41 @@ export default function AdminOrderDetail() {
     }
   };
 
+  // What this partner was charged before for each product on the order
+  // (Marg bills and earlier orders) — the hint under each line's rate.
+  const rateHistory = useRateHistory(order?.user_id, items.map((i) => i.product_id), id);
+
+  // The selected order line, whose history the side panel shows. Defaults
+  // to the first line; ↑/↓ move it unless the cursor is in a field (where
+  // the arrows keep their usual job, e.g. stepping a quantity).
+  const [selectedLine, setSelectedLine] = useState(null);
+  const selectedIndex = Math.max(0, items.findIndex((it) => it.id === selectedLine));
+  const selectedItem = items[selectedIndex];
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const el = e.target;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (!items.length) return;
+      e.preventDefault();
+      const cur = Math.max(0, items.findIndex((it) => it.id === selectedLine));
+      const next = e.key === "ArrowDown" ? Math.min(items.length - 1, cur + 1) : Math.max(0, cur - 1);
+      setSelectedLine(items[next].id);
+      document.querySelector(`[data-order-line="${items[next].id}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items, selectedLine]);
+  const historyPanel = (
+    <ProductHistoryPanel
+      productName={selectedItem?.product_name}
+      history={selectedItem ? rateHistory?.products?.[selectedItem.product_id] : null}
+      data={rateHistory}
+      position={selectedIndex}
+      count={items.length}
+    />
+  );
+
   // --- Loading ---
   if (loading) {
     return (
@@ -570,7 +606,8 @@ export default function AdminOrderDetail() {
   const trackingPhotos = (order.photos || []).filter((p) => p.photo_type === "tracking");
 
   return (
-    <div className="max-w-6xl">
+    <div className="xl:flex xl:items-start xl:gap-4">
+    <div className="max-w-6xl xl:flex-1 min-w-0">
       {/* Back link */}
       <Link
         href="/panel/orders"
@@ -788,76 +825,40 @@ export default function AdminOrderDetail() {
               No items in this order
             </p>
           ) : (
+            <>
             <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Product
-                  </th>
-                  <th className="text-center py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-32">
-                    Quantity
-                  </th>
-                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Batch
-                  </th>
-                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Expiry
-                  </th>
-                  <th className="text-right py-2 pr-2 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Stock
-                  </th>
-                  <th className="text-right py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-28">
-                    Rate
-                  </th>
-                  <th className="text-right py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-28">
-                    Total
-                  </th>
-                  <th className="text-left py-2 pl-4 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Remarks
-                  </th>
-                  <th className="text-right py-2 text-xs font-medium text-gray-400 uppercase tracking-wider w-16">
-                    &nbsp;
-                  </th>
+                  <th className="text-left py-2 pl-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Product</th>
+                  <th className="text-left py-2 pl-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Batch</th>
+                  <th className="text-right py-2 pr-3 text-xs font-medium text-gray-400 uppercase tracking-wider">MRP</th>
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Expiry</th>
+                  <th className="text-right py-2 pr-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Stock</th>
+                  <th className="text-right py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Rate</th>
+                  <th className="text-center py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Qty</th>
+                  <th className="text-right py-2 pr-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Total</th>
+                  <th className="text-left py-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Remarks</th>
+                  <th className="w-8"><span className="sr-only">Remove</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="py-3 text-gray-900">
+                  <tr
+                    key={item.id}
+                    data-order-line={item.id}
+                    onClick={() => setSelectedLine(item.id)}
+                    aria-selected={selectedItem?.id === item.id}
+                    className={`cursor-pointer transition-colors ${
+                      selectedItem?.id === item.id ? "bg-blue-50" : "hover:bg-gray-50"
+                    }`}
+                  >
+                    <td
+                      className={`py-2 pl-2 pr-2 min-w-[11rem] text-gray-900 border-l-4 ${
+                        selectedItem?.id === item.id ? "border-blue-500 font-medium" : "border-transparent"
+                      }`}
+                    >
                       {item.product_name}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleUpdateItem(item.id, item.quantity - 1)}
-                          disabled={!canEdit || item.quantity <= 1}
-                          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          &minus;
-                        </button>
-                        <input
-                          type="number"
-                          min={1}
-                          value={qtyDrafts[item.id] ?? item.quantity}
-                          disabled={!canEdit}
-                          onChange={(e) =>
-                            setQtyDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
-                          }
-                          onBlur={() => commitQtyDraft(item)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className="w-14 text-center font-medium text-gray-900 border border-gray-200 rounded-md py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <button
-                          onClick={() => handleUpdateItem(item.id, item.quantity + 1)}
-                          disabled={!canEdit}
-                          className="w-7 h-7 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          +
-                        </button>
-                      </div>
                     </td>
                     {(() => {
                       const info = batchInfoByItem[item.id];
@@ -866,21 +867,21 @@ export default function AdminOrderDetail() {
                       const currentBatch = batches.find((b) => b.code === currentCode);
                       if (!info || !info.margLinked) {
                         return (
-                          <td colSpan={3} className="py-3 pl-4 text-gray-300">
+                          <td colSpan={4} className="py-2 pl-3 text-gray-300">
                             {info?.margLinked === false ? "not Marg-linked" : "—"}
                           </td>
                         );
                       }
                       if (batches.length === 0) {
                         return (
-                          <td colSpan={3} className="py-3 pl-4 text-amber-600 text-xs">
+                          <td colSpan={4} className="py-2 pl-3 text-amber-600 text-xs">
                             No live batches
                           </td>
                         );
                       }
                       return (
                         <>
-                          <td className="py-3 pl-4">
+                          <td className="py-2 pl-3">
                             {/* The open list shows each batch's expiry and
                                 stock to choose by; the closed box shows only
                                 the batch code (expiry and stock have their
@@ -888,7 +889,7 @@ export default function AdminOrderDetail() {
                                 itself differently from its options, so it
                                 sits invisible over a label of just the code. */}
                             <div
-                              className={`relative inline-flex items-center gap-1.5 border border-gray-200 rounded-md py-1 pl-2 pr-1.5 bg-white text-sm text-blue-600 font-medium whitespace-nowrap focus-within:ring-1 focus-within:ring-gray-400 ${
+                              className={`relative inline-flex items-center gap-1.5 border border-gray-200 rounded-md py-1 pl-2 pr-1.5 bg-white text-xs text-blue-600 font-medium whitespace-nowrap focus-within:ring-1 focus-within:ring-gray-400 ${
                                 canEdit ? "" : "opacity-50"
                               }`}
                             >
@@ -919,13 +920,16 @@ export default function AdminOrderDetail() {
                             </select>
                             </div>
                           </td>
-                          <td className="py-3 text-red-600 font-medium">
+                          <td className="py-2 pr-3 text-right tabular-nums text-gray-700 whitespace-nowrap">
+                            {currentBatch?.mrp ? `₹${money(currentBatch.mrp)}` : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="py-2 text-red-600 font-medium whitespace-nowrap">
                             {formatBatchExpiry(currentBatch?.exp) || <span className="text-gray-300 font-normal">—</span>}
                           </td>
                           {/* the chosen batch's stock in Marg — amber when it
                               can't cover this line on its own */}
                           <td
-                            className={`py-3 pr-2 text-right tabular-nums ${
+                            className={`py-2 pr-3 text-right tabular-nums ${
                               currentBatch && currentBatch.stock < item.quantity ? "text-amber-600 font-medium" : "text-gray-700"
                             }`}
                             title={currentBatch && currentBatch.stock < item.quantity ? `Only ${formatStock(currentBatch.stock)} in this batch` : undefined}
@@ -935,7 +939,7 @@ export default function AdminOrderDetail() {
                         </>
                       );
                     })()}
-                    <td className="py-3">
+                    <td className="py-2">
                       <div className="flex items-center justify-end gap-1">
                       <input
                         type="number"
@@ -951,7 +955,7 @@ export default function AdminOrderDetail() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleSaveRates();
                         }}
-                        className={`w-24 px-2 py-1 text-right border rounded text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
+                        className={`w-20 px-1.5 py-1 text-right border rounded text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
                           item.id in rateDrafts
                             ? "border-amber-300 bg-amber-50"
                             : "border-gray-200"
@@ -981,14 +985,46 @@ export default function AdminOrderDetail() {
                       </button>
                       </div>
                     </td>
-                    <td className="py-3 text-right tabular-nums text-gray-900">
+                    <td className="py-2 px-1">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => handleUpdateItem(item.id, item.quantity - 1)}
+                          disabled={!canEdit || item.quantity <= 1}
+                          className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          &minus;
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={qtyDrafts[item.id] ?? item.quantity}
+                          disabled={!canEdit}
+                          onChange={(e) =>
+                            setQtyDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
+                          }
+                          onBlur={() => commitQtyDraft(item)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                          }}
+                          className="w-10 text-center font-medium text-gray-900 border border-gray-200 rounded-md py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <button
+                          onClick={() => handleUpdateItem(item.id, item.quantity + 1)}
+                          disabled={!canEdit}
+                          className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums text-gray-900 whitespace-nowrap">
                       {lineTotalOf(item) == null ? (
                         <span className="text-gray-300">—</span>
                       ) : (
                         `₹${money(lineTotalOf(item))}`
                       )}
                     </td>
-                    <td className="py-3 pl-4">
+                    <td className="py-2">
                       <input
                         type="text"
                         placeholder="—"
@@ -1000,12 +1036,13 @@ export default function AdminOrderDetail() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleSaveRates();
                         }}
-                        className={`w-full min-w-[10rem] px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
+                        title={remarkDrafts[item.id] ?? (item.remarks ?? "")}
+                        className={`w-20 px-1.5 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
                           item.id in remarkDrafts ? "border-amber-300 bg-amber-50" : "border-gray-200"
                         }`}
                       />
                     </td>
-                    <td className="py-3 text-right">
+                    <td className="py-2 text-right">
                       {canEdit && (
                       <button
                         onClick={() =>
@@ -1058,16 +1095,17 @@ export default function AdminOrderDetail() {
                   return (
                     <>
                       <tr className="border-t-2 border-gray-200">
-                        <td colSpan={7} className="pt-3 pb-1 text-right text-sm text-gray-500">
+                        <td colSpan={7} className="pt-3 pb-1 text-right text-xs text-gray-500">
                           {priced > 0 && priced < items.length
                             ? `Items (${priced} of ${items.length} lines priced)`
                             : "Items"}
                         </td>
-                        <td colSpan={2} className="pt-3 pb-1 text-right tabular-nums text-gray-900">{cell(itemsTotal)}</td>
+                        <td className="pt-3 pb-1 pr-3 text-right tabular-nums text-gray-900 whitespace-nowrap">{cell(itemsTotal)}</td>
+                        <td colSpan={2}></td>
                       </tr>
                       <tr>
-                        <td colSpan={7} className="py-1 text-right text-sm text-gray-500">Freight</td>
-                        <td colSpan={2} className="py-1 text-right">
+                        <td colSpan={7} className="py-1 text-right text-xs text-gray-500">Freight</td>
+                        <td className="py-1 pr-3 text-right">
                           <input
                             type="number"
                             min="0"
@@ -1080,17 +1118,19 @@ export default function AdminOrderDetail() {
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleSaveRates();
                             }}
-                            className={`w-24 px-2 py-1 text-right border rounded text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
+                            className={`w-20 px-1.5 py-1 text-right border rounded text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
                               freightDraft !== undefined ? "border-amber-300 bg-amber-50" : "border-gray-200"
                             }`}
                           />
                         </td>
+                        <td colSpan={2}></td>
                       </tr>
                       <tr>
-                        <td colSpan={7} className="pt-1 pb-3 text-right text-sm font-medium text-gray-700">
+                        <td colSpan={7} className="pt-1 pb-3 text-right text-xs font-medium text-gray-700">
                           Order total
                         </td>
-                        <td colSpan={2} className="pt-1 pb-3 text-right tabular-nums text-gray-900">{cell(grand, true)}</td>
+                        <td className="pt-1 pb-3 pr-3 text-right tabular-nums text-gray-900 whitespace-nowrap">{cell(grand, true)}</td>
+                        <td colSpan={2}></td>
                       </tr>
                     </>
                   );
@@ -1098,6 +1138,8 @@ export default function AdminOrderDetail() {
               </tfoot>
             </table>
             </div>
+            <div className="xl:hidden mt-4 border-t border-gray-100 pt-4">{historyPanel}</div>
+            </>
           )}
 
           {canEdit && items.length > 0 && (
@@ -1427,6 +1469,15 @@ export default function AdminOrderDetail() {
             setSuccess(`Order pushed to Marg — Order No. ${result.marg_order_no}`);
           }}
         />
+      )}
+    </div>
+
+      {/* Side panel: the selected line's sales history to this party, in
+          the space beside the page on wide screens. */}
+      {items.length > 0 && (
+        <aside className="hidden xl:block w-[27rem] shrink-0 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-xl border border-gray-200 p-4">
+          {historyPanel}
+        </aside>
       )}
     </div>
   );

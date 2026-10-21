@@ -50,6 +50,7 @@ func StartScheduler(db *pgxpool.Pool) {
 			dispatchAnniversaryReminders(db)
 			dispatchAnniversaryMeetingSync(db)
 			dispatchCartPurge(db)
+			dispatchMissingCoordinates(db)
 			lastBirthdayRunDate = today
 		}
 	}
@@ -97,6 +98,20 @@ func dispatchMargSync(db *pgxpool.Pool, window string) {
 		return
 	}
 	log.Printf("scheduler: marg sync (%s) started (run #%d)", window, runID)
+}
+
+// dispatchMissingCoordinates retries the map lookup for partners whose
+// pincode couldn't be located when they were saved, so a failed lookup
+// fixes itself instead of keeping them off the partner map for good.
+func dispatchMissingCoordinates(db *pgxpool.Pool) {
+	n, err := models.FillMissingCoordinates(context.Background(), db, 50)
+	if err != nil {
+		log.Printf("scheduler: fill missing coordinates failed: %v", err)
+		return
+	}
+	if n > 0 {
+		log.Printf("scheduler: located %d partner(s) that were missing map coordinates", n)
+	}
 }
 
 // dispatchCartPurge removes abandoned cart_items rows older than 2 months

@@ -6,7 +6,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/margede"
@@ -137,6 +139,36 @@ func BatchHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if err != nil {
 			log.Printf("marg batch %d history: %v", id, err)
 			http.Error(w, "could not load batch", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, out)
+	}
+}
+
+// GET /admin/partners/{id}/rate-history?products=<uuid>,<uuid>&exclude_order=<uuid>
+// — what the partner was charged before for each product: Marg sale bills
+// and earlier app orders. For the order page's rate column.
+func RateHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		partnerID, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid partner id", http.StatusBadRequest)
+			return
+		}
+		var products []string
+		for _, p := range strings.Split(r.URL.Query().Get("products"), ",") {
+			if _, err := uuid.Parse(strings.TrimSpace(p)); err == nil {
+				products = append(products, strings.TrimSpace(p))
+			}
+		}
+		var exclude *uuid.UUID
+		if e, err := uuid.Parse(r.URL.Query().Get("exclude_order")); err == nil {
+			exclude = &e
+		}
+		out, err := margede.GetRateHistory(r.Context(), db, partnerID, products, exclude, 100)
+		if err != nil {
+			log.Printf("rate history %s: %v", partnerID, err)
+			http.Error(w, "could not load rate history", http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, out)

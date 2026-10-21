@@ -738,6 +738,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.HandleFunc("/orders/{id}/photos", orders.AddPhotoHandler(db)).Methods("POST")
 	orderEditStaff.HandleFunc("/orders/photos/{photoId}", orders.DeletePhotoHandler(db)).Methods("DELETE")
 	orderEditStaff.HandleFunc("/orders/{id}/marg-batch-options", orders.MargBatchOptionsHandler(db)).Methods("GET")
+	// What the partner was charged before for each product (Marg bills and
+	// earlier orders) — shown beside the rate column while pricing an order.
+	orderEditStaff.HandleFunc("/partners/{id}/rate-history", margedeHandlers.RateHistoryHandler(db)).Methods("GET")
 	orderEditStaff.HandleFunc("/orders/{id}/push-to-marg", orders.PushToMargHandler(db)).Methods("POST")
 
 	// staff routes — transports / transport modes (their own edit/delete
