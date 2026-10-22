@@ -135,6 +135,7 @@ var ValidPermissions = []PermissionDef{
 	{Key: "marg_accounts_view", Label: "Marg Accounts (View)", Desc: "See Marg accounts (customers, suppliers, manufacturers…) and each party's page with its bills", Group: "Marg ERP"},
 	{Key: "marg_stock_view", Label: "Marg Stock (View)", Desc: "See batch-wise stock and each batch's sales and movements", Group: "Marg ERP"},
 	{Key: "marg_analysis_view", Label: "Analysis (View)", Desc: "See the Analysis reports: rankings, product sales and buyers, monthly trend", Group: "Marg ERP"},
+	{Key: "marg_demand_edit", Label: "Demand & reorder (Act)", Desc: "On the Demand & reorder report: link purchase orders to products, snooze products and write remarks", Group: "Marg ERP"},
 	{Key: "partner_bills_view", Label: "Partner Bills & Reports (View)", Desc: "See the Bills & reports tab on a partner's page", Group: "Marg ERP"},
 
 	// Settings

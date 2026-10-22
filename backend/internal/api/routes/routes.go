@@ -209,6 +209,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// self-service ledger lookup (partner's own current ledger)
 	protected.HandleFunc("/ledger", ledger.GetMyLedgerHandler(db)).Methods("GET")
+	protected.HandleFunc("/my/marg-bills", margedeHandlers.MyBillsHandler(db)).Methods("GET")
+	protected.HandleFunc("/my/marg-bills/{voucher}", margedeHandlers.MyBillHandler(db)).Methods("GET")
 
 	// self-service payments (any authenticated user submits/views their own)
 	protected.HandleFunc("/payments/upload-url", payments.UploadURLHandler()).Methods("POST")
@@ -375,6 +377,20 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAnalysisStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/demand", margedeHandlers.AnalysisDemandHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/history", margedeHandlers.DemandHistoryHandler(db)).Methods("GET")
+
+	// Working through the demand list: link POs, snooze, remarks.
+	margDemandStaff := protected.PathPrefix("/admin").Subrouter()
+	margDemandStaff.Use(middleware.StaffOnly)
+	margDemandStaff.Use(middleware.RequirePermission(db, "marg_demand_edit", rdb))
+	margDemandStaff.HandleFunc("/marg-analysis/demand/po-search", margedeHandlers.DemandPOSearchHandler(db)).Methods("GET")
+	margDemandStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/pos", margedeHandlers.DemandLinkPOHandler(db)).Methods("POST")
+	margDemandStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/pos/{linkId:[0-9]+}", margedeHandlers.DemandUnlinkPOHandler(db)).Methods("DELETE")
+	margDemandStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/remarks", margedeHandlers.DemandAddRemarkHandler(db)).Methods("POST")
+	margDemandStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/remarks/{id:[0-9]+}", margedeHandlers.DemandDeleteRemarkHandler(db)).Methods("DELETE")
+	margDemandStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/snooze", margedeHandlers.DemandSnoozeHandler(db)).Methods("POST")
+	margDemandStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/unsnooze", margedeHandlers.DemandUnsnoozeHandler(db)).Methods("POST")
 
 	partnerBillsStaff := protected.PathPrefix("/admin").Subrouter()
 	partnerBillsStaff.Use(middleware.StaffOnly)

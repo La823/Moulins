@@ -174,3 +174,19 @@ func RateHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
 		writeJSON(w, out)
 	}
 }
+
+// GET /admin/marg-analysis/demand — every product's monthly consumption
+// (2, 3, 6 and 12-month averages), usable stock, days of cover, and whether
+// it needs ordering (under 90 days at the 3-month average).
+func AnalysisDemandHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := margede.Demand(r.Context(), db)
+		if err != nil {
+			log.Printf("marg analysis demand: %v", err)
+			http.Error(w, "could not load demand analysis", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
+	}
+}

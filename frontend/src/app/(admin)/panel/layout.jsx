@@ -179,13 +179,26 @@ const NAV_ITEMS = [
       { label: "HSN Search", href: "/panel/hsn-search", permission: "products_view" },
       { label: "HSN Codes & GST", href: "/panel/hsn-codes", permission: "products_view" },
       { label: "Marg Products", href: "/panel/marg-products", permission: "marg_master_view" },
-      { label: "Marg Stock", href: "/panel/marg-stock", permission: "marg_stock_view" },
     ],
   },
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },
   { label: "Payments", href: "/panel/payments", permission: "payments_view", icon: ICONS.payments },
   { label: "Marg Bills", href: "/panel/marg-bills", permission: "marg_bills_view", icon: ICONS.orders },
   { label: "Analysis", href: "/panel/marg-analysis", permission: "marg_analysis_view", icon: ICONS.analysis },
+  {
+    // Supply chain: stock, what needs ordering, and the purchase orders.
+    label: "SCM",
+    icon: ICONS.truck,
+    group: [
+      { label: "Marg Stock", href: "/panel/marg-stock", permission: "marg_stock_view" },
+      { label: "Demand & reorder", href: "/panel/demand", permission: "marg_analysis_view" },
+      { label: "Purchase Orders", href: "/panel/purchase-orders", permission: "purchase_orders_view" },
+      { label: "PO Master List", href: "/panel/purchase-order-master", permission: "purchase_orders_view" },
+      { label: "Product Specifications", href: "/panel/product-specifications", permission: "purchase_orders_view" },
+      { label: "Set Product Specs", href: "/panel/po-specifications", permission: "purchase_orders_view" },
+      { label: "Manufacturers", href: "/panel/manufacturers", permission: "manufacturers_view" },
+    ],
+  },
   { label: "Transports", href: "/panel/transports", permission: "transports_edit", icon: ICONS.truck },
   {
     label: "Users",
@@ -209,17 +222,6 @@ const NAV_ITEMS = [
       { label: "Homepage", href: "/panel/homepage", permission: "homepage_view" },
       { label: "Graphics Design", href: "/panel/graphics-design", permission: "graphics_design_view" },
       { label: "Email Templates", href: "/panel/email-templates", permission: "email_templates_view" },
-    ],
-  },
-  {
-    label: "Purchase Orders",
-    icon: ICONS.purchaseOrders,
-    group: [
-      { label: "Purchase Orders", href: "/panel/purchase-orders", permission: "purchase_orders_view" },
-      { label: "PO Master List", href: "/panel/purchase-order-master", permission: "purchase_orders_view" },
-      { label: "Product Specifications", href: "/panel/product-specifications", permission: "purchase_orders_view" },
-      { label: "Set Product Specs", href: "/panel/po-specifications", permission: "purchase_orders_view" },
-      { label: "Manufacturers", href: "/panel/manufacturers", permission: "manufacturers_view" },
     ],
   },
   {

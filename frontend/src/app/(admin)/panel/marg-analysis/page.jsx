@@ -7,6 +7,7 @@ import Loader from "@/components/Loader";
 import { SortHeader, fmtMoney, fmtDate, fmtQty } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
 import { PeriodBar, WindowNote, fmtMonth } from "@/components/admin/MargPeriod";
+import { PRODUCT_COMPANIES } from "@/components/admin/MargDemand";
 
 // Reports over this financial year's Marg bills (backend
 // internal/margede/analysis.go), as goods before GST (no GST, freight or
@@ -223,14 +224,6 @@ function PartyRanking({ mode, period, includeCurrent }) {
 }
 
 // ---- products ---------------------------------------------------------------
-
-// Item company in Marg (Product.GCode).
-const PRODUCT_COMPANIES = [
-  { code: "", label: "All products" },
-  { code: "IB", label: "Moulins" },
-  { code: "ID", label: "Third party" },
-  { code: "IC", label: "Others" },
-];
 
 function ProductRanking({ period, includeCurrent }) {
   const [sort, sortBy] = useSort("avg");

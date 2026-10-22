@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/margede"
 )
@@ -196,4 +197,67 @@ func TriggerHandler(db *pgxpool.Pool) http.HandlerFunc {
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]any{"run_id": runID})
 	}
+}
+
+// GET /my/marg-bills — the logged-in partner's own invoices (final sale
+// bills, GST included). Partners only.
+func MyBillsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := partnerID(w, r)
+		if !ok {
+			return
+		}
+		out, err := margede.ListMyBills(r.Context(), db, userID)
+		if err != nil {
+			log.Printf("my marg bills %s: %v", userID, err)
+			http.Error(w, "could not load your bills", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
+	}
+}
+
+// GET /my/marg-bills/{voucher} — one of the partner's own invoices with its
+// lines; 404 for any bill that isn't theirs.
+func MyBillHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := partnerID(w, r)
+		if !ok {
+			return
+		}
+		voucher, err := strconv.ParseInt(mux.Vars(r)["voucher"], 10, 64)
+		if err != nil {
+			http.Error(w, "invalid bill", http.StatusBadRequest)
+			return
+		}
+		bill, err := margede.GetMyBill(r.Context(), db, userID, voucher)
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "bill not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("my marg bill %s/%d: %v", userID, voucher, err)
+			http.Error(w, "could not load the bill", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(bill)
+	}
+}
+
+// partnerID is the logged-in user when they are a partner; otherwise it
+// answers 403 and returns false.
+func partnerID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	if role, _ := r.Context().Value("role").(string); role != "partner" {
+		http.Error(w, "bills are only available to partners", http.StatusForbidden)
+		return uuid.Nil, false
+	}
+	idStr, _ := r.Context().Value("user_id").(string)
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return uuid.Nil, false
+	}
+	return id, true
 }
