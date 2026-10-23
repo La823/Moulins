@@ -9,6 +9,7 @@ import { HsnResult, useHsnLookup } from "@/components/admin/HsnLookup";
 import ProductVisibilityPanel from "@/components/admin/ProductVisibilityPanel";
 import ProductThumbnailCard from "@/components/admin/ProductThumbnailCard";
 import ProductSpecsSection from "@/components/admin/ProductSpecsSection";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 // Marg's raw "YYYYMMDD" batch expiry, shown as "MM/YYYY". The day is dropped
 // deliberately: a batch expires at the end of its stated month, and Marg
@@ -556,6 +557,7 @@ export default function EditProduct() {
     setNewPdfFiles(newPdfFiles.filter((_, i) => i !== index));
   };
 
+  useBreadcrumbTitle(form.name);
   if (loading) return <p className="text-gray-500">Loading product...</p>;
 
   return (

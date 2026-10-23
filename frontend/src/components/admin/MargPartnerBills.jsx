@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import MargProductTrend, { PartnerProductGraph } from "@/components/admin/MargProductTrend";
 import { BillRow, BillDetail, SortHeader, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
 
@@ -91,6 +92,8 @@ export default function MargPartnerBills({ partnerId, partnerName }) {
           <div className="flex gap-1 border-b border-gray-200 mt-6 mb-4">
             {[
               ["timeline", "Timeline"],
+              ["trend", "Product trend"],
+              ["graph", "Product graph"],
               ["bills", "All bills"],
             ].map(([k, label]) => (
               <button
@@ -102,7 +105,15 @@ export default function MargPartnerBills({ partnerId, partnerName }) {
               </button>
             ))}
           </div>
-          {tab === "timeline" ? <Timeline events={data.timeline} /> : <PartyBills code={data.party_code} />}
+          {tab === "timeline" ? (
+            <Timeline events={data.timeline} />
+          ) : tab === "trend" ? (
+            <MargProductTrend url={`/admin/partners/${partnerId}/product-trend`} />
+          ) : tab === "graph" ? (
+            <PartnerProductGraph url={`/admin/partners/${partnerId}/product-trend`} />
+          ) : (
+            <PartyBills code={data.party_code} />
+          )}
         </>
       )}
     </div>

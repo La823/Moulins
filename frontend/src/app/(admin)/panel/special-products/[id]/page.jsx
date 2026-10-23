@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 export default function EditSpecialProduct() {
   return (
@@ -312,6 +313,7 @@ function EditSpecialProductInner() {
     setNewPdfFiles(newPdfFiles.filter((_, i) => i !== index));
   };
 
+  useBreadcrumbTitle(form.name);
   if (loading) return <p className="text-gray-500">Loading product...</p>;
 
   return (

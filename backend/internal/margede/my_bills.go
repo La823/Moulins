@@ -67,7 +67,8 @@ type MyBillDetail struct {
 const invoiceWhere = `b.party_code = $1 AND b.bill_type = 'S' AND COALESCE(b.bill_mode, '') <> 'challan'
 	AND NOT b.is_deleted AND NOT b.is_cancelled`
 
-func partyCodeOf(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (string, error) {
+// PartyCodeOfUser is a partner's Marg party code (users.rid -> margmaster_party).
+func PartyCodeOfUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (string, error) {
 	var code *string
 	err := db.QueryRow(ctx, `
 		SELECT TRIM(mp.code) FROM users u
@@ -85,7 +86,7 @@ func partyCodeOf(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (strin
 // ListMyBills returns every invoice of the partner, newest first.
 func ListMyBills(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (MyBills, error) {
 	out := MyBills{Bills: []MyBill{}}
-	code, err := partyCodeOf(ctx, db, userID)
+	code, err := PartyCodeOfUser(ctx, db, userID)
 	if errors.Is(err, ErrNotLinked) {
 		return out, nil
 	}
@@ -122,7 +123,7 @@ func ListMyBills(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (MyBil
 // partner's invoices.
 func GetMyBill(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, voucher int64) (MyBillDetail, error) {
 	var d MyBillDetail
-	code, err := partyCodeOf(ctx, db, userID)
+	code, err := PartyCodeOfUser(ctx, db, userID)
 	if errors.Is(err, ErrNotLinked) {
 		return d, pgx.ErrNoRows
 	}

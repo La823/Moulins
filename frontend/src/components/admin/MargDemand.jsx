@@ -5,7 +5,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import Loader from "@/components/Loader";
-import { SortHeader, fmtDate, fmtQty } from "@/components/admin/MargBills";
+import { SortHeader, fmtDate, fmtQty, fmtMoney } from "@/components/admin/MargBills";
 import { fmtMonth } from "@/components/admin/MargPeriod";
 
 // Item company in Marg (Product.GCode).
@@ -56,14 +56,61 @@ const DEMAND_SORTS = {
   cover: (r) => (r.cover_days == null ? Infinity : r.cover_days),
   order: (r) => r.still_to_order,
   purchase: (r) => r.last_purchase || "",
+  sold: (r) => r.last_sold || "",
+  risk: (r) => r.expiry_risk_value || r.expiry_risk_qty,
+  months: (r) => (r.avg3 > 0 ? r.stock / r.avg3 : Infinity),
 };
 
 const DEMAND_VIEWS = [
   { key: "to_review", label: "To review", match: (r) => r.review === "to_review" },
   { key: "on_order", label: "On order", match: (r) => r.review === "on_order" },
   { key: "snoozed", label: "Snoozed", match: (r) => r.review === "snoozed" },
+  { key: "expiry", label: "Expiry risk", match: (r) => r.expiry_risk_qty > 0 },
   { key: "all", label: "All products", match: () => true },
 ];
+
+// Minimum shelf life a batch must still have when sold.
+export const SHELF_CHOICES = [0, 30, 60, 90, 180];
+
+const monthYear = (v) => (v ? `${String(v).slice(5, 7)}/${String(v).slice(2, 4)}` : "—");
+
+// "New · in stock since 25 Jul" for products that had no stock on 1 April:
+// their averages count only the days since.
+export function AvailableNote({ r }) {
+  if (!r.new_this_year) return null;
+  const since = new Date(r.available_from).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  const how = r.available_why === "first_sale" ? "first sold" : "in stock since";
+  return (
+    <div className="mt-1 text-[11px] text-indigo-700" title="Averages count only the days since then">
+      New · {how} {since}
+      {r.too_new && " · under 30 days of sales, averages are a first guess"}
+    </div>
+  );
+}
+
+const avgTitle = (r, i) => `Over ${r.avg_days[i]} day${r.avg_days[i] !== 1 ? "s" : ""}${r.new_this_year ? " (since the product arrived)" : ""}`;
+
+// "Not sold in the last N months": months, or "year" for no sale at all
+// this financial year (bills go back to 1 April only).
+const UNSOLD_CHOICES = [
+  { key: 0, label: "Any" },
+  { key: 1, label: "1 month" },
+  { key: 2, label: "2 months" },
+  { key: 3, label: "3 months" },
+  { key: 6, label: "6 months" },
+  { key: "year", label: "Not this year" },
+];
+
+function unsoldMatch(unsold, stockOnly) {
+  if (!unsold) return () => true;
+  let cutoff = null;
+  if (unsold !== "year") {
+    cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - unsold);
+  }
+  return (r) =>
+    (!stockOnly || r.stock > 0) && (!r.last_sold || (cutoff && new Date(r.last_sold) < cutoff));
+}
 
 const shortDate = (v) => (v ? new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "");
 
@@ -76,12 +123,15 @@ export default function Demand() {
   const [view, setView] = useState("to_review");
   const [company, setCompany] = useState("");
   const [search, setSearch] = useState("");
+  const [unsold, setUnsold] = useState(0);
+  const [stockOnly, setStockOnly] = useState(true);
   const [sort, setSort] = useState({ key: "cover", dir: "asc" });
+  const [shelf, setShelf] = useState(90);
   const [dialog, setDialog] = useState(null); // { kind: "po" | "snooze" | "history", row }
 
   useEffect(() => {
-    apiFetch("/admin/marg-analysis/demand").then(setData).catch((e) => setError(e.message || "Could not load"));
-  }, [reload]);
+    apiFetch(`/admin/marg-analysis/demand?shelf=${shelf}`).then(setData).catch((e) => setError(e.message || "Could not load"));
+  }, [reload, shelf]);
 
   if (error) return <Empty text={error} />;
   if (!data) return <Loader />;
@@ -92,8 +142,11 @@ export default function Demand() {
       s.key === k ? { key: k, dir: s.dir === "desc" ? "asc" : "desc" } : { key: k, dir: k === "name" || k === "cover" ? "asc" : "desc" }
     );
   const q = search.toLowerCase();
+  const notSold = unsoldMatch(unsold, stockOnly);
   const base = data.rows.filter(
-    (r) => !q || r.name.toLowerCase().includes(q) || (r.code || "").toLowerCase().includes(q) || String(r.product_pid).includes(q)
+    (r) =>
+      (!q || r.name.toLowerCase().includes(q) || (r.code || "").toLowerCase().includes(q) || String(r.product_pid).includes(q)) &&
+      notSold(r)
   );
   const viewMatch = DEMAND_VIEWS.find((v) => v.key === view).match;
   const rows = base.filter((r) => (!company || r.company_code === company) && viewMatch(r));
@@ -115,7 +168,8 @@ export default function Demand() {
         over full months; {fmtMonth(data.this_month.slice(0, 7))} is still running, so it shows apart and isn&apos;t in the
         averages. Bills go back to {fmtMonth(data.first_month.slice(0, 7))}, so the 6-month average uses {m.avg6} month
         {m.avg6 !== 1 ? "s" : ""} and the year uses {m.avg12}. A product needs ordering when its usable stock (expired batches
-        left out) lasts under {data.cover_days} days at the 3-month average. <b>To review</b> is what needs ordering with no open
+        left out) lasts under {data.cover_days} days at the 3-month average. A product with no stock on 1 April counts only from when
+        it arrived (its first stock in, or first sale), so a product bought two months ago is averaged over those two months. <b>To review</b> is what needs ordering with no open
         purchase order linked and no snooze; a snooze ends on its date, or early if the product runs out.
       </p>
 
@@ -123,7 +177,10 @@ export default function Demand() {
         {DEMAND_VIEWS.map((v) => (
           <button
             key={v.key}
-            onClick={() => setView(v.key)}
+            onClick={() => {
+              setView(v.key);
+              setSort(v.key === "expiry" ? { key: "risk", dir: "desc" } : { key: "cover", dir: "asc" });
+            }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
               view === v.key ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
             }`}
@@ -146,15 +203,61 @@ export default function Demand() {
           </button>
         ))}
       </div>
+      <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
+        <span className="text-gray-500">Not sold in</span>
+        <span className="inline-flex rounded-md border border-gray-200 overflow-hidden bg-white">
+          {UNSOLD_CHOICES.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => setUnsold(c.key)}
+              className={`px-2.5 py-1 ${unsold === c.key ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </span>
+        {unsold !== 0 && (
+          <label className="inline-flex items-center gap-1.5 text-gray-600 ml-1">
+            <input type="checkbox" checked={stockOnly} onChange={(e) => setStockOnly(e.target.checked)} />
+            only with stock
+          </label>
+        )}
+        {unsold !== 0 && (
+          <span className="text-gray-400">
+            {unsold === "year" ? "no sale since 1 April" : `last sale before ${new Date(new Date().setMonth(new Date().getMonth() - unsold)).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} or none this year`}
+          </span>
+        )}
+      </div>
+
+      {view === "expiry" && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs text-amber-900 max-w-4xl">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-medium">Must still have</span>
+            <ShelfPicker shelf={shelf} setShelf={setShelf} />
+            <span className="font-medium">of shelf life when sold</span>
+          </div>
+          Stock is sold earliest expiry first at the 3-month average. Whatever can&apos;t be sold before its batch&apos;s expiry
+          less that margin is at risk, valued at the batch&apos;s purchase rate. A product with no sales in the last 3 full
+          months has all its stock at risk.
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
         <p className="text-sm text-gray-600">
           <span className="font-semibold text-gray-900">{rows.length}</span> product{rows.length !== 1 ? "s" : ""} · quantities in units
+          {view === "expiry" && rows.length > 0 && (
+            <>
+              {" "}· <span className="font-semibold text-gray-900">{fmtMoney(rows.reduce((t, r) => t + r.expiry_risk_value, 0))}</span> at risk
+              (purchase rate)
+            </>
+          )}
         </p>
         <SearchBox value={search} onSearch={setSearch} placeholder="Product name, code or PID..." />
       </div>
 
       {!rows.length ? (
-        <Empty text={view === "to_review" ? "Nothing to review" : "No products"} />
+        <Empty text={view === "to_review" ? "Nothing to review" : view === "expiry" ? "Nothing at risk of expiring" : "No products"} />
+      ) : view === "expiry" ? (
+        <ExpiryTable rows={rows} sort={sort} onSort={onSort} canAct={canAct} onDialog={(kind, r) => setDialog({ kind, row: r })} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
@@ -171,6 +274,7 @@ export default function Demand() {
                 <SortHeader label="Still to order" k="order" sort={sort} onSort={onSort} align="right" />
                 <th className="px-4 py-3">PO</th>
                 <th className="px-4 py-3">Remarks</th>
+                <SortHeader label="Last sold" k="sold" sort={sort} onSort={onSort} />
                 <SortHeader label="Last purchase" k="purchase" sort={sort} onSort={onSort} />
                 {canAct && <th className="px-4 py-3"><span className="sr-only">Actions</span></th>}
               </tr>
@@ -202,6 +306,10 @@ function DemandRow({ r, target, canAct, onDialog, onChanged }) {
           {r.name}
         </Link>
         <div className="text-xs text-gray-400">{[r.code, r.company].filter(Boolean).join(" · ")}</div>
+        <AvailableNote r={r} />
+        {r.expiry_risk_qty > 0 && (
+          <div className="mt-1 text-[11px] text-red-700">⚠ {fmtQty(r.expiry_risk_qty)} units may expire before they sell</div>
+        )}
         {ended && (
           <div className="mt-1 text-[11px] text-amber-800">
             ⏰ {r.snooze_ended.ended_early ? "Ran out while snoozed" : `Snooze ended ${shortDate(r.snooze_ended.until)}`}
@@ -220,10 +328,13 @@ function DemandRow({ r, target, canAct, onDialog, onChanged }) {
         <div className={r.stock <= 0 ? "text-red-600 font-medium" : "text-gray-900"}>{fmtQty(r.stock)}</div>
         {r.expired_stock > 0 && <div className="text-[11px] text-amber-700">+{fmtQty(r.expired_stock)} expired</div>}
       </td>
-      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{fmtQty(Math.round(r.avg2))}</td>
-      <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{fmtQty(Math.round(r.avg3))}</td>
-      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{fmtQty(Math.round(r.avg6))}</td>
-      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{fmtQty(Math.round(r.avg12))}</td>
+      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap" title={avgTitle(r, 0)}>{fmtQty(Math.round(r.avg2))}</td>
+      <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap" title={avgTitle(r, 1)}>
+        {fmtQty(Math.round(r.avg3))}
+        {r.new_this_year && <div className="text-[10px] font-normal text-indigo-700">{r.avg_days[1]} days</div>}
+      </td>
+      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap" title={avgTitle(r, 2)}>{fmtQty(Math.round(r.avg6))}</td>
+      <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap" title={avgTitle(r, 3)}>{fmtQty(Math.round(r.avg12))}</td>
       <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">{fmtQty(r.this_month)}</td>
       <td className="px-4 py-3 text-right whitespace-nowrap">
         <CoverCell r={r} target={target} />
@@ -278,6 +389,7 @@ function DemandRow({ r, target, canAct, onDialog, onChanged }) {
           </button>
         )}
       </td>
+      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{r.last_sold ? fmtDate(r.last_sold) : <span className="text-red-700">Not this year</span>}</td>
       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{r.last_purchase ? fmtDate(r.last_purchase) : "—"}</td>
       {canAct && (
         <td className="px-4 py-3 whitespace-nowrap">
@@ -589,4 +701,182 @@ function CoverCell({ r, target }) {
   if (d < 30) return <span className="text-red-600 font-medium">● {d} days</span>;
   if (d < target) return <span className="text-amber-700 font-medium">● {d} days</span>;
   return <span className="text-gray-600">{d > 999 ? "999+" : d} days</span>;
+}
+
+export function ShelfPicker({ shelf, setShelf }) {
+  return (
+    <span className="inline-flex rounded-md border border-amber-300 overflow-hidden bg-white">
+      {SHELF_CHOICES.map((d) => (
+        <button
+          key={d}
+          onClick={() => setShelf(d)}
+          className={`px-2 py-0.5 text-xs ${shelf === d ? "bg-amber-700 text-white" : "text-amber-900 hover:bg-amber-100"}`}
+        >
+          {d === 0 ? "None" : d % 30 === 0 ? `${d / 30} mo` : `${d} d`}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+// Products with stock that may expire before it sells, worst first.
+function ExpiryTable({ rows, sort, onSort, canAct, onDialog }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <SortHeader label="Product" k="name" sort={sort} onSort={onSort} />
+            <SortHeader label="Stock" k="stock" sort={sort} onSort={onSort} align="right" />
+            <SortHeader label="Avg 3 m" k="avg3" sort={sort} onSort={onSort} align="right" />
+            <SortHeader label="Months of stock" k="months" sort={sort} onSort={onSort} align="right" />
+            <SortHeader label="At risk" k="risk" sort={sort} onSort={onSort} align="right" />
+            <th className="px-4 py-3">Batches at risk</th>
+            <th className="px-4 py-3">Remarks</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {rows.map((r) => (
+            <tr key={r.product_pid} className="hover:bg-gray-50 align-top">
+              <td className="px-4 py-3 min-w-[14rem]">
+                <Link href={`/panel/marg-analysis/products/${r.product_pid}`} className="text-gray-900 hover:underline">
+                  {r.name}
+                </Link>
+                <div className="text-xs text-gray-400">{[r.code, r.company].filter(Boolean).join(" · ")}</div>
+                <AvailableNote r={r} />
+                {r.avg3 === 0 && <div className="mt-1 text-[11px] text-red-700">No sales in the last 3 full months{r.this_month > 0 ? ` (${fmtQty(r.this_month)} sold this month)` : ""}</div>}
+              </td>
+              <td className="px-4 py-3 text-right whitespace-nowrap text-gray-900">{fmtQty(r.stock)}</td>
+              <td className="px-4 py-3 text-right whitespace-nowrap text-gray-700" title={avgTitle(r, 1)}>{fmtQty(Math.round(r.avg3))}</td>
+              <td className="px-4 py-3 text-right whitespace-nowrap text-gray-700">
+                {r.avg3 > 0 ? (r.stock / r.avg3).toFixed(1) : "—"}
+              </td>
+              <td className="px-4 py-3 text-right whitespace-nowrap">
+                <div className="font-semibold text-red-700">{fmtQty(Math.round(r.expiry_risk_qty))} units</div>
+                <div className="text-[11px] text-gray-500">{r.expiry_risk_value ? fmtMoney(r.expiry_risk_value) : "no purchase rate"}</div>
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex flex-col gap-1">
+                  {r.batches.map((b) => (
+                    <Link
+                      key={b.stock_id}
+                      href={`/panel/marg-stock/batches/${b.stock_id}`}
+                      className="text-[11px] whitespace-nowrap hover:underline"
+                      title={`Must be sold by ${fmtDate(b.sellable_until)}`}
+                    >
+                      <span className="font-medium text-gray-900">{b.batch || "—"}</span>
+                      <span className="text-gray-500"> · exp {monthYear(b.expiry)} · </span>
+                      <span className="text-red-700">{fmtQty(Math.round(b.risk_qty))} of {fmtQty(b.stock)} at risk</span>
+                    </Link>
+                  ))}
+                </div>
+              </td>
+              <td className="px-4 py-3 max-w-[14rem]">
+                <button onClick={() => onDialog("history", r)} className="text-left">
+                  {r.last_remark ? (
+                    <span className="text-xs text-gray-800 line-clamp-2 hover:underline">{r.last_remark.body}</span>
+                  ) : (
+                    <span className="text-[11px] text-gray-400 hover:underline">{canAct ? "+ Remark" : "History"}</span>
+                  )}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// The product page's batch-by-batch outlook: when each batch sells out at
+// the 3-month average, and what may expire first.
+export function ProductExpiry({ pid }) {
+  const [shelf, setShelf] = useState(90);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    apiFetch(`/admin/marg-analysis/products/${pid}/expiry?shelf=${shelf}`)
+      .then(setData)
+      .catch((e) => setError(e.message || "Could not load"));
+  }, [pid, shelf]);
+
+  if (error) return <p className="text-sm text-red-600">{error}</p>;
+  if (!data) return <Loader />;
+  const r = data.row;
+  if (!r || !r.batches.length) return <p className="text-sm text-gray-400">No stock in Marg.</p>;
+
+  const statusOf = (b) =>
+    b.status === "expired" ? (
+      <span className="text-red-700 font-medium">Expired</span>
+    ) : b.status === "at_risk" ? (
+      <span className="text-red-700 font-medium">⚠ {fmtQty(Math.round(b.risk_qty))} may expire</span>
+    ) : b.status === "too_new" ? (
+      <span className="text-indigo-700">New — too early to judge</span>
+    ) : b.status === "no_expiry" ? (
+      <span className="text-gray-400">No expiry date</span>
+    ) : (
+      <span className="text-green-700">✓ Sells in time</span>
+    );
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 flex-wrap mb-2 text-xs text-gray-600">
+        <span>
+          Selling {fmtQty(Math.round(r.avg3))} a month (3-month average
+          {r.new_this_year ? `, over the ${r.avg_days[1]} days since it arrived` : ""})
+          {r.avg3 > 0 && ` · ${(r.stock / r.avg3).toFixed(1)} months of stock`} · must still have
+        </span>
+        <ShelfPicker shelf={shelf} setShelf={setShelf} />
+        <span>of shelf life when sold</span>
+      </div>
+      {r.new_this_year && (
+        <p className="mb-2 text-xs text-indigo-700">
+          No stock on 1 April — {r.available_why === "first_sale" ? "first sold" : "first stock in"} on {fmtDate(r.available_from)}
+          {r.first_purchase && ` · first purchase ${fmtDate(r.first_purchase)}`}. Averages count only the days since.
+          {r.too_new && " Under 30 days of sales, so expiry risk isn't judged yet."}
+        </p>
+      )}
+      {r.expiry_risk_qty > 0 && (
+        <p className="mb-2 text-sm text-red-700">
+          ⚠ {fmtQty(Math.round(r.expiry_risk_qty))} units
+          {r.expiry_risk_value ? ` (${fmtMoney(r.expiry_risk_value)} at purchase rate)` : ""} may expire before they sell
+          {r.avg3 === 0 && " — no sales in the last 3 full months"}.
+        </p>
+      )}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+            <tr>
+              <th className="px-4 py-3">Batch</th>
+              <th className="px-4 py-3">Expiry</th>
+              <th className="px-4 py-3 text-right">Stock</th>
+              <th className="px-4 py-3 text-right">MRP</th>
+              <th className="px-4 py-3 text-right">Purchase</th>
+              <th className="px-4 py-3">Sell by</th>
+              <th className="px-4 py-3">Sells out by</th>
+              <th className="px-4 py-3">Outlook</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {r.batches.map((b) => (
+              <tr key={b.stock_id} className={b.status === "at_risk" || b.status === "expired" ? "bg-red-50/40" : ""}>
+                <td className="px-4 py-3">
+                  <Link href={`/panel/marg-stock/batches/${b.stock_id}`} className="font-medium text-gray-900 hover:underline">
+                    {b.batch || "—"}
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{monthYear(b.expiry)}</td>
+                <td className="px-4 py-3 text-right text-gray-900">{fmtQty(b.stock)}</td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{b.mrp ? fmtMoney(b.mrp) : "—"}</td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{b.purchase_rate ? fmtMoney(b.purchase_rate) : "—"}</td>
+                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{b.sellable_until ? fmtDate(b.sellable_until) : "—"}</td>
+                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{b.sells_out_by ? fmtDate(b.sells_out_by) : "—"}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-xs">{statusOf(b)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

@@ -14,6 +14,7 @@ import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules
 import SpecialProductsPanel from "@/components/admin/SpecialProductsPanel";
 import PartnerProductVisibilityPanel from "@/components/admin/PartnerProductVisibilityPanel";
 import { GstVerifyModal, DlVerifyModal, ScrapedDetails } from "@/components/shared/DocVerifyModals";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -76,6 +77,7 @@ export default function PartnerDetailPage() {
   const canSeeBills =
     user?.role === "admin" || (user?.permissions || []).includes("partner_bills_view");
   const [partner, setPartner] = useState(null);
+  useBreadcrumbTitle(partner?.username);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [editingPassword, setEditingPassword] = useState(false);

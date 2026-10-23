@@ -8,6 +8,7 @@ import Loader from "@/components/Loader";
 import { KIND_LABELS } from "@/lib/margLedger";
 import { BillRow, SortHeader, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 // One Marg party (any ledger account): its details, totals per bill type,
 // the products on its bills, and every bill made out to it.
@@ -23,6 +24,7 @@ export default function MargPartyPage() {
   const code = safeDecode(rawCode);
 
   const [party, setParty] = useState(null);
+  useBreadcrumbTitle(party ? party.account?.short_name || party.account?.name || code : null);
   const [partyError, setPartyError] = useState("");
 
   const [list, setList] = useState(null);

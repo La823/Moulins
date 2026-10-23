@@ -8,6 +8,8 @@ import Loader from "@/components/Loader";
 import { SortHeader, fmtMoney, fmtDate, fmtQty } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
 import { PeriodBar, WindowNote, fmtMonth } from "@/components/admin/MargPeriod";
+import { ProductExpiry } from "@/components/admin/MargDemand";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 // One product: its sales, who buys it and how much, month by month. Sales are
 // lines on sale invoices before GST, cancelled bills left out. The tiles,
@@ -28,6 +30,7 @@ export default function MargProductPage() {
   const [period, setPeriod] = useState(0);
   const [includeCurrent, setIncludeCurrent] = useState(false);
   const [data, setData] = useState(null);
+  useBreadcrumbTitle(data ? data.name || `Product ${data.product_pid}` : null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -117,6 +120,14 @@ export default function MargProductPage() {
           <Link href="/panel/marg-stock" className="inline-block text-xs text-gray-500 hover:text-gray-900 underline mt-3">Batches on Marg Stock →</Link>
         </div>
       </div>
+
+      <section className="mb-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-1">Stock and expiry outlook</h3>
+        <p className="text-xs text-gray-500 mb-3">
+          Each batch in stock, sold earliest expiry first at the 3-month average: when it sells out, and whether that is in time.
+        </p>
+        <ProductExpiry pid={pid} />
+      </section>
 
       <BuyersTable buyers={data.buyers} />
     </>

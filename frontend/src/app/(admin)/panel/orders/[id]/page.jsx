@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 const STATUSES = [
   "pending",
@@ -55,6 +56,7 @@ export default function AdminOrderDetail() {
   const canEdit = user?.role === "admin" || (user?.permissions || []).includes("orders_edit");
 
   const [order, setOrder] = useState(null);
+  useBreadcrumbTitle(order ? `Order ${order.id.slice(0, 8)}` : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");

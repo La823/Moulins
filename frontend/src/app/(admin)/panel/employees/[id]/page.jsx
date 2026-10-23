@@ -7,11 +7,13 @@ import { apiFetch } from "@/lib/api";
 import UserMeetingsRequests from "@/components/admin/UserMeetingsRequests";
 import AssignmentPanel from "@/components/admin/AssignmentPanel";
 import PasswordRules, { isPasswordValid } from "@/components/admin/PasswordRules";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 export default function EmployeeDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const [employee, setEmployee] = useState(null);
+  useBreadcrumbTitle(employee?.username);
   const [loading, setLoading] = useState(true);
 
   // Password state

@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import { BillDetail, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import { BatchSummary, BatchMovements } from "@/components/admin/MargBatchHistory";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 // One stock batch: who it was sold to and when (sale invoices and challans),
 // then every movement in and out with a running balance, against Marg's own
@@ -15,6 +16,7 @@ import { BatchSummary, BatchMovements } from "@/components/admin/MargBatchHistor
 export default function MargBatchPage() {
   const { id } = useParams();
   const [h, setH] = useState(null);
+  useBreadcrumbTitle(h ? `Batch ${h.batch || "(no batch)"}` : null);
   const [error, setError] = useState("");
 
   useEffect(() => {

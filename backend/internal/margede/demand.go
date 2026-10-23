@@ -46,6 +46,15 @@ type DemandRow struct {
 	LastSold     *time.Time `json:"last_sold"`
 	LastPurchase *time.Time `json:"last_purchase"`
 
+	// When the product became available (demand_avg.go): the averages
+	// start no earlier than this.
+	AvailableFrom time.Time  `json:"available_from"`
+	AvailableWhy  string     `json:"available_why"` // opening | first_stock | first_sale
+	FirstPurchase *time.Time `json:"first_purchase"`
+	NewThisYear   bool       `json:"new_this_year"` // no stock on 1 April
+	AvgDays       [4]int     `json:"avg_days"`      // days behind avg2, avg3, avg6, avg12
+	TooNew        bool       `json:"too_new"`       // under 30 days of history: averages are a first guess
+
 	// Review state (demand_review.go).
 	Review       string        `json:"review"` // ok | to_review | on_order | snoozed
 	POs          []DemandPO    `json:"pos"`
@@ -56,6 +65,19 @@ type DemandRow struct {
 	SnoozeEnded  *DemandSnooze `json:"snooze_ended"`   // ended in the last two weeks, or early on running out
 	LastRemark   *DemandRemark `json:"last_remark"`
 	RemarksCount int           `json:"remarks_count"`
+
+	// Expiry risk (expiry_risk.go): stock not sold before its batch's
+	// expiry less the minimum shelf life, at the 3-month average.
+	ExpiryRiskQty   float64     `json:"expiry_risk_qty"`
+	ExpiryRiskValue float64     `json:"expiry_risk_value"` // at purchase rate
+	Batches         []BatchRisk `json:"batches"`           // at-risk batches (all batches on the product page)
+}
+
+// DemandOptions narrows the report.
+type DemandOptions struct {
+	Product    *int64 // one product (the product page)
+	ShelfDays  int    // minimum shelf life left when sold, in days (0 = up to expiry)
+	AllBatches bool   // keep every batch, not only the at-risk ones
 }
 
 // DemandList is the demand analysis response.
@@ -74,11 +96,16 @@ type DemandList struct {
 	ToReview   int `json:"to_review"`
 	OnOrder    int `json:"on_order"`
 	Snoozed    int `json:"snoozed"`
+	ExpiryRisk int `json:"expiry_risk"` // products with stock at risk of expiring
+	ShelfDays  int `json:"shelf_days"`
 }
 
 // Demand returns every product with stock or sales this year.
-func Demand(ctx context.Context, db *pgxpool.Pool) (DemandList, error) {
-	out := DemandList{Rows: []DemandRow{}, CoverDays: DemandCoverDays}
+func Demand(ctx context.Context, db *pgxpool.Pool, opt DemandOptions) (DemandList, error) {
+	if opt.ShelfDays < 0 || opt.ShelfDays > 730 {
+		opt.ShelfDays = DefaultShelfDays
+	}
+	out := DemandList{Rows: []DemandRow{}, CoverDays: DemandCoverDays, ShelfDays: opt.ShelfDays}
 	if err := db.QueryRow(ctx, `
 		SELECT COALESCE(date_trunc('month', MIN(bill_date)), date_trunc('month', CURRENT_DATE))::date,
 		       date_trunc('month', CURRENT_DATE)::date
@@ -101,7 +128,7 @@ func Demand(ctx context.Context, db *pgxpool.Pool) (DemandList, error) {
 		WITH m AS (SELECT date_trunc('month', CURRENT_DATE)::date AS m0),
 		used AS (
 			SELECT i.product_pid, date_trunc('month', b.bill_date)::date AS mon,
-			       SUM(i.qty + i.free) AS q, MAX(b.bill_date) AS last_sold
+			       SUM(i.qty + i.free) AS q, MAX(b.bill_date) AS last_sold, MIN(b.bill_date) AS first_sold
 			FROM marg_ede_bill_items i
 			JOIN marg_ede_bills b ON b.voucher = i.voucher
 			WHERE b.bill_type = 'S' AND NOT b.is_deleted AND NOT b.is_cancelled
@@ -115,19 +142,23 @@ func Demand(ctx context.Context, db *pgxpool.Pool) (DemandList, error) {
 			       SUM(q) FILTER (WHERE mon < m0 AND mon >= m0 - interval '6 months') AS q6,
 			       SUM(q) FILTER (WHERE mon < m0 AND mon >= m0 - interval '12 months') AS q12,
 			       SUM(q) FILTER (WHERE mon = m0) AS qnow,
-			       MAX(last_sold) AS last_sold
+			       MAX(last_sold) AS last_sold, MIN(first_sold) AS first_sold
 			FROM used, m GROUP BY product_pid
 		),
 		st AS (
 			SELECT product_pid,
 			       SUM(stock) FILTER (WHERE expiry IS NULL OR expiry >= CURRENT_DATE) AS usable,
-			       SUM(stock) FILTER (WHERE expiry < CURRENT_DATE) AS expired
+			       SUM(stock) FILTER (WHERE expiry < CURRENT_DATE) AS expired,
+			       SUM(opening) AS opening
 			FROM marg_ede_stock WHERE NOT is_deleted GROUP BY product_pid
 		),
 		lp AS (
-			SELECT i.product_pid, MAX(b.bill_date) AS last_purchase
+			SELECT i.product_pid,
+			       MAX(b.bill_date) FILTER (WHERE b.bill_type = 'P') AS last_purchase,
+			       MIN(b.bill_date) FILTER (WHERE b.bill_type = 'P') AS first_purchase,
+			       MIN(b.bill_date) AS first_in -- purchases, returns, stock adjustments
 			FROM marg_ede_bill_items i JOIN marg_ede_bills b ON b.voucher = i.voucher
-			WHERE b.bill_type = 'P' AND NOT b.is_deleted AND NOT b.is_cancelled AND NOT i.is_deleted
+			WHERE b.bill_type IN ('P', 'R', 'D') AND NOT b.is_deleted AND NOT b.is_cancelled AND NOT i.is_deleted
 			  AND i.line_kind <> 'charge'
 			GROUP BY 1
 		),
@@ -137,34 +168,57 @@ func Demand(ctx context.Context, db *pgxpool.Pool) (DemandList, error) {
 		       COALESCE(st.usable, 0)::float8, COALESCE(st.expired, 0)::float8,
 		       COALESCE(u.q2, 0)::float8, COALESCE(u.q3, 0)::float8, COALESCE(u.q6, 0)::float8,
 		       COALESCE(u.q12, 0)::float8, COALESCE(u.qnow, 0)::float8,
-		       u.last_sold, lp.last_purchase
+		       u.last_sold, lp.last_purchase,
+		       COALESCE(st.opening, 0)::float8, lp.first_purchase, lp.first_in, u.first_sold
 		FROM pids
 		LEFT JOIN u ON u.product_pid = pids.product_pid
 		LEFT JOIN st ON st.product_pid = pids.product_pid
 		LEFT JOIN lp ON lp.product_pid = pids.product_pid
 		LEFT JOIN marg_ede_products p ON p.product_pid = pids.product_pid
 		LEFT JOIN margmaster_products mp ON mp.base_code = pids.product_pid::text
-		WHERE NOT COALESCE(p.is_deleted, FALSE)`)
+		WHERE NOT COALESCE(p.is_deleted, FALSE) AND ($1::bigint IS NULL OR pids.product_pid = $1)`, opt.Product)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
+	today := istToday()
 	for rows.Next() {
 		var r DemandRow
-		var q2, q3, q6, q12 float64
+		var q2, q3, q6, q12, opening float64
+		var firstIn, firstSold *time.Time
 		if err := rows.Scan(&r.ProductPID, &r.Code, &r.Name, &r.Unit, &r.CompanyCode, &r.Company,
-			&r.Stock, &r.ExpiredStock, &q2, &q3, &q6, &q12, &r.ThisMonth, &r.LastSold, &r.LastPurchase); err != nil {
+			&r.Stock, &r.ExpiredStock, &q2, &q3, &q6, &q12, &r.ThisMonth, &r.LastSold, &r.LastPurchase,
+			&opening, &r.FirstPurchase, &firstIn, &firstSold); err != nil {
 			return out, err
 		}
 		// Products that never moved and hold nothing (charges, old items)
 		// say nothing about demand.
-		if q12 == 0 && r.ThisMonth == 0 && r.Stock <= 0 {
+		if q12 == 0 && r.ThisMonth == 0 && r.Stock <= 0 && opt.Product == nil {
 			continue
 		}
-		r.Avg2 = q2 / float64(out.Months.Avg2)
-		r.Avg3 = q3 / float64(out.Months.Avg3)
-		r.Avg6 = q6 / float64(out.Months.Avg6)
-		r.Avg12 = q12 / float64(out.Months.Avg12)
+		// Available since 1 April when there was stock then; otherwise since
+		// its first stock in or first sale this year, whichever came first.
+		r.AvailableFrom, r.AvailableWhy = out.FirstMonth, "opening"
+		if opening <= 0 {
+			r.NewThisYear = true
+			switch {
+			case firstIn != nil && (firstSold == nil || !firstSold.Before(*firstIn)):
+				r.AvailableFrom, r.AvailableWhy = *firstIn, "first_stock"
+			case firstSold != nil:
+				r.AvailableFrom, r.AvailableWhy = *firstSold, "first_sale"
+			}
+		}
+		if r.AvailableFrom.Before(out.FirstMonth) {
+			r.AvailableFrom = out.FirstMonth
+		}
+		avg := func(q float64, n int) (float64, int) {
+			return windowAvg(q, r.ThisMonth, n, out.FirstMonth, r.AvailableFrom, out.ThisMonth, today)
+		}
+		r.Avg2, r.AvgDays[0] = avg(q2, 2)
+		r.Avg3, r.AvgDays[1] = avg(q3, 3)
+		r.Avg6, r.AvgDays[2] = avg(q6, 6)
+		r.Avg12, r.AvgDays[3] = avg(q12, 12)
+		r.TooNew = daysBetween(r.AvailableFrom, today) < tooNewDays
 		if r.Avg3 > 0 {
 			stock := math.Max(r.Stock, 0)
 			daily := r.Avg3 * 12 / 365
@@ -182,5 +236,8 @@ func Demand(ctx context.Context, db *pgxpool.Pool) (DemandList, error) {
 		return out, err
 	}
 	rows.Close()
+	if err := attachExpiryRisk(ctx, db, &out, opt.Product, opt.AllBatches); err != nil {
+		return out, err
+	}
 	return out, attachReviews(ctx, db, &out)
 }

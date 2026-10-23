@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 export default function GraphicsDesignProduct() {
   const { productId } = useParams();
   const [product, setProduct] = useState(null);
+  useBreadcrumbTitle(product?.name);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);

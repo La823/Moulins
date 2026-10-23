@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Breadcrumbs, { BreadcrumbProvider } from "@/components/admin/Breadcrumbs";
 
 const ICONS = {
   dashboard: (
@@ -288,6 +289,16 @@ const TOP_DROPDOWNS = [
   },
 ];
 
+// Every menu entry with the group it sits in, for the breadcrumbs: the
+// sidebar first, then the top bar.
+const BREADCRUMB_ENTRIES = [
+  ...NAV_ITEMS.flatMap((item) =>
+    item.group ? item.group.map((c) => ({ href: c.href, label: c.label, group: item.label })) : [{ href: item.href, label: item.label }]
+  ),
+  ...TOP_NAV_ITEMS.map((item) => ({ href: item.href, label: item.label })),
+  ...TOP_DROPDOWNS.flatMap((d) => d.items.map((c) => ({ href: c.href, label: c.label, group: d.label }))),
+].filter((e) => e.href?.startsWith("/panel"));
+
 export default function AdminLayout({ children }) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
@@ -352,6 +363,7 @@ export default function AdminLayout({ children }) {
 
   return (
     <AuthGuard allowedRoles={["admin", "employee"]}>
+      <BreadcrumbProvider>
       <div className="min-h-screen bg-gray-50 flex">
         {/* Sidebar — collapsed to an icon rail by default, expands on hover.
             Fixed + overlays content (main content's margin stays at the
@@ -480,6 +492,7 @@ export default function AdminLayout({ children }) {
           {/* Top navbar — standalone links that don't belong in the side
               rail — icon + label always shown. */}
           <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-end gap-3 px-6 sticky top-0 z-20">
+            <Breadcrumbs entries={BREADCRUMB_ENTRIES} />
             {visibleTopDropdowns.map((dropdown) => {
               const open = openDropdown === dropdown.label;
               return (
@@ -550,6 +563,7 @@ export default function AdminLayout({ children }) {
           <main className="p-6">{children}</main>
         </div>
       </div>
+      </BreadcrumbProvider>
     </AuthGuard>
   );
 }

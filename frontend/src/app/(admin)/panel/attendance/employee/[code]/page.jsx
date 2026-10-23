@@ -10,6 +10,7 @@ import {
   shiftMonth, prettyMonth, fmtDays, Stepper, EmployeeMonthView, exportEmployeeMonth,
   LeaveStatusChip, leaveRange, paidSplit,
 } from "@/components/admin/attendanceShared";
+import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 
 // One employee's month from the fingerprint scanner, as a calendar, with
 // their leave. Reached from any name on /panel/attendance; ?month=YYYY-MM.
@@ -56,6 +57,7 @@ function EmployeeCalendar() {
 
   const go = (c, m) => router.push(`/panel/attendance/employee/${encodeURIComponent(c)}?month=${m}`);
   const emp = data?.employees?.[0];
+  useBreadcrumbTitle(emp?.name);
 
   return (
     <>

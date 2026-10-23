@@ -374,6 +374,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAnalysisStaff.HandleFunc("/marg-analysis/parties", margedeHandlers.AnalysisPartiesHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/products", margedeHandlers.AnalysisProductsHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/products/{pid}", margedeHandlers.AnalysisProductHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/products/{pid:[0-9]+}/expiry", margedeHandlers.ProductExpiryHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
@@ -396,6 +397,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerBillsStaff.Use(middleware.StaffOnly)
 	partnerBillsStaff.Use(middleware.RequirePermission(db, "partner_bills_view", rdb))
 	partnerBillsStaff.HandleFunc("/partners/{id}/marg-bills", margedeHandlers.PartnerBillsHandler(db)).Methods("GET")
+	partnerBillsStaff.HandleFunc("/partners/{id}/product-trend", margedeHandlers.PartnerProductTrendHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone
 	// editor's Python persistence layer; see backend/warehouse_layout_editor)

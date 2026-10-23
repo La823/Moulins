@@ -180,7 +180,11 @@ func RateHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
 // it needs ordering (under 90 days at the 3-month average).
 func AnalysisDemandHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := margede.Demand(r.Context(), db)
+		shelf := margede.DefaultShelfDays
+		if v, err := strconv.Atoi(r.URL.Query().Get("shelf")); err == nil {
+			shelf = v
+		}
+		out, err := margede.Demand(r.Context(), db, margede.DemandOptions{ShelfDays: shelf})
 		if err != nil {
 			log.Printf("marg analysis demand: %v", err)
 			http.Error(w, "could not load demand analysis", http.StatusInternalServerError)
@@ -188,5 +192,32 @@ func AnalysisDemandHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)
+	}
+}
+
+// GET /admin/marg-analysis/products/{pid}/expiry?shelf=90 — the product's
+// demand row with every batch in stock and whether it sells before expiry.
+func ProductExpiryHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pid, err := strconv.ParseInt(mux.Vars(r)["pid"], 10, 64)
+		if err != nil {
+			http.Error(w, "invalid product", http.StatusBadRequest)
+			return
+		}
+		shelf := margede.DefaultShelfDays
+		if v, err := strconv.Atoi(r.URL.Query().Get("shelf")); err == nil {
+			shelf = v
+		}
+		out, err := margede.Demand(r.Context(), db, margede.DemandOptions{Product: &pid, ShelfDays: shelf, AllBatches: true})
+		if err != nil {
+			log.Printf("product %d expiry: %v", pid, err)
+			http.Error(w, "could not load expiry outlook", http.StatusInternalServerError)
+			return
+		}
+		resp := map[string]any{"shelf_days": out.ShelfDays, "months": out.Months, "row": nil}
+		if len(out.Rows) > 0 {
+			resp["row"] = out.Rows[0]
+		}
+		writeJSON(w, resp)
 	}
 }
