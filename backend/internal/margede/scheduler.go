@@ -74,12 +74,61 @@ func StartScheduler(db *pgxpool.Pool) {
 	log.Printf("marg ede sync: scheduled every %s, first at %s", Interval, NextSlot(time.Now()).In(istZone).Format("15:04"))
 
 	for {
-		time.Sleep(time.Until(NextSlot(time.Now())))
-		runID, err := Launch(db, creds, "scheduled", "")
+		slot := NextSlot(time.Now())
+		time.Sleep(time.Until(slot))
+		since := quickPullSince(context.Background(), db, slot)
+		runID, err := Launch(db, creds, "scheduled", since)
 		if err != nil {
 			log.Printf("marg ede sync: scheduled run not started: %v", err)
 			continue
 		}
-		log.Printf("marg ede sync: scheduled run #%d started", runID)
+		kind := "full"
+		if since != "" {
+			kind = "quick, since " + since
+		}
+		log.Printf("marg ede sync: scheduled run #%d started (%s)", runID, kind)
 	}
+}
+
+// Full pulls on the hour; quick pulls (changes since the last run) at :15,
+// :30 and :45. A full pull is the only way to see bills deleted outright in
+// Marg, so a quick pull also falls back to full when the last full pull is
+// older than fullPullMaxAge (a failed or skipped :00 run).
+const (
+	fullPullMaxAge = 75 * time.Minute
+	// quickOverlap reaches back before the last run's Marg time, so a change
+	// saved in Marg while that run was being assembled isn't missed. Rows
+	// sent twice cost nothing: unchanged rows aren't written.
+	quickOverlap   = 10 * time.Minute
+	margTimeFormat = "2006-01-02 15:04:05"
+)
+
+// quickPullSince is the Datetime for the run at slot: "" for a full pull,
+// else Marg's own clock at the last completed run, less the overlap.
+func quickPullSince(ctx context.Context, db *pgxpool.Pool, slot time.Time) string {
+	var lastMarg string
+	var lastFull *time.Time
+	err := db.QueryRow(ctx, `
+		SELECT COALESCE((SELECT marg_datetime FROM marg_ede_sync_runs
+		                 WHERE status = 'completed' AND COALESCE(marg_datetime, '') <> ''
+		                 ORDER BY started_at DESC LIMIT 1), ''),
+		       (SELECT MAX(started_at) FROM marg_ede_sync_runs
+		        WHERE status = 'completed' AND COALESCE(datetime_from, '') = '')`).Scan(&lastMarg, &lastFull)
+	if err != nil {
+		log.Printf("marg ede sync: reading the last runs failed (%v); doing a full pull", err)
+		return ""
+	}
+	return chooseSince(slot, lastMarg, lastFull)
+}
+
+// chooseSince decides full ("") or quick (a Marg time) for a slot.
+func chooseSince(slot time.Time, lastMarg string, lastFull *time.Time) string {
+	if slot.In(istZone).Minute() == 0 || lastFull == nil || slot.Sub(*lastFull) > fullPullMaxAge {
+		return ""
+	}
+	t, err := time.ParseInLocation(margTimeFormat, lastMarg, istZone)
+	if err != nil {
+		return ""
+	}
+	return t.Add(-quickOverlap).Format(margTimeFormat)
 }

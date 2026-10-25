@@ -52,6 +52,18 @@ func Apply(ctx context.Context, db *pgxpool.Pool, d Details, full bool) (Result,
 	}
 
 	charges := ChargePIDs(d.Products)
+	if !full {
+		// A quick pull only carries products that changed; the charge
+		// products (insurance, freight: codes starting ###) come from the
+		// stored list, or their lines would be taken for goods.
+		stored, err := storedChargePIDs(ctx, db)
+		if err != nil {
+			return res, fmt.Errorf("read charge products: %w", err)
+		}
+		for pid := range stored {
+			charges[pid] = true
+		}
+	}
 
 	// Dedupe by key, last occurrence wins (pages could overlap).
 	bills := make([]Bill, 0, len(d.Bills))
@@ -202,6 +214,35 @@ func Apply(ctx context.Context, db *pgxpool.Pool, d Details, full bool) (Result,
 			if res.BillsDeleted, err = collectVouchers(rows, touchedSet); err != nil {
 				return res, fmt.Errorf("mark deleted bills: %w", err)
 			}
+		}
+	} else if len(items) > 0 {
+		// Quick pull (changes since a time): Marg sends the bill headers and
+		// the lines that changed, separately. Editing a bill in Marg reissues
+		// every one of its lines (true of all 80 bills edited since the sync
+		// began, and of all 11 in a test pull on 25 Oct 2026), so a bill that
+		// comes with lines comes with all of them: its stored lines not among
+		// them are the old version. A bill sent without lines (only its
+		// header changed) keeps its lines. Bills deleted outright in Marg
+		// wait for the next full pull.
+		lineIDs := make([]int64, len(items))
+		withLines := make([]int64, 0, len(items))
+		seen := map[int64]bool{}
+		for i, it := range items {
+			lineIDs[i] = it.MargLineID
+			if !seen[it.Voucher] {
+				seen[it.Voucher] = true
+				withLines = append(withLines, it.Voucher)
+			}
+		}
+		rows, err := tx.Query(ctx, `
+			UPDATE marg_ede_bill_items SET is_deleted = TRUE, last_changed_at = NOW(), synced_at = NOW()
+			WHERE NOT is_deleted AND voucher = ANY($2::bigint[]) AND NOT (marg_line_id = ANY($1::bigint[]))
+			RETURNING voucher`, lineIDs, withLines)
+		if err != nil {
+			return res, fmt.Errorf("replace edited bills' lines: %w", err)
+		}
+		if res.ItemsDeleted, err = collectVouchers(rows, touchedSet); err != nil {
+			return res, fmt.Errorf("replace edited bills' lines: %w", err)
 		}
 	}
 
@@ -522,4 +563,22 @@ func upsertItems(ctx context.Context, tx pgx.Tx, items []Item) error {
 		company, kind, batch, expiry, qty, free, mrp, rate, disc, amt, gstP, gstA,
 		salesman, challanNo, challanDate, addField, hash)
 	return err
+}
+
+// storedChargePIDs is the charge products already stored (see ChargePIDs).
+func storedChargePIDs(ctx context.Context, db *pgxpool.Pool) (map[int64]bool, error) {
+	rows, err := db.Query(ctx, `SELECT product_pid FROM marg_ede_products WHERE TRIM(code) LIKE '###%' AND NOT is_deleted`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var pid int64
+		if err := rows.Scan(&pid); err != nil {
+			return nil, err
+		}
+		out[pid] = true
+	}
+	return out, rows.Err()
 }

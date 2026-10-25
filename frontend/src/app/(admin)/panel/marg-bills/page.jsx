@@ -152,7 +152,7 @@ export default function MargBillsPage() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Bill no, party or product..."
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-64"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-full sm:w-64"
             />
             <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">
               Search
@@ -386,7 +386,9 @@ function SyncBar({ onSynced }) {
               {overview.recent_runs.map((r) => (
                 <tr key={r.id} title={r.error || r.warning || ""}>
                   <td className="px-3 py-1.5 text-gray-700 whitespace-nowrap">{fmtTime(r.started_at)}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{r.trigger_source}</td>
+                  <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap" title={r.datetime_from ? `Changes since ${r.datetime_from}` : "The whole year"}>
+                    {r.trigger_source} · {r.datetime_from ? "quick" : "full"}
+                  </td>
                   <td className={`px-3 py-1.5 ${r.status === "failed" ? "text-red-600" : r.status === "running" ? "text-blue-600" : "text-green-700"}`}>
                     {r.status}
                   </td>
