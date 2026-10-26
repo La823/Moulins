@@ -19,13 +19,13 @@ export const PRODUCT_COMPANIES = [
 function SearchBox({ value, onSearch, placeholder }) {
   const [input, setInput] = useState(value);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSearch(input.trim()); }} className="flex gap-2">
+    <form onSubmit={(e) => { e.preventDefault(); onSearch(input.trim()); }} className="flex gap-2 w-full sm:w-auto">
       <input
         type="text"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         placeholder={placeholder}
-        className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-64"
+        className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-full sm:w-64"
       />
       <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">Search</button>
     </form>

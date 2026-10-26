@@ -10,8 +10,8 @@ import { PeriodBar, WindowNote, fmtMonth } from "@/components/admin/MargPeriod";
 import { PRODUCT_COMPANIES } from "@/components/admin/MargDemand";
 
 // Reports over this financial year's Marg bills (backend
-// internal/margede/analysis.go), as goods before GST (no GST, freight or
-// other charges). Sales = sale invoices, cancelled bills and
+// internal/margede/analysis.go), as Marg bill totals (incl. GST and freight;
+// products: goods before GST, from lines). Sales = sale invoices, cancelled bills and
 // unbilled challans left out. The rankings cover a chosen period (the year
 // so far or the last 1-12 months) and "Avg / month" divides by its months;
 // the running month is left out unless ticked.
@@ -38,7 +38,7 @@ export default function MargAnalysisPage() {
       <div className="mb-5">
         <h2 className="text-lg font-semibold text-gray-800">Analysis</h2>
         <p className="text-xs text-gray-400 mt-0.5">
-          Reports on this financial year&apos;s Marg bills. All amounts are goods before GST — no GST, freight or other charges.
+          Reports on this financial year&apos;s Marg bills. Amounts are Marg bill totals, incl. GST and freight; the Products report is goods before GST.
           Sales are sale invoices, without cancelled bills or unbilled challans; returns are shown apart, not subtracted.
         </p>
       </div>
@@ -79,13 +79,13 @@ function useSort(defaultKey) {
 function SearchBox({ value, onSearch, placeholder }) {
   const [input, setInput] = useState(value);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSearch(input.trim()); }} className="flex gap-2">
+    <form onSubmit={(e) => { e.preventDefault(); onSearch(input.trim()); }} className="flex gap-2 w-full sm:w-auto">
       <input
         type="text"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         placeholder={placeholder}
-        className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-64"
+        className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-full sm:w-64"
       />
       <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">Search</button>
     </form>
@@ -343,12 +343,16 @@ function ProductRanking({ period, includeCurrent }) {
 // ---- monthly trend ----------------------------------------------------------
 
 function MonthlyTrend() {
-  const [months, setMonths] = useState(null);
+  const [raw, setRaw] = useState(null);
+  const [netOfCredit, setNetOfCredit] = useState(false);
   useEffect(() => {
-    apiFetch("/admin/marg-analysis/monthly").then((d) => setMonths(d.months || [])).catch(() => setMonths([]));
+    apiFetch("/admin/marg-analysis/monthly").then((d) => setRaw(d.months || [])).catch(() => setRaw([]));
   }, []);
-  if (!months) return <Loader />;
-  if (!months.length) return <Empty text="No bills yet" />;
+  if (!raw) return <Loader />;
+  if (!raw.length) return <Empty text="No bills yet" />;
+
+  // Net of credit notes: each month's credit notes come off its sales.
+  const months = netOfCredit ? raw.map((m) => ({ ...m, sales: m.sales - m.returns })) : raw;
 
   const best = months.reduce((a, m) => (m.sales > a.sales ? m : a), months[0]);
   const current = new Date().toISOString().slice(0, 7);
@@ -356,8 +360,12 @@ function MonthlyTrend() {
 
   return (
     <>
+      <label className="text-xs text-gray-600 flex items-center gap-1.5 cursor-pointer select-none mb-3">
+        <input type="checkbox" checked={netOfCredit} onChange={(e) => setNetOfCredit(e.target.checked)} />
+        Show sales net of credit notes
+      </label>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-5">
-        <Tile label="Sales this year" value={money0(totals.sales)} />
+        <Tile label={netOfCredit ? "Net sales this year" : "Sales this year"} value={money0(totals.sales)} />
         <Tile label="Average per month" value={money0(totals.sales / months.length)} sub={`over ${months.length} months`} />
         <Tile label="Highest sales month" value={money0(best.sales)} sub={fmtMonth(best.month, true)} />
         <Tile label="Purchases this year" value={money0(totals.purchases)} sub={`returns ${money0(totals.returns)}`} />
@@ -370,7 +378,7 @@ function MonthlyTrend() {
           <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3">Month</th>
-              <th className="px-4 py-3 text-right">Sales</th>
+              <th className="px-4 py-3 text-right">{netOfCredit ? "Net sales" : "Sales"}</th>
               <th className="px-4 py-3 text-right">Sale bills</th>
               <th className="px-4 py-3 text-right">Avg bill</th>
               <th className="px-4 py-3 text-right">Customers billed</th>
@@ -399,7 +407,9 @@ function MonthlyTrend() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400 mt-2">&quot;New this year&quot; counts customers whose first sale invoice of the year was that month (April counts everyone billed in April).</p>
+      <p className="text-xs text-gray-400 mt-2">
+        {netOfCredit && "Net sales = sale invoices minus that month's credit notes (Returns); Avg bill stays on invoices alone. "}
+        &quot;New this year&quot; counts customers whose first sale invoice of the year was that month (April counts everyone billed in April).</p>
     </>
   );
 }

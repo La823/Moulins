@@ -358,6 +358,10 @@ export default function AdminLayout({ children }) {
   const toggleGroup = (label) =>
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
 
+  // Phones, tablets and touch screens: the sidebar is a slide-in menu
+  // opened from the top bar (the hover rail needs a mouse).
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const displayName = user?.username || user?.phone_number || "";
   const roleLabel = isAdmin ? "Admin" : "Staff";
 
@@ -368,7 +372,7 @@ export default function AdminLayout({ children }) {
         {/* Sidebar — collapsed to an icon rail by default, expands on hover.
             Fixed + overlays content (main content's margin stays at the
             collapsed width) so hovering never reflows the page. */}
-        <aside className="group w-16 hover:w-60 bg-gray-900 text-white flex flex-col fixed inset-y-0 left-0 z-30 overflow-hidden transition-all duration-200 ease-in-out hover:shadow-2xl">
+        <aside className="group w-16 hover:w-60 bg-gray-900 text-white hidden desk:flex flex-col fixed inset-y-0 left-0 z-30 overflow-hidden transition-all duration-200 ease-in-out hover:shadow-2xl">
           <div className="px-5 py-5 border-b border-gray-800">
             <Link href="/panel" className="flex items-center gap-2">
               <div className="w-7 h-7 flex-shrink-0 rounded-md bg-white/10 flex items-center justify-center font-bold text-sm group-hover:hidden">
@@ -488,17 +492,26 @@ export default function AdminLayout({ children }) {
         {/* Main content — margin matches the sidebar's collapsed width;
             the sidebar overlays content (fixed + z-30) while hover-expanded
             rather than pushing it, so nothing reflows on hover. */}
-        <div className="flex-1 ml-16">
+        <div className="flex-1 min-w-0 desk:ml-16">
           {/* Top navbar — standalone links that don't belong in the side
               rail — icon + label always shown. */}
-          <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-end gap-3 px-6 sticky top-0 z-20">
+          <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-end gap-2 sm:gap-3 px-3 sm:px-6 sticky top-0 z-20">
+            <button
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open menu"
+              className="desk:hidden -ml-1 w-10 h-10 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 shrink-0"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
             <Breadcrumbs entries={BREADCRUMB_ENTRIES} />
             {visibleTopDropdowns.map((dropdown) => {
               const open = openDropdown === dropdown.label;
               return (
                 <div
                   key={dropdown.label}
-                  className="relative"
+                  className="relative hidden md:block"
                   ref={open ? dropdownRef : null}
                   {...(dropdown.openOnHover
                     ? {
@@ -516,7 +529,7 @@ export default function AdminLayout({ children }) {
                     }`}
                   >
                     {dropdown.icon}
-                    <span className="whitespace-nowrap">{dropdown.label}</span>
+                    <span className="whitespace-nowrap hidden xl:inline">{dropdown.label}</span>
                   </button>
                   {open && (
                     // pt-2 (not mt-2 on the panel below) keeps the hoverable
@@ -548,22 +561,143 @@ export default function AdminLayout({ children }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2 px-2.5 h-9 rounded-lg text-sm font-medium transition-colors ${
+                  title={item.label}
+                  className={`hidden md:flex items-center gap-2 px-2.5 h-9 rounded-lg text-sm font-medium transition-colors ${
                     active
                       ? "bg-gray-100 text-gray-900"
                       : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
                   }`}
                 >
                   {item.icon}
-                  <span className="whitespace-nowrap">{item.label}</span>
+                  <span className="whitespace-nowrap hidden xl:inline">{item.label}</span>
                 </Link>
               );
             })}
           </header>
-          <main className="p-6">{children}</main>
+          <main className="p-3 sm:p-6">{children}</main>
         </div>
       </div>
+      {menuOpen && (
+        <MobileMenu
+          onClose={() => setMenuOpen(false)}
+          navItems={visibleNavItems}
+          topDropdowns={visibleTopDropdowns}
+          topItems={visibleTopNavItems}
+          isActive={isActive}
+          openGroups={openGroups}
+          toggleGroup={toggleGroup}
+          roleLabel={roleLabel}
+          displayName={displayName}
+          phone={user?.phone_number}
+          logout={logout}
+        />
+      )}
       </BreadcrumbProvider>
     </AuthGuard>
+  );
+}
+
+// The sidebar as a slide-in menu for phones, tablets and touch screens:
+// full labels, groups open on tap, plus the top bar's links (hidden there on
+// small screens). Closes on a link, the backdrop, the X or Escape.
+function MobileMenu({ onClose, navItems, topDropdowns, topItems, isActive, openGroups, toggleGroup, roleLabel, displayName, phone, logout }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  const linkClass = (active) =>
+    `flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+      active ? "bg-white/10 text-white" : "text-gray-300 hover:text-white hover:bg-white/5"
+    }`;
+  const groups = [
+    ...navItems,
+    ...topDropdowns.map((d) => ({ label: d.label, icon: d.icon, group: d.items })),
+    ...topItems,
+  ];
+
+  return (
+    <div className="desk:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Menu">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-gray-900 text-white flex flex-col shadow-2xl">
+        <div className="px-4 h-14 flex items-center justify-between border-b border-gray-800 shrink-0">
+          <Link href="/panel" onClick={onClose} className="flex items-center gap-2">
+            <Image src="/Moulins Logo High Res - V2.png" alt="Moulins" width={100} height={32} className="h-7 w-auto brightness-0 invert" />
+            <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">{roleLabel}</span>
+          </Link>
+          <button onClick={onClose} aria-label="Close menu" className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-white/5">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+          {groups.map((item) => {
+            if (item.group) {
+              const open = !!openGroups[item.label];
+              const active = item.group.some((c) => isActive(c.href));
+              return (
+                <div key={`g-${item.label}`}>
+                  <button onClick={() => toggleGroup(item.label)} aria-expanded={open} className={`w-full ${linkClass(active && !open)}`}>
+                    <span className="flex-shrink-0">{item.icon}</span>
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <span className={`transition-transform ${open ? "rotate-90" : ""}`}>{ICONS.chevron}</span>
+                  </button>
+                  {open && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-gray-800 space-y-1">
+                      {item.group.map((child) => (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          onClick={onClose}
+                          {...(child.newTab ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                          className={`block px-3 py-2.5 rounded-lg text-sm font-medium ${
+                            isActive(child.href) ? "bg-white/10 text-white" : "text-gray-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <Link key={item.href} href={item.href} onClick={onClose} className={linkClass(isActive(item.href))}>
+                <span className="flex-shrink-0">{item.icon}</span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="px-3 py-3 border-t border-gray-800 space-y-1 shrink-0">
+          <div className="px-3 pb-2">
+            <p className="text-sm text-gray-300 font-medium truncate">{displayName}</p>
+            <p className="text-xs text-gray-500 truncate">{phone}</p>
+          </div>
+          <Link href="/" onClick={onClose} className={linkClass(false)}>
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+            </svg>
+            Back to Website
+          </Link>
+          <button onClick={logout} className={`w-full ${linkClass(false)}`}>
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Logout
+          </button>
+        </div>
+      </aside>
+    </div>
   );
 }

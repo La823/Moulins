@@ -12,9 +12,11 @@ import (
 // Reports for the admin Analysis page, all over this financial year's
 // bills (cancelled and deleted bills left out).
 //
-// Amounts are goods before GST (v_marg_ede_bill_values.goods_amount): no
-// GST, no freight or other charges. Credit notes are counted the same way
-// and kept apart, not subtracted.
+// Party and month amounts are Marg's bill totals (marg_ede_bills.total,
+// incl. GST and freight), not summed from lines, because some bills come
+// without all their lines. Product rankings can only use lines, so they
+// stay goods before GST. Credit notes are counted the same way and kept
+// apart, not subtracted.
 //
 // "Sales" are sale invoices only: CA challans are left out because an
 // unbilled challan is not a sale yet and a billed one shows up as its
@@ -154,13 +156,12 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 		WITH ` + windowCTEs(f.Period, f.IncludeCurrent) + `,
 		pm AS (
 			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon,
-			       SUM(bv.goods_amount) FILTER (WHERE ` + amountCond + `) AS amt,
+			       SUM(b.total) FILTER (WHERE ` + amountCond + `) AS amt,
 			       COUNT(*) FILTER (WHERE ` + amountCond + `) AS bills,
-			       SUM(bv.goods_amount) FILTER (WHERE ` + returnCond + `) AS ret,
+			       SUM(b.total) FILTER (WHERE ` + returnCond + `) AS ret,
 			       MAX(b.bill_date) FILTER (WHERE ` + amountCond + `) AS last_bill,
 			       BOOL_OR(b.bill_date >= (SELECT s FROM win) AND b.bill_date < (SELECT e FROM win)) AS in_win
 			FROM marg_ede_bills b
-			LEFT JOIN v_marg_ede_bill_values bv ON bv.voucher = b.voucher
 			WHERE NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
 			GROUP BY 1, 2
 		),
@@ -392,8 +393,8 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool) ([]OverviewMonth, er
 				date_trunc('month', CURRENT_DATE), interval '1 month') m
 		),
 		live AS (
-			SELECT b.*, COALESCE(bv.goods_amount, 0) AS goods
-			FROM marg_ede_bills b LEFT JOIN v_marg_ede_bill_values bv ON bv.voucher = b.voucher
+			SELECT b.*, b.total AS goods
+			FROM marg_ede_bills b
 			WHERE NOT b.is_deleted AND NOT b.is_cancelled
 		),
 		firsts AS (
@@ -449,9 +450,8 @@ func BestMonths(ctx context.Context, db *pgxpool.Pool, limit int, onePerParty bo
 	}
 	rows, err := db.Query(ctx, `
 		WITH pm AS (
-			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(bv.goods_amount) AS amt, COUNT(*)::int AS bills
+			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(b.total) AS amt, COUNT(*)::int AS bills
 			FROM marg_ede_bills b
-			LEFT JOIN v_marg_ede_bill_values bv ON bv.voucher = b.voucher
 			WHERE `+saleCond+` AND NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
 			GROUP BY 1, 2
 		),
@@ -513,10 +513,9 @@ func Slipping(ctx context.Context, db *pgxpool.Pool, days int) ([]SlippingRow, e
 	}
 	rows, err := db.Query(ctx, `
 		WITH pm AS (
-			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(bv.goods_amount) AS amt,
+			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(b.total) AS amt,
 			       COUNT(*)::int AS bills, MAX(b.bill_date) AS last_bill
 			FROM marg_ede_bills b
-			LEFT JOIN v_marg_ede_bill_values bv ON bv.voucher = b.voucher
 			WHERE `+saleCond+` AND NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
 			GROUP BY 1, 2
 		),

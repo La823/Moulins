@@ -70,9 +70,19 @@ export default function Breadcrumbs({ entries }) {
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1;
           return (
-            <li key={`${c.label}-${i}`} className={`flex items-center gap-1.5 ${last ? "min-w-0" : "shrink-0"}`}>
+            <li
+              key={`${c.label}-${i}`}
+              className={`items-center gap-1.5 ${last ? "flex min-w-0" : "shrink-0"} ${
+                last ? "" : i < crumbs.length - 2 ? "hidden sm:flex" : "flex"
+              }`}
+            >
               {i > 0 && (
-                <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                // On phones only the last two crumbs show, so the first of
+                // them goes without its leading chevron.
+                <svg
+                  className={`w-3.5 h-3.5 text-gray-300 shrink-0 ${last ? "" : "hidden sm:block"}`}
+                  fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
                 </svg>
               )}

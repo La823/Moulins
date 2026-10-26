@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* "desk:" — a wide screen with a mouse. The admin panel's hover sidebar
+   only works there; phones, tablets and touch laptops get a tap menu. */
+@custom-variant desk (@media (min-width: 64rem) and (hover: hover) and (pointer: fine));
+
 @theme {
   --font-sans: var(--font-albert-sans), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-erode), ui-sans-serif, system-ui, sans-serif;

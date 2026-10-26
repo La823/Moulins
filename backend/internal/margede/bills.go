@@ -56,11 +56,14 @@ type BillSummary struct {
 }
 
 // TypeCount is one voucher type with its bill count under the current
-// filter (ignoring the type filter itself).
+// filter (ignoring the type filter itself). Amount is the bills list's sum
+// of totals, cancelled bills left out, so the page can net credit notes off
+// sales.
 type TypeCount struct {
-	Code  string  `json:"code"`
-	Name  *string `json:"name"`
-	Count int     `json:"count"`
+	Code   string  `json:"code"`
+	Name   *string `json:"name"`
+	Count  int     `json:"count"`
+	Amount float64 `json:"amount,omitempty"`
 }
 
 // BillList is the bills list response.
@@ -217,7 +220,8 @@ func ListBills(ctx context.Context, db *pgxpool.Pool, f BillFilter) (BillList, e
 
 	where, args = f.where(false)
 	trows, err := db.Query(ctx, `
-		SELECT `+kindExpr+`, MAX(`+kindNameExpr+`), COUNT(*)
+		SELECT `+kindExpr+`, MAX(`+kindNameExpr+`), COUNT(*),
+		       COALESCE(SUM(b.total) FILTER (WHERE NOT b.is_cancelled), 0)::float8
 		FROM marg_ede_bills b`+partyNameJoin+` `+where+`
 		GROUP BY 1 ORDER BY COUNT(*) DESC`, args...)
 	if err != nil {
@@ -226,7 +230,7 @@ func ListBills(ctx context.Context, db *pgxpool.Pool, f BillFilter) (BillList, e
 	defer trows.Close()
 	for trows.Next() {
 		var t TypeCount
-		if err := trows.Scan(&t.Code, &t.Name, &t.Count); err != nil {
+		if err := trows.Scan(&t.Code, &t.Name, &t.Count, &t.Amount); err != nil {
 			return out, err
 		}
 		out.Types = append(out.Types, t)

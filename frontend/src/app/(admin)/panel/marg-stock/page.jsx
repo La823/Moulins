@@ -142,7 +142,7 @@ export default function MargStockPage() {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Product name, code or PID..."
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-64"
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-full sm:w-64"
             />
             <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">
               Search

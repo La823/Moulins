@@ -33,6 +33,7 @@ export default function MargBillsPage() {
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [expanded, setExpanded] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [netOfCredit, setNetOfCredit] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -82,6 +83,11 @@ export default function MargBillsPage() {
 
   const totalPages = list ? Math.max(1, Math.ceil(list.total / list.page_size)) : 1;
   const filtered = type || from || to || status || kind || search;
+  // Sale invoices and credit notes under the current filters, whatever type
+  // chip is picked (the type counts ignore it).
+  const typeAmount = (code) => list?.types?.find((t) => t.code === code)?.amount || 0;
+  const salesTotal = typeAmount("S");
+  const creditTotal = typeAmount("R");
 
   return (
     <>
@@ -167,7 +173,8 @@ export default function MargBillsPage() {
       </div>
 
       {list && (
-        <p className="text-sm text-gray-600 mb-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <p className="text-sm text-gray-600">
           <span className="font-semibold text-gray-900">{list.total.toLocaleString("en-IN")}</span> bill{list.total !== 1 ? "s" : ""}
           {list.cancelled > 0 && status !== "cancelled" && (
             <span className="text-gray-400"> ({list.cancelled.toLocaleString("en-IN")} cancelled)</span>
@@ -175,7 +182,19 @@ export default function MargBillsPage() {
           {" · "}
           <span className="font-semibold text-gray-900">{fmtMoney(list.sum_total)}</span> total
           {list.cancelled > 0 && <span className="text-gray-400"> excluding cancelled</span>}
+          {netOfCredit && (
+            <span className="block mt-1">
+              Sales {fmtMoney(salesTotal)} − credit notes {fmtMoney(creditTotal)} ={" "}
+              <span className="font-semibold text-gray-900">{fmtMoney(salesTotal - creditTotal)}</span> net sales
+              <span className="text-gray-400"> (sale invoices only, no challans; cancelled left out)</span>
+            </span>
+          )}
         </p>
+        <label className="text-xs text-gray-600 flex items-center gap-1.5 cursor-pointer select-none">
+          <input type="checkbox" checked={netOfCredit} onChange={(e) => setNetOfCredit(e.target.checked)} />
+          Show sales net of credit notes
+        </label>
+        </div>
       )}
 
       {error ? (

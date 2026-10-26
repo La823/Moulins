@@ -87,7 +87,7 @@ export default function HsnCodesPage() {
             value={queryInput}
             onChange={(e) => setQueryInput(e.target.value)}
             placeholder="Code prefix or description…"
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:outline-none focus:ring-1 focus:ring-gray-400"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-gray-400"
           />
           <button
             type="submit"
