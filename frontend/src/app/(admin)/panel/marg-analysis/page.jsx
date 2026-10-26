@@ -12,7 +12,8 @@ import { PRODUCT_COMPANIES } from "@/components/admin/MargDemand";
 // Reports over this financial year's Marg bills (backend
 // internal/margede/analysis.go), as Marg bill totals (incl. GST and freight;
 // products: goods before GST, from lines). Sales = sale invoices, cancelled bills and
-// unbilled challans left out. The rankings cover a chosen period (the year
+// unbilled challans left out. "Without GST" (gst=0) takes the GST off every
+// report. The rankings cover a chosen period (the year
 // so far or the last 1-12 months) and "Avg / month" divides by its months;
 // the running month is left out unless ticked.
 
@@ -33,14 +34,31 @@ export default function MargAnalysisPage() {
   const [report, setReport] = useState("customers");
   const [period, setPeriod] = useState(0);
   const [includeCurrent, setIncludeCurrent] = useState(false);
+  const [withGST, setWithGST] = useState(true);
   return (
     <>
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">Analysis</h2>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Reports on this financial year&apos;s Marg bills. Amounts are Marg bill totals, incl. GST and freight; the Products report is goods before GST.
-          Sales are sale invoices, without cancelled bills or unbilled challans; returns are shown apart, not subtracted.
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Analysis</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Reports on this financial year&apos;s Marg bills.{" "}
+            {withGST
+              ? "Amounts are Marg bill totals, incl. GST and freight; the Products report is goods incl. their GST."
+              : "Amounts are without GST: bill totals less the GST on their lines (freight stays in); the Products report is goods before GST."}
+            {" "}Sales are sale invoices, without cancelled bills or unbilled challans; returns are shown apart, not subtracted.
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs shrink-0">
+          {[[true, "With GST"], [false, "Without GST"]].map(([v, label]) => (
+            <button
+              key={label}
+              onClick={() => setWithGST(v)}
+              className={`px-3 py-1.5 ${withGST === v ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="flex gap-1 border-b border-gray-200 mb-5 overflow-x-auto">
         {REPORTS.map((r) => (
@@ -58,12 +76,12 @@ export default function MargAnalysisPage() {
       {RANKING_REPORTS.includes(report) && (
         <PeriodBar period={period} setPeriod={setPeriod} includeCurrent={includeCurrent} setIncludeCurrent={setIncludeCurrent} />
       )}
-      {report === "customers" && <PartyRanking key={`sales-${period}-${includeCurrent}`} mode="sales" period={period} includeCurrent={includeCurrent} />}
-      {report === "suppliers" && <PartyRanking key={`purchases-${period}-${includeCurrent}`} mode="purchases" period={period} includeCurrent={includeCurrent} />}
-      {report === "products" && <ProductRanking key={`products-${period}-${includeCurrent}`} period={period} includeCurrent={includeCurrent} />}
-      {report === "monthly" && <MonthlyTrend />}
-      {report === "best" && <BestMonths />}
-      {report === "slipping" && <Slipping />}
+      {report === "customers" && <PartyRanking key={`sales-${period}-${includeCurrent}`} mode="sales" period={period} includeCurrent={includeCurrent} withGST={withGST} />}
+      {report === "suppliers" && <PartyRanking key={`purchases-${period}-${includeCurrent}`} mode="purchases" period={period} includeCurrent={includeCurrent} withGST={withGST} />}
+      {report === "products" && <ProductRanking key={`products-${period}-${includeCurrent}`} period={period} includeCurrent={includeCurrent} withGST={withGST} />}
+      {report === "monthly" && <MonthlyTrend withGST={withGST} />}
+      {report === "best" && <BestMonths withGST={withGST} />}
+      {report === "slipping" && <Slipping withGST={withGST} />}
     </>
   );
 }
@@ -144,7 +162,7 @@ function Empty({ text }) {
 
 // ---- customers / suppliers -------------------------------------------------
 
-function PartyRanking({ mode, period, includeCurrent }) {
+function PartyRanking({ mode, period, includeCurrent, withGST }) {
   const [sort, sortBy] = useSort("avg");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -156,8 +174,9 @@ function PartyRanking({ mode, period, includeCurrent }) {
     const p = new URLSearchParams({ mode, sort: sort.key, dir: sort.dir, page: String(page), period: String(period) });
     if (includeCurrent) p.set("current", "1");
     if (search) p.set("search", search);
+    if (!withGST) p.set("gst", "0");
     apiFetch(`/admin/marg-analysis/parties?${p}`).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [mode, sort, search, page, period, includeCurrent]);
+  }, [mode, sort, search, page, period, includeCurrent, withGST]);
 
   const onSort = (k) => { setPage(1); sortBy(k); };
   const noun = mode === "sales" ? "Sales" : "Purchases";
@@ -225,7 +244,7 @@ function PartyRanking({ mode, period, includeCurrent }) {
 
 // ---- products ---------------------------------------------------------------
 
-function ProductRanking({ period, includeCurrent }) {
+function ProductRanking({ period, includeCurrent, withGST }) {
   const [sort, sortBy] = useSort("avg");
   const [search, setSearch] = useState("");
   const [company, setCompany] = useState("");
@@ -239,8 +258,9 @@ function ProductRanking({ period, includeCurrent }) {
     if (includeCurrent) p.set("current", "1");
     if (search) p.set("search", search);
     if (company) p.set("company", company);
+    if (!withGST) p.set("gst", "0");
     apiFetch(`/admin/marg-analysis/products?${p}`).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [sort, search, company, page, period, includeCurrent]);
+  }, [sort, search, company, page, period, includeCurrent, withGST]);
 
   const onSort = (k) => { setPage(1); sortBy(k); };
   const offset = data ? (data.page - 1) * data.page_size : 0;
@@ -269,7 +289,7 @@ function ProductRanking({ period, includeCurrent }) {
         <p className="text-sm text-gray-600">
           {data && (
             <>
-              <span className="font-semibold text-gray-900">{data.total}</span> products sold · amounts before GST ·{" "}
+              <span className="font-semibold text-gray-900">{data.total}</span> products sold · amounts {withGST ? "incl." : "before"} GST ·{" "}
               <WindowNote window={data.window} requested={period} />
             </>
           )}
@@ -342,12 +362,12 @@ function ProductRanking({ period, includeCurrent }) {
 
 // ---- monthly trend ----------------------------------------------------------
 
-function MonthlyTrend() {
+function MonthlyTrend({ withGST }) {
   const [raw, setRaw] = useState(null);
   const [netOfCredit, setNetOfCredit] = useState(false);
   useEffect(() => {
-    apiFetch("/admin/marg-analysis/monthly").then((d) => setRaw(d.months || [])).catch(() => setRaw([]));
-  }, []);
+    apiFetch(`/admin/marg-analysis/monthly${withGST ? "" : "?gst=0"}`).then((d) => setRaw(d.months || [])).catch(() => setRaw([]));
+  }, [withGST]);
   if (!raw) return <Loader />;
   if (!raw.length) return <Empty text="No bills yet" />;
 
@@ -426,12 +446,12 @@ function Tile({ label, value, sub }) {
 
 // ---- best months ------------------------------------------------------------
 
-function BestMonths() {
+function BestMonths({ withGST }) {
   const [all, setAll] = useState(false);
   const [rows, setRows] = useState(null);
   useEffect(() => {
-    apiFetch(`/admin/marg-analysis/best-months?limit=50${all ? "&all=1" : ""}`).then((d) => setRows(d.rows || [])).catch(() => setRows([]));
-  }, [all]);
+    apiFetch(`/admin/marg-analysis/best-months?limit=50${all ? "&all=1" : ""}${withGST ? "" : "&gst=0"}`).then((d) => setRows(d.rows || [])).catch(() => setRows([]));
+  }, [all, withGST]);
 
   return (
     <>
@@ -486,12 +506,12 @@ function BestMonths() {
 
 // ---- slipping customers -----------------------------------------------------
 
-function Slipping() {
+function Slipping({ withGST }) {
   const [days, setDays] = useState(45);
   const [rows, setRows] = useState(null);
   useEffect(() => {
-    apiFetch(`/admin/marg-analysis/slipping?days=${days}`).then((d) => setRows(d.rows || [])).catch(() => setRows([]));
-  }, [days]);
+    apiFetch(`/admin/marg-analysis/slipping?days=${days}${withGST ? "" : "&gst=0"}`).then((d) => setRows(d.rows || [])).catch(() => setRows([]));
+  }, [days, withGST]);
 
   return (
     <>

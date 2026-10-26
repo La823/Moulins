@@ -24,12 +24,15 @@ func rankFilter(r *http.Request) margede.RankFilter {
 	page, _ := strconv.Atoi(q.Get("page"))
 	period, _ := strconv.Atoi(q.Get("period"))
 	return margede.RankFilter{Mode: q.Get("mode"), Search: q.Get("search"), Sort: q.Get("sort"), Dir: q.Get("dir"), Page: page,
-		Period: period, IncludeCurrent: q.Get("current") == "1", Company: q.Get("company")}
+		Period: period, IncludeCurrent: q.Get("current") == "1", Company: q.Get("company"), ExGST: exGST(r)}
 }
+
+// exGST: gst=0 asks for amounts without GST (default: with, as on the bill).
+func exGST(r *http.Request) bool { return r.URL.Query().Get("gst") == "0" }
 
 // GET /admin/marg-analysis/parties?mode=sales|purchases&sort=avg&dir=desc&search=&page=
 // &period=0..12 (0 = year so far, N = last N months)&current=1 (count the
-// running month)
+// running month). Every analysis report takes gst=0 for amounts without GST.
 func AnalysisPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		out, err := margede.RankParties(r.Context(), db, rankFilter(r))
@@ -58,7 +61,7 @@ func AnalysisProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 // GET /admin/marg-analysis/monthly
 func AnalysisMonthlyHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := margede.MonthlyOverview(r.Context(), db)
+		out, err := margede.MonthlyOverview(r.Context(), db, exGST(r))
 		if err != nil {
 			log.Printf("marg analysis monthly: %v", err)
 			http.Error(w, "could not build report", http.StatusInternalServerError)
@@ -73,7 +76,7 @@ func AnalysisMonthlyHandler(db *pgxpool.Pool) http.HandlerFunc {
 func AnalysisBestMonthsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		out, err := margede.BestMonths(r.Context(), db, limit, r.URL.Query().Get("all") != "1")
+		out, err := margede.BestMonths(r.Context(), db, limit, r.URL.Query().Get("all") != "1", exGST(r))
 		if err != nil {
 			log.Printf("marg analysis best months: %v", err)
 			http.Error(w, "could not build report", http.StatusInternalServerError)
@@ -87,7 +90,7 @@ func AnalysisBestMonthsHandler(db *pgxpool.Pool) http.HandlerFunc {
 func AnalysisSlippingHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		days, _ := strconv.Atoi(r.URL.Query().Get("days"))
-		out, err := margede.Slipping(r.Context(), db, days)
+		out, err := margede.Slipping(r.Context(), db, days, exGST(r))
 		if err != nil {
 			log.Printf("marg analysis slipping: %v", err)
 			http.Error(w, "could not build report", http.StatusInternalServerError)

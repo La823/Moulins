@@ -14,9 +14,9 @@ import (
 //
 // Party and month amounts are Marg's bill totals (marg_ede_bills.total,
 // incl. GST and freight), not summed from lines, because some bills come
-// without all their lines. Product rankings can only use lines, so they
-// stay goods before GST. Credit notes are counted the same way and kept
-// apart, not subtracted.
+// without all their lines; with ExGST, the total less the GST on its lines.
+// Product rankings can only use lines: goods, before or after their GST.
+// Credit notes are counted the same way and kept apart, not subtracted.
 //
 // "Sales" are sale invoices only: CA challans are left out because an
 // unbilled challan is not a sale yet and a billed one shows up as its
@@ -25,6 +25,27 @@ import (
 // bought once is not ranked as if it bought that much every month.
 
 const saleCond = `b.bill_type = 'S' AND b.bill_mode IS DISTINCT FROM 'challan'`
+
+// billAmount is a bill's amount in these reports: Marg's bill total, or
+// with exGST that total less the GST on its lines (bvJoin). A bill with
+// lines missing keeps their GST in.
+func billAmount(exGST bool) string {
+	if exGST {
+		return "(b.total - COALESCE(bv.goods_gst + bv.charges_gst, 0))"
+	}
+	return "b.total"
+}
+
+const bvJoin = `
+			LEFT JOIN v_marg_ede_bill_values bv ON bv.voucher = b.voucher`
+
+// lineAmount is a goods line's amount in the product rankings.
+func lineAmount(exGST bool) string {
+	if exGST {
+		return "i.amount"
+	}
+	return "(i.amount + i.gst_amount)"
+}
 
 // windowCTEs is the period a ranking covers, as two CTEs: win (s, e — the
 // first day of the first month and the first day after the last) and
@@ -98,6 +119,7 @@ type RankFilter struct {
 	IncludeCurrent bool
 	// Company (products only): IB Moulins, ID third party, IC others.
 	Company string
+	ExGST   bool // amounts without GST (see billAmount)
 }
 
 // PartyRankList is the ranking response.
@@ -156,12 +178,12 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 		WITH ` + windowCTEs(f.Period, f.IncludeCurrent) + `,
 		pm AS (
 			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon,
-			       SUM(b.total) FILTER (WHERE ` + amountCond + `) AS amt,
+			       SUM(` + billAmount(f.ExGST) + `) FILTER (WHERE ` + amountCond + `) AS amt,
 			       COUNT(*) FILTER (WHERE ` + amountCond + `) AS bills,
-			       SUM(b.total) FILTER (WHERE ` + returnCond + `) AS ret,
+			       SUM(` + billAmount(f.ExGST) + `) FILTER (WHERE ` + returnCond + `) AS ret,
 			       MAX(b.bill_date) FILTER (WHERE ` + amountCond + `) AS last_bill,
 			       BOOL_OR(b.bill_date >= (SELECT s FROM win) AND b.bill_date < (SELECT e FROM win)) AS in_win
-			FROM marg_ede_bills b
+			FROM marg_ede_bills b` + bvJoin + `
 			WHERE NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
 			GROUP BY 1, 2
 		),
@@ -286,7 +308,7 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 		WITH ` + windowCTEs(f.Period, f.IncludeCurrent) + `,
 		lines AS (
 			SELECT i.product_pid, b.party_code, b.voucher, b.bill_date, date_trunc('month', b.bill_date) AS mon,
-			       i.amount, i.qty, i.free, i.item_company_code
+			       ` + lineAmount(f.ExGST) + ` AS amount, i.qty, i.free, i.item_company_code
 			FROM marg_ede_bill_items i
 			JOIN marg_ede_bills b ON b.voucher = i.voucher
 			WHERE ` + saleCond + ` AND NOT b.is_deleted AND NOT b.is_cancelled
@@ -384,7 +406,7 @@ type OverviewMonth struct {
 }
 
 // MonthlyOverview is company-wide month-by-month totals.
-func MonthlyOverview(ctx context.Context, db *pgxpool.Pool) ([]OverviewMonth, error) {
+func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]OverviewMonth, error) {
 	rows, err := db.Query(ctx, `
 		WITH months AS (
 			SELECT to_char(m, 'YYYY-MM') AS month
@@ -393,8 +415,8 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool) ([]OverviewMonth, er
 				date_trunc('month', CURRENT_DATE), interval '1 month') m
 		),
 		live AS (
-			SELECT b.*, b.total AS goods
-			FROM marg_ede_bills b
+			SELECT b.*, `+billAmount(exGST)+` AS goods
+			FROM marg_ede_bills b`+bvJoin+`
 			WHERE NOT b.is_deleted AND NOT b.is_cancelled
 		),
 		firsts AS (
@@ -444,14 +466,14 @@ type BestMonthRow struct {
 // BestMonths lists the biggest single customer-months of the year;
 // onePerParty keeps only each customer's best month, so one big buyer
 // doesn't fill the list.
-func BestMonths(ctx context.Context, db *pgxpool.Pool, limit int, onePerParty bool) ([]BestMonthRow, error) {
+func BestMonths(ctx context.Context, db *pgxpool.Pool, limit int, onePerParty, exGST bool) ([]BestMonthRow, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	rows, err := db.Query(ctx, `
 		WITH pm AS (
-			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(b.total) AS amt, COUNT(*)::int AS bills
-			FROM marg_ede_bills b
+			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(`+billAmount(exGST)+`) AS amt, COUNT(*)::int AS bills
+			FROM marg_ede_bills b`+bvJoin+`
 			WHERE `+saleCond+` AND NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
 			GROUP BY 1, 2
 		),
@@ -507,15 +529,15 @@ type SlippingRow struct {
 
 // Slipping lists customers with sale invoices in at least 2 months whose
 // last one is more than `days` days old, biggest buyers first.
-func Slipping(ctx context.Context, db *pgxpool.Pool, days int) ([]SlippingRow, error) {
+func Slipping(ctx context.Context, db *pgxpool.Pool, days int, exGST bool) ([]SlippingRow, error) {
 	if days <= 0 {
 		days = 45
 	}
 	rows, err := db.Query(ctx, `
 		WITH pm AS (
-			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(b.total) AS amt,
+			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon, SUM(`+billAmount(exGST)+`) AS amt,
 			       COUNT(*)::int AS bills, MAX(b.bill_date) AS last_bill
-			FROM marg_ede_bills b
+			FROM marg_ede_bills b`+bvJoin+`
 			WHERE `+saleCond+` AND NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
 			GROUP BY 1, 2
 		),
