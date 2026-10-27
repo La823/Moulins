@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import Loader from "@/components/Loader";
 
 // mode="client": manage employees assigned to a client (userId = client id)
 // mode="employee": manage clients assigned to an employee (userId = employee id)
 export default function AssignmentPanel({ mode, userId }) {
+  const { user } = useAuth();
   const isClient = mode === "client";
   const listUrl = isClient
     ? `/admin/clients/${userId}/employees`
@@ -28,14 +30,13 @@ export default function AssignmentPanel({ mode, userId }) {
 
   const load = () => {
     setLoading(true);
-    Promise.all([apiFetch(listUrl), apiFetch(optionsUrl)])
+    // Loaded apart, so a refused pick-list (it needs Employees or Partners
+    // view) still leaves the assignments showing; staff who can't list
+    // employees can still assign a client to themselves.
+    Promise.allSettled([apiFetch(listUrl), apiFetch(optionsUrl)])
       .then(([a, o]) => {
-        setAssigned(a || []);
-        setOptions(o || []);
-      })
-      .catch(() => {
-        setAssigned([]);
-        setOptions([]);
+        setAssigned(a.status === "fulfilled" ? a.value || [] : []);
+        setOptions(o.status === "fulfilled" ? o.value || [] : null);
       })
       .finally(() => setLoading(false));
   };
@@ -46,7 +47,7 @@ export default function AssignmentPanel({ mode, userId }) {
   }, [userId, mode]);
 
   const assignedIds = new Set(assigned.map((a) => a.id));
-  const available = options.filter((o) => !assignedIds.has(o.id));
+  const available = (options ?? (isClient && user?.role === "employee" ? [user] : [])).filter((o) => !assignedIds.has(o.id));
 
   const handleAssign = async () => {
     if (!selected) return;

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 // Breadcrumbs in the admin top bar: where the page sits in the menu
 // (Dashboard › SCM › Marg Stock › Batch PTN-251202). The menu part comes from
@@ -25,6 +25,60 @@ export function useBreadcrumbTitle(title) {
   }, [title, setTitle]);
 }
 
+// A page that keeps its settings in the URL remembers them here (for this
+// browser tab), so links back to it — its crumb, a detail page's "‹ back" —
+// land on the same tab, sorts and filters instead of its defaults.
+export function rememberQuery(path, query) {
+  try {
+    sessionStorage.setItem(`query:${path}`, query);
+  } catch {
+    /* storage blocked: links fall back to the plain page */
+  }
+}
+
+export function withRememberedQuery(path) {
+  try {
+    const q = sessionStorage.getItem(`query:${path}`);
+    return q ? `${path}?${q}` : path;
+  } catch {
+    return path;
+  }
+}
+
+// Settings shared by every page under a section: going back within it
+// keeps the ones the current page has (Analysis: period, running month, GST),
+// over whatever the target page last had.
+const SHARED_SETTINGS = { "/panel/marg-analysis": ["period", "current", "gst"] };
+
+// onClick for a Link to a list page: go to it with its remembered settings.
+export function useRememberedLink() {
+  const router = useRouter();
+  return (path) => (e) => {
+    let to = withRememberedQuery(path);
+    const section = Object.keys(SHARED_SETTINGS).find((p) => path.startsWith(p) && window.location.pathname.startsWith(p));
+    if (section) {
+      const [base, q] = to.split("?");
+      const target = new URLSearchParams(q || "");
+      const here = new URLSearchParams(window.location.search);
+      SHARED_SETTINGS[section].forEach((k) => (here.has(k) ? target.set(k, here.get(k)) : target.delete(k)));
+      to = target.toString() ? `${base}?${target}` : base;
+    }
+    if (to !== path && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+      e.preventDefault();
+      router.push(to);
+    }
+  };
+}
+
+// Pages below a menu entry that have a name of their own, so their crumb
+// says it and links to them (Analysis › Customers › Customer ranking).
+const SUB_PAGES = {
+  "/panel/marg-analysis/net-sales": "Net sales",
+  "/panel/marg-analysis/customers": "Customers",
+  "/panel/marg-analysis/suppliers": "Suppliers & purchases",
+  "/panel/marg-analysis/products": "Products",
+};
+
 // Second-level folders that aren't pages of their own, and fixed sub-pages.
 const SUB_LABELS = {
   products: "Products",
@@ -37,6 +91,7 @@ const SUB_LABELS = {
 export default function Breadcrumbs({ entries }) {
   const pathname = usePathname() || "";
   const { title } = useContext(TitleContext);
+  const remembered = useRememberedLink();
 
   // The sidebar entry this page lives under: the longest href that is the
   // path or a parent of it.
@@ -51,8 +106,11 @@ export default function Breadcrumbs({ entries }) {
     const rest = pathname.slice(match.href.length).split("/").filter(Boolean);
     rest.forEach((seg, i) => {
       const last = i === rest.length - 1;
-      // A folder name mid-path ("products" in /products/123), or "new".
-      if (SUB_LABELS[seg] && (!last || seg === "new")) {
+      const path = `${match.href}/${rest.slice(0, i + 1).join("/")}`;
+      if (SUB_PAGES[path]) {
+        crumbs.push({ label: SUB_PAGES[path], href: path });
+      } else if (SUB_LABELS[seg] && (!last || seg === "new")) {
+        // A folder name mid-path ("batches" in /batches/123), or "new".
         crumbs.push({ label: SUB_LABELS[seg] });
       } else if (last) {
         crumbs.push({ label: title || "Details" });
@@ -91,7 +149,7 @@ export default function Breadcrumbs({ entries }) {
                   {c.label}
                 </span>
               ) : c.href ? (
-                <Link href={c.href} className="hover:text-gray-900 hover:underline whitespace-nowrap">
+                <Link href={c.href} onClick={remembered(c.href)} className="hover:text-gray-900 hover:underline whitespace-nowrap">
                   {c.label}
                 </Link>
               ) : (

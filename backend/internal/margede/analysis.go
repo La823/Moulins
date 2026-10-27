@@ -104,6 +104,9 @@ type PartyRankRow struct {
 	LastBill     *time.Time `json:"last_bill"`
 	Last3        float64    `json:"last3"` // last 3 months incl. this one
 	Prev3        float64    `json:"prev3"` // the 3 months before those
+	// Different products on their bills (sales, or purchases for
+	// suppliers) since the first bill on record, whatever the period.
+	Products int `json:"products"`
 }
 
 // RankFilter is the ranking query.
@@ -136,7 +139,7 @@ type PartyRankList struct {
 var rankSorts = map[string]string{
 	"avg": "avg_monthly", "total": "total", "best": "best_amount", "bills": "bills",
 	"last": "last_bill", "returns": "returns", "name": "name", "months": "active_months",
-	"trend": "(last3 - prev3)",
+	"trend": "(last3 - prev3)", "products": "COALESCE(pp.products, 0)",
 }
 
 func sortDir(d string) string {
@@ -174,9 +177,15 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 		where += " AND (r.party_code ILIKE $1 OR r.name ILIKE $1 OR r.city ILIKE $1)"
 	}
 
-	q := `
-		WITH ` + windowCTEs(f.Period, f.IncludeCurrent) + `,
-		pm AS (
+	// Only one company's products (Moulins, third party, others): a bill's
+	// total can't be split by company, so the amounts come from its goods
+	// lines instead (as the product rankings count them), and a bill counts
+	// when it has such a line. The code is one of three, so it goes in as is.
+	companyCond := ""
+	if code, ok := map[string]string{"IB": "IB", "ID": "ID", "IC": "IC"}[f.Company]; ok {
+		companyCond = ` AND COALESCE(cp.company_code, i.item_company_code) = '` + code + `'`
+	}
+	pmFrom := `
 			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon,
 			       SUM(` + billAmount(f.ExGST) + `) FILTER (WHERE ` + amountCond + `) AS amt,
 			       COUNT(*) FILTER (WHERE ` + amountCond + `) AS bills,
@@ -185,7 +194,26 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 			       BOOL_OR(b.bill_date >= (SELECT s FROM win) AND b.bill_date < (SELECT e FROM win)) AS in_win
 			FROM marg_ede_bills b` + bvJoin + `
 			WHERE NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
-			GROUP BY 1, 2
+			GROUP BY 1, 2`
+	if companyCond != "" {
+		pmFrom = `
+			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon,
+			       SUM(` + lineAmount(f.ExGST) + `) FILTER (WHERE ` + amountCond + `) AS amt,
+			       COUNT(DISTINCT b.voucher) FILTER (WHERE ` + amountCond + `) AS bills,
+			       SUM(` + lineAmount(f.ExGST) + `) FILTER (WHERE ` + returnCond + `) AS ret,
+			       MAX(b.bill_date) FILTER (WHERE ` + amountCond + `) AS last_bill,
+			       BOOL_OR(b.bill_date >= (SELECT s FROM win) AND b.bill_date < (SELECT e FROM win)) AS in_win
+			FROM marg_ede_bill_items i
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			LEFT JOIN marg_ede_products cp ON cp.product_pid = i.product_pid
+			WHERE NOT b.is_deleted AND NOT b.is_cancelled AND b.party_code IS NOT NULL
+			  AND NOT i.is_deleted AND i.line_kind <> 'charge'` + companyCond + `
+			GROUP BY 1, 2`
+	}
+
+	q := `
+		WITH ` + windowCTEs(f.Period, f.IncludeCurrent) + `,
+		pm AS (` + pmFrom + `
 		),
 		r AS (
 			SELECT pm.party_code, lg.name, lg.city, lg.kind, pt.partner_id,
@@ -212,6 +240,15 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 			) pt ON TRUE
 			GROUP BY pm.party_code, lg.name, lg.city, lg.kind, pt.partner_id
 			HAVING COALESCE(SUM(pm.amt) FILTER (WHERE pm.in_win), 0) > 0
+		),
+		pp AS (
+			SELECT b.party_code, COUNT(DISTINCT i.product_pid)::int AS products
+			FROM marg_ede_bill_items i
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			LEFT JOIN marg_ede_products cp ON cp.product_pid = i.product_pid
+			WHERE ` + amountCond + ` AND NOT b.is_deleted AND NOT b.is_cancelled
+			  AND NOT i.is_deleted AND i.line_kind <> 'charge'` + companyCond + `
+			GROUP BY 1
 		)`
 
 	if err := db.QueryRow(ctx, q+` SELECT COUNT(*)::int, COALESCE(SUM(r.total), 0)::float8, (SELECT n FROM months)::int,
@@ -223,8 +260,8 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 	rows, err := db.Query(ctx, q+fmt.Sprintf(`
 		SELECT r.party_code, r.name, r.city, r.kind, r.partner_id, r.total::float8, r.avg_monthly::float8,
 		       r.best_month, r.best_amount::float8, r.active_months, r.bills, r.returns::float8, r.last_bill,
-		       r.last3::float8, r.prev3::float8
-		FROM r %s
+		       r.last3::float8, r.prev3::float8, COALESCE(pp.products, 0)
+		FROM r LEFT JOIN pp ON pp.party_code = r.party_code %s
 		ORDER BY %s %s NULLS LAST, r.total DESC
 		LIMIT %d OFFSET %d`, where, order, dir, BillsPageSize, (f.Page-1)*BillsPageSize), args...)
 	if err != nil {
@@ -235,7 +272,7 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 		var r PartyRankRow
 		if err := rows.Scan(&r.PartyCode, &r.Name, &r.City, &r.Kind, &r.PartnerID, &r.Total, &r.AvgMonthly,
 			&r.BestMonth, &r.BestAmount, &r.ActiveMonths, &r.Bills, &r.Returns, &r.LastBill,
-			&r.Last3, &r.Prev3); err != nil {
+			&r.Last3, &r.Prev3, &r.Products); err != nil {
 			return out, err
 		}
 		out.Rows = append(out.Rows, r)
@@ -262,6 +299,10 @@ type ProductRankRow struct {
 	TopBuyerCode   *string `json:"top_buyer_code"`
 	TopBuyerName   *string `json:"top_buyer_name"`
 	TopBuyerAmount float64 `json:"top_buyer_amount"`
+	// Sales in the last 3 months (incl. this one) and the 3 before, whatever
+	// the period, for rising/falling.
+	Last3 float64 `json:"last3"`
+	Prev3 float64 `json:"prev3"`
 }
 
 // ProductRankList is the products ranking response.
@@ -272,13 +313,16 @@ type ProductRankList struct {
 	PageSize int              `json:"page_size"`
 	Months   int              `json:"months"`
 	Window   Window           `json:"window"`
-	// Products per company under the other filters: {"IB": 540, ...}.
-	CompanyCounts map[string]int `json:"company_counts"`
+	// Products per company under the other filters: {"IB": 540, ...}, and
+	// what they sold.
+	CompanyCounts  map[string]int     `json:"company_counts"`
+	CompanyAmounts map[string]float64 `json:"company_amounts"`
 }
 
 var productSorts = map[string]string{
 	"avg": "avg_monthly", "amount": "amount", "qty": "qty", "best": "best_amount",
 	"customers": "customers", "bills": "bills", "last": "last_sold", "name": "name",
+	"trend": "(COALESCE(last3, 0) - COALESCE(prev3, 0))",
 }
 
 // RankProducts ranks products by what they sold on sale invoices.
@@ -286,7 +330,7 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 	if f.Page < 1 {
 		f.Page = 1
 	}
-	out := ProductRankList{Rows: []ProductRankRow{}, Page: f.Page, PageSize: BillsPageSize, CompanyCounts: map[string]int{}}
+	out := ProductRankList{Rows: []ProductRankRow{}, Page: f.Page, PageSize: BillsPageSize, CompanyCounts: map[string]int{}, CompanyAmounts: map[string]float64{}}
 	order, ok := productSorts[f.Sort]
 	if !ok {
 		order = "avg_monthly"
@@ -316,6 +360,18 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 			  AND b.bill_date >= (SELECT s FROM win) AND b.bill_date < (SELECT e FROM win)
 		),
 		pm AS (SELECT product_pid, mon, SUM(amount) AS amt FROM lines GROUP BY 1, 2),
+		tr AS (
+			SELECT i.product_pid,
+			       SUM(` + lineAmount(f.ExGST) + `) FILTER (WHERE b.bill_date >= date_trunc('month', CURRENT_DATE) - interval '2 months') AS last3,
+			       SUM(` + lineAmount(f.ExGST) + `) FILTER (WHERE b.bill_date >= date_trunc('month', CURRENT_DATE) - interval '5 months'
+			                                       AND b.bill_date < date_trunc('month', CURRENT_DATE) - interval '2 months') AS prev3
+			FROM marg_ede_bill_items i
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			WHERE ` + saleCond + ` AND NOT b.is_deleted AND NOT b.is_cancelled
+			  AND NOT i.is_deleted AND i.line_kind <> 'charge'
+			  AND b.bill_date >= date_trunc('month', CURRENT_DATE) - interval '5 months'
+			GROUP BY 1
+		),
 		best AS (
 			SELECT DISTINCT ON (product_pid) product_pid, mon AS best_month, amt AS best_amount
 			FROM pm ORDER BY product_pid, amt DESC
@@ -333,26 +389,30 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 			       MAX(bt.best_month) AS best_month, MAX(bt.best_amount) AS best_amount,
 			       COUNT(DISTINCT l.party_code)::int AS customers, COUNT(DISTINCT l.voucher)::int AS bills,
 			       MAX(l.bill_date) AS last_sold,
-			       MAX(tb.top_code) AS top_code, MAX(tb.top_amount) AS top_amount
+			       MAX(tb.top_code) AS top_code, MAX(tb.top_amount) AS top_amount,
+			       MAX(tr.last3) AS last3, MAX(tr.prev3) AS prev3
 			FROM lines l
+			LEFT JOIN tr ON tr.product_pid = l.product_pid
 			LEFT JOIN best bt ON bt.product_pid = l.product_pid
 			LEFT JOIN tb ON tb.product_pid = l.product_pid
 			LEFT JOIN marg_ede_products p ON p.product_pid = l.product_pid
 			LEFT JOIN margmaster_products mp ON mp.base_code = l.product_pid::text
 			GROUP BY l.product_pid, p.code, p.name, mp.name, p.company_name, p.company_code
 		)`
-	crows, err := db.Query(ctx, q+` SELECT COALESCE(r.company_code, ''), COUNT(*)::int FROM r `+countWhere+` GROUP BY 1`, countArgs...)
+	crows, err := db.Query(ctx, q+` SELECT COALESCE(r.company_code, ''), COUNT(*)::int, SUM(r.amount)::float8 FROM r `+countWhere+` GROUP BY 1`, countArgs...)
 	if err != nil {
 		return out, err
 	}
 	for crows.Next() {
 		var code string
 		var n int
-		if err := crows.Scan(&code, &n); err != nil {
+		var amt float64
+		if err := crows.Scan(&code, &n, &amt); err != nil {
 			crows.Close()
 			return out, err
 		}
 		out.CompanyCounts[code] = n
+		out.CompanyAmounts[code] = amt
 	}
 	crows.Close()
 	if err := crows.Err(); err != nil {
@@ -368,7 +428,8 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 	rows, err := db.Query(ctx, q+fmt.Sprintf(`
 		SELECT r.product_pid, r.code, r.name, r.company, r.amount::float8, r.qty::float8, r.free::float8,
 		       r.avg_monthly::float8, r.best_month, r.best_amount::float8, r.customers, r.bills, r.last_sold,
-		       r.top_code, tl.name, COALESCE(r.top_amount, 0)::float8
+		       r.top_code, tl.name, COALESCE(r.top_amount, 0)::float8,
+		       COALESCE(r.last3, 0)::float8, COALESCE(r.prev3, 0)::float8
 		FROM r
 		LEFT JOIN LATERAL (
 			SELECT ld.name FROM marg_ede_ledger ld
@@ -385,7 +446,7 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 		var r ProductRankRow
 		if err := rows.Scan(&r.ProductPID, &r.Code, &r.Name, &r.Company, &r.Amount, &r.Qty, &r.Free,
 			&r.AvgMonthly, &r.BestMonth, &r.BestAmount, &r.Customers, &r.Bills, &r.LastSold,
-			&r.TopBuyerCode, &r.TopBuyerName, &r.TopBuyerAmount); err != nil {
+			&r.TopBuyerCode, &r.TopBuyerName, &r.TopBuyerAmount, &r.Last3, &r.Prev3); err != nil {
 			return out, err
 		}
 		out.Rows = append(out.Rows, r)
@@ -403,6 +464,12 @@ type OverviewMonth struct {
 	ActiveCustomers int     `json:"active_customers"`
 	NewCustomers    int     `json:"new_customers"` // first sale invoice of the year
 	AvgBill         float64 `json:"avg_bill"`
+	PurchaseBills   int     `json:"purchase_bills"`
+	Suppliers       int     `json:"suppliers"` // parties with a purchase bill
+	// From the sale invoices' goods lines (as the product reports count
+	// them): units sold (qty + free) and their value.
+	Units     float64 `json:"units"`
+	GoodsSold float64 `json:"goods_sold"`
 }
 
 // MonthlyOverview is company-wide month-by-month totals.
@@ -422,6 +489,14 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 		firsts AS (
 			SELECT b.party_code, to_char(MIN(b.bill_date), 'YYYY-MM') AS month
 			FROM live b WHERE `+saleCond+` GROUP BY 1
+		),
+		lm AS (
+			SELECT to_char(b.bill_date, 'YYYY-MM') AS month, SUM(i.qty + i.free) AS units, SUM(`+lineAmount(exGST)+`) AS goods
+			FROM marg_ede_bill_items i
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			WHERE `+saleCond+` AND NOT b.is_deleted AND NOT b.is_cancelled
+			  AND NOT i.is_deleted AND i.line_kind <> 'charge'
+			GROUP BY 1
 		)
 		SELECT months.month,
 		       COALESCE(SUM(b.goods) FILTER (WHERE `+saleCond+`), 0)::float8,
@@ -429,7 +504,11 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 		       COALESCE(SUM(b.goods) FILTER (WHERE b.bill_type = 'P'), 0)::float8,
 		       COUNT(*) FILTER (WHERE `+saleCond+`)::int,
 		       COUNT(DISTINCT b.party_code) FILTER (WHERE `+saleCond+`)::int,
-		       (SELECT COUNT(*) FROM firsts f WHERE f.month = months.month)::int
+		       (SELECT COUNT(*) FROM firsts f WHERE f.month = months.month)::int,
+		       COUNT(*) FILTER (WHERE b.bill_type = 'P')::int,
+		       COUNT(DISTINCT b.party_code) FILTER (WHERE b.bill_type = 'P')::int,
+		       COALESCE((SELECT lm.units FROM lm WHERE lm.month = months.month), 0)::float8,
+		       COALESCE((SELECT lm.goods FROM lm WHERE lm.month = months.month), 0)::float8
 		FROM months
 		LEFT JOIN live b ON to_char(b.bill_date, 'YYYY-MM') = months.month
 		GROUP BY months.month ORDER BY months.month`)
@@ -440,7 +519,8 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 	out := []OverviewMonth{}
 	for rows.Next() {
 		var m OverviewMonth
-		if err := rows.Scan(&m.Month, &m.Sales, &m.Returns, &m.Purchases, &m.Bills, &m.ActiveCustomers, &m.NewCustomers); err != nil {
+		if err := rows.Scan(&m.Month, &m.Sales, &m.Returns, &m.Purchases, &m.Bills, &m.ActiveCustomers, &m.NewCustomers,
+			&m.PurchaseBills, &m.Suppliers, &m.Units, &m.GoodsSold); err != nil {
 			return nil, err
 		}
 		if m.Bills > 0 {

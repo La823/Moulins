@@ -3,9 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import Loader from "@/components/Loader";
 
+// Each list loads on its own: the partner and employee lists need their own
+// view permissions, and one refused list must not blank the rest. Staff who
+// can't list employees can still assign partners to themselves.
 export default function AssignmentsPage() {
+  const { user } = useAuth();
   const [assignments, setAssignments] = useState([]);
   const [clients, setClients] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -18,20 +23,15 @@ export default function AssignmentsPage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([
+    Promise.allSettled([
       apiFetch("/admin/assignments"),
       apiFetch("/admin/partners"),
       apiFetch("/admin/employees"),
     ])
       .then(([a, c, e]) => {
-        setAssignments(a || []);
-        setClients(c || []);
-        setEmployees(e || []);
-      })
-      .catch(() => {
-        setAssignments([]);
-        setClients([]);
-        setEmployees([]);
+        setAssignments(a.status === "fulfilled" ? a.value || [] : []);
+        setClients(c.status === "fulfilled" ? c.value || [] : []);
+        setEmployees(e.status === "fulfilled" ? e.value || [] : null);
       })
       .finally(() => setLoading(false));
   };
@@ -68,6 +68,9 @@ export default function AssignmentsPage() {
       alert("Failed to remove assignment: " + err.message);
     }
   };
+
+  // No employee list (no Employees view permission): just themselves.
+  const employeeOptions = employees ?? (user?.role === "employee" ? [user] : []);
 
   const filtered = assignments.filter((a) => {
     if (!search) return true;
@@ -107,7 +110,7 @@ export default function AssignmentsPage() {
             className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
           >
             <option value="">Select employee...</option>
-            {employees.map((e) => (
+            {employeeOptions.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.username || e.phone_number}
               </option>

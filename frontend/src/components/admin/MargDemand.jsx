@@ -359,12 +359,28 @@ function DemandRow({ r, target, canAct, onDialog, onChanged }) {
             <span
               key={p.link_id}
               title={[p.product, p.company, p.date && `PO date ${fmtDate(p.date)}`].filter(Boolean).join(" · ")}
-              className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
+              className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${
                 !p.found ? "bg-red-50 text-red-700" : p.open ? "bg-blue-50 text-blue-800" : "bg-gray-100 text-gray-500"
               }`}
             >
               {p.po_number} · {p.found ? p.status || "No status" : "PO not found"}
               {p.qty != null && ` · ${fmtQty(p.received || 0)}/${fmtQty(p.qty)}`}
+              {/* Unlink right here (kept in the product's history), not only from the Link PO dialog. */}
+              {canAct && (
+                <button
+                  onClick={() => {
+                    if (!window.confirm(`Unlink ${p.po_number} from ${r.name}?`)) return;
+                    apiFetch(`/admin/marg-analysis/demand/${r.product_pid}/pos/${p.link_id}`, { method: "DELETE" })
+                      .then(onChanged)
+                      .catch((e) => alert(e.message || "Could not unlink"));
+                  }}
+                  title={`Unlink ${p.po_number}`}
+                  aria-label={`Unlink ${p.po_number}`}
+                  className="-mr-1 px-1 rounded-full opacity-60 hover:opacity-100 hover:bg-white/70"
+                >
+                  ×
+                </button>
+              )}
             </span>
           ))}
           {canAct && (

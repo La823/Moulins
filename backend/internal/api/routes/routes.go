@@ -378,6 +378,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAnalysisStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/cities", margedeHandlers.AnalysisCitiesHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/not-selling", margedeHandlers.AnalysisNotSellingHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/demand", margedeHandlers.AnalysisDemandHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/demand/{pid:[0-9]+}/history", margedeHandlers.DemandHistoryHandler(db)).Methods("GET")
 

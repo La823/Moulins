@@ -45,7 +45,8 @@ export function SortHeader({ label, k, sort, onSort, align }) {
         className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-gray-800 ${active ? "text-gray-800" : ""}`}
       >
         {label}
-        <span className="text-[10px]">{active ? (sort.dir === "desc" ? "▼" : "▲") : ""}</span>
+        {/* A faint ↕ marks a header as sortable before it's picked. */}
+        <span className={`text-[10px] ${active ? "" : "text-gray-300"}`}>{active ? (sort.dir === "desc" ? "▼" : "▲") : "↕"}</span>
       </button>
     </th>
   );

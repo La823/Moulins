@@ -100,6 +100,38 @@ func AnalysisSlippingHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// GET /admin/marg-analysis/cities?period=&current=&gst= — the period's
+// sales split by the customer's city.
+func AnalysisCitiesHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := margede.SalesByCity(r.Context(), db, rankFilter(r))
+		if err != nil {
+			log.Printf("marg analysis cities: %v", err)
+			http.Error(w, "could not build report", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, out)
+	}
+}
+
+// GET /admin/marg-analysis/not-selling?days=30&gst= — products bought in
+// this year (first purchase at least `days` ago), slowest sellers first.
+func AnalysisNotSellingHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		days := 30
+		if v, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil {
+			days = v
+		}
+		out, err := margede.NotSelling(r.Context(), db, days, exGST(r))
+		if err != nil {
+			log.Printf("marg analysis not selling: %v", err)
+			http.Error(w, "could not build report", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"rows": out})
+	}
+}
+
 // GET /admin/marg-analysis/products/{pid}?period=0..12&current=1 — one
 // product: totals, buyers and month-by-month sales for the product page.
 func AnalysisProductHandler(db *pgxpool.Pool) http.HandlerFunc {
