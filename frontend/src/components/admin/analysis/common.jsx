@@ -71,7 +71,8 @@ export function useAnalysisSettings() {
 
   const [period, setPeriodRaw] = useUrlState("period", 0);
   const [includeCurrent, setIncludeCurrentRaw] = useUrlState("current", false);
-  const [withGST, setWithGST] = useUrlState("gst", true);
+  // Without GST unless "With GST" is picked (then ?gst=1).
+  const [withGST, setWithGST] = useUrlState("gst", false);
   const resetPages = () => PAGE_KEYS.forEach((k) => setUrlParam(k, 1, 1));
   const carry = new URLSearchParams();
   SETTING_KEYS.forEach((k) => params.get(k) != null && carry.set(k, params.get(k)));
@@ -106,7 +107,7 @@ export function apiSettings(s, base = {}) {
 export function GSTToggle({ withGST, setWithGST }) {
   return (
     <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs shrink-0">
-      {[[true, "With GST"], [false, "Without GST"]].map(([v, label]) => (
+      {[[false, "Without GST"], [true, "With GST"]].map(([v, label]) => (
         <button
           key={label}
           onClick={() => setWithGST(v)}

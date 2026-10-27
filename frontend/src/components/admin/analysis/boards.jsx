@@ -206,12 +206,12 @@ function Home() {
 // This year's sales less credit notes, with the month-by-month line.
 function NetSalesBlock({ months }) {
   const net = (months || []).map((m) => ({ ...m, net: m.sales - m.returns }));
-  const t = net.reduce((a, m) => ({ net: a.net + m.net, ret: a.ret + m.returns }), { net: 0, ret: 0 });
+  const t = net.reduce((a, m) => ({ net: a.net + m.net, ret: a.ret + m.returns, p: a.p + m.net_profit, goods: a.goods + m.sale_goods - m.return_goods }), { net: 0, ret: 0, p: 0, goods: 0 });
   return (
     <>
       <div className="grid grid-cols-2 gap-3 mb-3">
         <Stat label="Net sales this year" value={shortMoney(t.net)} />
-        <Stat label="Credit notes" value={shortMoney(t.ret)} sub={net.length ? `${shortMoney(t.net / net.length)} a month` : null} />
+        <Stat label="Net profit" value={shortMoney(t.p)} sub={t.goods ? `${((100 * t.p) / t.goods).toFixed(1)}% margin · credit notes ${shortMoney(t.ret)}` : null} />
       </div>
       <Sparkline months={net} field="net" />
       <MonthDelta months={net} field="net" />

@@ -107,6 +107,14 @@ type PartyRankRow struct {
 	// Different products on their bills (sales, or purchases for
 	// suppliers) since the first bill on record, whatever the period.
 	Products int `json:"products"`
+	// The account's current balance in Marg, from the party master
+	// (margmaster_party, the MargMST2017 sync): for a customer, positive is
+	// what they owe, negative an advance. Nil when Marg has no such party.
+	Balance   *float64   `json:"balance"`
+	PDC       *float64   `json:"pdc"` // post-dated cheques held
+	BalanceAt *time.Time `json:"balance_at"`
+	// Sales (or purchases) billed in the last RecentDays days.
+	Recent float64 `json:"recent"`
 }
 
 // RankFilter is the ranking query.
@@ -123,10 +131,14 @@ type RankFilter struct {
 	// Company (products only): IB Moulins, ID third party, IC others.
 	Company string
 	ExGST   bool // amounts without GST (see billAmount)
+	// RecentDays: the "billed in the last N days" column counts bills from
+	// today back over this many days (today included), whatever the period.
+	RecentDays int
 }
 
 // PartyRankList is the ranking response.
 type PartyRankList struct {
+	RecentDays int `json:"recent_days"`
 	Rows     []PartyRankRow `json:"rows"`
 	Total    int            `json:"total"`
 	Page     int            `json:"page"`
@@ -139,7 +151,7 @@ type PartyRankList struct {
 var rankSorts = map[string]string{
 	"avg": "avg_monthly", "total": "total", "best": "best_amount", "bills": "bills",
 	"last": "last_bill", "returns": "returns", "name": "name", "months": "active_months",
-	"trend": "(last3 - prev3)", "products": "COALESCE(pp.products, 0)",
+	"trend": "(last3 - prev3)", "products": "COALESCE(pp.products, 0)", "balance": "lb.balance", "recent": "COALESCE(rb.amt, 0)",
 }
 
 func sortDir(d string) string {
@@ -184,6 +196,26 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 	companyCond := ""
 	if code, ok := map[string]string{"IB": "IB", "ID": "ID", "IC": "IC"}[f.Company]; ok {
 		companyCond = ` AND COALESCE(cp.company_code, i.item_company_code) = '` + code + `'`
+	}
+	if f.RecentDays < 1 || f.RecentDays > 366 {
+		f.RecentDays = 60
+	}
+	out.RecentDays = f.RecentDays
+	recentFrom := fmt.Sprintf("CURRENT_DATE - %d", f.RecentDays-1)
+	rbFrom := `
+			SELECT b.party_code, SUM(` + billAmount(f.ExGST) + `) AS amt
+			FROM marg_ede_bills b` + bvJoin + `
+			WHERE ` + amountCond + ` AND NOT b.is_deleted AND NOT b.is_cancelled AND b.bill_date >= ` + recentFrom + `
+			GROUP BY 1`
+	if companyCond != "" {
+		rbFrom = `
+			SELECT b.party_code, SUM(` + lineAmount(f.ExGST) + `) AS amt
+			FROM marg_ede_bill_items i
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			LEFT JOIN marg_ede_products cp ON cp.product_pid = i.product_pid
+			WHERE ` + amountCond + ` AND NOT b.is_deleted AND NOT b.is_cancelled AND b.bill_date >= ` + recentFrom + `
+			  AND NOT i.is_deleted AND i.line_kind <> 'charge'` + companyCond + `
+			GROUP BY 1`
 	}
 	pmFrom := `
 			SELECT b.party_code, date_trunc('month', b.bill_date) AS mon,
@@ -241,6 +273,8 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 			GROUP BY pm.party_code, lg.name, lg.city, lg.kind, pt.partner_id
 			HAVING COALESCE(SUM(pm.amt) FILTER (WHERE pm.in_win), 0) > 0
 		),
+		rb AS (` + rbFrom + `
+		),
 		pp AS (
 			SELECT b.party_code, COUNT(DISTINCT i.product_pid)::int AS products
 			FROM marg_ede_bill_items i
@@ -260,8 +294,14 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 	rows, err := db.Query(ctx, q+fmt.Sprintf(`
 		SELECT r.party_code, r.name, r.city, r.kind, r.partner_id, r.total::float8, r.avg_monthly::float8,
 		       r.best_month, r.best_amount::float8, r.active_months, r.bills, r.returns::float8, r.last_bill,
-		       r.last3::float8, r.prev3::float8, COALESCE(pp.products, 0)
-		FROM r LEFT JOIN pp ON pp.party_code = r.party_code %s
+		       r.last3::float8, r.prev3::float8, COALESCE(pp.products, 0),
+		       lb.balance::float8, lb.pdc::float8, lb.synced_at, COALESCE(rb.amt, 0)::float8
+		FROM r LEFT JOIN pp ON pp.party_code = r.party_code
+		LEFT JOIN rb ON rb.party_code = r.party_code
+		LEFT JOIN LATERAL (
+			SELECT mp.balance, mp.pdc, mp.synced_at FROM margmaster_party mp
+			WHERE TRIM(mp.code) = r.party_code ORDER BY mp.is_deleted, mp.synced_at DESC LIMIT 1
+		) lb ON TRUE %s
 		ORDER BY %s %s NULLS LAST, r.total DESC
 		LIMIT %d OFFSET %d`, where, order, dir, BillsPageSize, (f.Page-1)*BillsPageSize), args...)
 	if err != nil {
@@ -272,7 +312,7 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 		var r PartyRankRow
 		if err := rows.Scan(&r.PartyCode, &r.Name, &r.City, &r.Kind, &r.PartnerID, &r.Total, &r.AvgMonthly,
 			&r.BestMonth, &r.BestAmount, &r.ActiveMonths, &r.Bills, &r.Returns, &r.LastBill,
-			&r.Last3, &r.Prev3, &r.Products); err != nil {
+			&r.Last3, &r.Prev3, &r.Products, &r.Balance, &r.PDC, &r.BalanceAt, &r.Recent); err != nil {
 			return out, err
 		}
 		out.Rows = append(out.Rows, r)
@@ -470,6 +510,23 @@ type OverviewMonth struct {
 	// them): units sold (qty + free) and their value.
 	Units     float64 `json:"units"`
 	GoodsSold float64 `json:"goods_sold"`
+
+	// Gross profit, always before GST (GST isn't profit): goods on sale
+	// invoices less their cost — (qty + free) at the sold batch's Marg
+	// purchase rate. Credit notes return goods, so their goods less cost
+	// come back off; a credit note with no lines (a rate difference) comes
+	// off whole. Bills Marg sent with lines missing can't be costed: their
+	// count and the missing amount are given so the page can say so.
+	SaleGoods     float64 `json:"sale_goods"`
+	SaleCost      float64 `json:"sale_cost"`
+	UncostedLines int     `json:"uncosted_lines"` // sale lines whose batch has no purchase rate
+	ReturnGoods   float64 `json:"return_goods"`
+	ReturnCost    float64 `json:"return_cost"`
+	OtherCredit   float64 `json:"other_credit"` // credit notes without lines
+	Profit        float64 `json:"profit"`       // sale_goods - sale_cost
+	NetProfit     float64 `json:"net_profit"`   // profit less what credit notes give back
+	MissingBills  int     `json:"missing_bills"`
+	MissingAmount float64 `json:"missing_amount"` // bill totals less the lines we have, incl. GST
 }
 
 // MonthlyOverview is company-wide month-by-month totals.
@@ -497,6 +554,24 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 			WHERE `+saleCond+` AND NOT b.is_deleted AND NOT b.is_cancelled
 			  AND NOT i.is_deleted AND i.line_kind <> 'charge'
 			GROUP BY 1
+		),
+		pl AS (
+			SELECT to_char(b.bill_date, 'YYYY-MM') AS month,
+			       SUM(i.amount) FILTER (WHERE `+saleCond+`) AS sale_goods,
+			       SUM((i.qty + i.free) * st.prate) FILTER (WHERE `+saleCond+`) AS sale_cost,
+			       COUNT(*) FILTER (WHERE `+saleCond+` AND COALESCE(st.prate, 0) = 0) AS uncosted,
+			       SUM(i.amount) FILTER (WHERE b.bill_type = 'R') AS ret_goods,
+			       SUM((i.qty + i.free) * st.prate) FILTER (WHERE b.bill_type = 'R') AS ret_cost
+			FROM marg_ede_bill_items i
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			LEFT JOIN LATERAL (
+				SELECT s.purchase_rate AS prate FROM marg_ede_stock s
+				WHERE s.product_pid = i.product_pid AND COALESCE(s.batch, '') = COALESCE(i.batch, '') AND NOT s.is_deleted
+				ORDER BY s.marg_id DESC LIMIT 1
+			) st ON TRUE
+			WHERE (`+saleCond+` OR b.bill_type = 'R') AND NOT b.is_deleted AND NOT b.is_cancelled
+			  AND NOT i.is_deleted AND i.line_kind = 'item'
+			GROUP BY 1
 		)
 		SELECT months.month,
 		       COALESCE(SUM(b.goods) FILTER (WHERE `+saleCond+`), 0)::float8,
@@ -508,8 +583,14 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 		       COUNT(*) FILTER (WHERE b.bill_type = 'P')::int,
 		       COUNT(DISTINCT b.party_code) FILTER (WHERE b.bill_type = 'P')::int,
 		       COALESCE((SELECT lm.units FROM lm WHERE lm.month = months.month), 0)::float8,
-		       COALESCE((SELECT lm.goods FROM lm WHERE lm.month = months.month), 0)::float8
+		       COALESCE((SELECT lm.goods FROM lm WHERE lm.month = months.month), 0)::float8,
+		       COALESCE(MAX(pl.sale_goods), 0)::float8, COALESCE(MAX(pl.sale_cost), 0)::float8, COALESCE(MAX(pl.uncosted), 0)::int,
+		       COALESCE(MAX(pl.ret_goods), 0)::float8, COALESCE(MAX(pl.ret_cost), 0)::float8,
+		       COALESCE(SUM(b.total) FILTER (WHERE b.bill_type = 'R' AND b.lines_count = 0), 0)::float8,
+		       COUNT(*) FILTER (WHERE `+saleCond+` AND NOT b.lines_complete)::int,
+		       COALESCE(SUM(b.total - b.lines_total) FILTER (WHERE `+saleCond+` AND NOT b.lines_complete), 0)::float8
 		FROM months
+		LEFT JOIN pl ON pl.month = months.month
 		LEFT JOIN live b ON to_char(b.bill_date, 'YYYY-MM') = months.month
 		GROUP BY months.month ORDER BY months.month`)
 	if err != nil {
@@ -520,9 +601,13 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 	for rows.Next() {
 		var m OverviewMonth
 		if err := rows.Scan(&m.Month, &m.Sales, &m.Returns, &m.Purchases, &m.Bills, &m.ActiveCustomers, &m.NewCustomers,
-			&m.PurchaseBills, &m.Suppliers, &m.Units, &m.GoodsSold); err != nil {
+			&m.PurchaseBills, &m.Suppliers, &m.Units, &m.GoodsSold,
+			&m.SaleGoods, &m.SaleCost, &m.UncostedLines, &m.ReturnGoods, &m.ReturnCost, &m.OtherCredit,
+			&m.MissingBills, &m.MissingAmount); err != nil {
 			return nil, err
 		}
+		m.Profit = m.SaleGoods - m.SaleCost
+		m.NetProfit = m.Profit - (m.ReturnGoods - m.ReturnCost) - m.OtherCredit
 		if m.Bills > 0 {
 			m.AvgBill = m.Sales / float64(m.Bills)
 		}

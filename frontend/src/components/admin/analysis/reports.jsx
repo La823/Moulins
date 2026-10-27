@@ -17,12 +17,14 @@ import {
 // page-wide settings `s` from useAnalysisSettings.
 
 const gstWord = (s) => (s.withGST ? "incl. GST" : "without GST");
+// Every list here scrolls in its own box (about one screen tall) with the
+// header row pinned on top, so the columns stay named however far down.
 
 // The customers list leaves out Highest month and Last bill; the suppliers
 // list keeps them.
 const PARTY_SORTS = (noun, notes, lean) => [
   ["avg", "Average per month"], ["total", `Total ${noun.toLowerCase()}`], !lean && ["best", "Highest month"], ["months", "Months bought"],
-  ["bills", "Bills"], ["products", "Products bought"], ["returns", notes], ["trend", "Trend (last 3 months)"], !lean && ["last", "Last bill"], ["name", "Name"],
+  ["bills", "Bills"], ["products", "Products bought"], lean && ["recent", "Billed recently (last N days)"], lean && ["balance", "Ledger balance"], ["returns", notes], ["trend", "Trend (last 3 months)"], !lean && ["last", "Last bill"], ["name", "Name"],
 ].filter(Boolean);
 const PRODUCT_SORTS = [
   ["avg", "Average per month"], ["amount", "Sales"], ["qty", "Qty"], ["best", "Highest month"], ["customers", "Customers"],
@@ -57,6 +59,9 @@ export function PartyRanking({ mode, prefix, s }) {
   // Customers only: count just one company's products (Moulins, third
   // party, others) — amounts then come from the bill lines.
   const [company, setCompany] = useUrlState(`${prefix}_company`, "");
+  // Customers only: a column of what each billed in the last N days (from
+  // today back), set here; 60 by default.
+  const [days, setDays] = useUrlState(`${prefix}_days`, 60);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -65,8 +70,9 @@ export function PartyRanking({ mode, prefix, s }) {
     const p = apiSettings(s, { mode, sort: sort.key, dir: sort.dir, page: String(page) });
     if (search) p.set("search", search);
     if (company && mode === "sales") p.set("company", company);
+    if (mode === "sales") p.set("recent_days", String(days));
     apiFetch(`/admin/marg-analysis/parties?${p}`).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [mode, sort.key, sort.dir, search, company, page, s.period, s.includeCurrent, s.withGST]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, sort.key, sort.dir, search, company, days, page, s.period, s.includeCurrent, s.withGST]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSort = (k) => { setPage(1); sortBy(k); };
   const noun = mode === "sales" ? "Sales" : "Purchases";
@@ -105,15 +111,16 @@ export function PartyRanking({ mode, prefix, s }) {
           )}
         </p>
         <div className="flex items-center gap-2 flex-wrap">
+          {lean && <DaysSetting days={days} onChange={(d) => { setPage(1); setDays(d); }} />}
           <SortMenu options={PARTY_SORTS(noun, mode === "sales" ? "Credit notes" : "Debit notes", lean)} sort={sort} onPick={(k, d) => { setPage(1); setSort(k, d); }} />
           <SearchBox value={search} onSearch={(v) => { setPage(1); setSearch(v); }} placeholder="Party name, code or city..." />
         </div>
       </div>
       {loading && !data ? <Loader /> : !data || !data.rows.length ? <Empty text="No parties" /> : (
         <>
-          <div className={`bg-white rounded-xl border border-gray-200 overflow-x-auto ${loading ? "opacity-60" : ""}`}>
+          <div className={`bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh] ${loading ? "opacity-60" : ""}`}>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+              <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 w-10">#</th>
                   <SortHeader label="Party" k="name" sort={sort} onSort={onSort} />
@@ -123,6 +130,8 @@ export function PartyRanking({ mode, prefix, s }) {
                   <SortHeader label="Months" k="months" sort={sort} onSort={onSort} align="right" />
                   <SortHeader label="Bills" k="bills" sort={sort} onSort={onSort} align="right" />
                   <SortHeader label="Products" k="products" sort={sort} onSort={onSort} align="right" />
+                  {lean && <SortHeader label={`Last ${days} days`} k="recent" sort={sort} onSort={onSort} align="right" />}
+                  {lean && <SortHeader label="Ledger balance" k="balance" sort={sort} onSort={onSort} align="right" />}
                   <SortHeader label={mode === "sales" ? "Credit notes" : "Debit notes"} k="returns" sort={sort} onSort={onSort} align="right" />
                   <SortHeader label="Trend" k="trend" sort={sort} onSort={onSort} />
                   {!lean && <SortHeader label="Last bill" k="last" sort={sort} onSort={onSort} />}
@@ -144,6 +153,12 @@ export function PartyRanking({ mode, prefix, s }) {
                     <td className="px-4 py-3 text-right text-gray-600">{r.active_months}/{data.months}</td>
                     <td className="px-4 py-3 text-right text-gray-600">{r.bills}</td>
                     <td className="px-4 py-3 text-right text-gray-600" title="Different products bought since April (all of this year's bills)">{r.products}</td>
+                    {lean && (
+                      <td className="px-4 py-3 text-right text-gray-900 whitespace-nowrap" title={`Sale bills from today back ${days} days (${gstWord(s)}), whatever the period`}>
+                        {r.recent ? money0(r.recent) : <span className="text-gray-300">—</span>}
+                      </td>
+                    )}
+                    {lean && <BalanceCell r={r} />}
                     <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{r.returns ? money0(r.returns) : "—"}</td>
                     <td className="px-4 py-3"><Trend last3={r.last3} prev3={r.prev3} /></td>
                     {!lean && <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.last_bill)}</td>}
@@ -156,6 +171,56 @@ export function PartyRanking({ mode, prefix, s }) {
         </>
       )}
     </>
+  );
+}
+
+// How many days back the "billed in the last N days" column counts: a few
+// quick choices, or any number typed in (1-366).
+function DaysSetting({ days, onChange }) {
+  const [text, setText] = useState(String(days));
+  const commit = () => {
+    const n = Math.round(Number(text));
+    if (n >= 1 && n <= 366) onChange(n);
+    else setText(String(days));
+  };
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+      Billed in last
+      <input
+        type="number" min={1} max={366} value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+        className="w-16 px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+        aria-label="Days back for the billed column"
+      />
+      days
+      {[30, 60, 90].map((n) => (
+        <button key={n} onClick={() => { setText(String(n)); onChange(n); }}
+          className={`px-2 py-1 rounded-full border ${days === n ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 hover:border-gray-400"}`}>
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// A customer's current Marg account balance: what they owe, or an
+// advance when it's negative, with when Marg last sent it.
+function BalanceCell({ r }) {
+  if (r.balance == null) return <td className="px-4 py-3 text-right text-gray-300" title="No account in Marg's party list">—</td>;
+  const when = r.balance_at ? new Date(r.balance_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }) : null;
+  return (
+    <td className="px-4 py-3 text-right whitespace-nowrap" title={[when && `Marg balance as of ${when}`, r.pdc ? `PDC held ${money0(r.pdc)}` : null].filter(Boolean).join(" · ")}>
+      {r.balance === 0 ? (
+        <span className="text-gray-400">Nil</span>
+      ) : r.balance > 0 ? (
+        <span className="text-gray-900">{money0(r.balance)} <span className="text-xs text-gray-400">due</span></span>
+      ) : (
+        <span className="text-gray-700">{money0(-r.balance)} <span className="text-xs text-gray-400">advance</span></span>
+      )}
+      {r.pdc ? <div className="text-[11px] text-gray-400">PDC {money0(r.pdc)}</div> : null}
+    </td>
   );
 }
 
@@ -216,9 +281,9 @@ export function ProductRanking({ s }) {
       </div>
       {loading && !data ? <Loader /> : !data || !data.rows.length ? <Empty text="No products" /> : (
         <>
-          <div className={`bg-white rounded-xl border border-gray-200 overflow-x-auto ${loading ? "opacity-60" : ""}`}>
+          <div className={`bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh] ${loading ? "opacity-60" : ""}`}>
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+              <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 w-10">#</th>
                   <SortHeader label="Product" k="name" sort={sort} onSort={onSort} />
@@ -302,32 +367,55 @@ export function SalesTrend({ s, netDefault = false }) {
   if (!raw) return <Loader />;
   if (!raw.length) return <Empty text="No bills yet" />;
 
-  // Net of credit notes: each month's credit notes come off its sales.
-  const months = netOfCredit ? raw.map((m) => ({ ...m, sales: m.sales - m.returns })) : raw;
+  // Net of credit notes: each month's credit notes come off its sales, and
+  // the profit on the goods they return comes off its profit. Profit is
+  // always before GST (backend MonthlyOverview).
+  const months = raw.map((m) => {
+    const goods = netOfCredit ? m.sale_goods - m.return_goods : m.sale_goods;
+    const profit = netOfCredit ? m.net_profit : m.profit;
+    return { ...m, sales: netOfCredit ? m.sales - m.returns : m.sales, goods, p: profit, margin: goods ? (100 * profit) / goods : 0 };
+  });
   const best = months.reduce((a, m) => (m.sales > a.sales ? m : a), months[0]);
-  const t = months.reduce((a, m) => ({ sales: a.sales + m.sales, returns: a.returns + m.returns, bills: a.bills + m.bills, fresh: a.fresh + m.new_customers }), { sales: 0, returns: 0, bills: 0, fresh: 0 });
+  const t = months.reduce(
+    (a, m) => ({
+      sales: a.sales + m.sales, returns: a.returns + m.returns, bills: a.bills + m.bills, fresh: a.fresh + m.new_customers,
+      p: a.p + m.p, goods: a.goods + m.goods, missBills: a.missBills + m.missing_bills, missAmt: a.missAmt + m.missing_amount,
+      uncosted: a.uncosted + m.uncosted_lines,
+    }),
+    { sales: 0, returns: 0, bills: 0, fresh: 0, p: 0, goods: 0, missBills: 0, missAmt: 0, uncosted: 0 },
+  );
+  const pct = (v) => `${v.toFixed(1)}%`;
 
   return (
     <>
       <label className="text-xs text-gray-600 flex items-center gap-1.5 cursor-pointer select-none mb-3">
         <input type="checkbox" checked={netOfCredit} onChange={(e) => setNetOfCredit(e.target.checked)} />
-        Show sales net of credit notes
+        Show sales and profit net of credit notes
       </label>
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-3 mb-5">
         <Tile label={netOfCredit ? "Net sales this year" : "Sales this year"} value={money0(t.sales)} sub={`credit notes ${money0(t.returns)}`} />
-        <Tile label="Average per month" value={money0(t.sales / months.length)} sub={`over ${months.length} months`} />
+        <Tile label={netOfCredit ? "Net profit this year" : "Profit this year"} value={money0(t.p)} sub={`${pct(t.goods ? (100 * t.p) / t.goods : 0)} of goods sold, before GST`} />
+        <Tile label="Profit per month" value={money0(t.p / months.length)} sub={`over ${months.length} months`} />
+        <Tile label="Average sales per month" value={money0(t.sales / months.length)} sub={`over ${months.length} months`} />
         <Tile label="Highest sales month" value={money0(best.sales)} sub={fmtMonth(best.month, true)} />
         <Tile label="Sale bills" value={fmtCount(t.bills)} sub={`avg bill ${money0(t.bills ? t.sales / t.bills : 0)}`} />
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
-        <MonthlyChart monthly={months} series={[{ key: "sales", label: netOfCredit ? "Net sales" : "Sales", color: "#2a78d6" }]} note={gstWord(s)} />
+      <div className="grid gap-5 lg:grid-cols-2 mb-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <MonthlyChart monthly={months} series={[{ key: "sales", label: netOfCredit ? "Net sales" : "Sales", color: "#2a78d6" }]} note={gstWord(s)} />
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <MonthlyChart monthly={months} series={[{ key: "p", label: netOfCredit ? "Net profit" : "Profit", color: "#2a78d6" }]} note="before GST" />
+        </div>
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+          <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3">Month</th>
               <th className="px-4 py-3 text-right">{netOfCredit ? "Net sales" : "Sales"}</th>
+              <th className="px-4 py-3 text-right">{netOfCredit ? "Net profit" : "Profit"}</th>
+              <th className="px-4 py-3 text-right">Margin</th>
               <th className="px-4 py-3 text-right">Sale bills</th>
               <th className="px-4 py-3 text-right">Avg bill</th>
               <th className="px-4 py-3 text-right">Customers billed</th>
@@ -340,6 +428,15 @@ export function SalesTrend({ s, netDefault = false }) {
               <tr key={m.month}>
                 <td className="px-4 py-3 text-gray-900 whitespace-nowrap">{fmtMonth(m.month, true)}<MonthBadges m={m} best={best.month} /></td>
                 <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{money0(m.sales)}</td>
+                <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">
+                  {money0(m.p)}
+                  {m.missing_bills > 0 && (
+                    <div className="text-[11px] font-normal text-amber-700" title="Marg sent these bills with some lines missing, so the profit on those lines isn't counted">
+                      {m.missing_bills} bill{m.missing_bills > 1 ? "s" : ""} short {money0(m.missing_amount)}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right text-gray-700">{pct(m.margin)}</td>
                 <td className="px-4 py-3 text-right text-gray-600">{m.bills}</td>
                 <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{money0(m.avg_bill)}</td>
                 <td className="px-4 py-3 text-right text-gray-600">{m.active_customers}</td>
@@ -350,11 +447,25 @@ export function SalesTrend({ s, netDefault = false }) {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400 mt-2">
-        {netOfCredit && "Net sales = sale invoices minus that month's credit notes; Avg bill stays on invoices alone. "}
-        &quot;New this year&quot; counts customers whose first sale invoice of the year was that month (April counts everyone billed in April).
-        {" "}{t.fresh} customers billed this year.
-      </p>
+      <div className="text-xs text-gray-400 mt-2 flex flex-col gap-1">
+        <p>
+          Profit = goods sold before GST less their cost: qty + free at the purchase rate Marg holds for the batch sold. It is gross profit
+          (no freight, overheads or discounts given after the purchase bill), always before GST, whatever the GST setting.
+          {netOfCredit && " Net profit also takes off the profit on goods returned by credit notes."}
+        </p>
+        {t.missBills > 0 && (
+          <p className="text-amber-700">
+            {t.missBills} sale bills this year came from Marg with lines missing ({money0(t.missAmt)} incl. GST): the profit on those lines can&apos;t be
+            counted, so profit is a little low in those months. They are listed on Marg Bills under &quot;Lines don&apos;t match total&quot;.
+          </p>
+        )}
+        {t.uncosted > 0 && <p>{t.uncosted} sale line{t.uncosted > 1 ? "s" : ""} had no purchase rate for their batch and count with no cost.</p>}
+        <p>
+          {netOfCredit && "Net sales = sale invoices minus that month's credit notes; Avg bill stays on invoices alone. "}
+          &quot;New this year&quot; counts customers whose first sale invoice of the year was that month (April counts everyone billed in April).
+          {" "}{t.fresh} customers billed this year.
+        </p>
+      </div>
     </>
   );
 }
@@ -376,9 +487,9 @@ export function PurchasesTrend({ s }) {
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
         <MonthlyChart monthly={months.map((m) => ({ ...m, bills: m.purchase_bills }))} series={[{ key: "purchases", label: "Purchases", color: "#2a78d6" }]} note={gstWord(s)} />
       </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+          <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3">Month</th>
               <th className="px-4 py-3 text-right">Purchases</th>
@@ -447,9 +558,9 @@ export function BestMonths({ s }) {
         </select>
       </div>
       {!rows ? <Loader /> : !rows.length ? <Empty text="No sales yet" /> : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+            <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 w-10">#</th>
                 <th className="px-4 py-3">Party</th>
@@ -504,9 +615,9 @@ export function Slipping({ s }) {
         </select>
       </div>
       {!rows ? <Loader /> : !rows.length ? <Empty text="No slipping customers" /> : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+            <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3">Party</th>
                 <th className="px-4 py-3">Last bill</th>
@@ -561,9 +672,9 @@ export function Cities({ s }) {
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 w-full sm:w-56" />
       </div>
       {!rows.length ? <Empty text="No cities" /> : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+            <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3 w-10">#</th>
                 <th className="px-4 py-3">City</th>
@@ -605,10 +716,10 @@ export function useMovers(s, dir) {
 function MoversTable({ title, data }) {
   if (!data) return <Loader />;
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+    <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
       <div className="px-4 pt-4 pb-2 text-sm font-semibold text-gray-900">{title}</div>
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+        <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
           <tr>
             <th className="px-4 py-2">Product</th>
             <th className="px-4 py-2 text-right">Last 3 months</th>
@@ -689,9 +800,9 @@ export function NotSelling({ s }) {
         <span className="text-gray-400"> (units sold since the first purchase, against units bought; stock from before April isn&apos;t counted)</span>
       </p>
       {!rows.length ? <Empty text="Nothing under that line" /> : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+            <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
               <tr>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3 text-right">Bought</th>

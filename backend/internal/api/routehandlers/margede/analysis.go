@@ -23,8 +23,9 @@ func rankFilter(r *http.Request) margede.RankFilter {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
 	period, _ := strconv.Atoi(q.Get("period"))
+	recent, _ := strconv.Atoi(q.Get("recent_days"))
 	return margede.RankFilter{Mode: q.Get("mode"), Search: q.Get("search"), Sort: q.Get("sort"), Dir: q.Get("dir"), Page: page,
-		Period: period, IncludeCurrent: q.Get("current") == "1", Company: q.Get("company"), ExGST: exGST(r)}
+		Period: period, IncludeCurrent: q.Get("current") == "1", Company: q.Get("company"), ExGST: exGST(r), RecentDays: recent}
 }
 
 // exGST: gst=0 asks for amounts without GST (default: with, as on the bill).
