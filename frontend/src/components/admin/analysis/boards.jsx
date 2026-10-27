@@ -98,6 +98,7 @@ function OtherReports({ block, current, s }) {
         <Link
           key={k}
           href={withSettings(`${BASE}/${block}/${k}`, s.settingsQuery)}
+          data-crumb="replace"
           className={`px-3 py-2 text-sm -mb-px border-b-2 whitespace-nowrap ${
             k === current ? "border-gray-900 text-gray-900 font-medium" : "border-transparent text-gray-500 hover:text-gray-800"
           }`}

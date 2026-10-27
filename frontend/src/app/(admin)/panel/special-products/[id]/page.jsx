@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
-import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 
 export default function EditSpecialProduct() {
   return (
@@ -321,9 +321,7 @@ function EditSpecialProductInner() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Link href={backHref} className="text-gray-400 hover:text-gray-600 text-sm">
-            &larr; Back
-          </Link>
+          <BackLink fallback={backHref} fallbackLabel="Back" className="inline-flex items-center gap-1 text-gray-400 hover:text-gray-600 text-sm" />
           <h2 className="text-lg font-semibold text-gray-800">
             Edit Special Product
           </h2>

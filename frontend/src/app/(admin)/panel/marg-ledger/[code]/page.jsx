@@ -8,7 +8,7 @@ import Loader from "@/components/Loader";
 import { KIND_LABELS } from "@/lib/margLedger";
 import { BillRow, SortHeader, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
-import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink as TrailBackLink } from "@/components/admin/Breadcrumbs";
 
 // One Marg party (any ledger account): its details, totals per bill type,
 // the products on its bills, and every bill made out to it.
@@ -272,14 +272,7 @@ export default function MargPartyPage() {
 }
 
 function BackLink() {
-  return (
-    <Link href="/panel/marg-ledger" className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-3">
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m15 19-7-7 7-7" />
-      </svg>
-      Marg Accounts
-    </Link>
-  );
+  return <TrailBackLink fallback="/panel/marg-ledger" fallbackLabel="Marg Accounts" />;
 }
 
 function Fact({ label, children }) {

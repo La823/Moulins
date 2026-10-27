@@ -9,7 +9,7 @@ import { HsnResult, useHsnLookup } from "@/components/admin/HsnLookup";
 import ProductVisibilityPanel from "@/components/admin/ProductVisibilityPanel";
 import ProductThumbnailCard from "@/components/admin/ProductThumbnailCard";
 import ProductSpecsSection from "@/components/admin/ProductSpecsSection";
-import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 
 // Marg's raw "YYYYMMDD" batch expiry, shown as "MM/YYYY". The day is dropped
 // deliberately: a batch expires at the end of its stated month, and Marg
@@ -565,12 +565,7 @@ export default function EditProduct() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Link
-            href="/panel/products"
-            className="text-gray-400 hover:text-gray-600 text-sm"
-          >
-            &larr; Back
-          </Link>
+          <BackLink fallback="/panel/products" fallbackLabel="Products" className="inline-flex items-center gap-1 text-gray-400 hover:text-gray-600 text-sm" />
           <h2 className="text-lg font-semibold text-gray-800">Edit Product</h2>
           <span
             className={`text-xs font-mono px-2 py-1 rounded-md ${

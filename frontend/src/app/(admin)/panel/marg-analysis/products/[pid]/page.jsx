@@ -9,7 +9,7 @@ import { SortHeader, fmtMoney, fmtDate, fmtQty } from "@/components/admin/MargBi
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
 import { PeriodBar, WindowNote, fmtMonth } from "@/components/admin/MargPeriod";
 import { ProductExpiry } from "@/components/admin/MargDemand";
-import { useBreadcrumbTitle, useRememberedLink } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 
 // One product: its sales, who buys it and how much, month by month. Sales are
 // lines on sale invoices before GST, cancelled bills left out. The tiles,
@@ -31,7 +31,6 @@ export default function MargProductPage() {
   const [includeCurrent, setIncludeCurrent] = useState(false);
   const [data, setData] = useState(null);
   useBreadcrumbTitle(data ? data.name || `Product ${data.product_pid}` : null);
-  const remembered = useRememberedLink();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -45,14 +44,7 @@ export default function MargProductPage() {
       .finally(() => setLoading(false));
   }, [pid, period, includeCurrent]);
 
-  const back = (
-    <Link href="/panel/marg-analysis/products" onClick={remembered("/panel/marg-analysis/products")} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-3">
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m15 19-7-7 7-7" />
-      </svg>
-      Products
-    </Link>
-  );
+  const back = <BackLink fallback="/panel/marg-analysis/products" fallbackLabel="Products" />;
 
   if (error) return <>{back}<div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-500">{error}</div></>;
   if (!data) return <>{back}<Loader /></>;

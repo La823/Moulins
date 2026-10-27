@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
-import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 
 const STATUSES = [
   "pending",
@@ -627,12 +627,7 @@ export default function AdminOrderDetail() {
     <div ref={layoutRef} className="xl:flex xl:items-start xl:gap-4">
     <div className="max-w-6xl xl:flex-1 min-w-0">
       {/* Back link */}
-      <Link
-        href="/panel/orders"
-        className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
-      >
-        &larr; All orders
-      </Link>
+      <BackLink fallback="/panel/orders" fallbackLabel="All orders" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors" />
 
       {/* Header */}
       <div className="flex items-center justify-between mt-4 mb-6">

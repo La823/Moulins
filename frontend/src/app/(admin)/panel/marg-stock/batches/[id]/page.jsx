@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import { BillDetail, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import { BatchSummary, BatchMovements } from "@/components/admin/MargBatchHistory";
-import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 
 // One stock batch: who it was sold to and when (sale invoices and challans),
 // then every movement in and out with a running balance, against Marg's own
@@ -25,14 +25,7 @@ export default function MargBatchPage() {
       .catch((e) => setError(e.message?.includes("not found") ? "This batch isn't in Marg's stock any more." : e.message || "Could not load batch"));
   }, [id]);
 
-  const back = (
-    <Link href="/panel/marg-stock" className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 mb-3">
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m15 19-7-7 7-7" />
-      </svg>
-      Marg Stock
-    </Link>
-  );
+  const back = <BackLink fallback="/panel/marg-stock" fallbackLabel="Marg Stock" />;
 
   if (error) return <>{back}<div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-500">{error}</div></>;
   if (!h) return <>{back}<Loader /></>;

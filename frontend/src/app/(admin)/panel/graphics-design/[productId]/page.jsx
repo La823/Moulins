@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
-import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
+import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 
 export default function GraphicsDesignProduct() {
   const { productId } = useParams();
@@ -82,12 +82,7 @@ export default function GraphicsDesignProduct() {
 
   return (
     <div>
-      <Link
-        href="/panel/graphics-design"
-        className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1 mb-4"
-      >
-        &larr; Back to Graphics Design
-      </Link>
+      <BackLink fallback="/panel/graphics-design" fallbackLabel="Graphics Design" className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1 mb-4" />
 
       {loading ? (
         <Loader />
