@@ -9,6 +9,7 @@ import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import HomeCarousel from "@/components/customer/HomeCarousel";
 import { useAuth } from "@/context/AuthContext";
 import { isVisitor, PartnerRatesNote } from "@/components/customer/BecomePartner";
+import { divisionHref } from "@/lib/divisionRoutes";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
 // All 12 divisions, using the same banner images used as filters on the Products page.
@@ -284,7 +285,7 @@ export default function HomePage() {
               return (
                 <Link
                   key={division.href}
-                  href={division.href}
+                  href={divisionHref(division.href, user)}
                   className="group flex flex-col overflow-hidden rounded-2xl bg-white border border-slate-100 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
                 >
                   <div className="h-24 flex items-center justify-center px-5 py-2.5">

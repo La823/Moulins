@@ -9,6 +9,7 @@ import { useCart } from "@/context/CartContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
+import { divisionHref } from "@/lib/divisionRoutes";
 
 const panelEase = [0.33, 1, 0.68, 1];
 
@@ -29,7 +30,7 @@ const DIVISIONS = [
 ];
 
 const dropdownContent = {
-  products: (onClose) => (
+  products: (onClose, user) => (
     <div className="max-w-7xl mx-auto px-8 py-10 grid grid-cols-[1fr_auto] gap-8 items-start">
       <div>
         <h3 className="text-2xl font-light text-gray-900 leading-snug mb-6">
@@ -73,7 +74,7 @@ const dropdownContent = {
           {DIVISIONS.slice(0, 6).map((division) => (
             <li key={division.href}>
               <Link
-                href={division.href}
+                href={divisionHref(division.href, user)}
                 onClick={onClose}
                 className="group block text-base border-b border-transparent hover:border-red-600 transition-colors"
               >
@@ -98,7 +99,7 @@ const dropdownContent = {
           {DIVISIONS.slice(6).map((division) => (
             <li key={division.href}>
               <Link
-                href={division.href}
+                href={divisionHref(division.href, user)}
                 onClick={onClose}
                 className="group block text-base border-b border-transparent hover:border-red-600 transition-colors"
               >
@@ -835,7 +836,7 @@ export default function CustomerNavbar() {
                   {DIVISIONS.map((division) => (
                     <Link
                       key={division.href}
-                      href={division.href}
+                      href={divisionHref(division.href, user)}
                       onClick={close}
                       className="text-sm text-gray-700"
                     >
@@ -924,7 +925,7 @@ export default function CustomerNavbar() {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                {dropdownContent[activeMenu](close)}
+                {dropdownContent[activeMenu](close, user)}
               </motion.div>
             </AnimatePresence>
           </motion.div>

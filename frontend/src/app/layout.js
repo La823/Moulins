@@ -39,13 +39,6 @@ export const metadata = {
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
-  keywords: [
-    "Moulins Pharmaceuticals",
-    "pharmaceutical company India",
-    "generic medicines",
-    "pharma manufacturer",
-    "healthcare products",
-  ],
   authors: [{ name: SITE_NAME }],
   applicationName: SITE_NAME,
   referrer: "origin-when-cross-origin",
@@ -71,7 +64,7 @@ export const metadata = {
     locale: "en_IN",
     images: [
       {
-        url: "/Moulins Logo High Res - V2.png",
+        url: "/og-image.png",
         width: 1200,
         height: 630,
         alt: SITE_NAME,
@@ -82,7 +75,7 @@ export const metadata = {
     card: "summary_large_image",
     title: `${SITE_NAME} — Quality Medicines Across Every Therapy Area`,
     description: SITE_DESCRIPTION,
-    images: ["/Moulins Logo High Res - V2.png"],
+    images: ["/og-image.png"],
   },
 };
 
@@ -90,9 +83,33 @@ const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: SITE_NAME,
+  legalName: "Moulins Pharmaceuticals Pvt. Ltd.",
   url: SITE_URL,
-  logo: `${SITE_URL}/Moulins Logo High Res - V2.png`,
+  logo: `${SITE_URL}/icon.png`,
+  image: `${SITE_URL}/og-image.png`,
   description: SITE_DESCRIPTION,
+  email: "info@moulinspharma.com",
+  telephone: "+91-98155-35304",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "1st Floor, 363, Industrial Area Phase 2",
+    addressLocality: "Panchkula",
+    addressRegion: "Haryana",
+    postalCode: "134113",
+    addressCountry: "IN",
+  },
+  contactPoint: [
+    { "@type": "ContactPoint", contactType: "customer service", telephone: "+91-98155-35304", email: "info@moulinspharma.com", areaServed: "IN" },
+    { "@type": "ContactPoint", contactType: "sales", email: "Sales@moulinspharma.com", areaServed: "IN" },
+  ],
+  sameAs: ["https://play.google.com/store/apps/details?id=com.moulinspharma.app"],
+};
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE_NAME,
+  url: SITE_URL,
 };
 
 export default function RootLayout({ children }) {
@@ -101,7 +118,7 @@ export default function RootLayout({ children }) {
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify([organizationJsonLd, websiteJsonLd]) }}
         />
       </head>
       <body

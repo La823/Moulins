@@ -37,3 +37,10 @@ export function divisionRouteForCategory(category) {
     `/products?category=${encodeURIComponent(category)}`
   );
 }
+
+// Where a link to a division (route such as "/gutsy") should go: the
+// logged-in catalogue page for a signed-in user, its public twin under
+// /divisions for everyone else — and for search engines, which never sign in.
+export function divisionHref(route, user) {
+  return user ? route : `/divisions${route}`;
+}
