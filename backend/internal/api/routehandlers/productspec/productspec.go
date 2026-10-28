@@ -109,6 +109,7 @@ func ReorderFieldsHandler(db *pgxpool.Pool) http.HandlerFunc {
 // Either or both of:
 //
 //	{ "field_name": "Shell colour" }                         rename
+//	{ "help_text": "Match the approved sample" }             note ("" removes)
 //	{ "is_required": true }                                  mandatory or not
 //	{ "show_if": { "field_id": 20, "values": [true] } }      show only when…
 //	{ "show_if": null }                                      always show
@@ -125,10 +126,11 @@ func UpdateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		rawName, hasName := req["field_name"]
+		rawHelp, hasHelp := req["help_text"]
 		rawRequired, hasRequired := req["is_required"]
 		rawShowIf, hasShowIf := req["show_if"]
-		if !hasName && !hasRequired && !hasShowIf {
-			http.Error(w, "send field_name, is_required and/or show_if", http.StatusBadRequest)
+		if !hasName && !hasHelp && !hasRequired && !hasShowIf {
+			http.Error(w, "send field_name, help_text, is_required and/or show_if", http.StatusBadRequest)
 			return
 		}
 
@@ -152,6 +154,17 @@ func UpdateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 				return
 			}
 			if err := models.RenamePMSField(r.Context(), db, id, strings.TrimSpace(name)); err != nil {
+				fail(err)
+				return
+			}
+		}
+		if hasHelp {
+			var help string
+			if err := json.Unmarshal(rawHelp, &help); err != nil {
+				http.Error(w, "help_text must be text", http.StatusBadRequest)
+				return
+			}
+			if err := models.SetPMSFieldHelpText(r.Context(), db, id, help); err != nil {
 				fail(err)
 				return
 			}

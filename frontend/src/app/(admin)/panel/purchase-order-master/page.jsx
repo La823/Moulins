@@ -915,6 +915,9 @@ export default function PurchaseOrderMasterPage() {
                                           ) : (
                                             <span className="font-medium">—</span>
                                           )}
+                                          {specs[`${f.id}_comment`] && (
+                                            <span className="text-gray-500 italic">({specs[`${f.id}_comment`]})</span>
+                                          )}
                                         </li>
                                       );
                                     }
@@ -930,6 +933,9 @@ export default function PurchaseOrderMasterPage() {
                                       <li key={f.id} className="text-xs text-gray-700">
                                         <span className="text-gray-400">{f.field_name}:</span>{" "}
                                         <span className="font-medium">{value}</span>
+                                        {specs[`${f.id}_comment`] && (
+                                          <span className="text-gray-500 italic"> ({specs[`${f.id}_comment`]})</span>
+                                        )}
                                       </li>
                                     );
                                   })}

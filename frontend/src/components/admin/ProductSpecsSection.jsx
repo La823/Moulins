@@ -5,6 +5,8 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import SpecFieldInput, {
   SpecFieldLabel,
+  SpecFieldComment,
+  commentKey,
   missingRequired,
   visibleFieldIds,
   withoutHidden,
@@ -171,6 +173,7 @@ export default function ProductSpecsSection({ productId, formChanged }) {
                   onUpload={(file) => upload(f.id, file)}
                   uploading={uploadingFieldId === f.id}
                 />
+                <SpecFieldComment value={values[commentKey(f.id)]} onChange={(v) => setValue(commentKey(f.id), v)} />
               </div>
             ))}
           </div>

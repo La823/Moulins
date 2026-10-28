@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 // A value counts as filled the same way the server checks it: yes/no
 // answered either way, non-blank text or choice, an uploaded image.
 const isFilled = (v) => (typeof v === "string" ? v.trim() !== "" : v !== null && v !== undefined);
@@ -28,11 +30,19 @@ export function visibleFieldIds(fields, values) {
   return new Set((fields || []).filter((f) => visible(f, 0)).map((f) => f.id));
 }
 
-/** The values with every hidden field's answer dropped — what gets saved. */
+/** Where a field's comment is kept in the values, beside its answer. */
+export const commentKey = (fieldId) => `${fieldId}_comment`;
+
+/** The values with every hidden field's answer (and comment) dropped — what gets saved. */
 export function withoutHidden(fields, values) {
   const shown = visibleFieldIds(fields, values);
   const ids = new Set((fields || []).map((f) => String(f.id)));
-  return Object.fromEntries(Object.entries(values || {}).filter(([k]) => !ids.has(k) || shown.has(Number(k))));
+  return Object.fromEntries(
+    Object.entries(values || {}).filter(([k]) => {
+      const id = k.replace(/_comment$/, "");
+      return !ids.has(id) || shown.has(Number(id));
+    })
+  );
 }
 
 /** Hidden fields that still hold an answer — cleared when saved. */
@@ -49,13 +59,44 @@ export function missingRequired(fields, values) {
     .map((f) => f.field_name);
 }
 
-/** A field's label, with a red * when it's mandatory. */
+/** A field's label, with a red * when it's mandatory and its note (set on the Product Specifications page) under it. */
 export function SpecFieldLabel({ field, className = "block text-xs font-medium text-gray-500 mb-1" }) {
   return (
-    <label className={className}>
-      {field.field_name}
-      {field.is_required && <span className="text-red-500 ml-0.5" title="Required">*</span>}
-    </label>
+    <>
+      <label className={className}>
+        {field.field_name}
+        {field.is_required && <span className="text-red-500 ml-0.5" title="Required">*</span>}
+      </label>
+      {field.help_text && <p className="-mt-0.5 mb-1 text-[11px] text-gray-400">{field.help_text}</p>}
+    </>
+  );
+}
+
+/**
+ * The optional comment under a field's answer — a "+ Comment" link until
+ * there is one. `onChange(v)` sets it; null clears it.
+ */
+export function SpecFieldComment({ value, onChange, size = "sm" }) {
+  const [open, setOpen] = useState(false);
+  if (!open && !value) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="mt-1 text-[11px] text-gray-400 hover:text-gray-700">
+        + Comment
+      </button>
+    );
+  }
+  return (
+    <textarea
+      value={value ?? ""}
+      autoFocus={open && !value}
+      rows={1}
+      onChange={(e) => onChange(e.target.value || null)}
+      onBlur={() => setOpen(false)}
+      placeholder="Comment"
+      className={`mt-1 w-full border border-gray-200 rounded-md text-gray-700 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-y ${
+        size === "xs" ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs"
+      }`}
+    />
   );
 }
 

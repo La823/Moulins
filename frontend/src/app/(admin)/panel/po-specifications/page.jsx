@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import SpecFieldInput, { SpecFieldLabel, missingRequired, visibleFieldIds, withoutHidden } from "@/components/admin/SpecFieldInput";
+import SpecFieldInput, {
+  SpecFieldLabel,
+  SpecFieldComment,
+  commentKey,
+  missingRequired,
+  visibleFieldIds,
+  withoutHidden,
+} from "@/components/admin/SpecFieldInput";
 
 const PAGE_SIZE = 20;
 
@@ -270,6 +277,11 @@ export default function ProductSpecAssignmentPage() {
                             onChange={(v) => setFieldValue(row, f.id, v)}
                             onUpload={(file) => uploadFieldImage(f.id, file)}
                             uploading={uploadingFieldId === f.id}
+                            size="xs"
+                          />
+                          <SpecFieldComment
+                            value={draft.values[commentKey(f.id)]}
+                            onChange={(v) => setFieldValue(row, commentKey(f.id), v)}
                             size="xs"
                           />
                         </div>

@@ -38,7 +38,13 @@ type PMSField struct {
 	// dropdown of the same type) has one of these answers. Nil = always.
 	ShowIfFieldID *int  `json:"show_if_field_id"`
 	ShowIfValues  []any `json:"show_if_values"`
+	// HelpText: a note shown under the field wherever it's filled in.
+	HelpText string `json:"help_text"`
 }
+
+// CommentKey is where a field's comment is saved in a specifications blob,
+// beside its answer ("12" -> "12_comment").
+func CommentKey(fieldID int) string { return strconv.Itoa(fieldID) + "_comment" }
 
 // PMSType is the specification set for one product form. Name is the
 // form's current name, read live from product_forms, so a rename carries
@@ -82,7 +88,7 @@ func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
 		typeIndex[types[i].ID] = &types[i]
 	}
 
-	fieldRows, err := db.Query(ctx, "SELECT id, type_id, field_name, field_type, sort_order, is_required, show_if_field_id, show_if_values FROM pms_fields ORDER BY sort_order, id")
+	fieldRows, err := db.Query(ctx, "SELECT id, type_id, field_name, field_type, sort_order, is_required, show_if_field_id, show_if_values, COALESCE(help_text, '') FROM pms_fields ORDER BY sort_order, id")
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +96,7 @@ func ListPMSTypes(ctx context.Context, db *pgxpool.Pool) ([]PMSType, error) {
 	for fieldRows.Next() {
 		var f PMSField
 		var showIf []byte
-		if err := fieldRows.Scan(&f.ID, &f.TypeID, &f.FieldName, &f.FieldType, &f.SortOrder, &f.IsRequired, &f.ShowIfFieldID, &showIf); err != nil {
+		if err := fieldRows.Scan(&f.ID, &f.TypeID, &f.FieldName, &f.FieldType, &f.SortOrder, &f.IsRequired, &f.ShowIfFieldID, &showIf, &f.HelpText); err != nil {
 			fieldRows.Close()
 			return nil, err
 		}
@@ -228,6 +234,19 @@ func RenamePMSField(ctx context.Context, db *pgxpool.Pool, id int, name string) 
 	return nil
 }
 
+// SetPMSFieldHelpText sets a field's note; blank removes it. Returns
+// pgx.ErrNoRows when there is no such field.
+func SetPMSFieldHelpText(ctx context.Context, db *pgxpool.Pool, id int, text string) error {
+	tag, err := db.Exec(ctx, "UPDATE pms_fields SET help_text = NULLIF($1, '') WHERE id = $2", strings.TrimSpace(text), id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // MissingRequiredError lists the mandatory fields left empty; its message is
 // shown to the person saving as-is.
 type MissingRequiredError struct{ Fields []string }
@@ -351,9 +370,9 @@ func NormalizeSpecs(ctx context.Context, db *pgxpool.Pool, typeID *int, specs js
 		shown := VisibleFields(t, values)
 		kept := map[string]any{}
 		for k, v := range values {
-			if id, err := strconv.Atoi(k); err == nil {
+			if id, err := strconv.Atoi(strings.TrimSuffix(k, "_comment")); err == nil {
 				if isShown, isField := shown[id]; isField && !isShown {
-					continue // a field hidden by its rule
+					continue // a field hidden by its rule, or its comment
 				}
 			}
 			kept[k] = v
@@ -462,8 +481,8 @@ func DeletePMSField(ctx context.Context, db *pgxpool.Pool, id int) error {
 	// scalar rather than an object, where subtracting a key would error.
 	if _, err := tx.Exec(ctx, `
 		UPDATE products
-		SET pms_specifications = pms_specifications - $1::text
-		WHERE pms_specifications ? $1::text`, key); err != nil {
+		SET pms_specifications = pms_specifications - $1::text - $2::text
+		WHERE pms_specifications ?| ARRAY[$1::text, $2::text]`, key, CommentKey(id)); err != nil {
 		return err
 	}
 	// fields that depended on this one lose their rule (always shown)
@@ -725,7 +744,8 @@ func GetProductDefaultSpecs(ctx context.Context, db *pgxpool.Pool, productID uui
 
 // SaveProductDefaultSpecs stores a product's default specification values
 // against the type of the product's own form. Only keys that are fields of
-// that type are kept, so stale or foreign keys never get saved.
+// that type (and their comments) are kept, so stale or foreign keys never
+// get saved.
 func SaveProductDefaultSpecs(ctx context.Context, db *pgxpool.Pool, productID uuid.UUID, values map[string]any) error {
 	d, err := GetProductDefaultSpecs(ctx, db, productID)
 	if err != nil {
@@ -742,6 +762,9 @@ func SaveProductDefaultSpecs(ctx context.Context, db *pgxpool.Pool, productID uu
 	for _, f := range d.Type.Fields {
 		if !shown[f.ID] {
 			continue // hidden by its rule: cleared
+		}
+		if c, isStr := values[CommentKey(f.ID)].(string); isStr && strings.TrimSpace(c) != "" {
+			kept[CommentKey(f.ID)] = strings.TrimSpace(c)
 		}
 		key := strconv.Itoa(f.ID)
 		v, ok := values[key]

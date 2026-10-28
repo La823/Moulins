@@ -292,6 +292,11 @@ export default function ProductSpecificationsPage() {
                         </div>
                       </div>
 
+                      <FieldNote
+                        value={f.help_text || ""}
+                        onSave={(v) => rename(`/admin/product-specs/fields/${f.id}`, { help_text: v })}
+                      />
+
                       <ShowIfEditor field={f} fields={t.fields} onSave={(cond) => setShowIf(f.id, cond)} />
 
                       {f.field_type === "dropdown" && (
@@ -567,6 +572,74 @@ function InlineRename({ value, onSave, textClass, hint }) {
       </button>
       {hint && <span className="w-full text-gray-400">{hint}</span>}
     </span>
+  );
+}
+
+// A field's note — shown under the field wherever it's filled in. Saving
+// it empty removes it.
+function FieldNote({ value, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  const start = () => {
+    setDraft(value);
+    setEditing(true);
+  };
+  const save = async (v) => {
+    setSaving(true);
+    const ok = await onSave(v.trim());
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <div className="mt-1.5 text-xs">
+        {value ? (
+          <span className="text-gray-600">
+            Note: <span className="italic">{value}</span>
+            <button onClick={start} className="ml-2 text-gray-500 hover:text-gray-900 underline">
+              Change
+            </button>
+            <button onClick={() => save("")} disabled={saving} className="ml-2 text-gray-500 hover:text-red-600 underline">
+              Remove
+            </button>
+          </span>
+        ) : (
+          <button onClick={start} className="text-gray-500 hover:text-gray-900">
+            + Add note
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 space-y-1.5 text-xs">
+      <textarea
+        value={draft}
+        autoFocus
+        rows={2}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEditing(false);
+        }}
+        placeholder="Shown under this field wherever it's filled in"
+        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => save(draft)}
+          disabled={saving}
+          className="px-2.5 py-1 bg-gray-900 text-white rounded-md font-medium disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save note"}
+        </button>
+        <button onClick={() => setEditing(false)} className="text-gray-500 hover:text-gray-900">
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

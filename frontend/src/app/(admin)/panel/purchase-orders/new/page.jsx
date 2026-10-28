@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import SpecFieldInput, {
   SpecFieldLabel,
+  SpecFieldComment,
+  commentKey,
   missingRequired,
   visibleFieldIds,
   withoutHidden,
@@ -692,6 +694,10 @@ export default function NewPurchaseOrderPage() {
                             onChange={(v) => setSpecValues((prev) => ({ ...prev, [f.id]: v }))}
                             onUpload={(file) => uploadSpecImage(f.id, file)}
                             uploading={uploadingFieldId === f.id}
+                          />
+                          <SpecFieldComment
+                            value={specValues[commentKey(f.id)]}
+                            onChange={(v) => setSpecValues((prev) => ({ ...prev, [commentKey(f.id)]: v }))}
                           />
                         </div>
                       ))}
