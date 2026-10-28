@@ -50,6 +50,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transportmodes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transports"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/visitors"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
 	vectorsearchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/vectorsearch"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/warehouse"
@@ -86,6 +87,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// public auth routes
 	router.HandleFunc("/auth/login", auth.LoginHandler(db)).Methods("POST")
 	router.HandleFunc("/auth/forgot-password", auth.ForgotPasswordHandler(db)).Methods("POST")
+	router.HandleFunc("/auth/google", auth.GoogleSignInHandler(db)).Methods("POST") // visitors sign up
 	router.HandleFunc("/auth/reset-password", auth.ResetPasswordHandler(db)).Methods("POST")
 
 	// public product routes
@@ -113,8 +115,13 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
+	// visitors reach only /auth/me and their partnership request — see
+	// middleware/visitor.go before adding a route they should have
+	protected.Use(middleware.VisitorLimits)
 	protected.HandleFunc("/profile/address/billing-from-gst", userauth.SetBillingAddressFromGSTHandler(db, rdb)).Methods("POST")
 	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/visitor/partnership-request", visitors.MyRequestHandler(db)).Methods("GET")
+	protected.HandleFunc("/visitor/partnership-request", visitors.CreateRequestHandler(db)).Methods("POST")
 	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/balance", userauth.GetMyBalanceHandler(db)).Methods("GET")
 
@@ -615,6 +622,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	onboardingViewStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
 	onboardingViewStaff.HandleFunc("/onboarding", onboardingHandler.GetPendingPartners).Methods("GET")
 	onboardingViewStaff.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
+
+	// staff routes — partnership requests from visitors (partners view/edit)
+	partnershipViewStaff := protected.PathPrefix("/admin").Subrouter()
+	partnershipViewStaff.Use(middleware.StaffOnly)
+	partnershipViewStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
+	partnershipViewStaff.HandleFunc("/partnership-requests", visitors.AdminListHandler(db)).Methods("GET")
+	partnershipEditStaff := protected.PathPrefix("/admin").Subrouter()
+	partnershipEditStaff.Use(middleware.StaffOnly)
+	partnershipEditStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))
+	partnershipEditStaff.HandleFunc("/partnership-requests/{id}", visitors.AdminUpdateHandler(db)).Methods("PATCH")
 
 	onboardingEditStaff := protected.PathPrefix("/admin").Subrouter()
 	onboardingEditStaff.Use(middleware.StaffOnly)

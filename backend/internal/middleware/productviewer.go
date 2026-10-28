@@ -47,7 +47,7 @@ func InvalidateProductViewers(ctx context.Context, rdb *cache.Client) {
 // catalogue is public.
 func ProductViewerFor(r *http.Request, db *pgxpool.Pool, rdb *cache.Client) (models.ProductViewer, string) {
 	userID, role, ok := requestUser(r)
-	if !ok {
+	if !ok || role == models.RoleVisitor {
 		return models.ProductViewer{}, ProductScopePublic
 	}
 	ctx := r.Context()
@@ -104,7 +104,7 @@ func requestUser(r *http.Request) (uuid.UUID, string, bool) {
 // whose partner has to be looked up.
 func ProductViewerOnly(r *http.Request, db *pgxpool.Pool) models.ProductViewer {
 	userID, role, ok := requestUser(r)
-	if !ok {
+	if !ok || role == models.RoleVisitor {
 		return models.ProductViewer{}
 	}
 	return models.ResolveProductViewer(r.Context(), db, userID, role)

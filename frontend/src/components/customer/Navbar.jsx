@@ -309,7 +309,7 @@ export default function CustomerNavbar() {
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.role === "visitor") return;
     apiFetch("/notifications?limit=5")
       .then((data) => setNotifications(data.notifications || []))
       .catch(() => {});
@@ -339,7 +339,9 @@ export default function CustomerNavbar() {
   // Doctors have their own minimal profile (name/phone/email/speciality/
   // clinic — no GST/license/address, none of which applies to them). The
   // generic customer /profile page shouldn't ever appear in their nav.
-  const profileHref = (u) => (u.role === "doctor" ? "/doctor-panel/profile" : "/profile");
+  // Visitors have no profile or dashboard — both point at becoming a partner.
+  const profileHref = (u) =>
+    u.role === "doctor" ? "/doctor-panel/profile" : u.role === "visitor" ? "/become-partner" : "/profile";
 
   const dashboardHref = (u) =>
     u.role === "admin" || u.role === "employee"
@@ -348,6 +350,8 @@ export default function CustomerNavbar() {
       ? "/team-panel"
       : u.role === "doctor"
       ? "/doctor-panel"
+      : u.role === "visitor"
+      ? "/become-partner"
       : "/dashboard";
   const dashboardLabel = (u) =>
     u.role === "admin" || u.role === "employee"
@@ -356,6 +360,8 @@ export default function CustomerNavbar() {
       ? "Team Panel"
       : u.role === "doctor"
       ? "Doctor Panel"
+      : u.role === "visitor"
+      ? "Become a partner"
       : "Dashboard";
 
   const toggle = (id) => setActiveMenu((prev) => (prev === id ? null : id));

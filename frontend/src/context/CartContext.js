@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import { isVisitor, openBecomePartner } from "@/components/customer/BecomePartner";
 
 const CartContext = createContext(null);
 
@@ -35,7 +36,7 @@ export function CartProvider({ children }) {
   // Load the server cart once a user is actually authenticated. Logging
   // out clears local state too — the cart is per-user, not per-device.
   useEffect(() => {
-    if (!user) {
+    if (!user || isVisitor(user)) {
       setItems([]);
       return;
     }
@@ -49,6 +50,11 @@ export function CartProvider({ children }) {
   // having to gate each one individually.
   const addToCart = useCallback((product) => {
     if (user?.role === "doctor") return;
+    // visitors can't order: offer them partnership instead
+    if (isVisitor(user)) {
+      openBecomePartner();
+      return;
+    }
     const step = product.moq && product.moq > 0 ? product.moq : 1;
 
     setItems((prev) => {
@@ -67,7 +73,7 @@ export function CartProvider({ children }) {
       }
       return [...prev, { product, quantity }];
     });
-  }, [user?.role]);
+  }, [user]);
 
   const removeFromCart = useCallback((productId) => {
     setItems((prev) => prev.filter((i) => i.product.id !== productId));
@@ -102,7 +108,7 @@ export function CartProvider({ children }) {
 
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const openCart = useCallback(() => setIsOpen(true), []);
+  const openCart = useCallback(() => (isVisitor(user) ? openBecomePartner() : setIsOpen(true)), [user]);
   const closeCart = useCallback(() => setIsOpen(false), []);
 
   return (

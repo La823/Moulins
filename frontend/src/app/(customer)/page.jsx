@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import HomeCarousel from "@/components/customer/HomeCarousel";
 import { useAuth } from "@/context/AuthContext";
+import { isVisitor, PartnerRatesNote } from "@/components/customer/BecomePartner";
 // import AreasOfFocus from "@/components/customer/AreasOfFocus"; // temporarily hidden — see below
 
 // All 12 divisions, using the same banner images used as filters on the Products page.
@@ -409,7 +410,7 @@ export default function HomePage() {
                       style={{ backgroundColor: accent.bg }}
                     >
                       <div className="flex items-center gap-4">
-                        {p.mrp != null && (
+                        {p.mrp != null && !isVisitor(user) && (
                           <div className="flex items-center gap-1.5">
                             <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke={accent.solid} strokeWidth={1.8} viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />

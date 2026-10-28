@@ -43,3 +43,6 @@ data-files/reference/*.xlsm
 !data-files/reference/1mg SHEET.xlsx
 
 security-audit/
+
+# Credentials kept locally for reference (see credentials/*/README.md)
+credentials/

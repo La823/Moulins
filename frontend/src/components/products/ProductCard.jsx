@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useAuth } from "@/context/AuthContext";
+import { isVisitor, PartnerRatesNote } from "@/components/customer/BecomePartner";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 
@@ -110,7 +111,9 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
         <h3 className="text-sm font-normal text-gray-900 leading-snug line-clamp-2 mt-3">
           {p.name}
         </h3>
-        {(p.mrp ?? p.price) != null && (
+        {isVisitor(user) ? (
+          <PartnerRatesNote className="block text-xs mt-1 text-gray-400" />
+        ) : (p.mrp ?? p.price) != null && (
           <p className="text-xs font-semibold mt-1" style={{ color: "#00A6A4" }}>
             MRP Rs. {Number(p.mrp ?? p.price).toFixed(2)}
           </p>

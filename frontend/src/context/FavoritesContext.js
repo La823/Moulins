@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { isVisitor, openBecomePartner } from "@/components/customer/BecomePartner";
 
 const FavoritesContext = createContext(null);
 
@@ -11,7 +12,7 @@ export function FavoritesProvider({ children }) {
   const [favoriteIds, setFavoriteIds] = useState(new Set());
 
   const refresh = useCallback(() => {
-    if (!user) {
+    if (!user || isVisitor(user)) {
       setFavoriteIds(new Set());
       return;
     }
@@ -32,6 +33,10 @@ export function FavoritesProvider({ children }) {
   const toggleFavorite = useCallback(
     async (productId) => {
       if (!user) return;
+      if (isVisitor(user)) {
+        openBecomePartner();
+        return;
+      }
       const wasFavorite = favoriteIds.has(productId);
       setFavoriteIds((prev) => {
         const next = new Set(prev);

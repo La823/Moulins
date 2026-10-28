@@ -5,6 +5,7 @@ import CustomerNavbar from "@/components/customer/Navbar";
 import Footer from "@/components/customer/Footer";
 import CartDrawer from "@/components/customer/CartDrawer";
 import SmoothScroll from "@/components/customer/SmoothScroll";
+import { BecomePartnerModal } from "@/components/customer/BecomePartner";
 
 export default function CustomerLayout({ children }) {
   // The partner panel and team-member panel are each their own full-screen
@@ -31,6 +32,7 @@ export default function CustomerLayout({ children }) {
       <main className="flex-1">{children}</main>
       <Footer />
       <CartDrawer />
+      <BecomePartnerModal />
     </div>
   );
 }

@@ -27,6 +27,18 @@ func MeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 			return
 		}
 
+		// a visitor's id is in visitors, not users
+		if role, _ := r.Context().Value("role").(string); role == models.RoleVisitor {
+			v, err := models.GetVisitor(r.Context(), db, userID)
+			if err != nil {
+				http.Error(w, "user not found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(v)
+			return
+		}
+
 		cacheKey := fmt.Sprintf("user:%s", userID)
 		var user models.User
 		if rdb.GetJSON(r.Context(), cacheKey, &user) {

@@ -186,6 +186,10 @@ func WebSocketHandler(db *pgxpool.Pool, hub *services.ChatHub) http.HandlerFunc 
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
+		if claims.Role == models.RoleVisitor {
+			http.Error(w, "become a partner to use chat", http.StatusForbidden)
+			return
+		}
 		userID := claims.UserID
 
 		conn, err := upgrader.Upgrade(w, r, nil)

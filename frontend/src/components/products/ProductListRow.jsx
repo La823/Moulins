@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useAuth } from "@/context/AuthContext";
+import { isVisitor, PartnerRatesNote } from "@/components/customer/BecomePartner";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 
 // Compact, image-free row for the products page's list view — same product,
@@ -34,7 +35,7 @@ export default function ProductListRow({ product: p, basePath = "/products" }) {
   const canOrder = user?.role !== "doctor";
   const favorite = isFavorite(p.id);
   const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
-  const mrp = p.mrp ?? p.price;
+  const mrp = isVisitor(user) ? null : p.mrp ?? p.price;
   // the salt(s) and strength, e.g. "Acotiamide 100 mg"
   const composition = p.key_ingredients || p.strength || "";
 
@@ -92,7 +93,7 @@ export default function ProductListRow({ product: p, basePath = "/products" }) {
       <span className="hidden md:block text-sm text-gray-500 truncate">{p.pack_size || "—"}</span>
       <span className="hidden md:block text-sm text-gray-500 truncate">{p.product_form || "—"}</span>
       <span className="hidden md:block text-sm text-gray-600 text-right">
-        {mrp != null ? `₹${Number(mrp).toFixed(2)}` : "—"}
+        {isVisitor(user) ? <PartnerRatesNote /> : mrp != null ? `₹${Number(mrp).toFixed(2)}` : "—"}
       </span>
       <span className="hidden md:flex justify-center">{star}</span>
 

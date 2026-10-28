@@ -5,6 +5,9 @@ import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import GoogleSignUp from "@/components/GoogleSignUp";
+
+const GUEST_SIGN_IN = !!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 function ForgotPasswordModal({ onClose }) {
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -107,6 +110,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  // Two ways in: partners (and staff) with phone + password, or guests —
+  // visitors just looking around — with Google. Without Google set up, the
+  // partner form is all there is.
+  const [mode, setMode] = useState(GUEST_SIGN_IN ? "choose" : "partner");
   const { login } = useAuth();
   const router = useRouter();
 
@@ -146,8 +153,55 @@ export default function LoginPage() {
             priority
           />
         </div>
+        {mode === "choose" && (
+          <div className="space-y-6">
+            <p className="text-sm text-gray-500 text-center">Welcome to Moulins</p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setMode("partner")}
+                className="w-full py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+              >
+                Partner login
+              </button>
+              <p className="text-[11px] text-gray-400 text-center">
+                With the phone number and password from our team. Staff log in here too.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-gray-400">
+              <span className="flex-1 h-px bg-gray-200" />
+              or
+              <span className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700 text-center">Continue as a guest</p>
+              <GoogleSignUp onUsePartnerLogin={() => setMode("partner")} />
+              <p className="text-[11px] text-gray-400 text-center">
+                New here? Sign up or sign in with Google to browse our products.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {mode === "partner" && (
+        <>
+        {GUEST_SIGN_IN && (
+          <button
+            type="button"
+            onClick={() => {
+              setMode("choose");
+              setError("");
+            }}
+            className="text-xs text-gray-500 hover:text-gray-900 mb-4"
+          >
+            ← Back
+          </button>
+        )}
         <p className="text-sm text-gray-500 text-center mb-8">
-          Sign in to your account
+          Partner login
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -232,8 +286,10 @@ export default function LoginPage() {
         </form>
 
         <p className="text-xs text-gray-400 text-center mt-6">
-          Don&apos;t have an account? Contact us to get invited.
+          Don&apos;t have a partner login? Contact us to get invited.
         </p>
+        </>
+        )}
       </div>
 
       {/* Logo animation — plays once and rests on the logo. White panel

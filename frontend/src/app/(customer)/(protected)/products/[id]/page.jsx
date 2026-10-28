@@ -8,6 +8,7 @@ import Loader from "@/components/Loader";
 import { visibleImages } from "@/lib/productImages";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import { isVisitor, openBecomePartner } from "@/components/customer/BecomePartner";
 import SmallProductCard from "@/components/products/SmallProductCard";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 import { divisionRouteForCategory } from "@/lib/divisionRoutes";
@@ -67,12 +68,14 @@ export default function ProductDetailPage() {
   }, [id]);
 
   const handleAddToCart = () => {
+    if (isVisitor(user)) return openBecomePartner();
     addToCart(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleDownloadImage = async (imageId) => {
+    if (isVisitor(user)) return openBecomePartner();
     setDownloading(true);
     try {
       const { download_url } = await apiFetch(`/products/images/${imageId}/download-url`);
@@ -238,12 +241,16 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          <p className="text-2xl font-light text-gray-900 mb-4">
-            MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
-            {product.mrp_unit && (
-              <span className="text-sm text-gray-400 font-normal"> / {product.mrp_unit}</span>
-            )}
-          </p>
+          {isVisitor(user) ? (
+            <p className="text-sm text-gray-500 mb-4">Rates and ordering are for our partners.</p>
+          ) : (
+            <p className="text-2xl font-light text-gray-900 mb-4">
+              MRP Rs. {parseFloat(product.mrp ?? product.price).toFixed(2)}
+              {product.mrp_unit && (
+                <span className="text-sm text-gray-400 font-normal"> / {product.mrp_unit}</span>
+              )}
+            </p>
+          )}
 
           {canOrder && (
             items.some((i) => i.product.id === product.id) ? (
@@ -257,7 +264,7 @@ export default function ProductDetailPage() {
                 className="w-full py-4 text-sm font-medium transition-all duration-200"
                 style={{ backgroundColor: added ? "#22c55e" : "#1a1a1a", color: "white" }}
               >
-                {added ? "Added to Cart ✓" : "Add to Cart"}
+                {isVisitor(user) ? "Become a partner to order" : added ? "Added to Cart ✓" : "Add to Cart"}
               </button>
             )
           )}
