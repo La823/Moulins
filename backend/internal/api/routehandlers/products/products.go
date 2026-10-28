@@ -520,7 +520,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(cached)
 			if activeOnly && middleware.IsVisitor(r) {
-				withoutPrices(cached.Products)
+				forVisitors(cached.Products)
 			}
 			return
 		}
@@ -568,7 +568,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 
 		w.Header().Set("Content-Type", "application/json")
 		if activeOnly && middleware.IsVisitor(r) {
-			withoutPrices(result.Products) // after caching: the cache is shared
+			forVisitors(result.Products) // after caching: the cache is shared
 		}
 		json.NewEncoder(w).Encode(result)
 	}
@@ -619,7 +619,7 @@ func GetProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		if middleware.IsVisitor(r) {
-			withoutPrice(p) // p is this request's own copy, fresh or decoded from the cache
+			forVisitor(p) // p is this request's own copy, fresh or decoded from the cache
 		}
 		json.NewEncoder(w).Encode(p)
 	}
