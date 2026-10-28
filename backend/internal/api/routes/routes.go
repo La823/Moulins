@@ -605,6 +605,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecEditStaff.HandleFunc("/product-specs/fields/{id}/options", productspec.CreateFieldOptionHandler(db)).Methods("POST")
 	productSpecEditStaff.HandleFunc("/product-specs/products/{id}", productspec.UpdateProductSpecificationsHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.DeleteFieldOptionHandler(db)).Methods("DELETE")
+	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.UpdateFieldOptionHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/upload-url", productspec.UploadURLHandler()).Methods("POST")
 
 	// staff routes — onboarding review (folded into partners view/edit,

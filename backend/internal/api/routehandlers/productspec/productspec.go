@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -107,6 +108,7 @@ func ReorderFieldsHandler(db *pgxpool.Pool) http.HandlerFunc {
 // PATCH /admin/product-specs/fields/{id}
 // Either or both of:
 //
+//	{ "field_name": "Shell colour" }                         rename
 //	{ "is_required": true }                                  mandatory or not
 //	{ "show_if": { "field_id": 20, "values": [true] } }      show only when…
 //	{ "show_if": null }                                      always show
@@ -122,10 +124,11 @@ func UpdateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
+		rawName, hasName := req["field_name"]
 		rawRequired, hasRequired := req["is_required"]
 		rawShowIf, hasShowIf := req["show_if"]
-		if !hasRequired && !hasShowIf {
-			http.Error(w, "send is_required and/or show_if", http.StatusBadRequest)
+		if !hasName && !hasRequired && !hasShowIf {
+			http.Error(w, "send field_name, is_required and/or show_if", http.StatusBadRequest)
 			return
 		}
 
@@ -142,6 +145,17 @@ func UpdateFieldHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
+		if hasName {
+			var name string
+			if err := json.Unmarshal(rawName, &name); err != nil || strings.TrimSpace(name) == "" {
+				http.Error(w, "field_name can't be empty", http.StatusBadRequest)
+				return
+			}
+			if err := models.RenamePMSField(r.Context(), db, id, strings.TrimSpace(name)); err != nil {
+				fail(err)
+				return
+			}
+		}
 		if hasRequired {
 			var required bool
 			if err := json.Unmarshal(rawRequired, &required); err != nil {
@@ -218,6 +232,41 @@ func CreateFieldOptionHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]int{"id": id})
+	}
+}
+
+// PATCH /admin/product-specs/options/{id}  { "option_value": "..." }
+// Renames a dropdown option; products that have it chosen follow.
+func UpdateFieldOptionHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			OptionValue string `json:"option_value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		value := strings.TrimSpace(req.OptionValue)
+		if value == "" {
+			http.Error(w, "option_value is required", http.StatusBadRequest)
+			return
+		}
+		err = models.RenamePMSFieldOption(r.Context(), db, id, value)
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "option not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("rename pms option error: %v", err)
+			http.Error(w, "could not update option", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

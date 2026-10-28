@@ -159,6 +159,19 @@ export default function ProductSpecificationsPage() {
     }
   }
 
+  // rename a field or a dropdown option; resolves true once saved
+  async function rename(path, body) {
+    setError("");
+    try {
+      await apiFetch(path, { method: "PATCH", body: JSON.stringify(body) });
+      loadTypes();
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    }
+  }
+
   async function deleteOption(id) {
     setError("");
     try {
@@ -246,7 +259,11 @@ export default function ProductSpecificationsPage() {
                               <path d="M7 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-1.5 7.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM16 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-1.5 7.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM16 16a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
                             </svg>
                           </button>
-                          <span className="text-sm text-gray-800 font-medium">{f.field_name}</span>
+                          <InlineRename
+                            value={f.field_name}
+                            onSave={(v) => rename(`/admin/product-specs/fields/${f.id}`, { field_name: v })}
+                            textClass="text-sm text-gray-800 font-medium"
+                          />
                           <span className="text-[10px] uppercase tracking-wide text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
                             {f.field_type}
                           </span>
@@ -282,7 +299,12 @@ export default function ProductSpecificationsPage() {
                           <ul className="space-y-1 mb-2">
                             {f.options.map((o) => (
                               <li key={o.id} className="flex items-center justify-between text-xs text-gray-700">
-                                <span>{o.option_value}</span>
+                                <InlineRename
+                                  value={o.option_value}
+                                  onSave={(v) => rename(`/admin/product-specs/options/${o.id}`, { option_value: v })}
+                                  textClass=""
+                                  hint="Products that have this option chosen are updated too."
+                                />
                                 <button
                                   onClick={() => deleteOption(o.id)}
                                   className="text-gray-400 hover:text-red-600"
@@ -483,6 +505,68 @@ function ShowIfEditor({ field, fields, onSave }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// A name with an "Edit" link that turns it into a box — Enter or Save keeps
+// the new text, Escape or Cancel puts the old one back.
+function InlineRename({ value, onSave, textClass, hint }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  const start = () => {
+    setDraft(value);
+    setEditing(true);
+  };
+  const save = async () => {
+    const v = draft.trim();
+    if (!v || v === value) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    const ok = await onSave(v);
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-2">
+        <span className={textClass}>{value}</span>
+        <button type="button" onClick={start} className="text-xs text-gray-400 hover:text-gray-900">
+          Edit
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-xs">
+      <input
+        type="text"
+        value={draft}
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400"
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving || !draft.trim()}
+        className="px-2 py-1 bg-gray-900 text-white rounded-md font-medium disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} className="text-gray-500 hover:text-gray-900">
+        Cancel
+      </button>
+      {hint && <span className="w-full text-gray-400">{hint}</span>}
+    </span>
   );
 }
 

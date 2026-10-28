@@ -215,6 +215,19 @@ func SetPMSFieldRequired(ctx context.Context, db *pgxpool.Pool, id int, required
 	return nil
 }
 
+// RenamePMSField changes a field's name. Saved values are keyed by field id,
+// so they stay with it. Returns pgx.ErrNoRows when there is no such field.
+func RenamePMSField(ctx context.Context, db *pgxpool.Pool, id int, name string) error {
+	tag, err := db.Exec(ctx, "UPDATE pms_fields SET field_name = $1 WHERE id = $2", name, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // MissingRequiredError lists the mandatory fields left empty; its message is
 // shown to the person saving as-is.
 type MissingRequiredError struct{ Fields []string }
@@ -471,6 +484,45 @@ func CreatePMSFieldOption(ctx context.Context, db *pgxpool.Pool, fieldID int, op
 		fieldID, optionValue, sortOrder,
 	).Scan(&id)
 	return id, err
+}
+
+// RenamePMSFieldOption changes one dropdown option's text.
+//
+// Answers are stored as the option's text, so the change is carried to the
+// rules that show a field on this option and to every product that has it
+// chosen. Purchase orders keep the text they were made with. Returns
+// pgx.ErrNoRows when there is no such option.
+func RenamePMSFieldOption(ctx context.Context, db *pgxpool.Pool, id int, value string) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var fieldID int
+	var old string
+	err = tx.QueryRow(ctx, "SELECT field_id, option_value FROM pms_field_options WHERE id = $1 FOR UPDATE", id).Scan(&fieldID, &old)
+	if err != nil {
+		return err
+	}
+	if old == value {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, "UPDATE pms_field_options SET option_value = $1 WHERE id = $2", value, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE pms_fields SET show_if_values = (show_if_values - $2::text) || jsonb_build_array($3::text)
+		 WHERE show_if_field_id = $1 AND show_if_values ? $2::text`, fieldID, old, value); err != nil {
+		return err
+	}
+	key := strconv.Itoa(fieldID)
+	if _, err := tx.Exec(ctx,
+		`UPDATE products SET pms_specifications = jsonb_set(pms_specifications, ARRAY[$1::text], to_jsonb($3::text))
+		 WHERE jsonb_typeof(pms_specifications) = 'object' AND pms_specifications->>$1::text = $2::text`,
+		key, old, value); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // DeletePMSFieldOption removes one dropdown option.
