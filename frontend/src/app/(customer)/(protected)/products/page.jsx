@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { logVisitorEvent } from "@/lib/visitorLog";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 import ProductCard from "@/components/products/ProductCard";
 import ProductListRow, { ProductListHeader } from "@/components/products/ProductListRow";
@@ -215,6 +216,11 @@ function ProductsPageInner() {
         if (cancelled) return;
         let list = data.products || [];
         let combinedTotal = data.total || 0;
+        if (page === 1) {
+          if (debouncedSearch) logVisitorEvent({ kind: "search", query: debouncedSearch, result_count: combinedTotal });
+          if (activeCategory) logVisitorEvent({ kind: "division_view", label: activeCategory });
+          if (activeForm) logVisitorEvent({ kind: "division_view", label: `Form: ${activeForm}` });
+        }
 
         // "All" (no category picked): fold this customer's own special
         // products in alongside the regular Moulins catalog — only on page

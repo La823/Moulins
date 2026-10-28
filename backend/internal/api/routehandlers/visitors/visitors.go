@@ -92,6 +92,10 @@ func CreateRequestHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		notifyStaff(db, req)
+		label := req.FirmName
+		if err := models.RecordVisitorEvents(r.Context(), db, id, []models.VisitorEvent{{Kind: "request_sent", Label: &label}}); err != nil {
+			log.Printf("record request_sent event error: %v", err)
+		}
 		writeJSON(w, http.StatusCreated, map[string]int64{"id": reqID})
 	}
 }
@@ -183,5 +187,88 @@ func AdminUpdateHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// POST /visitor/events  { "events": [ {kind, product_id, query, result_count, label, occurred_at}, ... ] }
+// The website sends what a visitor did in small batches; see
+// models.RecordVisitorEvents. Never fails the page: bad events are dropped.
+func EventsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+		id, ok := requestUserID(r)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		var req struct {
+			Events []models.VisitorEvent `json:"events"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if len(req.Events) > 50 {
+			req.Events = req.Events[:50]
+		}
+		if err := models.RecordVisitorEvents(r.Context(), db, id, req.Events); err != nil {
+			log.Printf("record visitor events error: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// GET /admin/visitors?search=&open_requests=true&page=1
+func AdminVisitorsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		page, _ := strconv.Atoi(q.Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		const limit = 50
+		list, total, err := models.ListVisitors(r.Context(), db, q.Get("search"), q.Get("open_requests") == "true", limit, (page-1)*limit)
+		if err != nil {
+			log.Printf("list visitors error: %v", err)
+			http.Error(w, "could not load visitors", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"visitors": list, "total": total, "page": page, "limit": limit})
+	}
+}
+
+// GET /admin/visitors/{id} — sign-ins, activity and requests.
+func AdminVisitorHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		d, err := models.GetVisitorDetail(r.Context(), db, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "visitor not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("visitor detail error: %v", err)
+			http.Error(w, "could not load visitor", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, d)
+	}
+}
+
+// GET /admin/visitors/insights?days=30 — top products and searches.
+func AdminInsightsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+		in, err := models.GetVisitorInsights(r.Context(), db, days)
+		if err != nil {
+			log.Printf("visitor insights error: %v", err)
+			http.Error(w, "could not load insights", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, in)
 	}
 }

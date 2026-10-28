@@ -14,6 +14,7 @@ var visitorAllowed = map[string]bool{
 	"GET /auth/me":                      true,
 	"GET /visitor/partnership-request":  true,
 	"POST /visitor/partnership-request": true,
+	"POST /visitor/events":              true,
 }
 
 // VisitorLimits keeps visitors to the few routes in visitorAllowed. Runs

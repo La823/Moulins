@@ -50,6 +50,7 @@ func StartScheduler(db *pgxpool.Pool) {
 			dispatchAnniversaryReminders(db)
 			dispatchAnniversaryMeetingSync(db)
 			dispatchCartPurge(db)
+			dispatchVisitorEventPurge(db)
 			dispatchMissingCoordinates(db)
 			lastBirthdayRunDate = today
 		}
@@ -128,6 +129,19 @@ func dispatchCartPurge(db *pgxpool.Pool) {
 	}
 	if purged > 0 {
 		log.Printf("scheduler: purged %d abandoned cart item(s)", purged)
+	}
+}
+
+// dispatchVisitorEventPurge keeps the visitors activity log to its last
+// 6 months, as the privacy policy says.
+func dispatchVisitorEventPurge(db *pgxpool.Pool) {
+	purged, err := models.PurgeOldVisitorEvents(context.Background(), db)
+	if err != nil {
+		log.Printf("scheduler: visitor activity purge failed: %v", err)
+		return
+	}
+	if purged > 0 {
+		log.Printf("scheduler: purged %d visitor activity event(s) older than 6 months", purged)
 	}
 }
 

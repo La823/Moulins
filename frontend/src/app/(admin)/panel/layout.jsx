@@ -206,6 +206,7 @@ const NAV_ITEMS = [
     icon: ICONS.partners,
     group: [
       { label: "Partners", href: "/panel/users", permission: "partners_view" },
+      { label: "Visitors", href: "/panel/visitors", permission: "partners_view" },
       { label: "Partnership Requests", href: "/panel/partnership-requests", permission: "partners_view" },
       { label: "Employees", href: "/panel/employees", permission: "employees_view" },
       { label: "Admins", href: "/panel/admins", permission: "admins_view" },

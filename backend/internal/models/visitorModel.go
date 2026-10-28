@@ -47,17 +47,37 @@ func nilIfBlank(s string) *string {
 
 // UpsertGoogleVisitor signs a Google account in as a visitor: created on
 // first sign-in, with name, email and picture refreshed on every one after.
-func UpsertGoogleVisitor(ctx context.Context, db *pgxpool.Pool, googleSub, email, name, picture string) (*Visitor, error) {
+// Each sign-in is counted and logged with the browser's user agent — one
+// round trip for all of it.
+func UpsertGoogleVisitor(ctx context.Context, db *pgxpool.Pool, googleSub, email, name, picture, userAgent string) (*Visitor, error) {
+	if len(userAgent) > 300 {
+		userAgent = userAgent[:300]
+	}
 	return scanVisitor(db.QueryRow(ctx, `
-		INSERT INTO visitors (google_sub, email, name, picture_url, last_login_at)
-		VALUES ($1, $2, $3, $4, now())
-		ON CONFLICT (google_sub) DO UPDATE
-		SET email = EXCLUDED.email,
-		    name = COALESCE(EXCLUDED.name, visitors.name),
-		    picture_url = COALESCE(EXCLUDED.picture_url, visitors.picture_url),
-		    last_login_at = now()
-		RETURNING `+visitorColumns,
-		googleSub, strings.TrimSpace(email), nilIfBlank(name), nilIfBlank(picture)))
+		WITH v AS (
+			INSERT INTO visitors (google_sub, email, name, picture_url, last_login_at, last_seen_at, sign_in_count)
+			VALUES ($1, $2, $3, $4, now(), now(), 1)
+			ON CONFLICT (google_sub) DO UPDATE
+			SET email = EXCLUDED.email,
+			    name = COALESCE(EXCLUDED.name, visitors.name),
+			    picture_url = COALESCE(EXCLUDED.picture_url, visitors.picture_url),
+			    last_login_at = now(), last_seen_at = now(),
+			    sign_in_count = visitors.sign_in_count + 1
+			RETURNING `+visitorColumns+`
+		), logged AS (
+			INSERT INTO visitor_sign_ins (visitor_id, user_agent) SELECT id, $5 FROM v
+		)
+		SELECT `+visitorColumns+` FROM v`,
+		googleSub, strings.TrimSpace(email), nilIfBlank(name), nilIfBlank(picture), nilIfBlank(userAgent)))
+}
+
+// TouchVisitorSeen records that the visitor is on the site now — at most
+// once every 10 minutes, so page loads don't each cost a write.
+func TouchVisitorSeen(ctx context.Context, db *pgxpool.Pool, id uuid.UUID) error {
+	_, err := db.Exec(ctx, `
+		UPDATE visitors SET last_seen_at = now()
+		WHERE id = $1 AND (last_seen_at IS NULL OR last_seen_at < now() - interval '10 minutes')`, id)
+	return err
 }
 
 // GetVisitor returns pgx.ErrNoRows when there is no such visitor.

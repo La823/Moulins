@@ -122,6 +122,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/visitor/partnership-request", visitors.MyRequestHandler(db)).Methods("GET")
 	protected.HandleFunc("/visitor/partnership-request", visitors.CreateRequestHandler(db)).Methods("POST")
+	protected.HandleFunc("/visitor/events", visitors.EventsHandler(db)).Methods("POST")
 	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/balance", userauth.GetMyBalanceHandler(db)).Methods("GET")
 
@@ -628,6 +629,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnershipViewStaff.Use(middleware.StaffOnly)
 	partnershipViewStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
 	partnershipViewStaff.HandleFunc("/partnership-requests", visitors.AdminListHandler(db)).Methods("GET")
+	partnershipViewStaff.HandleFunc("/visitors", visitors.AdminVisitorsHandler(db)).Methods("GET")
+	partnershipViewStaff.HandleFunc("/visitors/insights", visitors.AdminInsightsHandler(db)).Methods("GET")
+	partnershipViewStaff.HandleFunc("/visitors/{id}", visitors.AdminVisitorHandler(db)).Methods("GET")
 	partnershipEditStaff := protected.PathPrefix("/admin").Subrouter()
 	partnershipEditStaff.Use(middleware.StaffOnly)
 	partnershipEditStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))

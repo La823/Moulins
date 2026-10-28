@@ -7,6 +7,7 @@ import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { isVisitor, PartnerRatesNote } from "@/components/customer/BecomePartner";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
+import { logVisitorEvent } from "@/lib/visitorLog";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 import ProductListRow, { ProductListHeader } from "@/components/products/ProductListRow";
 import ProductViewToggle, { useProductView } from "@/components/products/ProductViewToggle";
@@ -53,6 +54,7 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
       .then((data) => {
         if (cancelled) return;
         const list = data.products || [];
+        if (page === 1) logVisitorEvent({ kind: "division_view", label: activeForm ? `${categoryName} · ${activeForm}` : categoryName });
         if (append) {
           setProducts((prev) => {
             const seen = new Set(prev.map((p) => p.id));

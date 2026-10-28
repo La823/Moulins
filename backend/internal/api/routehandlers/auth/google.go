@@ -60,7 +60,7 @@ func GoogleSignInHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		v, err := models.UpsertGoogleVisitor(r.Context(), db, payload.Subject, email, claim("name"), claim("picture"))
+		v, err := models.UpsertGoogleVisitor(r.Context(), db, payload.Subject, email, claim("name"), claim("picture"), r.UserAgent())
 		if err != nil {
 			log.Printf("google sign-in: visitor upsert error: %v", err)
 			http.Error(w, "something went wrong", http.StatusInternalServerError)

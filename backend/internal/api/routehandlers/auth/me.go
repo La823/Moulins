@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -34,6 +35,12 @@ func MeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 				http.Error(w, "user not found", http.StatusNotFound)
 				return
 			}
+			// "last active" on the admin Visitors page; off the request path
+			go func() {
+				if err := models.TouchVisitorSeen(context.Background(), db, userID); err != nil {
+					log.Printf("visitor last-seen update error: %v", err)
+				}
+			}()
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(v)
 			return

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { logVisitorEvent } from "@/lib/visitorLog";
 
 // Visitors — people checking the website out, signed up with Google — see
 // products without prices and nothing else. Everything they can't use (cart,
@@ -18,15 +19,19 @@ export function usePricesHidden() {
   return isVisitor(user);
 }
 
-/** Opens the "Become a partner" popup from anywhere. */
-export function openBecomePartner() {
+/**
+ * Opens the "Become a partner" popup from anywhere. `label` says what they
+ * tried (cart, favourite, …) for the visitors log.
+ */
+export function openBecomePartner(label, productId) {
+  if (label) logVisitorEvent({ kind: "locked_action", label, ...(productId && { product_id: productId }) });
   if (typeof window !== "undefined") window.dispatchEvent(new Event("become-partner"));
 }
 
 /** Shown where a price would be. */
 export function PartnerRatesNote({ className = "text-xs text-gray-400" }) {
   return (
-    <button type="button" onClick={openBecomePartner} className={`${className} hover:text-gray-700 underline-offset-2 hover:underline`}>
+    <button type="button" onClick={() => openBecomePartner("rates")} className={`${className} hover:text-gray-700 underline-offset-2 hover:underline`}>
       Rates for partners
     </button>
   );

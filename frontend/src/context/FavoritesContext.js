@@ -34,7 +34,7 @@ export function FavoritesProvider({ children }) {
     async (productId) => {
       if (!user) return;
       if (isVisitor(user)) {
-        openBecomePartner();
+        openBecomePartner("favourite", productId);
         return;
       }
       const wasFavorite = favoriteIds.has(productId);

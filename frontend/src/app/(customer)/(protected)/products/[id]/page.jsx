@@ -9,6 +9,7 @@ import { visibleImages } from "@/lib/productImages";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { isVisitor, openBecomePartner } from "@/components/customer/BecomePartner";
+import { logVisitorEvent } from "@/lib/visitorLog";
 import SmallProductCard from "@/components/products/SmallProductCard";
 import CartQuantityControl from "@/components/products/CartQuantityControl";
 import { divisionRouteForCategory } from "@/lib/divisionRoutes";
@@ -45,6 +46,7 @@ export default function ProductDetailPage() {
     apiFetch(`/products/${id}`)
       .then((data) => {
         setProduct(data);
+        logVisitorEvent({ kind: "product_view", product_id: data.id });
         const category = data.categories && data.categories[0];
         if (category) {
           apiFetch(`/products?category=${encodeURIComponent(category)}&limit=13`)
@@ -68,14 +70,14 @@ export default function ProductDetailPage() {
   }, [id]);
 
   const handleAddToCart = () => {
-    if (isVisitor(user)) return openBecomePartner();
+    if (isVisitor(user)) return openBecomePartner("add to cart", product.id);
     addToCart(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleDownloadImage = async (imageId) => {
-    if (isVisitor(user)) return openBecomePartner();
+    if (isVisitor(user)) return openBecomePartner("image download", product.id);
     setDownloading(true);
     try {
       const { download_url } = await apiFetch(`/products/images/${imageId}/download-url`);

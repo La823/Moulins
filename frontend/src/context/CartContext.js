@@ -52,7 +52,7 @@ export function CartProvider({ children }) {
     if (user?.role === "doctor") return;
     // visitors can't order: offer them partnership instead
     if (isVisitor(user)) {
-      openBecomePartner();
+      openBecomePartner("add to cart", product.id);
       return;
     }
     const step = product.moq && product.moq > 0 ? product.moq : 1;
@@ -108,7 +108,7 @@ export function CartProvider({ children }) {
 
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const openCart = useCallback(() => (isVisitor(user) ? openBecomePartner() : setIsOpen(true)), [user]);
+  const openCart = useCallback(() => (isVisitor(user) ? openBecomePartner("cart") : setIsOpen(true)), [user]);
   const closeCart = useCallback(() => setIsOpen(false), []);
 
   return (
