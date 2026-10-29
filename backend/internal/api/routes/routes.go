@@ -369,6 +369,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAccountsStaff.Use(middleware.RequirePermission(db, "marg_accounts_view", rdb))
 	margAccountsStaff.HandleFunc("/marg-ledger", margedeHandlers.ListLedgerHandler(db)).Methods("GET")
 	margAccountsStaff.HandleFunc("/marg-ledger/{code}", margedeHandlers.GetPartyHandler(db)).Methods("GET")
+	// past years from Marg's Day Book export, kept apart from the live sync
+	margAccountsStaff.HandleFunc("/marg-daybook", margedeHandlers.ListDaybookHandler(db)).Methods("GET")
+	margAccountsStaff.HandleFunc("/marg-daybook/parties", margedeHandlers.ListDaybookPartiesHandler(db)).Methods("GET")
+	margAccountsStaff.HandleFunc("/marg-daybook/parties/{code}", margedeHandlers.GetDaybookPartyHandler(db)).Methods("GET")
 
 	margStockStaff := protected.PathPrefix("/admin").Subrouter()
 	margStockStaff.Use(middleware.StaffOnly)
@@ -384,6 +388,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAnalysisStaff.HandleFunc("/marg-analysis/products/{pid}", margedeHandlers.AnalysisProductHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/products/{pid:[0-9]+}/expiry", margedeHandlers.ProductExpiryHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/years/monthly", margedeHandlers.AnalysisYearsMonthlyHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/years/customers", margedeHandlers.AnalysisYearsCustomersHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/slipping", margedeHandlers.AnalysisSlippingHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/cities", margedeHandlers.AnalysisCitiesHandler(db)).Methods("GET")

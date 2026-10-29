@@ -185,6 +185,8 @@ const NAV_ITEMS = [
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },
   { label: "Payments", href: "/panel/payments", permission: "payments_view", icon: ICONS.payments },
   { label: "Marg Bills", href: "/panel/marg-bills", permission: "marg_bills_view", icon: ICONS.orders },
+  { label: "All Bills", href: "/panel/all-bills", permission: "marg_bills_view", icon: ICONS.orders },
+  { label: "Day Book 2025-26", href: "/panel/marg-daybook", permission: "marg_accounts_view", icon: ICONS.orders },
   { label: "Analysis", href: "/panel/marg-analysis", permission: "marg_analysis_view", icon: ICONS.analysis },
   {
     // Supply chain: stock, what needs ordering, and the purchase orders.

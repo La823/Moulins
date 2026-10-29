@@ -15,6 +15,7 @@ import {
   PartyRanking, ProductRanking, SalesTrend, PurchasesTrend, ProductsTrend, BestMonths, Slipping, Cities, RisingFalling, NotSelling,
   useMonthly, useCities, useMovers, useNotSelling,
 } from "./reports";
+import { YearsLink } from "./years";
 
 // The Analysis home (three blocks + the company trend), each block's board
 // of cards, and the full report page behind each card. Pages under
@@ -189,6 +190,7 @@ function Home() {
           <MonthDelta months={months} field="units" />
         </Block>
       </div>
+      <YearsLink s={s} />
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         {!months ? <Loader /> : (
           <MonthlyChart
