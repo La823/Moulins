@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import { KIND_LABELS } from "@/lib/margLedger";
 import { BillRow, SortHeader, fmtMoney, fmtTime } from "@/components/admin/MargBills";
+import { GSTToggle } from "@/components/admin/analysis/common";
 
 // Bills synced from Marg's Corporate EDE API every 15 minutes (backend
 // internal/margede). Party names and groups come from the Marg ledger;
@@ -34,6 +35,8 @@ export default function MargBillsPage() {
   const [expanded, setExpanded] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [netOfCredit, setNetOfCredit] = useState(false);
+  // Without GST: each bill's total less the GST on its lines (freight stays in).
+  const [withGST, setWithGST] = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -45,11 +48,12 @@ export default function MargBillsPage() {
     if (status) params.set("status", status);
     if (kind) params.set("kind", kind);
     if (search) params.set("search", search);
+    if (!withGST) params.set("gst", "0"); // sorting by total uses the amount without GST
     apiFetch(`/admin/marg-bills?${params.toString()}`)
       .then(setList)
       .catch((e) => setError(e.message || "Could not load bills"))
       .finally(() => setLoading(false));
-  }, [type, from, to, status, kind, search, page, sort, refreshKey]);
+  }, [type, from, to, status, kind, search, page, sort, refreshKey, withGST]);
 
   // Click a header to sort by it; click again to flip the direction.
   const sortBy = (key) => {
@@ -85,7 +89,10 @@ export default function MargBillsPage() {
   const filtered = type || from || to || status || kind || search;
   // Sale invoices and credit notes under the current filters, whatever type
   // chip is picked (the type counts ignore it).
-  const typeAmount = (code) => list?.types?.find((t) => t.code === code)?.amount || 0;
+  const typeAmount = (code) => {
+    const t = list?.types?.find((x) => x.code === code);
+    return (withGST ? t?.amount : t?.amount_ex_gst) || 0;
+  };
   const salesTotal = typeAmount("S");
   const creditTotal = typeAmount("R");
 
@@ -180,7 +187,7 @@ export default function MargBillsPage() {
             <span className="text-gray-400"> ({list.cancelled.toLocaleString("en-IN")} cancelled)</span>
           )}
           {" · "}
-          <span className="font-semibold text-gray-900">{fmtMoney(list.sum_total)}</span> total
+          <span className="font-semibold text-gray-900">{fmtMoney(withGST ? list.sum_total : list.sum_total_ex_gst)}</span> total {withGST ? "incl. GST" : "without GST"}
           {list.cancelled > 0 && <span className="text-gray-400"> excluding cancelled</span>}
           {netOfCredit && (
             <span className="block mt-1">
@@ -190,10 +197,13 @@ export default function MargBillsPage() {
             </span>
           )}
         </p>
-        <label className="text-xs text-gray-600 flex items-center gap-1.5 cursor-pointer select-none">
-          <input type="checkbox" checked={netOfCredit} onChange={(e) => setNetOfCredit(e.target.checked)} />
-          Show sales net of credit notes
-        </label>
+        <div className="flex items-center gap-4 flex-wrap">
+          <label className="text-xs text-gray-600 flex items-center gap-1.5 cursor-pointer select-none">
+            <input type="checkbox" checked={netOfCredit} onChange={(e) => setNetOfCredit(e.target.checked)} />
+            Show sales net of credit notes
+          </label>
+          <GSTToggle withGST={withGST} setWithGST={setWithGST} />
+        </div>
         </div>
       )}
 
@@ -217,7 +227,7 @@ export default function MargBillsPage() {
                   <th className="px-4 py-3">Type</th>
                   <SortHeader label="Party" k="party" sort={sort} onSort={sortBy} />
                   <th className="px-4 py-3 text-right">Lines</th>
-                  <SortHeader label="Total" k="total" sort={sort} onSort={sortBy} align="right" />
+                  <SortHeader label={withGST ? "Total" : "Total excl. GST"} k="total" sort={sort} onSort={sortBy} align="right" />
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
@@ -228,6 +238,7 @@ export default function MargBillsPage() {
                     b={b}
                     open={expanded === b.voucher}
                     onToggle={() => setExpanded((v) => (v === b.voucher ? null : b.voucher))}
+                    withGST={withGST}
                   />
                 ))}
               </tbody>

@@ -27,6 +27,7 @@ type BillFilter struct {
 	Kind   string // party kind from the ledger: customer, supplier, ...
 	Party  string // exact party code
 	Status string // "" all | active | cancelled | incomplete
+	ExGST  bool   // sort by the amount without GST (see billAmount)
 	Page   int
 }
 
@@ -43,6 +44,7 @@ type BillSummary struct {
 	PartyKind     *string    `json:"party_kind"`
 	BillMode      *string    `json:"bill_mode"`
 	Total         float64    `json:"total"`
+	TotalExGST    float64    `json:"total_ex_gst"` // total less the GST on its lines (billAmount)
 	LinesCount    int        `json:"lines_count"`
 	LinesTotal    float64    `json:"lines_total"`
 	LinesComplete bool       `json:"lines_complete"`
@@ -64,6 +66,8 @@ type TypeCount struct {
 	Name   *string `json:"name"`
 	Count  int     `json:"count"`
 	Amount float64 `json:"amount,omitempty"`
+	// Amount without GST (bills list only)
+	AmountExGST float64 `json:"amount_ex_gst,omitempty"`
 }
 
 // BillList is the bills list response.
@@ -72,6 +76,8 @@ type BillList struct {
 	Total     int           `json:"total"`
 	Cancelled int           `json:"cancelled"` // of Total
 	SumTotal  float64       `json:"sum_total"` // excludes cancelled bills
+	// SumTotal without GST: each bill's total less the GST on its lines
+	SumTotalExGST float64 `json:"sum_total_ex_gst"`
 	Page      int           `json:"page"`
 	PageSize  int           `json:"page_size"`
 	Types     []TypeCount   `json:"types"`
@@ -100,7 +106,7 @@ func (f BillFilter) orderBy() string {
 	case "party":
 		return partyNameExpr + " " + dir + " NULLS LAST, b.party_code " + dir + ", b.bill_date DESC, b.bill_no DESC"
 	case "total":
-		return "b.total " + dir + ", b.bill_date DESC, b.bill_no DESC"
+		return billAmount(f.ExGST) + " " + dir + ", b.bill_date DESC, b.bill_no DESC"
 	default:
 		return "b.bill_date " + dir + ", b.bill_no " + dir + ", b.voucher " + dir
 	}
@@ -186,18 +192,19 @@ func ListBills(ctx context.Context, db *pgxpool.Pool, f BillFilter) (BillList, e
 	where, args := f.where(true)
 	if err := db.QueryRow(ctx, `
 		SELECT COUNT(*), COUNT(*) FILTER (WHERE b.is_cancelled),
-		       COALESCE(SUM(b.total) FILTER (WHERE NOT b.is_cancelled), 0)::float8
-		FROM marg_ede_bills b`+partyNameJoin+` `+where, args...).
-		Scan(&out.Total, &out.Cancelled, &out.SumTotal); err != nil {
+		       COALESCE(SUM(b.total) FILTER (WHERE NOT b.is_cancelled), 0)::float8,
+		       COALESCE(SUM(`+billAmount(true)+`) FILTER (WHERE NOT b.is_cancelled), 0)::float8
+		FROM marg_ede_bills b`+partyNameJoin+bvJoin+` `+where, args...).
+		Scan(&out.Total, &out.Cancelled, &out.SumTotal, &out.SumTotalExGST); err != nil {
 		return out, err
 	}
 
 	rows, err := db.Query(ctx, `
 		SELECT b.voucher, b.bill_no, `+kindExpr+`, `+kindNameExpr+`, b.bill_date, b.party_code, `+partyNameExpr+`, lg.group_name, lg.kind,
-		       b.bill_mode, b.total::float8, b.lines_count, b.lines_total::float8, b.lines_complete,
+		       b.bill_mode, b.total::float8, (`+billAmount(true)+`)::float8, b.lines_count, b.lines_total::float8, b.lines_complete,
 		       b.is_cancelled, b.cancelled_at, b.order_refs, b.ref_bill_no, b.reason,
 		       b.first_seen_at, b.last_changed_at
-		FROM marg_ede_bills b`+partyNameJoin+` `+where+fmt.Sprintf(`
+		FROM marg_ede_bills b`+partyNameJoin+bvJoin+` `+where+fmt.Sprintf(`
 		ORDER BY %s
 		LIMIT %d OFFSET %d`, f.orderBy(), BillsPageSize, (f.Page-1)*BillsPageSize), args...)
 	if err != nil {
@@ -207,7 +214,7 @@ func ListBills(ctx context.Context, db *pgxpool.Pool, f BillFilter) (BillList, e
 	for rows.Next() {
 		var b BillSummary
 		if err := rows.Scan(&b.Voucher, &b.BillNo, &b.BillType, &b.BillTypeName, &b.BillDate, &b.PartyCode, &b.PartyName, &b.PartyGroup, &b.PartyKind,
-			&b.BillMode, &b.Total, &b.LinesCount, &b.LinesTotal, &b.LinesComplete,
+			&b.BillMode, &b.Total, &b.TotalExGST, &b.LinesCount, &b.LinesTotal, &b.LinesComplete,
 			&b.IsCancelled, &b.CancelledAt, &b.OrderRefs, &b.RefBillNo, &b.Reason,
 			&b.FirstSeenAt, &b.LastChangedAt); err != nil {
 			return out, err
@@ -221,8 +228,9 @@ func ListBills(ctx context.Context, db *pgxpool.Pool, f BillFilter) (BillList, e
 	where, args = f.where(false)
 	trows, err := db.Query(ctx, `
 		SELECT `+kindExpr+`, MAX(`+kindNameExpr+`), COUNT(*),
-		       COALESCE(SUM(b.total) FILTER (WHERE NOT b.is_cancelled), 0)::float8
-		FROM marg_ede_bills b`+partyNameJoin+` `+where+`
+		       COALESCE(SUM(b.total) FILTER (WHERE NOT b.is_cancelled), 0)::float8,
+		       COALESCE(SUM(`+billAmount(true)+`) FILTER (WHERE NOT b.is_cancelled), 0)::float8
+		FROM marg_ede_bills b`+partyNameJoin+bvJoin+` `+where+`
 		GROUP BY 1 ORDER BY COUNT(*) DESC`, args...)
 	if err != nil {
 		return out, err
@@ -230,7 +238,7 @@ func ListBills(ctx context.Context, db *pgxpool.Pool, f BillFilter) (BillList, e
 	defer trows.Close()
 	for trows.Next() {
 		var t TypeCount
-		if err := trows.Scan(&t.Code, &t.Name, &t.Count, &t.Amount); err != nil {
+		if err := trows.Scan(&t.Code, &t.Name, &t.Count, &t.Amount, &t.AmountExGST); err != nil {
 			return out, err
 		}
 		out.Types = append(out.Types, t)
@@ -286,15 +294,15 @@ func GetBill(ctx context.Context, db *pgxpool.Pool, voucher int64) (BillDetail, 
 	b := &d.BillSummary
 	err := db.QueryRow(ctx, `
 		SELECT b.voucher, b.bill_no, `+kindExpr+`, `+kindNameExpr+`, b.bill_date, b.party_code, `+partyNameExpr+`, lg.group_name, lg.kind,
-		       b.bill_mode, b.total::float8, b.lines_count, b.lines_total::float8, b.lines_complete,
+		       b.bill_mode, b.total::float8, (`+billAmount(true)+`)::float8, b.lines_count, b.lines_total::float8, b.lines_complete,
 		       b.is_cancelled, b.cancelled_at, b.order_refs, b.ref_bill_no, b.reason,
 		       b.first_seen_at, b.last_changed_at,
 		       b.sale_purchase_type, b.salesman, b.area, b.order_date, b.extra_amount::float8,
 		       b.ref_bill_date, b.ref_amount::float8, b.adjusted_against, b.adjusted_amount::float8, b.add_field
-		FROM marg_ede_bills b`+partyNameJoin+`
+		FROM marg_ede_bills b`+partyNameJoin+bvJoin+`
 		WHERE b.voucher = $1`, voucher).
 		Scan(&b.Voucher, &b.BillNo, &b.BillType, &b.BillTypeName, &b.BillDate, &b.PartyCode, &b.PartyName, &b.PartyGroup, &b.PartyKind,
-			&b.BillMode, &b.Total, &b.LinesCount, &b.LinesTotal, &b.LinesComplete,
+			&b.BillMode, &b.Total, &b.TotalExGST, &b.LinesCount, &b.LinesTotal, &b.LinesComplete,
 			&b.IsCancelled, &b.CancelledAt, &b.OrderRefs, &b.RefBillNo, &b.Reason,
 			&b.FirstSeenAt, &b.LastChangedAt,
 			&d.SalePurchaseType, &d.Salesman, &d.Area, &d.OrderDate, &d.ExtraAmount,

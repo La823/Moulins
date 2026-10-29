@@ -52,7 +52,8 @@ export function SortHeader({ label, k, sort, onSort, align }) {
   );
 }
 
-export function BillRow({ b, open, onToggle, linkParty = true }) {
+// withGST=false shows the total less the GST on its lines (total_ex_gst).
+export function BillRow({ b, open, onToggle, linkParty = true, withGST = true }) {
   return (
     <>
       <tr onClick={onToggle} className={`cursor-pointer hover:bg-gray-50 transition-colors ${b.is_cancelled ? "opacity-50" : ""}`}>
@@ -88,7 +89,7 @@ export function BillRow({ b, open, onToggle, linkParty = true }) {
           </div>
         </td>
         <td className="px-4 py-3 text-right text-gray-500">{b.lines_count}</td>
-        <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{fmtMoney(b.total)}</td>
+        <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{fmtMoney(withGST ? b.total : b.total_ex_gst)}</td>
         <td className="px-4 py-3">
           <div className="flex gap-1 flex-wrap">
             {b.is_cancelled && <Badge className="bg-red-50 text-red-600">Cancelled</Badge>}

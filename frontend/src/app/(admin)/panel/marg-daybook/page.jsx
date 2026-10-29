@@ -76,6 +76,9 @@ function Vouchers() {
     setter(value);
   };
   const filtered = kind || from || to || search;
+  // Bills are counted at what they charged their party, as on Analysis and
+  // the bills pages; their voucher totals also carry the round-off.
+  const billKinds = ["sale", "purchase", "credit_note", "debit_note"].includes(kind);
   const allCount = (list?.kinds || []).reduce((n, k) => n + k.count, 0);
 
   return (
@@ -143,7 +146,10 @@ function Vouchers() {
         <p className="text-sm text-gray-600 mb-3">
           <span className="font-semibold text-gray-900">{list.total.toLocaleString("en-IN")}</span> voucher{list.total !== 1 ? "s" : ""}
           {" · "}
-          <span className="font-semibold text-gray-900">{fmtMoney(list.sum_total)}</span> total
+          <span className="font-semibold text-gray-900">{fmtMoney(billKinds ? list.party_sum : list.sum_total)}</span> total
+          {billKinds && Math.abs(list.sum_total - list.party_sum) >= 0.01 && (
+            <span className="text-gray-400"> · {fmtMoney(list.sum_total)} with round-off</span>
+          )}
         </p>
       )}
 
@@ -171,7 +177,7 @@ function Vouchers() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {list.vouchers.map((v) => (
-                  <VoucherRow key={v.id} v={v} open={expanded === v.id} onToggle={() => setExpanded((x) => (x === v.id ? null : v.id))} />
+                  <VoucherRow key={v.id} v={v} partyAmount open={expanded === v.id} onToggle={() => setExpanded((x) => (x === v.id ? null : v.id))} />
                 ))}
               </tbody>
             </table>

@@ -38,6 +38,7 @@ func ListBillsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Type: q.Get("type"), From: q.Get("from"), To: q.Get("to"),
 			Search: q.Get("search"), Status: q.Get("status"), Page: page,
 			Sort: q.Get("sort"), Dir: q.Get("dir"), Kind: q.Get("kind"), Party: q.Get("party"),
+			ExGST: exGST(r), // gst=0 sorts "total" by the amount without GST
 		})
 		if err != nil {
 			log.Printf("marg bills list: %v", err)
