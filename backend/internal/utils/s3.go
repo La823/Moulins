@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -352,6 +353,18 @@ func GeneratePresignedDownloadURL(key, filename string) (string, error) {
 		return "", err
 	}
 	return req.URL, nil
+}
+
+// DownloadFromS3 reads a whole object into memory — for files the server
+// processes itself, like product PDFs for the product assistant.
+func DownloadFromS3(ctx context.Context, key string) ([]byte, error) {
+	bucket := os.Getenv("S3_BUCKET")
+	obj, err := s3Client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Body.Close()
+	return io.ReadAll(obj.Body)
 }
 
 func GetPublicURL(key string) string {

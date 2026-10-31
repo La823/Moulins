@@ -52,6 +52,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/visitors"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
+	productragHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/productrag"
 	vectorsearchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/vectorsearch"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/warehouse"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/warehousezones"
@@ -102,6 +103,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	router.HandleFunc("/home-highlights", homehighlights.GetHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-carousel", homecarousel.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-focus", homefocus.GetHandler(db, rdb)).Methods("GET")
+
+	// product assistant — public Q&A about products (rate-limited per IP)
+	router.HandleFunc("/public/product-assistant/ask", productragHandlers.AskHandler(db, rdb)).Methods("POST")
 
 	// careers — public (active postings, applying, resume upload)
 	router.HandleFunc("/careers", jobs.ListHandler(db)).Methods("GET")
@@ -294,6 +298,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/permissions", userauth.ListAvailablePermissionsHandler()).Methods("GET")
 	admin.HandleFunc("/vector-search/backfill", vectorsearchHandlers.BackfillHandler(db)).Methods("POST")
 	admin.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskHandler(db)).Methods("POST")
+	admin.HandleFunc("/product-assistant/ask", productragHandlers.AdminAskHandler(db, rdb)).Methods("POST")
+	admin.HandleFunc("/product-assistant/reindex", productragHandlers.ReindexHandler(db)).Methods("POST")
 
 	// staff routes — employee management
 	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()

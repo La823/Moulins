@@ -21,6 +21,7 @@ import (
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/utils"
+	"github.com/lavanyaarora/server/internal/productrag"
 	vectorsearch "github.com/lavanyaarora/server/internal/vectorsearch"
 )
 
@@ -35,6 +36,7 @@ func syncVectorAsync(db *pgxpool.Pool, id uuid.UUID) {
 			log.Printf("vector sync error for product %s: %v", id, err)
 		}
 	}()
+	productrag.SyncProductAsync(db, id)
 }
 
 func deleteVectorAsync(id uuid.UUID) {
@@ -691,6 +693,7 @@ func DeleteProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc 
 		}
 		models.LogAction(r.Context(), db, actorID(r), "product.deleted", "product", &id, "Deleted a product")
 		deleteVectorAsync(id)
+		productrag.SyncProductAsync(db, id) // a product that is gone loses its chunks
 
 		invalidateProduct(rdb, r, id)
 
@@ -868,6 +871,7 @@ func AddDocumentHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		}
 
 		rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))
+		productrag.SyncProductAsync(db, productID) // reads the new PDF into the product assistant
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -929,6 +933,7 @@ func DeleteDocumentHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc
 			http.Error(w, "could not delete document", http.StatusInternalServerError)
 			return
 		}
+		productrag.DeleteDocumentAsync(docID)
 
 		if productID != uuid.Nil {
 			rdb.Del(r.Context(), fmt.Sprintf("product:%s", productID))

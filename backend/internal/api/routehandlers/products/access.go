@@ -14,6 +14,7 @@ import (
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/productrag"
 )
 
 // Who can see a product — hidden from chosen partners, or exclusive to
@@ -78,6 +79,9 @@ func SetProductAccessHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFu
 		// partner has rules at all may have just changed
 		invalidateProduct(rdb, r, id)
 		middleware.InvalidateProductViewers(r.Context(), rdb)
+		// an exclusive product leaves the public product assistant, and
+		// comes back when it stops being exclusive
+		productrag.SyncProductAsync(db, id)
 
 		summary := fmt.Sprintf("Set visibility: exclusive=%v, hidden from %d, allowed for %d",
 			req.Exclusive, len(req.HiddenFor), len(req.AllowedFor))
