@@ -151,10 +151,6 @@ export default async function MedicinePage({ params }) {
             pharmacies, distributors and doctors through our partner network.
           </p>
           <PublicCatalogCta privateHref={`/products/${p.id}`} />
-          <p className="text-sm text-gray-500 mt-6">
-            Questions about {p.name}?{" "}
-            <Link href="/product-assistant" className="text-gray-900 underline underline-offset-2">Ask our product assistant</Link>.
-          </p>
         </div>
       </div>
 

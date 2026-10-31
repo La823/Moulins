@@ -30,7 +30,6 @@ const PAGES = `## Key pages
 
 - [About us](${SITE_URL}/about): mission, values, leadership and press
 - [All divisions](${SITE_URL}/divisions): the twelve therapy divisions and their products
-- [Product assistant](${SITE_URL}/product-assistant): ask questions about any Moulins product
 - [Become a partner / contact](${SITE_URL}/contact): for pharmacies, distributors and doctors
 - [Careers](${SITE_URL}/careers): current openings`;
 

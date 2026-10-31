@@ -67,23 +67,6 @@ func (c *Client) SetJSON(ctx context.Context, key string, value any, ttl time.Du
 	c.rdb.Set(ctx, key, b, ttl)
 }
 
-// Incr adds one to a counter that expires ttl after its first increment, and
-// returns the new count. ok is false when Redis is off or unreachable, so
-// callers decide for themselves whether to fail open.
-func (c *Client) Incr(ctx context.Context, key string, ttl time.Duration) (n int64, ok bool) {
-	if !c.enabled() {
-		return 0, false
-	}
-	n, err := c.rdb.Incr(ctx, key).Result()
-	if err != nil {
-		return 0, false
-	}
-	if n == 1 {
-		c.rdb.Expire(ctx, key, ttl)
-	}
-	return n, true
-}
-
 // Del removes one or more keys.
 func (c *Client) Del(ctx context.Context, keys ...string) {
 	if !c.enabled() {

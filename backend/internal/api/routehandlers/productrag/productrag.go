@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -20,25 +19,12 @@ import (
 
 const (
 	maxQuestionLen = 500
-	askLimit       = 20 // questions per IP per hour — every one spends Voyage and Gemini quota
-	askWindow      = time.Hour
 	answerTTL      = time.Hour
 )
 
-// POST /public/product-assistant/ask — anyone may ask about a public
-// product; no login. Rate-limited per IP, and identical questions within
-// the hour are answered from cache.
-func AskHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
-	return askHandler(db, rdb, true)
-}
-
-// POST /admin/product-assistant/ask — the same assistant for the admin
-// panel, without the per-IP limit: staff in the office share one IP.
+// POST /admin/product-assistant/ask — the product assistant in the admin
+// panel. Identical questions within the hour are answered from cache.
 func AdminAskHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
-	return askHandler(db, rdb, false)
-}
-
-func askHandler(db *pgxpool.Pool, rdb *cache.Client, limited bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 		var req struct {
@@ -58,22 +44,13 @@ func askHandler(db *pgxpool.Pool, rdb *cache.Client, limited bool) http.HandlerF
 			return
 		}
 
-		// the cache is checked first: a repeated question costs nothing,
-		// so it does not count against the limit
+		// a repeated question costs nothing
 		sum := sha256.Sum256([]byte(strings.ToLower(question)))
 		cacheKey := "product-assistant:answer:" + hex.EncodeToString(sum[:])
 		var answer rag.Answer
 		if rdb.GetJSON(r.Context(), cacheKey, &answer) {
 			writeJSON(w, answer)
 			return
-		}
-
-		// without Redis (local dev) there is no limit
-		if limited {
-			if n, ok := rdb.Incr(r.Context(), "product-assistant:ip:"+clientIP(r), askWindow); ok && n > askLimit {
-				http.Error(w, "too many questions — please try again in a while", http.StatusTooManyRequests)
-				return
-			}
 		}
 
 		answer, err := rag.Ask(r.Context(), db, question)
@@ -116,19 +93,6 @@ func ReindexHandler(db *pgxpool.Pool) http.HandlerFunc {
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]string{"message": "re-index started — progress is in the server log"})
 	}
-}
-
-// clientIP is the visitor's address: nginx passes it in X-Real-IP, and
-// without nginx (local dev) it is the connection's own address.
-func clientIP(r *http.Request) string {
-	if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); ip != "" {
-		return ip
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

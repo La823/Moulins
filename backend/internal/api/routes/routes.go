@@ -104,9 +104,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	router.HandleFunc("/home-carousel", homecarousel.ListHandler(db, rdb)).Methods("GET")
 	router.HandleFunc("/home-focus", homefocus.GetHandler(db, rdb)).Methods("GET")
 
-	// product assistant — public Q&A about products (rate-limited per IP)
-	router.HandleFunc("/public/product-assistant/ask", productragHandlers.AskHandler(db, rdb)).Methods("POST")
-
 	// careers — public (active postings, applying, resume upload)
 	router.HandleFunc("/careers", jobs.ListHandler(db)).Methods("GET")
 	router.HandleFunc("/careers/upload-url", jobs.UploadURLHandler()).Methods("POST")

@@ -4,9 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 
-// The product assistant chat — on the public /product-assistant page and in
-// the admin panel. Each passes its own endpoint (the public one is
-// rate-limited per IP; the admin one is not) and where product cards link.
+// The product assistant chat, in the admin panel. The page passes the
+// endpoint it asks and where product cards link.
 
 const MAX_LEN = 500;
 
