@@ -188,6 +188,7 @@ const NAV_ITEMS = [
   { label: "All Bills", href: "/panel/all-bills", permission: "marg_bills_view", icon: ICONS.orders },
   { label: "Day Book 2025-26", href: "/panel/marg-daybook", permission: "marg_accounts_view", icon: ICONS.orders },
   { label: "Analysis", href: "/panel/marg-analysis", permission: "marg_analysis_view", icon: ICONS.analysis },
+  { label: "Cheques", href: "/panel/cheques", adminOnly: true, icon: ICONS.payments },
   {
     // Supply chain: stock, what needs ordering, and the purchase orders.
     label: "SCM",
@@ -397,7 +398,7 @@ export default function AdminLayout({ children }) {
             </Link>
           </div>
 
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
+          <nav className="no-scrollbar flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
             {visibleNavItems.map((item) => {
               if (item.group) {
                 const open = !!openGroups[item.label];
@@ -642,7 +643,7 @@ function MobileMenu({ onClose, navItems, topDropdowns, topItems, isActive, openG
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+        <nav className="no-scrollbar flex-1 px-3 py-3 space-y-1 overflow-y-auto">
           {groups.map((item) => {
             if (item.group) {
               const open = !!openGroups[item.label];
