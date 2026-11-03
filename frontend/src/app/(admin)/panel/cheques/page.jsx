@@ -7,6 +7,7 @@ import Loader from "@/components/Loader";
 import ChequeView from "@/components/admin/cheques/ChequeView";
 import WarpModal from "@/components/admin/cheques/WarpModal";
 import POPicker, { PAY_KEY } from "@/components/admin/cheques/POPicker";
+import ManufacturerPicker from "@/components/admin/cheques/ManufacturerPicker";
 import {
   MM, BANKS, LABELS, PRESET_OPTIONS, SAMPLE, amountWords, fieldValues, makeProfile, toCents, today, upgradeLayout,
 } from "@/lib/chequeWriter";
@@ -54,7 +55,8 @@ export default function ChequesPage() {
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState(null);
   const [tab, setTab] = useState("write");
-  const [form, setForm] = useState({ no: "", date: today(), payee: "", partyCode: null, amount: "", acPayee: true, memo: "" });
+  // payee: a manufacturer (manufacturerId) or, with otherPayee, anyone (a Marg party or typed)
+  const [form, setForm] = useState({ no: "", date: today(), payee: "", partyCode: null, manufacturerId: null, otherPayee: false, amount: "", acPayee: true, memo: "" });
   // the POs this cheque pays: [{ po, amount, own }] (see POPicker)
   const [links, setLinks] = useState([]);
   const [sel, setSel] = useState("payee");
@@ -99,7 +101,7 @@ export default function ChequesPage() {
         } catch {}
         setForm((f) => ({
           ...f, no: String(p.nextNo ?? ""), acPayee: !!p.acPayeeDefault,
-          ...(pay && { payee: pay.payee || "", amount: pay.amount || "" }),
+          ...(pay && { payee: pay.payee || "", manufacturerId: pay.manufacturer_id || null, otherPayee: false, amount: pay.amount || "" }),
         }));
         if (pay?.pos?.length) setLinks(pay.pos.map((po) => ({ po, amount: Math.max(0, po.owed - po.paid).toFixed(2), own: 0 })));
       } catch (e) {
@@ -157,7 +159,7 @@ export default function ChequesPage() {
   }, [printJob]);
 
   const clearForm = (np = p) => {
-    setForm({ no: String(np.nextNo ?? ""), date: today(), payee: "", partyCode: null, amount: "", acPayee: !!np.acPayeeDefault, memo: "" });
+    setForm({ no: String(np.nextNo ?? ""), date: today(), payee: "", partyCode: null, manufacturerId: null, otherPayee: false, amount: "", acPayee: !!np.acPayeeDefault, memo: "" });
     setLinks([]);
   };
 
@@ -170,7 +172,7 @@ export default function ChequesPage() {
         body: JSON.stringify({
           method: "cheque", bank: p.name, cheque_no: f.no.trim(), payment_date: f.date || null, payee: f.payee.trim(),
           amount: toCents(f.amount) / 100, status: "made", source: "print", cheque_profile_id: p.id,
-          manufacturer_id: ls.find((l) => l.po.manufacturer_id)?.po.manufacturer_id || null,
+          manufacturer_id: f.otherPayee ? null : f.manufacturerId, other_payee: f.otherPayee,
           allocations: ls.map((l) => ({ po_id: l.po.po_id, amount: Number(l.amount) || 0 })),
         }),
       });
@@ -181,7 +183,7 @@ export default function ChequesPage() {
   };
 
   const print = () => {
-    if (!form.payee.trim()) return say("Enter a payee", true);
+    if (!form.payee.trim()) return say(form.otherPayee ? "Enter a payee" : "Pick the manufacturer, or tick Other payee", true);
     if (!toCents(form.amount)) return say("Enter a valid amount", true);
     const split = links.reduce((s, l) => s + (Number(l.amount) || 0), 0);
     if (split > toCents(form.amount) / 100 + 0.005) return say("The amounts split over the POs add up to more than the cheque", true);
@@ -338,9 +340,15 @@ function WritePanel({ profiles, p, form, setForm, cents, warn, inputs, links, se
         </Field>
       </div>
       <Field label="Pay to">
-        <PayeeInput
-          inputRef={ref("payee")} value={form.payee} partyCode={form.partyCode}
-          onChange={(payee, partyCode) => setForm((f) => ({ ...f, payee, partyCode }))}
+        <ManufacturerPicker
+          value={{ manufacturer_id: form.manufacturerId, payee: form.payee, other_payee: form.otherPayee }}
+          onChange={(v) => setForm((f) => ({ ...f, manufacturerId: v.manufacturer_id, payee: v.payee, otherPayee: v.other_payee, partyCode: null }))}
+          otherInput={
+            <PayeeInput
+              inputRef={ref("payee")} value={form.payee} partyCode={form.partyCode}
+              onChange={(payee, partyCode) => setForm((f) => ({ ...f, payee, partyCode }))}
+            />
+          }
         />
       </Field>
       <Field label="Amount">

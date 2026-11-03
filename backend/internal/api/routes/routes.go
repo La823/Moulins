@@ -317,6 +317,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/cheques/pos/{id:[0-9]+}/receive", chequeHandlers.ReceivePOHandler(db)).Methods("POST")
 	admin.HandleFunc("/cheques/suppliers", chequeHandlers.SuppliersHandler(db)).Methods("GET")
 	admin.HandleFunc("/cheques/suppliers/{id}/credit-days", chequeHandlers.SetCreditDaysHandler(db)).Methods("PUT")
+	admin.HandleFunc("/cheques/suppliers/{id}/marg", chequeHandlers.LinkMargHandler(db)).Methods("PUT")
+	admin.HandleFunc("/cheques/marg-parties", chequeHandlers.MargPartiesHandler(db)).Methods("GET")
 
 	// staff routes — employee management
 	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()

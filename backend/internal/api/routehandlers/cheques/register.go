@@ -97,6 +97,9 @@ func checkPayment(in *cheques.PaymentInput, isNew bool) string {
 	if strings.TrimSpace(in.Payee) == "" {
 		return "who is it paid to?"
 	}
+	if in.ManufacturerID == nil && !in.OtherPayee {
+		return "pick the manufacturer, or tick Other payee"
+	}
 	if in.Amount <= 0 || math.IsNaN(in.Amount) || in.Amount > 1e11 {
 		return "enter the amount"
 	}
@@ -348,5 +351,59 @@ func SetCreditDaysHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// GET /admin/cheques/marg-parties?search= — Marg ledger suppliers to link.
+func MargPartiesHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		if len(search) < 2 {
+			writeJSON(w, map[string]any{"parties": []cheques.MargParty{}})
+			return
+		}
+		ps, err := cheques.MargParties(r.Context(), db, search)
+		if err != nil {
+			log.Printf("cheque marg parties: %v", err)
+			http.Error(w, "could not search Marg", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"parties": ps})
+	}
+}
+
+// PUT /admin/cheques/suppliers/{id}/marg {party_codes: ["HVS"], rename: true, name: ""}
+// — links a manufacturer to its Marg parties; with rename it takes Marg's
+// name (or name, for one Marg cut short) and its POs follow.
+func LinkMargHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		var body struct {
+			PartyCodes []string `json:"party_codes"`
+			Rename     bool     `json:"rename"`
+			Name       string   `json:"name"`
+		}
+		if err != nil || json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body) != nil || len(body.PartyCodes) > 10 {
+			http.Error(w, "send party_codes (up to 10)", http.StatusBadRequest)
+			return
+		}
+		codes := []string{}
+		for _, c := range body.PartyCodes {
+			if c = strings.TrimSpace(c); c != "" {
+				codes = append(codes, c)
+			}
+		}
+		err = cheques.LinkMargParties(r.Context(), db, id, codes, body.Rename, body.Name, actorID(r))
+		switch {
+		case errors.Is(err, cheques.ErrNotFound):
+			http.Error(w, "manufacturer not found", http.StatusNotFound)
+		case errors.Is(err, cheques.ErrNameTaken):
+			http.Error(w, err.Error(), http.StatusConflict)
+		case err != nil:
+			log.Printf("cheque link marg: %v", err)
+			http.Error(w, "could not link", http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
 	}
 }

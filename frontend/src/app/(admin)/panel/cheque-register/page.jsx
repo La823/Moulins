@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import POPicker, { PAY_KEY, inr, outstanding, poLabel } from "@/components/admin/cheques/POPicker";
+import ManufacturerPicker, { forgetManufacturers } from "@/components/admin/cheques/ManufacturerPicker";
 
 // Cheque register (admin only): every payment to a supplier — cheques and
 // transfers — the purchase orders each one pays, where each cheque is
@@ -55,7 +56,7 @@ export default function ChequeRegisterPage() {
         <div className="flex items-center gap-2">
           <button onClick={() => setEditing({ draft: {} })} className={primaryCls}>+ Record payment</button>
           <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden bg-white">
-            {[["payments", "Cheques & payments"], ["dues", "To be made"], ["suppliers", "Credit periods"]].map(([k, l]) => (
+            {[["payments", "Cheques & payments"], ["dues", "To be made"], ["suppliers", "Manufacturers"]].map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm ${tab === k ? "bg-gray-900 text-white font-medium" : "text-gray-600 hover:bg-gray-50"}`}>{l}</button>
             ))}
           </div>
@@ -195,7 +196,10 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
                     <div className="text-gray-900">{p.method === "cheque" ? p.cheque_no : METHODS[p.method]}</div>
                     <div className="text-xs text-gray-400">{p.bank || (p.method === "cheque" ? "" : "")}</div>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-900 max-w-56 truncate">{p.payee}</td>
+                  <td className="px-4 py-2.5 max-w-56">
+                    <div className="text-gray-900 truncate">{p.manufacturer_name || p.payee}</div>
+                    <div className="text-xs text-gray-400 truncate">{p.manufacturer_code || (p.manufacturer_id ? "" : "Other payee")}</div>
+                  </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap text-gray-900">{inr(p.amount)}</td>
                   <td className="px-4 py-2.5 max-w-48">
                     {p.po_numbers.length ? (
@@ -237,7 +241,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
   const [p, setP] = useState(null);
   const [form, setForm] = useState(() => (id ? null : {
     method: "cheque", bank: "", cheque_no: "", payment_date: today(), payee: d0.payee || "",
-    manufacturer_id: d0.manufacturer_id || null, amount: d0.amount ? String(d0.amount) : "", status: "made",
+    manufacturer_id: d0.manufacturer_id || null, other_payee: false, amount: d0.amount ? String(d0.amount) : "", status: "made",
   }));
   const [links, setLinks] = useState(() => (id ? [] : (d0.pos || []).map((po) => ({ po, amount: outstanding(po).toFixed(2), own: 0 }))));
   const [remark, setRemark] = useState("");
@@ -253,7 +257,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
         const x = await apiFetch(`/admin/cheques/register/${id}`);
         if (off) return;
         setP(x);
-        setForm({ method: x.method, bank: x.bank || "", cheque_no: x.cheque_no || "", payment_date: x.payment_date || "", payee: x.payee, manufacturer_id: x.manufacturer_id, amount: String(x.amount), status: x.status });
+        setForm({ method: x.method, bank: x.bank || "", cheque_no: x.cheque_no || "", payment_date: x.payment_date || "", payee: x.payee, manufacturer_id: x.manufacturer_id, other_payee: !x.manufacturer_id, amount: String(x.amount), status: x.status });
         setLinks(x.allocations.map((a) => ({ po: { ...a, paid: a.paid_total }, amount: a.amount.toFixed(2), own: a.amount })));
       } catch (e) {
         if (off) return;
@@ -274,7 +278,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
       const body = {
         ...form,
         amount: Number(form.amount),
-        manufacturer_id: form.manufacturer_id || links.find((l) => l.po.manufacturer_id)?.po.manufacturer_id || null,
+        manufacturer_id: form.other_payee ? null : form.manufacturer_id,
         allocations: links.map((l) => ({ po_id: l.po.po_id, amount: Number(l.amount) || 0 })),
         remark: id ? "" : remark,
       };
@@ -364,7 +368,13 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
                 </L>
               )}
             </div>
-            <L label="Paid to"><input value={form.payee} onChange={set("payee")} className={inputCls} /></L>
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-1">Paid to</div>
+              <ManufacturerPicker
+                value={{ manufacturer_id: form.manufacturer_id, payee: form.payee, other_payee: form.other_payee }}
+                onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+              />
+            </div>
 
             <div>
               <div className="text-xs font-medium text-gray-500 mb-1.5">Purchase orders this pays</div>
@@ -682,14 +692,23 @@ function ReceiveModal({ po: start, say, onClose, onDone }) {
   );
 }
 
-// ---- credit periods ---------------------------------------------------------
+// ---- manufacturers: Marg links, flags, credit periods -----------------------
 
 function SuppliersTab({ say }) {
   const [list, setList] = useState(null);
   const [q, setQ] = useState("");
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [linking, setLinking] = useState(null);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
-    apiFetch("/admin/cheques/suppliers").then((r) => setList(r.suppliers)).catch((e) => say(e.message || "Could not load", true));
-  }, [say]);
+    let off = false;
+    apiFetch("/admin/cheques/suppliers")
+      .then((r) => !off && setList(r.suppliers))
+      .catch((e) => !off && say(e.message || "Could not load", true));
+    return () => {
+      off = true;
+    };
+  }, [say, reload]);
   const save = async (s, v) => {
     const days = v.trim() === "" ? null : Number(v);
     if (days !== null && (!Number.isInteger(days) || days < 0 || days > 365)) return say("Days must be a whole number from 0 to 365", true);
@@ -697,35 +716,166 @@ function SuppliersTab({ say }) {
     try {
       await apiFetch(`/admin/cheques/suppliers/${s.id}/credit-days`, { method: "PUT", body: JSON.stringify({ credit_days: days }) });
       setList((l) => l.map((x) => (x.id === s.id ? { ...x, credit_days: days } : x)));
+      forgetManufacturers();
       say(`${s.name}: ${days == null ? "no credit period" : days + " days"}`);
     } catch (e) {
       say(e.message || "Could not save", true);
     }
   };
   if (!list) return <div className="bg-white rounded-xl border border-gray-200 p-8"><Loader /></div>;
-  const shown = list.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()));
+  const needle = q.toLowerCase();
+  const flagged = list.filter((s) => s.marg_flag).length;
+  const shown = list.filter((s) => (!flaggedOnly || s.marg_flag) &&
+    (s.name.toLowerCase().includes(needle) || (s.code || "").toLowerCase().includes(needle) || s.marg_parties.some((p) => p.party_code.toLowerCase().includes(needle))));
   return (
-    <div className="bg-white rounded-xl border border-gray-200 max-w-2xl">
-      <div className="p-4 border-b border-gray-100">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search suppliers" className={`${inputCls} max-w-xs`} />
-        <p className="text-xs text-gray-400 mt-2">Days a supplier gives to pay, counted from the day goods are received.</p>
+    <div className="bg-white rounded-xl border border-gray-200">
+      <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, MFR code or Marg code" className={`${inputCls} max-w-xs`} />
+        <label className="text-sm text-gray-600 flex items-center gap-1.5 cursor-pointer select-none">
+          <input type="checkbox" checked={flaggedOnly} onChange={(e) => setFlaggedOnly(e.target.checked)} /> needs linking only
+          <span className={`text-xs px-1.5 rounded ${flagged ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-500"}`}>{flagged}</span>
+        </label>
+        <p className="text-xs text-gray-400 w-full">
+          Names follow Marg&apos;s supplier names, which print on cheques. Credit period: days to pay, counted from the day goods are received.
+        </p>
       </div>
-      <ul className="divide-y divide-gray-100">
-        {shown.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-            <span className="flex-1 text-gray-900">{s.name}</span>
-            <input
-              defaultValue={s.credit_days ?? ""}
-              onBlur={(e) => save(s, e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-              inputMode="numeric"
-              placeholder="—"
-              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right"
-            />
-            <span className="text-gray-400 w-8">days</span>
-          </li>
-        ))}
-      </ul>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-gray-500 bg-gray-50">
+            <tr>
+              <th className="text-left font-medium px-4 py-2">Manufacturer</th>
+              <th className="text-left font-medium px-4 py-2">Marg party</th>
+              <th className="text-right font-medium px-4 py-2">POs</th>
+              <th className="text-left font-medium px-4 py-2">Credit</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {shown.map((s) => (
+              <tr key={s.id} className="align-top">
+                <td className="px-4 py-2.5">
+                  <div className="text-gray-900">{s.name}</div>
+                  <div className="text-xs text-gray-400">{s.code}</div>
+                  {s.marg_flag && <div className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 mt-1 max-w-md">{s.marg_flag}</div>}
+                </td>
+                <td className="px-4 py-2.5">
+                  {s.marg_parties.length ? (
+                    s.marg_parties.map((p) => (
+                      <div key={p.party_code} className="text-gray-700"><span className="text-xs text-gray-400 mr-1">{p.party_code}</span>{p.name}{p.city ? <span className="text-gray-400"> · {p.city}</span> : ""}</div>
+                    ))
+                  ) : (
+                    <span className="text-xs text-gray-400">not linked</span>
+                  )}
+                  <button onClick={() => setLinking(s)} className="text-xs text-blue-700 hover:underline mt-1">{s.marg_parties.length ? "Change" : "Link Marg party…"}</button>
+                </td>
+                <td className="px-4 py-2.5 text-right text-gray-600">{s.pos}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap">
+                  <input
+                    defaultValue={s.credit_days ?? ""}
+                    onBlur={(e) => save(s, e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                    inputMode="numeric"
+                    placeholder="—"
+                    className="w-16 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                  />
+                  <span className="text-gray-400 ml-1">days</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {linking && (
+        <MargLinkModal
+          mfr={linking}
+          say={say}
+          onClose={() => setLinking(null)}
+          onDone={() => {
+            setLinking(null);
+            forgetManufacturers();
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Linking a manufacturer to its Marg party (or parties — Marg keeps some
+// suppliers twice); optionally taking Marg's name, which its POs follow.
+function MargLinkModal({ mfr, say, onClose, onDone }) {
+  const [picked, setPicked] = useState(mfr.marg_parties);
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState([]);
+  const [rename, setRename] = useState(true);
+  const [name, setName] = useState("");
+  const seq = useRef(0);
+  const list = q.trim().length < 2 ? [] : found;
+
+  useEffect(() => {
+    if (q.trim().length < 2) return;
+    const t = setTimeout(async () => {
+      const n = ++seq.current;
+      try {
+        const r = await apiFetch(`/admin/cheques/marg-parties?search=${encodeURIComponent(q.trim())}`);
+        if (n === seq.current) setFound(r.parties || []);
+      } catch {}
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const save = async () => {
+    try {
+      await apiFetch(`/admin/cheques/suppliers/${mfr.id}/marg`, {
+        method: "PUT",
+        body: JSON.stringify({ party_codes: picked.map((p) => p.party_code), rename: rename && picked.length > 0, name: rename ? name : "" }),
+      });
+      say(`${mfr.code} linked${picked.length ? " to Marg " + picked.map((p) => p.party_code).join(", ") : ""}`);
+      onDone();
+    } catch (e) {
+      say(e.message || "Could not link", true);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-5">
+        <h3 className="text-base font-semibold text-gray-900">Link {mfr.code} to Marg</h3>
+        <p className="text-sm text-gray-600 mb-1">{mfr.name} · {mfr.pos} POs</p>
+        {mfr.marg_flag && <p className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 mb-3">{mfr.marg_flag}</p>}
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {picked.map((p) => (
+            <span key={p.party_code} className="inline-flex items-center gap-1 bg-gray-100 rounded px-2 py-1 text-xs text-gray-800">
+              {p.party_code} · {p.name}
+              <button onClick={() => setPicked(picked.filter((x) => x.party_code !== p.party_code))} className="text-gray-400 hover:text-red-600">✕</button>
+            </span>
+          ))}
+          {!picked.length && <span className="text-xs text-gray-400">No Marg party linked.</span>}
+        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Marg suppliers by name or code" className={inputCls} />
+        <ul className="mt-1 max-h-56 overflow-auto divide-y divide-gray-100 text-sm">
+          {list.map((p) => (
+            <li
+              key={p.party_code}
+              onClick={() => !picked.some((x) => x.party_code === p.party_code) && setPicked([...picked, p])}
+              className="px-2 py-1.5 cursor-pointer hover:bg-gray-50"
+            >
+              <span className="text-xs text-gray-400 mr-1">{p.party_code}</span>{p.name}{p.city ? <span className="text-gray-400"> · {p.city}</span> : ""}
+              {p.manufacturer_code && p.manufacturer_code !== mfr.code && <span className="block text-xs text-amber-700">now linked to {p.manufacturer_code} {p.manufacturer_name} — picking it moves it here</span>}
+            </li>
+          ))}
+        </ul>
+        <label className="flex items-center gap-2 text-sm text-gray-700 mt-3 cursor-pointer select-none">
+          <input type="checkbox" checked={rename} onChange={(e) => setRename(e.target.checked)} />
+          Rename to the Marg name (its POs follow)
+        </label>
+        {rename && (
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Full name, only if Marg cut it short — else ${picked[0]?.name || "the first Marg name"}`} className={`${inputCls} mt-2`} />
+        )}
+        <div className="flex gap-2 mt-4">
+          <button onClick={save} className={primaryCls}>Save</button>
+          <button onClick={onClose} className={btnCls}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }

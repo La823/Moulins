@@ -80,6 +80,7 @@ type Payment struct {
 	Payee            string       `json:"payee"`
 	ManufacturerID   *uuid.UUID   `json:"manufacturer_id"`
 	ManufacturerName *string      `json:"manufacturer_name"`
+	ManufacturerCode *string      `json:"manufacturer_code"`
 	Amount           float64      `json:"amount"`
 	Status           string       `json:"status"`
 	StatusChangedAt  time.Time    `json:"status_changed_at"`
@@ -94,7 +95,7 @@ type Payment struct {
 }
 
 const paymentColumns = `
-	p.id, p.method, p.bank, p.cheque_no, to_char(p.payment_date, 'YYYY-MM-DD'), p.payee, p.manufacturer_id, m.name,
+	p.id, p.method, p.bank, p.cheque_no, to_char(p.payment_date, 'YYYY-MM-DD'), p.payee, p.manufacturer_id, m.name, m.code,
 	p.amount::float8, p.status, p.status_changed_at, p.cheque_profile_id, p.source, p.created_at,
 	COALESCE(al.allocated, 0)::float8, COALESCE(al.pos, '{}'), rm.note`
 
@@ -113,7 +114,7 @@ const paymentFrom = `
 
 func scanPayment(row pgx.Row) (Payment, error) {
 	var p Payment
-	err := row.Scan(&p.ID, &p.Method, &p.Bank, &p.ChequeNo, &p.PaymentDate, &p.Payee, &p.ManufacturerID, &p.ManufacturerName,
+	err := row.Scan(&p.ID, &p.Method, &p.Bank, &p.ChequeNo, &p.PaymentDate, &p.Payee, &p.ManufacturerID, &p.ManufacturerName, &p.ManufacturerCode,
 		&p.Amount, &p.Status, &p.StatusChangedAt, &p.ChequeProfileID, &p.Source, &p.CreatedAt,
 		&p.Allocated, &p.PONumbers, &p.LastRemark)
 	return p, err
@@ -149,7 +150,7 @@ func ListPayments(ctx context.Context, db *pgxpool.Pool, f Filter) ([]Payment, i
 		where = append(where, "al.allocated IS NULL")
 	}
 	if s := strings.TrimSpace(f.Search); s != "" {
-		add(`(p.payee ILIKE '%' || $? || '%' OR p.cheque_no ILIKE $? || '%' OR m.name ILIKE '%' || $? || '%'
+		add(`(p.payee ILIKE '%' || $? || '%' OR p.cheque_no ILIKE $? || '%' OR m.name ILIKE '%' || $? || '%' OR m.code ILIKE $?
 			OR EXISTS (SELECT 1 FROM supplier_payment_allocations a JOIN purchase_order_master po ON po.id = a.po_id
 			           WHERE a.payment_id = p.id AND (po.po_number ILIKE '%' || $? || '%' OR po.bill_number ILIKE '%' || $? || '%')))`, s)
 	}
@@ -254,6 +255,7 @@ type PaymentInput struct {
 	ChequeProfileID *int64       `json:"cheque_profile_id"`
 	Source          string       `json:"source"`
 	Remark          string       `json:"remark"`
+	OtherPayee      bool         `json:"other_payee"` // paid to someone who isn't a manufacturer (rent, salary, …)
 	Allocations     []Allocation `json:"allocations"` // po_id and amount
 }
 
@@ -264,6 +266,9 @@ func blank(s *string) *string {
 	t := strings.TrimSpace(*s)
 	return &t
 }
+
+// margPartySQL is the Marg party of the manufacturer in $6.
+const margPartySQL = `(SELECT party_code FROM manufacturer_marg_parties WHERE manufacturer_id = $6::uuid ORDER BY party_code LIMIT 1)`
 
 // SavePayment adds a payment (id 0) or updates one, replacing the POs it
 // pays, in one transaction, and records it in the payment's history.
@@ -277,8 +282,8 @@ func SavePayment(ctx context.Context, db *pgxpool.Pool, id int64, in PaymentInpu
 	in.Bank, in.ChequeNo, in.PaymentDate = blank(in.Bank), blank(in.ChequeNo), blank(in.PaymentDate)
 	if id == 0 {
 		err = tx.QueryRow(ctx, `
-			INSERT INTO supplier_payments (method, bank, cheque_no, payment_date, payee, manufacturer_id, amount, status, cheque_profile_id, source, created_by)
-			VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+			INSERT INTO supplier_payments (method, bank, cheque_no, payment_date, payee, manufacturer_id, amount, status, cheque_profile_id, source, created_by, marg_party_code)
+			VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10, $11, `+margPartySQL+`) RETURNING id`,
 			in.Method, in.Bank, in.ChequeNo, in.PaymentDate, strings.TrimSpace(in.Payee), in.ManufacturerID, in.Amount, in.Status,
 			in.ChequeProfileID, in.Source, actor).Scan(&id)
 		if err != nil {
@@ -291,7 +296,10 @@ func SavePayment(ctx context.Context, db *pgxpool.Pool, id int64, in PaymentInpu
 		// status changes go through SetStatus so each one is recorded
 		tag, err := tx.Exec(ctx, `
 			UPDATE supplier_payments SET method = $2, bank = $3, cheque_no = $4, payment_date = $5::date, payee = $6,
-			       manufacturer_id = $7, amount = $8, updated_at = NOW()
+			       manufacturer_id = $7, amount = $8, updated_at = NOW(),
+			       marg_party_code = CASE WHEN $7::uuid IS NULL THEN marg_party_code
+			                              WHEN manufacturer_id IS NOT DISTINCT FROM $7::uuid AND marg_party_code IS NOT NULL THEN marg_party_code
+			                              ELSE (SELECT party_code FROM manufacturer_marg_parties WHERE manufacturer_id = $7::uuid ORDER BY party_code LIMIT 1) END
 			WHERE id = $1`,
 			id, in.Method, in.Bank, in.ChequeNo, in.PaymentDate, strings.TrimSpace(in.Payee), in.ManufacturerID, in.Amount)
 		if err != nil {
@@ -510,15 +518,37 @@ func SetSetting(ctx context.Context, db *pgxpool.Pool, key, value string) error 
 	return err
 }
 
-// Supplier is a manufacturer with its credit period.
+// Supplier is a manufacturer with its credit period, the Marg parties it
+// is, and why it still needs linking by hand.
 type Supplier struct {
-	ID         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	CreditDays *int      `json:"credit_days"`
+	ID          uuid.UUID   `json:"id"`
+	Code        *string     `json:"code"`
+	Name        string      `json:"name"`
+	CreditDays  *int        `json:"credit_days"`
+	MargFlag    *string     `json:"marg_flag"`
+	MargParties []MargParty `json:"marg_parties"`
+	POs         int         `json:"pos"`
+}
+
+// MargParty is a supplier in Marg's ledger, and the manufacturer it is
+// linked to, if any.
+type MargParty struct {
+	PartyCode        string  `json:"party_code"`
+	Name             string  `json:"name"`
+	City             *string `json:"city"`
+	ManufacturerCode *string `json:"manufacturer_code,omitempty"`
+	ManufacturerName *string `json:"manufacturer_name,omitempty"`
 }
 
 func Suppliers(ctx context.Context, db *pgxpool.Pool) ([]Supplier, error) {
-	rows, err := db.Query(ctx, `SELECT id, name, credit_days FROM manufacturers ORDER BY name`)
+	rows, err := db.Query(ctx, `
+		SELECT m.id, m.code, m.name, m.credit_days, m.marg_flag,
+		       COALESCE((SELECT json_agg(json_build_object('party_code', l.party_code,
+		                    'name', trim(COALESCE(NULLIF(l.short_name, ''), l.name)), 'city', NULLIF(trim(l.city), '')) ORDER BY l.party_code)
+		                 FROM manufacturer_marg_parties mp JOIN marg_ede_ledger l ON l.party_code = mp.party_code
+		                 WHERE mp.manufacturer_id = m.id), '[]'),
+		       (SELECT COUNT(*) FROM purchase_order_master po WHERE lower(trim(po.company)) = lower(trim(m.name)))
+		FROM manufacturers m ORDER BY m.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -526,12 +556,104 @@ func Suppliers(ctx context.Context, db *pgxpool.Pool) ([]Supplier, error) {
 	out := []Supplier{}
 	for rows.Next() {
 		var s Supplier
-		if err := rows.Scan(&s.ID, &s.Name, &s.CreditDays); err != nil {
+		if err := rows.Scan(&s.ID, &s.Code, &s.Name, &s.CreditDays, &s.MargFlag, &s.MargParties, &s.POs); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// MargParties finds Marg ledger suppliers and manufacturers by name or code.
+func MargParties(ctx context.Context, db *pgxpool.Pool, search string) ([]MargParty, error) {
+	rows, err := db.Query(ctx, `
+		SELECT l.party_code, trim(COALESCE(NULLIF(l.short_name, ''), l.name)), NULLIF(trim(l.city), ''), m.code, m.name
+		FROM marg_ede_ledger l
+		LEFT JOIN manufacturer_marg_parties mp ON mp.party_code = l.party_code
+		LEFT JOIN manufacturers m ON m.id = mp.manufacturer_id
+		WHERE NOT l.marg_deleted AND l.kind IN ('supplier', 'manufacturer', 'expense_vendor')
+		  AND (l.name ILIKE '%' || $1 || '%' OR l.party_code ILIKE $1)
+		ORDER BY l.name LIMIT 25`, strings.TrimSpace(search))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MargParty{}
+	for rows.Next() {
+		var p MargParty
+		if err := rows.Scan(&p.PartyCode, &p.Name, &p.City, &p.ManufacturerCode, &p.ManufacturerName); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+var ErrNameTaken = errors.New("another manufacturer already has that name")
+
+// LinkMargParties sets the Marg parties a manufacturer is (taking them from
+// any other manufacturer), clears its flag, and links the payments made to
+// those parties. With rename, the manufacturer takes the first party's Marg
+// name (or newName when given, for names Marg cut short), and every PO with
+// its old name follows, each change logged on the PO.
+func LinkMargParties(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, parties []string, rename bool, newName string, actor *uuid.UUID) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var oldName string
+	if err := tx.QueryRow(ctx, `SELECT name FROM manufacturers WHERE id = $1 FOR UPDATE`, id).Scan(&oldName); errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM manufacturer_marg_parties WHERE manufacturer_id = $1 OR party_code = ANY($2)`, id, parties); err != nil {
+		return err
+	}
+	if len(parties) > 0 {
+		if _, err := tx.Exec(ctx, `INSERT INTO manufacturer_marg_parties (party_code, manufacturer_id) SELECT unnest($2::text[]), $1`, id, parties); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `UPDATE manufacturers SET marg_flag = NULL, updated_at = NOW() WHERE id = $1`, id); err != nil {
+		return err
+	}
+	// payments to these parties now belong to this manufacturer
+	if _, err := tx.Exec(ctx, `UPDATE supplier_payments SET manufacturer_id = $1, updated_at = NOW() WHERE marg_party_code = ANY($2)`, id, parties); err != nil {
+		return err
+	}
+	if rename && len(parties) > 0 {
+		name := strings.TrimSpace(newName)
+		if name == "" {
+			if err := tx.QueryRow(ctx, `SELECT trim(COALESCE(NULLIF(short_name, ''), name)) FROM marg_ede_ledger WHERE party_code = $1`, parties[0]).Scan(&name); err != nil {
+				return err
+			}
+		}
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM manufacturers WHERE id <> $1 AND lower(trim(name)) = lower(trim($2)))`, id, name).Scan(&taken); err != nil {
+			return err
+		}
+		if taken {
+			return ErrNameTaken
+		}
+		if name != oldName {
+			if _, err := tx.Exec(ctx, `UPDATE manufacturers SET name = $2 WHERE id = $1`, id, name); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+				WITH ch AS (
+					UPDATE purchase_order_master SET company = $2
+					WHERE lower(trim(company)) = lower(trim($1)) AND company IS DISTINCT FROM $2
+					RETURNING id, po_number
+				)
+				INSERT INTO purchase_order_logs (po_source, po_id, po_number, field_name, old_value, new_value, actor_id)
+				SELECT 'purchase_order_master', id::text, po_number, 'company', $1, $2, $3 FROM ch`, oldName, name, actor); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func SetCreditDays(ctx context.Context, db *pgxpool.Pool, id uuid.UUID, days *int) error {
