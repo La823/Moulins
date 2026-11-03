@@ -304,6 +304,19 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/cheques/profiles/{id:[0-9]+}", chequeHandlers.UpdateProfileHandler(db)).Methods("PUT")
 	admin.HandleFunc("/cheques/profiles/{id:[0-9]+}", chequeHandlers.DeleteProfileHandler(db)).Methods("DELETE")
 	admin.HandleFunc("/cheques/payees", chequeHandlers.PayeesHandler(db)).Methods("GET")
+	// cheque register: payments to suppliers, the POs they pay, POs still to pay
+	admin.HandleFunc("/cheques/register", chequeHandlers.ListPaymentsHandler(db)).Methods("GET")
+	admin.HandleFunc("/cheques/register", chequeHandlers.CreatePaymentHandler(db)).Methods("POST")
+	admin.HandleFunc("/cheques/register/{id:[0-9]+}", chequeHandlers.GetPaymentHandler(db)).Methods("GET")
+	admin.HandleFunc("/cheques/register/{id:[0-9]+}", chequeHandlers.UpdatePaymentHandler(db)).Methods("PUT")
+	admin.HandleFunc("/cheques/register/{id:[0-9]+}/status", chequeHandlers.SetStatusHandler(db)).Methods("POST")
+	admin.HandleFunc("/cheques/register/{id:[0-9]+}/remarks", chequeHandlers.AddRemarkHandler(db)).Methods("POST")
+	admin.HandleFunc("/cheques/dues", chequeHandlers.DuesHandler(db)).Methods("GET")
+	admin.HandleFunc("/cheques/dues/from", chequeHandlers.SetDuesFromHandler(db)).Methods("PUT")
+	admin.HandleFunc("/cheques/pos", chequeHandlers.FindPOsHandler(db)).Methods("GET")
+	admin.HandleFunc("/cheques/pos/{id:[0-9]+}/receive", chequeHandlers.ReceivePOHandler(db)).Methods("POST")
+	admin.HandleFunc("/cheques/suppliers", chequeHandlers.SuppliersHandler(db)).Methods("GET")
+	admin.HandleFunc("/cheques/suppliers/{id}/credit-days", chequeHandlers.SetCreditDaysHandler(db)).Methods("PUT")
 
 	// staff routes — employee management
 	employeesViewStaff := protected.PathPrefix("/admin").Subrouter()

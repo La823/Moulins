@@ -189,6 +189,7 @@ const NAV_ITEMS = [
   { label: "Day Book 2025-26", href: "/panel/marg-daybook", permission: "marg_accounts_view", icon: ICONS.orders },
   { label: "Analysis", href: "/panel/marg-analysis", permission: "marg_analysis_view", icon: ICONS.analysis },
   { label: "Cheques", href: "/panel/cheques", adminOnly: true, icon: ICONS.payments },
+  { label: "Cheque Register", href: "/panel/cheque-register", adminOnly: true, icon: ICONS.orders },
   {
     // Supply chain: stock, what needs ordering, and the purchase orders.
     label: "SCM",

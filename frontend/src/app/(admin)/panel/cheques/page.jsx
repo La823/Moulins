@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import ChequeView from "@/components/admin/cheques/ChequeView";
 import WarpModal from "@/components/admin/cheques/WarpModal";
+import POPicker, { PAY_KEY } from "@/components/admin/cheques/POPicker";
 import {
   MM, BANKS, LABELS, PRESET_OPTIONS, SAMPLE, amountWords, fieldValues, makeProfile, toCents, today, upgradeLayout,
 } from "@/lib/chequeWriter";
@@ -13,8 +14,8 @@ import {
 // Cheque writer (admin only): fill a cheque, see it on the bank's cheque
 // image, and print it onto the real cheque. Bank layouts (field positions,
 // words format, printer offsets, next cheque no.) are saved on the server
-// (backend internal/cheques) so every admin has the same setup. Nothing is
-// recorded when a cheque is printed: there is no register yet.
+// (backend internal/cheques) so every admin has the same setup. Printing a
+// cheque records it in the Cheque Register, linked to the POs it pays.
 
 const ACTIVE_KEY = "cheques.active";
 const VIEW_KEY = "cheques.view";
@@ -54,6 +55,8 @@ export default function ChequesPage() {
   const [activeId, setActiveId] = useState(null);
   const [tab, setTab] = useState("write");
   const [form, setForm] = useState({ no: "", date: today(), payee: "", partyCode: null, amount: "", acPayee: true, memo: "" });
+  // the POs this cheque pays: [{ po, amount, own }] (see POPicker)
+  const [links, setLinks] = useState([]);
   const [sel, setSel] = useState("payee");
   const [view, setView] = useState(() => (typeof window === "undefined" ? "cheque" : readStore(VIEW_KEY, "cheque")));
   const [saveState, setSaveState] = useState("");
@@ -89,7 +92,16 @@ export default function ChequesPage() {
         const p = ps.find((x) => x.id === saved) || ps[0];
         setProfiles(ps);
         setActiveId(p.id);
-        setForm((f) => ({ ...f, no: String(p.nextNo ?? ""), acPayee: !!p.acPayeeDefault }));
+        let pay = null;
+        try {
+          pay = JSON.parse(sessionStorage.getItem(PAY_KEY) || "null");
+          sessionStorage.removeItem(PAY_KEY);
+        } catch {}
+        setForm((f) => ({
+          ...f, no: String(p.nextNo ?? ""), acPayee: !!p.acPayeeDefault,
+          ...(pay && { payee: pay.payee || "", amount: pay.amount || "" }),
+        }));
+        if (pay?.pos?.length) setLinks(pay.pos.map((po) => ({ po, amount: Math.max(0, po.owed - po.paid).toFixed(2), own: 0 })));
       } catch (e) {
         setError(e.message || "Could not load cheque layouts");
       }
@@ -144,13 +156,37 @@ export default function ChequesPage() {
     };
   }, [printJob]);
 
-  const clearForm = (np = p) =>
+  const clearForm = (np = p) => {
     setForm({ no: String(np.nextNo ?? ""), date: today(), payee: "", partyCode: null, amount: "", acPayee: !!np.acPayeeDefault, memo: "" });
+    setLinks([]);
+  };
+
+  // Records a printed cheque in the register; printing goes ahead either way.
+  const record = async (f, ls) => {
+    if (!f.no.trim()) return say("Printed, but not added to the register: no cheque number", true);
+    try {
+      await apiFetch("/admin/cheques/register", {
+        method: "POST",
+        body: JSON.stringify({
+          method: "cheque", bank: p.name, cheque_no: f.no.trim(), payment_date: f.date || null, payee: f.payee.trim(),
+          amount: toCents(f.amount) / 100, status: "made", source: "print", cheque_profile_id: p.id,
+          manufacturer_id: ls.find((l) => l.po.manufacturer_id)?.po.manufacturer_id || null,
+          allocations: ls.map((l) => ({ po_id: l.po.po_id, amount: Number(l.amount) || 0 })),
+        }),
+      });
+      say(`Cheque ${f.no.trim()} added to the register${ls.length ? `, paying ${ls.length} PO${ls.length > 1 ? "s" : ""}` : ""}`);
+    } catch (e) {
+      say(`Printed, but not added to the register: ${e.message || "error"}`, true);
+    }
+  };
 
   const print = () => {
     if (!form.payee.trim()) return say("Enter a payee", true);
     if (!toCents(form.amount)) return say("Enter a valid amount", true);
+    const split = links.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    if (split > toCents(form.amount) / 100 + 0.005) return say("The amounts split over the POs add up to more than the cheque", true);
     setPrintJob({ p, d: { ...form, payee: form.payee.trim() }, mode: "print" });
+    record(form, links);
     const n = parseInt(form.no, 10);
     if (!isNaN(n) && n >= (p.nextNo || 0)) {
       setActive((q) => ({ ...q, nextNo: n + 1 }));
@@ -191,7 +227,7 @@ export default function ChequesPage() {
         <div className="order-2 lg:order-1 min-w-0">
           {tab === "write" ? (
             <WritePanel
-              profiles={profiles} p={p} form={form} setForm={setForm} cents={cents} warn={warn} inputs={inputs}
+              profiles={profiles} p={p} form={form} setForm={setForm} cents={cents} warn={warn} inputs={inputs} links={links} setLinks={setLinks}
               onProfile={switchProfile} onPrint={print} onClear={() => clearForm()}
             />
           ) : (
@@ -281,7 +317,7 @@ export default function ChequesPage() {
 
 // ---- write -------------------------------------------------------------------
 
-function WritePanel({ profiles, p, form, setForm, cents, warn, inputs, onProfile, onPrint, onClear }) {
+function WritePanel({ profiles, p, form, setForm, cents, warn, inputs, links, setLinks, onProfile, onPrint, onClear }) {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   const ref = (k) => (el) => (inputs.current[k] = el);
   return (
@@ -313,6 +349,9 @@ function WritePanel({ profiles, p, form, setForm, cents, warn, inputs, onProfile
       <Field label="Amount in words">
         <div className="min-h-10 px-3 py-2 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-sm text-gray-800">{cents ? amountWords(cents, p.lang) : "—"}</div>
       </Field>
+      <Field label="Pays POs" hint="recorded with the cheque in the Cheque Register">
+        <POPicker links={links} setLinks={setLinks} total={cents / 100} />
+      </Field>
       <label className="flex items-center gap-2 text-sm text-gray-800 mb-3 cursor-pointer select-none">
         <input ref={ref("acpayee")} type="checkbox" checked={form.acPayee} onChange={set("acPayee")} />
         Account payee crossing (A/C PAYEE)
@@ -326,7 +365,7 @@ function WritePanel({ profiles, p, form, setForm, cents, warn, inputs, onProfile
       </div>
       {warn.length > 0 && <div className="mt-3 bg-amber-50 text-amber-800 rounded-lg px-3 py-2 text-sm">{warn.join(" ")}</div>}
       <p className="text-xs text-gray-400 mt-3">
-        Printing moves the next cheque no. on by one. In the print dialog set Margins: None, Scale: 100% and turn off headers and footers.
+        Printing adds the cheque to the Cheque Register and moves the next cheque no. on by one. In the print dialog set Margins: None, Scale: 100% and turn off headers and footers.
       </p>
     </div>
   );
