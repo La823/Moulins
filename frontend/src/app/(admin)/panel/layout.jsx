@@ -243,6 +243,7 @@ const NAV_ITEMS = [
       { label: "Requests", href: "/panel/requests", permission: "requests_view" },
       { label: "Careers", href: "/panel/careers", permission: "careers_view" },
       { label: "Product Assistant", href: "/panel/product-assistant", adminOnly: true },
+      { label: "Stock Agent", href: "/panel/stock-agent", adminOnly: true },
     ],
   },
 ];

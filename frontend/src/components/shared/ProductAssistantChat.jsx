@@ -16,8 +16,9 @@ const SUGGESTIONS = [
 ];
 
 // Answers come back as Markdown. This renders the small subset the
-// assistant writes — headings, bullet and numbered lists, bold, paragraphs —
-// as React elements, so nothing from the response is ever injected as HTML.
+// assistants write — headings, bullet and numbered lists, tables, bold,
+// paragraphs — as React elements, so nothing from the response is ever
+// injected as HTML. Also used by the stock agent page.
 function inline(text, key) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith("**") && part.endsWith("**") ? (
@@ -30,16 +31,29 @@ function inline(text, key) {
   );
 }
 
-function Markdown({ text }) {
+const cells = (line) => line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+
+export function Markdown({ text }) {
   const blocks = [];
   let list = null;
+  let table = null;
   const flush = () => {
     if (list) blocks.push(list);
     list = null;
+    if (table) blocks.push(table);
+    table = null;
   };
 
   text.split("\n").forEach((raw, i) => {
     const line = raw.trim();
+    if (line.startsWith("|") && line.endsWith("|")) {
+      if (/^\|[\s:|-]+\|$/.test(line)) return; // the |---| line under the header
+      if (!table) {
+        flush();
+        table = { table: true, head: cells(line), rows: [], key: i };
+      } else table.rows.push(cells(line));
+      return;
+    }
     const heading = line.match(/^(#{1,4})\s+(.*)$/);
     const bullet = line.match(/^[-*•]\s+(.*)$/);
     const numbered = line.match(/^\d+[.)]\s+(.*)$/);
@@ -71,6 +85,29 @@ function Markdown({ text }) {
   flush();
 
   return blocks.map((b) => {
+    if (b.table)
+      return (
+        <div key={b.key} className="mb-3 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 text-left text-gray-500">
+                {b.head.map((h, j) => (
+                  <th key={j} className="px-2 py-1.5 font-medium whitespace-nowrap">{inline(h, `${b.key}h${j}`)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {b.rows.map((r, k) => (
+                <tr key={k} className="border-b border-gray-100 last:border-0">
+                  {r.map((c, j) => (
+                    <td key={j} className="px-2 py-1.5 align-top">{inline(c, `${b.key}r${k}c${j}`)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
     if (!b.items) return b;
     const Tag = b.ordered ? "ol" : "ul";
     return (

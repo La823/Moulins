@@ -46,6 +46,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
+	stockagentHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/stockagent"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/tags"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/team"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transportmodes"
@@ -298,6 +299,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/vector-search/ask", vectorsearchHandlers.AskHandler(db)).Methods("POST")
 	admin.HandleFunc("/product-assistant/ask", productragHandlers.AdminAskHandler(db, rdb)).Methods("POST")
 	admin.HandleFunc("/product-assistant/reindex", productragHandlers.ReindexHandler(db)).Methods("POST")
+	admin.HandleFunc("/stock-agent/ask", stockagentHandlers.AskHandler(db)).Methods("POST")
+	admin.HandleFunc("/stock-agent/history", stockagentHandlers.HistoryHandler(db)).Methods("GET")
+	admin.HandleFunc("/stock-agent/usage", stockagentHandlers.UsageHandler(db)).Methods("GET")
 	// cheque writer: bank layouts and payees from the Marg ledger
 	admin.HandleFunc("/cheques/profiles", chequeHandlers.ListProfilesHandler(db)).Methods("GET")
 	admin.HandleFunc("/cheques/profiles", chequeHandlers.CreateProfilesHandler(db)).Methods("POST")
