@@ -114,6 +114,13 @@ type CreateOrderItemRequest struct {
 	ProductID   uuid.UUID `json:"product_id"`
 	ProductName string    `json:"product_name"`
 	Quantity    int       `json:"quantity"`
+	// Rate is what to charge for the line, set by staff placing the order
+	// for a customer. Ignored on a customer's own order (they never set
+	// prices); nil leaves the line unpriced, as before.
+	Rate *float64 `json:"rate,omitempty"`
+	// BatchCode is the Marg batch to fulfil the line from (the same
+	// staff-only pick as OrderItem.SelectedBatchCode). Staff orders only.
+	BatchCode *string `json:"batch_code,omitempty"`
 }
 
 // CreateOrder places an order for userID as the customer's own action —
@@ -121,7 +128,7 @@ type CreateOrderItemRequest struct {
 // customer's cart (whatever it happened to contain) is cleared on commit,
 // matching the checkout flow's assumption that req.Items came from it.
 func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
-	return createOrder(ctx, db, userID, userID, "Order was placed", req)
+	return createOrder(ctx, db, userID, userID, "Order was placed", req, false)
 }
 
 // CreateOrderForCustomer lets a staff member place an order on behalf of a
@@ -130,10 +137,12 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 // trail, and the customer's cart is left untouched since these items didn't
 // come from it.
 func CreateOrderForCustomer(ctx context.Context, db *pgxpool.Pool, userID, staffID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
-	return createOrder(ctx, db, userID, staffID, "Order was placed by staff on behalf of the customer", req)
+	return createOrder(ctx, db, userID, staffID, "Order was placed by staff on behalf of the customer", req, true)
 }
 
-func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUID, eventDescription string, req CreateOrderRequest) (uuid.UUID, error) {
+// withRates keeps each line's Rate and BatchCode (staff orders); otherwise
+// they are dropped.
+func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUID, eventDescription string, req CreateOrderRequest, withRates bool) (uuid.UUID, error) {
 	transportMode := ""
 	if req.TransportMode != nil {
 		transportMode = *req.TransportMode
@@ -168,9 +177,13 @@ func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUI
 	}
 
 	for _, item := range req.Items {
+		rate, batch := item.Rate, item.BatchCode
+		if !withRates {
+			rate, batch = nil, nil
+		}
 		_, err = tx.Exec(ctx,
-			`INSERT INTO order_items (order_id, product_id, product_name, quantity) VALUES ($1, $2, $3, $4)`,
-			orderID, item.ProductID, item.ProductName, item.Quantity,
+			`INSERT INTO order_items (order_id, product_id, product_name, quantity, rate, selected_batch_code) VALUES ($1, $2, $3, $4, $5, $6)`,
+			orderID, item.ProductID, item.ProductName, item.Quantity, rate, batch,
 		)
 		if err != nil {
 			return uuid.Nil, err

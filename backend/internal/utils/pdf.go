@@ -236,6 +236,10 @@ type OrderPDFData struct {
 	OrderTotal *float64
 	PrintedBy  string
 	PrintedAt  string
+	// CustomerCopy is the copy sent to the customer: no warehouse CODE
+	// column (its width goes to the product name). The caller leaves out
+	// line remarks and PrintedBy, which are internal too.
+	CustomerCopy bool
 }
 
 // gofpdf's built-in fonts are cp1252, so a UTF-8 character outside it prints
@@ -340,6 +344,10 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	colMRP := 16.0
 	colQty := 11.0
 	colRate := 16.0
+	if data.CustomerCopy {
+		colProduct += colCode
+		colCode = 0
+	}
 	colTotal := pageW - colCode - colProduct - colBatch - colExp - colMRP - colQty - colRate
 
 	// Column order: what the line is, which pack it ships from, then the money
@@ -363,8 +371,10 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		x, y := pdf.GetX(), pdf.GetY()
 		// Cells are laid left to right with ln=0, so they must be drawn in
 		// column order; the rects are positioned by offset either way.
-		pdf.Rect(x+xCode, y, colCode, 8, "D")
-		pdf.CellFormat(colCode, 8, "CODE", "", 0, "L", false, 0, "")
+		if colCode > 0 {
+			pdf.Rect(x+xCode, y, colCode, 8, "D")
+			pdf.CellFormat(colCode, 8, "CODE", "", 0, "L", false, 0, "")
+		}
 		pdf.Rect(x+xProduct, y, colProduct, 8, "D")
 		pdf.CellFormat(colProduct, 8, "PRODUCT", "", 0, "L", false, 0, "")
 		pdf.Rect(x+xBatch, y, colBatch, 8, "D")
@@ -405,7 +415,9 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		}
 
 		x, y := pdf.GetX(), pdf.GetY()
-		pdf.Rect(x+xCode, y, colCode, rowH, "D")
+		if colCode > 0 {
+			pdf.Rect(x+xCode, y, colCode, rowH, "D")
+		}
 		pdf.Rect(x+xProduct, y, colProduct, rowH, "D")
 		pdf.Rect(x+xQty, y, colQty, rowH, "D")
 		pdf.Rect(x+xMRP, y, colMRP, rowH, "D")
@@ -418,8 +430,10 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		if code == "" {
 			code = "-"
 		}
-		pdf.SetXY(x+xCode+1, y+1)
-		pdf.CellFormat(colCode-2, rowH-2, code, "", 0, "L", false, 0, "")
+		if colCode > 0 {
+			pdf.SetXY(x+xCode+1, y+1)
+			pdf.CellFormat(colCode-2, rowH-2, code, "", 0, "L", false, 0, "")
+		}
 		pdf.SetXY(x+xProduct+1, y+1)
 		pdf.MultiCell(colProduct-2, 5, item.ProductName, "", "L", false)
 		if len(remarkLines) > 0 {

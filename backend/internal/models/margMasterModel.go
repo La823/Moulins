@@ -630,6 +630,30 @@ func DefaultBatch(batches []MargProductBatch) MargProductBatch {
 	return batches[0]
 }
 
+// MargBatchStocks is MargBatchStock for many codes in one query: the stock
+// of each live batch found (codes with no live batch are absent).
+func MargBatchStocks(ctx context.Context, db *pgxpool.Pool, codes []string) (map[string]float64, error) {
+	out := map[string]float64{}
+	if len(codes) == 0 {
+		return out, nil
+	}
+	rows, err := db.Query(ctx,
+		`SELECT DISTINCT ON (code) code, stock FROM margmaster_product_batches WHERE code = ANY($1) AND is_deleted = FALSE`, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code string
+		var stock float64
+		if err := rows.Scan(&code, &stock); err != nil {
+			return nil, err
+		}
+		out[code] = stock
+	}
+	return out, rows.Err()
+}
+
 // MargBatchStock returns a live batch's stock by its code; found is false
 // when there is no such live batch.
 func MargBatchStock(ctx context.Context, db *pgxpool.Pool, code string) (stock float64, found bool, err error) {

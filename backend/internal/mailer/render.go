@@ -135,7 +135,9 @@ Items:
 {{if .TransportMode}}Transport: {{.TransportMode}}
 {{end}}{{if .ShippingAddress}}Shipping to: {{.ShippingAddress}}
 {{end}}
-We'll keep you posted as it moves through confirmation, shipping, and delivery.
+{{if .PDFLink}}Order PDF: {{.PDFLink}}
+
+{{end}}We'll keep you posted as it moves through confirmation, shipping, and delivery.
 
 - Moulins Pharma`,
 	},

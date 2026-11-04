@@ -3,10 +3,12 @@ package orders
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +93,7 @@ type orderEmailItem struct {
 type orderEmailData struct {
 	CustomerName    string
 	OrderCode       string
+	PDFLink         string // the customer's order PDF (WhatsApp message only)
 	StatusLabel     string
 	Items           []orderEmailItem
 	ItemCount       int
@@ -253,12 +256,27 @@ func OrderWhatsAppMessageHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		data := buildOrderEmailData(order, user)
 		data.CustomerName = name
+		// WhatsApp links can't carry a file, so the message links to the
+		// order's PDF (the customer copy). Only once the order is past
+		// pending, as for printing.
+		if order.Status != "pending" {
+			token, err := models.OrderPDFLink(r.Context(), db, order.ID, actorID(r))
+			if err != nil {
+				log.Printf("order whatsapp message: pdf link: %v", err)
+			} else {
+				data.PDFLink = orderPDFLinkURL(token)
+			}
+		}
 
 		message, err := mailer.RenderText(r.Context(), db, key, data)
 		if err != nil {
 			log.Printf("order whatsapp message: render failed: %v", err)
 			http.Error(w, "could not render message", http.StatusInternalServerError)
 			return
+		}
+		// a rewritten template without the placeholder still gets the link
+		if data.PDFLink != "" && !strings.Contains(message, data.PDFLink) {
+			message = strings.TrimRight(message, "\n") + "\n\nOrder PDF: " + data.PDFLink
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -517,6 +535,37 @@ func CreateOrderForCustomerHandler(db *pgxpool.Pool) http.HandlerFunc {
 			req.TransportMode = &transport.Mode
 		}
 
+		var batchCodes []string
+		for i, item := range req.Items {
+			if item.Rate != nil && (*item.Rate < 0 || math.IsNaN(*item.Rate) || *item.Rate > 1e9) {
+				http.Error(w, "rate must be zero or more", http.StatusBadRequest)
+				return
+			}
+			if item.BatchCode != nil && strings.TrimSpace(*item.BatchCode) == "" {
+				req.Items[i].BatchCode = nil
+			} else if item.BatchCode != nil {
+				batchCodes = append(batchCodes, *item.BatchCode)
+			}
+		}
+		// a chosen batch must still exist and have stock, as when picked on the order page
+		if len(batchCodes) > 0 {
+			stocks, err := models.MargBatchStocks(r.Context(), db, batchCodes)
+			if err != nil {
+				log.Printf("create order for customer: batch stock lookup: %v", err)
+				http.Error(w, "could not check the batches' stock", http.StatusInternalServerError)
+				return
+			}
+			for _, item := range req.Items {
+				if item.BatchCode == nil {
+					continue
+				}
+				if s, ok := stocks[*item.BatchCode]; !ok || s <= 0 {
+					http.Error(w, "the batch chosen for "+item.ProductName+" has no stock any more — choose another", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
 		orderID, err := models.CreateOrderForCustomer(r.Context(), db, req.CustomerID, staffID, req.CreateOrderRequest)
 		if err != nil {
 			log.Printf("create order for customer error: %v", err)
@@ -671,124 +720,6 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		user, err := models.GetUserByID(r.Context(), db, order.UserID)
-		if err != nil {
-			http.Error(w, "could not load the order's customer", http.StatusInternalServerError)
-			return
-		}
-		customerName := user.PhoneNumber
-		if user.Username != nil && *user.Username != "" {
-			customerName = *user.Username
-		}
-
-		// Batched product/batch lookups instead of one pair of queries per
-		// item — see the same optimization in MargBatchOptionsHandler.
-		productIDs := make([]uuid.UUID, len(order.Items))
-		for i, oi := range order.Items {
-			productIDs[i] = oi.ProductID
-		}
-		margCodeByProduct, err := models.GetProductMargCodesBatch(r.Context(), db, productIDs)
-		if err != nil {
-			log.Printf("order pdf marg batch lookup error: %v", err)
-			margCodeByProduct = map[uuid.UUID]string{}
-		}
-		baseCodeSet := make(map[string]struct{}, len(margCodeByProduct))
-		for _, code := range margCodeByProduct {
-			baseCodeSet[code] = struct{}{}
-		}
-		baseCodes := make([]string, 0, len(baseCodeSet))
-		for code := range baseCodeSet {
-			baseCodes = append(baseCodes, code)
-		}
-		batchesByBaseCode, err := models.GetLiveMargBatchesByBaseCodes(r.Context(), db, baseCodes)
-		if err != nil {
-			log.Printf("order pdf batch lookup error: %v", err)
-			batchesByBaseCode = map[string][]models.MargProductBatch{}
-		}
-
-		// The printed code is the warehouse inventory code, since the person
-		// reading this sheet is picking stock off a rack. The Marg code is
-		// still what the batch lookup is keyed on — it is Marg's identifier,
-		// not ours — so the two are kept separate rather than one replacing
-		// the other.
-		inventoryCodeByProduct, err := models.GetInventoryCodesForProducts(r.Context(), db, productIDs)
-		if err != nil {
-			log.Printf("order pdf inventory code lookup error: %v", err)
-			inventoryCodeByProduct = map[uuid.UUID]string{}
-		}
-
-		// Fallback MRP, used only where a line has no Marg batch to read one
-		// from. Where a batch exists its own MRP wins, since that is the pack
-		// actually shipping. Rate and line total come from the order line,
-		// snapshotted when staff priced it, so a later price change never
-		// rewrites what an order was charged at.
-		mrpByProduct := map[uuid.UUID]float64{}
-		if mrpRows, err := db.Query(r.Context(),
-			`SELECT id, mrp FROM products WHERE id = ANY($1) AND mrp IS NOT NULL`, productIDs); err != nil {
-			log.Printf("order pdf mrp lookup error: %v", err)
-		} else {
-			for mrpRows.Next() {
-				var id uuid.UUID
-				var mrp float64
-				if err := mrpRows.Scan(&id, &mrp); err == nil {
-					mrpByProduct[id] = mrp
-				}
-			}
-			mrpRows.Close()
-		}
-
-		items := make([]utils.OrderPDFItem, 0, len(order.Items))
-		for _, oi := range order.Items {
-			pdfItem := utils.OrderPDFItem{
-				ProductName: oi.ProductName,
-				Quantity:    oi.Quantity,
-				ProductCode: inventoryCodeByProduct[oi.ProductID],
-				Rate:        oi.Rate,
-				LineTotal:   oi.LineTotal,
-			}
-			if oi.Remarks != nil {
-				pdfItem.Remarks = *oi.Remarks
-			}
-			if mrp, ok := mrpByProduct[oi.ProductID]; ok {
-				m := mrp
-				pdfItem.MRP = &m
-			}
-			if baseCode, ok := margCodeByProduct[oi.ProductID]; ok {
-				if batches := batchesByBaseCode[baseCode]; len(batches) > 0 {
-					// Prefer the explicitly saved selection; if none was ever
-					// made, fall back to the same earliest-expiry (FEFO)
-					// default the order page's dropdown shows before any
-					// pick is saved — the earliest-expiring batch in stock
-					// (models.DefaultBatch).
-					chosen := models.DefaultBatch(batches)
-					if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
-						for _, b := range batches {
-							if b.Code == *oi.SelectedBatchCode {
-								chosen = b
-								break
-							}
-						}
-					}
-					pdfItem.Batch = chosen.CurBatch
-					pdfItem.Expiry = formatBatchExpiryForPDF(chosen.Exp)
-					// MRP comes from the batch being shipped, not the product.
-					// Batch MRPs differ — DICMOLIN runs 103.13 / 103.00 /
-					// 110.00 across its batches — so the printed price has to
-					// be the one on the pack going out, matching the batch
-					// code and expiry printed beside it.
-					if chosen.MRP != nil {
-						pdfItem.MRP = chosen.MRP
-					}
-				}
-			}
-			items = append(items, pdfItem)
-		}
-
-		var transportName string
-		if order.TransportName != nil {
-			transportName = *order.TransportName
-		}
-
 		// Who's printing this — recorded both in the reusable send-log (so
 		// the order page can show "last printed by ... on ...") and baked
 		// into the PDF itself.
@@ -803,28 +734,11 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 				}
 			}
 		}
-		printedAt := time.Now()
 		if err := models.LogEmailSend(r.Context(), db, "order_pdf_printed", "pdf", "order", order.ID, "", printerID); err != nil {
 			log.Printf("order pdf print log error: %v", err)
 		}
 
-		pdfBytes, err := utils.GenerateOrderPDF(utils.OrderPDFData{
-			OrderNumber:   strings.ToUpper(order.ID.String()[:8]),
-			Date:          order.CreatedAt.Format("2006-01-02"),
-			Status:        order.Status,
-			CustomerName:  customerName,
-			TransportMode: order.TransportMode,
-			TransportName: transportName,
-			Notes:         stringOrEmpty(order.Notes),
-			Items:         items,
-			// Computed by GetOrderByID from the priced lines; nil when the
-			// order has not been priced at all.
-			ItemsTotal: order.ItemsTotal,
-			Freight:    order.Freight,
-			OrderTotal: order.OrderTotal,
-			PrintedBy:  printedBy,
-			PrintedAt:  printedAt.Format("02.01.2006 15:04"),
-		})
+		pdfBytes, err := buildOrderPDF(r.Context(), db, order, false, printedBy)
 		if err != nil {
 			log.Printf("order pdf generation error: %v", err)
 			http.Error(w, "could not generate PDF", http.StatusInternalServerError)
@@ -835,6 +749,203 @@ func OrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=order-%s.pdf", order.ID.String()[:8]))
 		w.Write(pdfBytes)
 	}
+}
+
+// orderPDFLinkURL is the address a customer opens: the site's /api/ path,
+// which nginx hands to this backend.
+func orderPDFLinkURL(token string) string {
+	base := os.Getenv("FRONTEND_URL")
+	if base == "" {
+		base = "https://moulinspharma.com"
+	}
+	return strings.TrimRight(base, "/") + "/api/order-pdf/" + token
+}
+
+// GET /order-pdf/{token} — public: the customer copy of an order's PDF, for
+// the link in the WhatsApp message. The token is the only key.
+func PublicOrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := mux.Vars(r)["token"]
+		if len(token) < 32 || len(token) > 64 {
+			http.Error(w, "this link is not valid", http.StatusNotFound)
+			return
+		}
+		orderID, err := models.OpenOrderPDFLink(r.Context(), db, token)
+		if errors.Is(err, models.ErrOrderPDFLinkNotFound) {
+			http.Error(w, "this link is not valid", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, models.ErrLinkExpired) {
+			http.Error(w, "this link has expired — please ask Moulins Pharma for a new one", http.StatusGone)
+			return
+		}
+		if err != nil {
+			log.Printf("public order pdf: %v", err)
+			http.Error(w, "could not open the order", http.StatusInternalServerError)
+			return
+		}
+		order, err := models.GetOrderByID(r.Context(), db, orderID)
+		if err != nil {
+			http.Error(w, "order not found", http.StatusNotFound)
+			return
+		}
+		pdfBytes, err := buildOrderPDF(r.Context(), db, order, true, "")
+		if err != nil {
+			log.Printf("public order pdf generation error: %v", err)
+			http.Error(w, "could not generate PDF", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=moulins-order-%s.pdf", strings.ToUpper(order.ID.String()[:8])))
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Robots-Tag", "noindex")
+		w.Write(pdfBytes)
+	}
+}
+
+// buildOrderPDF renders an order's PDF. customerCopy is the copy a customer
+// is sent (no warehouse codes, no staff remarks); printedBy, when set, is
+// printed in the footer with the time.
+func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, customerCopy bool, printedBy string) ([]byte, error) {
+	user, err := models.GetUserByID(ctx, db, order.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("load customer: %w", err)
+	}
+	customerName := user.PhoneNumber
+	if user.Username != nil && *user.Username != "" {
+		customerName = *user.Username
+	}
+
+	// Batched product/batch lookups instead of one pair of queries per
+	// item — see the same optimization in MargBatchOptionsHandler.
+	productIDs := make([]uuid.UUID, len(order.Items))
+	for i, oi := range order.Items {
+		productIDs[i] = oi.ProductID
+	}
+	margCodeByProduct, err := models.GetProductMargCodesBatch(ctx, db, productIDs)
+	if err != nil {
+		log.Printf("order pdf marg batch lookup error: %v", err)
+		margCodeByProduct = map[uuid.UUID]string{}
+	}
+	baseCodeSet := make(map[string]struct{}, len(margCodeByProduct))
+	for _, code := range margCodeByProduct {
+		baseCodeSet[code] = struct{}{}
+	}
+	baseCodes := make([]string, 0, len(baseCodeSet))
+	for code := range baseCodeSet {
+		baseCodes = append(baseCodes, code)
+	}
+	batchesByBaseCode, err := models.GetLiveMargBatchesByBaseCodes(ctx, db, baseCodes)
+	if err != nil {
+		log.Printf("order pdf batch lookup error: %v", err)
+		batchesByBaseCode = map[string][]models.MargProductBatch{}
+	}
+
+	// The printed code is the warehouse inventory code, since the person
+	// reading this sheet is picking stock off a rack. The Marg code is
+	// still what the batch lookup is keyed on — it is Marg's identifier,
+	// not ours — so the two are kept separate rather than one replacing
+	// the other.
+	inventoryCodeByProduct, err := models.GetInventoryCodesForProducts(ctx, db, productIDs)
+	if err != nil {
+		log.Printf("order pdf inventory code lookup error: %v", err)
+		inventoryCodeByProduct = map[uuid.UUID]string{}
+	}
+
+	// Fallback MRP, used only where a line has no Marg batch to read one
+	// from. Where a batch exists its own MRP wins, since that is the pack
+	// actually shipping. Rate and line total come from the order line,
+	// snapshotted when staff priced it, so a later price change never
+	// rewrites what an order was charged at.
+	mrpByProduct := map[uuid.UUID]float64{}
+	if mrpRows, err := db.Query(ctx,
+		`SELECT id, mrp FROM products WHERE id = ANY($1) AND mrp IS NOT NULL`, productIDs); err != nil {
+		log.Printf("order pdf mrp lookup error: %v", err)
+	} else {
+		for mrpRows.Next() {
+			var id uuid.UUID
+			var mrp float64
+			if err := mrpRows.Scan(&id, &mrp); err == nil {
+				mrpByProduct[id] = mrp
+			}
+		}
+		mrpRows.Close()
+	}
+
+	items := make([]utils.OrderPDFItem, 0, len(order.Items))
+	for _, oi := range order.Items {
+		pdfItem := utils.OrderPDFItem{
+			ProductName: oi.ProductName,
+			Quantity:    oi.Quantity,
+			ProductCode: inventoryCodeByProduct[oi.ProductID],
+			Rate:        oi.Rate,
+			LineTotal:   oi.LineTotal,
+		}
+		if oi.Remarks != nil && !customerCopy {
+			pdfItem.Remarks = *oi.Remarks
+		}
+		if mrp, ok := mrpByProduct[oi.ProductID]; ok {
+			m := mrp
+			pdfItem.MRP = &m
+		}
+		if baseCode, ok := margCodeByProduct[oi.ProductID]; ok {
+			if batches := batchesByBaseCode[baseCode]; len(batches) > 0 {
+				// Prefer the explicitly saved selection; if none was ever
+				// made, fall back to the same earliest-expiry (FEFO)
+				// default the order page's dropdown shows before any
+				// pick is saved — the earliest-expiring batch in stock
+				// (models.DefaultBatch).
+				chosen := models.DefaultBatch(batches)
+				if oi.SelectedBatchCode != nil && *oi.SelectedBatchCode != "" {
+					for _, b := range batches {
+						if b.Code == *oi.SelectedBatchCode {
+							chosen = b
+							break
+						}
+					}
+				}
+				pdfItem.Batch = chosen.CurBatch
+				pdfItem.Expiry = formatBatchExpiryForPDF(chosen.Exp)
+				// MRP comes from the batch being shipped, not the product.
+				// Batch MRPs differ — DICMOLIN runs 103.13 / 103.00 /
+				// 110.00 across its batches — so the printed price has to
+				// be the one on the pack going out, matching the batch
+				// code and expiry printed beside it.
+				if chosen.MRP != nil {
+					pdfItem.MRP = chosen.MRP
+				}
+			}
+		}
+		items = append(items, pdfItem)
+	}
+
+	var transportName string
+	if order.TransportName != nil {
+		transportName = *order.TransportName
+	}
+
+	printedAt := ""
+	if printedBy != "" {
+		printedAt = time.Now().Format("02.01.2006 15:04")
+	}
+	return utils.GenerateOrderPDF(utils.OrderPDFData{
+		OrderNumber:   strings.ToUpper(order.ID.String()[:8]),
+		Date:          order.CreatedAt.Format("2006-01-02"),
+		Status:        order.Status,
+		CustomerName:  customerName,
+		TransportMode: order.TransportMode,
+		TransportName: transportName,
+		Notes:         stringOrEmpty(order.Notes),
+		Items:         items,
+		// Computed by GetOrderByID from the priced lines; nil when the
+		// order has not been priced at all.
+		ItemsTotal:   order.ItemsTotal,
+		Freight:      order.Freight,
+		OrderTotal:   order.OrderTotal,
+		PrintedBy:    printedBy,
+		PrintedAt:    printedAt,
+		CustomerCopy: customerCopy,
+	})
 }
 
 // formatBatchExpiryForPDF turns Marg's raw "YYYYMMDD" expiry into "MM/YYYY".

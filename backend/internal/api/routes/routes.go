@@ -92,6 +92,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	router.HandleFunc("/auth/forgot-password", auth.ForgotPasswordHandler(db)).Methods("POST")
 	router.HandleFunc("/auth/google", auth.GoogleSignInHandler(db)).Methods("POST") // visitors sign up
 	router.HandleFunc("/auth/reset-password", auth.ResetPasswordHandler(db)).Methods("POST")
+	// a customer's order PDF, from the link in the WhatsApp message (token only)
+	router.HandleFunc("/order-pdf/{token}", orders.PublicOrderPDFHandler(db)).Methods("GET")
 
 	// public product routes
 	router.HandleFunc("/products", products.ListProductsHandler(db, true, rdb)).Methods("GET")
