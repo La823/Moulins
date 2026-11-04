@@ -183,6 +183,7 @@ const NAV_ITEMS = [
     ],
   },
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },
+  { label: "Unfinished Orders", href: "/panel/orders/drafts", permission: "orders_edit", icon: ICONS.orders },
   { label: "Payments", href: "/panel/payments", permission: "payments_view", icon: ICONS.payments },
   { label: "Marg Bills", href: "/panel/marg-bills", permission: "marg_bills_view", icon: ICONS.orders },
   { label: "All Bills", href: "/panel/all-bills", permission: "marg_bills_view", icon: ICONS.orders },

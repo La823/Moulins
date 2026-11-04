@@ -807,6 +807,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// the staff order page: whole catalogue + batches, and a partner's last rates (Redis)
 	orderEditStaff.HandleFunc("/orders/quick-catalogue", orders.QuickCatalogueHandler(db, rdb)).Methods("GET")
 	orderEditStaff.HandleFunc("/partners/{id}/last-rates", orders.LastRatesHandler(db, rdb)).Methods("GET")
+	orderEditStaff.HandleFunc("/orders/product-rates/{productId}", orders.ProductRatesHandler(db, rdb)).Methods("GET")
 	// unfinished staff orders, saved as they are built
 	orderEditStaff.HandleFunc("/order-drafts", orders.ListOrderDraftsHandler(db)).Methods("GET")
 	orderEditStaff.HandleFunc("/order-drafts", orders.CreateOrderDraftHandler(db)).Methods("POST")

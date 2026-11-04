@@ -123,6 +123,12 @@ function AdminOrdersPageInner() {
             </span>
           )}
           <Link
+            href="/panel/orders/drafts"
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Unfinished Orders
+          </Link>
+          <Link
             href="/panel/orders/new"
             className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
           >

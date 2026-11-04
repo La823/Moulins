@@ -9,6 +9,7 @@ import { useRateHistory, RateHint } from "@/components/admin/MargRateHistory";
 const GRID_PER_PAGE = 36;
 const LIST_PER_PAGE = 60;
 const VIEW_KEY = "staffOrder.view";
+const SALES_KEY = "staffOrder.sales"; // the past rates drawer left open
 const VIEWS = [
   ["grid", "Grid"],
   ["list-img", "List with pictures"],
@@ -31,6 +32,10 @@ const VIEWS = [
 // paging run in the browser; the partner's last rates come in one request
 // when they are picked. Only the grid shows pictures (small thumbnails) —
 // the plain list, the default, loads no images at all.
+//
+// The past rates drawer (the "Past rates" button, or \ on the products)
+// shows what the highlighted product was billed at to this customer, or if
+// they have never had it, its latest bills to anyone; it follows the highlight.
 //
 // An order not placed yet is a draft: saved by itself a moment after each
 // change, listed for every staff member under "Unfinished orders", and
@@ -108,6 +113,22 @@ export default function NewOrderForStaffPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // The past rates drawer
+  const [salesOpen, setSalesOpen] = useState(() => {
+    try {
+      return localStorage.getItem(SALES_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSales = () =>
+    setSalesOpen((o) => {
+      try {
+        localStorage.setItem(SALES_KEY, o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
 
   // Drafts
   const [draftId, setDraftId] = useState(null);
@@ -473,6 +494,10 @@ export default function NewOrderForStaffPage() {
         e.preventDefault();
         searchRef.current?.focus();
         return;
+      case "\\":
+        e.preventDefault();
+        toggleSales();
+        return;
       default:
         // typing a letter or digit goes to the search box
         if (e.key.length === 1 && e.key !== " ") {
@@ -553,7 +578,7 @@ export default function NewOrderForStaffPage() {
   const unpriced = items.filter((i) => parseRate(i.rate) == null).length;
 
   return (
-    <div className="p-6">
+    <div className={`p-6 ${salesOpen ? "lg:pr-[396px]" : ""}`}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Create Order on Behalf of a Customer</h2>
@@ -721,6 +746,14 @@ export default function NewOrderForStaffPage() {
                   </button>
                 </span>
               )}
+              <button
+                type="button"
+                onClick={toggleSales}
+                title="What the highlighted product was billed at before (\ on the products)"
+                className={`px-2.5 py-1 text-xs border rounded-lg ${salesOpen ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+              >
+                Past rates
+              </button>
               <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden">
                 {VIEWS.map(([k, l]) => (
                   <button
@@ -756,7 +789,7 @@ export default function NewOrderForStaffPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
           />
           <p className="mt-1.5 text-[11px] text-gray-400">
-            Arrows move · Enter adds (quantity → rate → batch, Enter each) · Delete removes · Page Up/Down change page · type to search · Ctrl+Enter places the order
+            Arrows move · Enter adds (quantity → rate → batch, Enter each) · Delete removes · Page Up/Down change page · \ past rates · type to search · Ctrl+Enter places the order
           </p>
 
           <div ref={browserRef} tabIndex={0} onKeyDown={onBrowserKey} className="mt-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-gray-300">
@@ -873,6 +906,10 @@ export default function NewOrderForStaffPage() {
         {submitting ? "Placing order…" : "Place Order"}
       </button>
       <span className="ml-3 text-xs text-gray-400">or Ctrl+Enter</span>
+
+      {salesOpen && (
+        <RatesDrawer product={entry?.product || productResults[active] || null} customer={selectedCustomer} onClose={toggleSales} />
+      )}
 
       {entry && (
         <EntryBox
@@ -1242,5 +1279,132 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---- the past rates drawer ---------------------------------------------------------
+
+const num = (v) => Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const day = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—");
+
+// What the product was sold at before: to this customer, or — if they have
+// never been billed for it — to anyone, latest first. It follows the
+// highlighted product as the arrows move.
+function RatesDrawer({ product, customer, onClose }) {
+  const [results, setResults] = useState({}); // "product/customer" -> response, kept while the page is open
+  const key = product ? `${product.id}/${customer?.id || ""}` : null;
+
+  useEffect(() => {
+    if (!key || results[key]) return;
+    let off = false;
+    const t = setTimeout(async () => {
+      let d;
+      try {
+        const qs = customer ? `?partner=${customer.id}` : "";
+        d = await apiFetch(`/admin/orders/product-rates/${product.id}${qs}`);
+      } catch {
+        d = { error: true };
+      }
+      if (!off) setResults((r) => ({ ...r, [key]: d }));
+    }, 200);
+    return () => {
+      off = true;
+      clearTimeout(t);
+    };
+  }, [key, product, customer, results]);
+
+  const data = key ? results[key] : null;
+  const mine = data?.partner?.points || [];
+  const recent = data?.recent || [];
+
+  return (
+    <aside className="fixed right-0 top-0 z-40 h-full w-full max-w-[380px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
+      <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Past rates</div>
+          <div className="text-sm font-semibold text-gray-900 leading-snug">{product ? product.name : "Highlight a product"}</div>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none px-1" title="Close (\)">
+          ✕
+        </button>
+      </div>
+
+      {product && (
+        <div className="p-4">
+          {!data ? (
+            <p className="text-xs text-gray-400 animate-pulse">Loading…</p>
+          ) : data.error ? (
+            <p className="text-xs text-red-600">Could not load the rates.</p>
+          ) : mine.length > 0 ? (
+            <>
+              <h4 className="text-xs font-semibold text-gray-700 mb-1">Billed to {customer.username || "this customer"}</h4>
+              <p className="text-xs text-gray-500 mb-2">
+                Last ₹{data.partner.last?.rate} on {day(data.partner.last?.date)}
+                {data.partner.times > 1 && data.partner.min_rate != null && ` · ₹${data.partner.min_rate}–${data.partner.max_rate} over ${data.partner.times} times`}
+              </p>
+              <table className="w-full text-xs">
+                <thead className="text-gray-400">
+                  <tr>
+                    <th className="text-left font-normal py-1">Date</th>
+                    <th className="text-left font-normal py-1">Bill / order</th>
+                    <th className="text-right font-normal py-1">Qty</th>
+                    <th className="text-right font-normal py-1">Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700 tabular-nums">
+                  {mine.map((p, i) => (
+                    <tr key={i}>
+                      <td className="py-1.5">{day(p.date)}</td>
+                      <td className="py-1.5 text-gray-500">{p.ref}</td>
+                      <td className="py-1.5 text-right">
+                        {num(p.qty)}
+                        {p.free ? <span className="text-gray-400"> +{num(p.free)}</span> : null}
+                      </td>
+                      <td className="py-1.5 text-right font-medium text-gray-900">₹{num(p.rate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500 mb-3">
+                {customer ? "Not bought by this partner." : "Pick a customer to see their own rates."} Latest bills of this product to anyone:
+              </p>
+              {recent.length === 0 ? (
+                <p className="text-xs text-gray-400">No sale bills for this product yet.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="text-gray-400">
+                    <tr>
+                      <th className="text-left font-normal py-1">Date · customer</th>
+                      <th className="text-right font-normal py-1">Qty</th>
+                      <th className="text-right font-normal py-1">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-700 tabular-nums">
+                    {recent.map((s, i) => (
+                      <tr key={i} className="align-top">
+                        <td className="py-1.5 pr-2">
+                          <div className="text-gray-900">{s.customer}</div>
+                          <div className="text-gray-400">
+                            {day(s.date)} · {s.bill_no}
+                          </div>
+                        </td>
+                        <td className="py-1.5 text-right">
+                          {num(s.qty)}
+                          {s.free ? <span className="text-gray-400"> +{num(s.free)}</span> : null}
+                        </td>
+                        <td className="py-1.5 text-right font-medium text-gray-900">₹{num(s.rate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </aside>
   );
 }
