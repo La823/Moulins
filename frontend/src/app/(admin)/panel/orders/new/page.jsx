@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useRateHistory, RateHint } from "@/components/admin/MargRateHistory";
-import { visibleImages } from "@/lib/productImages";
 
 // Divisible by 2/3/4/6 so the grid's last row stays full at every breakpoint.
-const PRODUCTS_PER_PAGE = 36;
+const GRID_PER_PAGE = 36;
+const LIST_PER_PAGE = 60;
 const VIEW_KEY = "staffOrder.view";
 const VIEWS = [
   ["grid", "Grid"],
@@ -25,6 +25,16 @@ const VIEWS = [
 // multiple of the MOQ), Enter again goes to the rate (the partner's last
 // rate, else the selling price), Enter again to the batch (earliest expiry
 // in stock first, ↑↓ to change), and a last Enter puts it in the cart.
+//
+// Fast because nothing waits on the server while ordering: the whole
+// catalogue with every live batch comes once, from Redis, so search and
+// paging run in the browser; the partner's last rates come in one request
+// when they are picked. Only the grid shows pictures (small thumbnails) —
+// the plain list, the default, loads no images at all.
+//
+// An order not placed yet is a draft: saved by itself a moment after each
+// change, listed for every staff member under "Unfinished orders", and
+// deleted when the order is placed. ?draft=<id> in the address reopens one.
 
 const money = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -65,35 +75,31 @@ export default function NewOrderForStaffPage() {
   const customerBoxRef = useRef(null);
   const customerInputRef = useRef(null);
 
-  // Product browser — the full catalog, paginated, narrowed by the search box.
+  // Product browser — the whole catalogue, searched and paged here.
+  const [catalogue, setCatalogue] = useState(null); // {products, batches}
+  const [catalogueError, setCatalogueError] = useState("");
   const [productQuery, setProductQuery] = useState("");
-  const [productResults, setProductResults] = useState([]);
   const [productPage, setProductPage] = useState(1);
-  const [productTotalPages, setProductTotalPages] = useState(1);
-  const [productTotal, setProductTotal] = useState(0);
-  const [loadingProducts, setLoadingProducts] = useState(true);
   const [view, setView] = useState(() => {
     try {
       const v = localStorage.getItem(VIEW_KEY);
-      return VIEWS.some(([k]) => k === v) ? v : "grid";
+      return VIEWS.some(([k]) => k === v) ? v : "list";
     } catch {
-      return "grid";
+      return "list";
     }
   });
   const [active, setActive] = useState(0); // highlighted product on the page
-  const [entry, setEntry] = useState(null); // the product being entered: quantity, then rate
+  const [entry, setEntry] = useState(null); // the product being entered: quantity, rate, batch
   const searchRef = useRef(null);
   const browserRef = useRef(null);
   const itemRefs = useRef([]);
-  // where the highlight goes once the next page arrives ("first" or "last")
-  const landOn = useRef("first");
 
   // Order being built
   const [items, setItems] = useState([]); // [{product_id, product_name, quantity, step, rate, batch}]
   const cartIds = items.map((i) => i.product_id);
   const rateHistory = useRateHistory(selectedCustomer?.id, cartIds);
-  // the partner's past rates for the products on screen, for the rate box
-  const pageHistory = useRateHistory(selectedCustomer?.id, productResults.map((p) => p.id));
+  // the partner's last rate for every product they have bought: {product_id: {rate, date, source}}
+  const [lastRates, setLastRates] = useState(null);
   const [notes, setNotes] = useState("");
   const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState("");
@@ -102,6 +108,15 @@ export default function NewOrderForStaffPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Drafts
+  const [draftId, setDraftId] = useState(null);
+  const draftIdRef = useRef(null);
+  const draftCreating = useRef(null); // the first save in flight, so a second can't make another draft
+  const loadedSnapshot = useRef(""); // what was just loaded, so loading isn't saved straight back
+  const [draftStatus, setDraftStatus] = useState(null); // {saving} | {at} | {error}
+  const [drafts, setDrafts] = useState({ list: [], at: 0 }); // at: when listed, for "5 min ago"
+  const [draftsLoad, setDraftsLoad] = useState(0);
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -140,34 +155,183 @@ export default function NewOrderForStaffPage() {
     return () => clearTimeout(t);
   }, [customerQuery]);
 
+  const [catalogueLoad, setCatalogueLoad] = useState(0); // bumped by Refresh
   useEffect(() => {
-    const q = productQuery.trim();
     let off = false;
-    const t = setTimeout(() => {
-      setLoadingProducts(true);
-      apiFetch(`/admin/products?search=${encodeURIComponent(q)}&page=${productPage}&limit=${PRODUCTS_PER_PAGE}`)
-        .then((data) => {
-          if (off) return;
-          const list = data.products || [];
-          setProductResults(list);
-          setProductTotalPages(data.total_pages || 1);
-          setProductTotal(data.total || 0);
-          setActive(landOn.current === "last" ? Math.max(0, list.length - 1) : 0);
-          landOn.current = "first";
-        })
-        .catch(() => {
-          if (off) return;
-          setProductResults([]);
-          setProductTotalPages(1);
-          setProductTotal(0);
-        })
-        .finally(() => !off && setLoadingProducts(false));
-    }, 250);
+    apiFetch(`/admin/orders/quick-catalogue${catalogueLoad ? "?fresh=1" : ""}`)
+      .then((d) => {
+        if (off) return;
+        setCatalogue({ products: d.products || [], batches: d.batches || {} });
+        setCatalogueError("");
+      })
+      .catch((e) => !off && setCatalogueError(e.message || "Could not load the products"));
     return () => {
       off = true;
-      clearTimeout(t);
     };
-  }, [productQuery, productPage]);
+  }, [catalogueLoad]);
+
+  useEffect(() => {
+    if (!selectedCustomer) return;
+    let off = false;
+    apiFetch(`/admin/partners/${selectedCustomer.id}/last-rates`)
+      .then((d) => !off && setLastRates(d.rates || {}))
+      .catch(() => !off && setLastRates({}));
+    return () => {
+      off = true;
+    };
+  }, [selectedCustomer]);
+
+  useEffect(() => {
+    let off = false;
+    apiFetch("/admin/order-drafts")
+      .then((d) => !off && setDrafts({ list: d.drafts || [], at: Date.now() }))
+      .catch(() => {});
+    return () => {
+      off = true;
+    };
+  }, [draftsLoad]);
+
+  const snapshot = () =>
+    JSON.stringify({
+      customer: selectedCustomer ? { id: selectedCustomer.id, username: selectedCustomer.username, phone_number: selectedCustomer.phone_number } : null,
+      items,
+      notes,
+      transportMode,
+      transportId,
+    });
+
+  const setDraft = (id) => {
+    draftIdRef.current = id;
+    setDraftId(id);
+    try {
+      const u = new URL(window.location.href);
+      if (id) u.searchParams.set("draft", id);
+      else u.searchParams.delete("draft");
+      window.history.replaceState(null, "", u);
+    } catch {}
+  };
+
+  // Saves a moment after the last change, once there is a customer or an item.
+  useEffect(() => {
+    const snap = snapshot();
+    if (snap === loadedSnapshot.current || (!selectedCustomer && items.length === 0)) return;
+    const t = setTimeout(async () => {
+      setDraftStatus({ saving: true });
+      const body = JSON.stringify({ customer_id: selectedCustomer?.id || null, data: JSON.parse(snap), item_count: items.length });
+      try {
+        if (draftCreating.current) await draftCreating.current;
+        if (draftIdRef.current) {
+          await apiFetch(`/admin/order-drafts/${draftIdRef.current}`, { method: "PUT", body });
+        } else {
+          draftCreating.current = apiFetch("/admin/order-drafts", { method: "POST", body });
+          const res = await draftCreating.current;
+          draftCreating.current = null;
+          setDraft(res.id);
+        }
+        loadedSnapshot.current = snap;
+        setDraftStatus({ at: new Date() });
+      } catch (e) {
+        draftCreating.current = null;
+        setDraftStatus({ error: e.message || "Could not save the draft" });
+      }
+    }, 1200);
+    return () => clearTimeout(t);
+    // snapshot() reads exactly these
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomer, items, notes, transportMode, transportId]);
+
+  const applyDraft = (d) => {
+    const data = d.data || {};
+    setSelectedCustomer(data.customer || null);
+    setItems(data.items || []);
+    setNotes(data.notes || "");
+    setTransportMode(data.transportMode || "");
+    setTransportId(data.transportId || "");
+    setLastRates(null);
+    loadedSnapshot.current = JSON.stringify({
+      customer: data.customer || null,
+      items: data.items || [],
+      notes: data.notes || "",
+      transportMode: data.transportMode || "",
+      transportId: data.transportId || "",
+    });
+    setDraft(d.id);
+    setDraftStatus({ at: new Date(d.updated_at) });
+  };
+
+  const openDraft = useCallback(async (id) => {
+    try {
+      applyDraft(await apiFetch(`/admin/order-drafts/${id}`));
+      setTimeout(() => searchRef.current?.focus(), 0);
+    } catch (e) {
+      setError(e.message || "Could not open the draft");
+      setDraft(null);
+    }
+    // applyDraft only sets state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ?draft=<id> in the address reopens that draft
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("draft");
+    if (!id) return;
+    let off = false;
+    (async () => {
+      try {
+        const d = await apiFetch(`/admin/order-drafts/${id}`);
+        if (!off) applyDraft(d);
+      } catch (e) {
+        if (!off) setError(e.message || "Could not open the draft");
+      }
+    })();
+    return () => {
+      off = true;
+    };
+    // once, on opening the page
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const newOrder = () => {
+    setSelectedCustomer(null);
+    setItems([]);
+    setNotes("");
+    setTransportMode("");
+    setTransportId("");
+    setLastRates(null);
+    loadedSnapshot.current = "";
+    setDraft(null);
+    setDraftStatus(null);
+    setDraftsLoad((n) => n + 1);
+    setTimeout(() => customerInputRef.current?.focus(), 0);
+  };
+
+  const discardDraft = async (id) => {
+    if (!window.confirm("Discard this unfinished order?")) return;
+    try {
+      await apiFetch(`/admin/order-drafts/${id}`, { method: "DELETE" });
+      if (id === draftIdRef.current) newOrder();
+      else setDraftsLoad((n) => n + 1);
+    } catch (e) {
+      setError(e.message || "Could not discard the draft");
+    }
+  };
+
+  // Search: every word typed must appear in the name (or the Marg code).
+  const filtered = useMemo(() => {
+    const all = catalogue?.products || [];
+    const words = productQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return all;
+    return all.filter((p) => {
+      const hay = `${p.name} ${p.marg_code || ""}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [catalogue, productQuery]);
+  const perPage = view === "grid" ? GRID_PER_PAGE : LIST_PER_PAGE;
+  const productTotal = filtered.length;
+  const productTotalPages = Math.max(1, Math.ceil(productTotal / perPage));
+  const page = Math.min(productPage, productTotalPages);
+  const productResults = useMemo(() => filtered.slice((page - 1) * perPage, page * perPage), [filtered, page, perPage]);
+  const loadingProducts = !catalogue;
 
   // the highlighted product stays on screen while the keys are moving it
   useLayoutEffect(() => {
@@ -176,12 +340,15 @@ export default function NewOrderForStaffPage() {
 
   const chooseView = (v) => {
     setView(v);
+    setProductPage(1);
+    setActive(0);
     try {
       localStorage.setItem(VIEW_KEY, v);
     } catch {}
   };
 
   function pickCustomer(c) {
+    setLastRates(null);
     setSelectedCustomer(c);
     setCustomerQuery("");
     setCustomerResults([]);
@@ -203,17 +370,19 @@ export default function NewOrderForStaffPage() {
     return n === -1 ? els.length : n;
   };
 
-  const goPage = (page, land) => {
-    if (page < 1 || page > productTotalPages || page === productPage) return false;
-    landOn.current = land;
-    setProductPage(page);
+  // land: where the highlight goes on the new page ("first" or "last")
+  const goPage = (to, land) => {
+    if (to < 1 || to > productTotalPages || to === page) return false;
+    const onPage = Math.min(perPage, productTotal - (to - 1) * perPage);
+    setProductPage(to);
+    setActive(land === "last" ? Math.max(0, onPage - 1) : 0);
     return true;
   };
 
   const openEntry = (p) => {
     if (!p) return;
     const inCart = items.find((i) => i.product_id === p.id);
-    const last = pageHistory?.products?.[p.id]?.last?.rate;
+    const last = lastRates?.[p.id]?.rate;
     setEntry({
       product: p,
       step: stepFor(p),
@@ -263,28 +432,28 @@ export default function NewOrderForStaffPage() {
     };
     switch (e.key) {
       case "ArrowRight":
-        if (active === n - 1 && goPage(productPage + 1, "first")) return e.preventDefault();
+        if (active === n - 1 && goPage(page + 1, "first")) return e.preventDefault();
         return move(active + 1);
       case "ArrowLeft":
-        if (active === 0 && goPage(productPage - 1, "last")) return e.preventDefault();
+        if (active === 0 && goPage(page - 1, "last")) return e.preventDefault();
         return move(active - 1);
       case "ArrowDown":
-        if (active + cols > n - 1 && goPage(productPage + 1, "first")) return e.preventDefault();
+        if (active + cols > n - 1 && goPage(page + 1, "first")) return e.preventDefault();
         return move(active + cols);
       case "ArrowUp":
         if (active - cols < 0) {
           e.preventDefault();
-          if (!goPage(productPage - 1, "last")) searchRef.current?.focus();
+          if (!goPage(page - 1, "last")) searchRef.current?.focus();
           return;
         }
         return move(active - cols);
       case "PageDown":
         e.preventDefault();
-        goPage(productPage + 1, "first");
+        goPage(page + 1, "first");
         return;
       case "PageUp":
         e.preventDefault();
-        goPage(productPage - 1, "first");
+        goPage(page - 1, "first");
         return;
       case "Home":
         return move(0);
@@ -310,6 +479,7 @@ export default function NewOrderForStaffPage() {
           e.preventDefault();
           setProductQuery((q) => q + e.key);
           setProductPage(1);
+          setActive(0);
           searchRef.current?.focus();
         }
     }
@@ -356,8 +526,10 @@ export default function NewOrderForStaffPage() {
           notes: notes.trim() || null,
           transport_mode: transportMode || null,
           transport_id: transportId || null,
+          draft_id: draftIdRef.current,
         }),
       });
+      loadedSnapshot.current = snapshot(); // nothing left to save
       router.push(`/panel/orders/${res.order_id}`);
     } catch (err) {
       setError(err.message);
@@ -382,10 +554,24 @@ export default function NewOrderForStaffPage() {
 
   return (
     <div className="p-6">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">Create Order on Behalf of a Customer</h2>
-        <p className="text-sm text-gray-500">Pick a customer, add products, and place the order for them.</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Create Order on Behalf of a Customer</h2>
+          <p className="text-sm text-gray-500">Pick a customer, add products, and place the order for them. Unfinished orders save themselves.</p>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          {draftStatus?.saving && <span className="text-gray-400">Saving draft…</span>}
+          {draftStatus?.at && <span className="text-gray-500">Draft saved {draftStatus.at.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>}
+          {draftStatus?.error && <span className="text-red-600">{draftStatus.error}</span>}
+          {(draftId || items.length > 0 || selectedCustomer) && (
+            <button onClick={newOrder} className="px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+              + New order
+            </button>
+          )}
+        </div>
       </div>
+
+      <DraftsPanel drafts={drafts.list.filter((d) => d.id !== draftId)} now={drafts.at} onOpen={openDraft} onDiscard={discardDraft} />
 
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
 
@@ -529,7 +715,10 @@ export default function NewOrderForStaffPage() {
               {!loadingProducts && (
                 <span className="text-xs text-gray-400">
                   {productTotal.toLocaleString("en-IN")} product{productTotal !== 1 ? "s" : ""}
-                  {productQuery.trim() ? " matching" : ""}
+                  {productQuery.trim() ? " matching" : ""} ·{" "}
+                  <button type="button" onClick={() => setCatalogueLoad((n) => n + 1)} className="hover:text-gray-700 underline decoration-dotted" title="Reload products and stock now">
+                    refresh stock
+                  </button>
                 </span>
               )}
               <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden">
@@ -554,6 +743,7 @@ export default function NewOrderForStaffPage() {
             onChange={(e) => {
               setProductQuery(e.target.value);
               setProductPage(1);
+              setActive(0);
             }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown" || e.key === "Enter") {
@@ -570,15 +760,15 @@ export default function NewOrderForStaffPage() {
           </p>
 
           <div ref={browserRef} tabIndex={0} onKeyDown={onBrowserKey} className="mt-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-gray-300">
-            {loadingProducts && productResults.length === 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className="border border-gray-100 rounded-lg p-2 animate-pulse">
-                    <div className="w-full h-20 bg-gray-100 rounded" />
-                    <div className="h-3 bg-gray-100 rounded mt-2" />
-                  </div>
-                ))}
-              </div>
+            {catalogueError ? (
+              <p className="text-xs text-red-600 py-6 text-center">
+                {catalogueError}{" "}
+                <button type="button" onClick={() => setCatalogueLoad((n) => n + 1)} className="underline">
+                  Try again
+                </button>
+              </p>
+            ) : loadingProducts ? (
+              <p className="text-xs text-gray-400 py-6 text-center animate-pulse">Loading the products…</p>
             ) : productResults.length === 0 ? (
               <p className="text-xs text-gray-400 py-6 text-center">No products match “{productQuery.trim()}”.</p>
             ) : (
@@ -587,7 +777,7 @@ export default function NewOrderForStaffPage() {
                 products={productResults}
                 active={active}
                 items={items}
-                history={pageHistory}
+                lastRates={lastRates}
                 itemsRef={itemRefs}
                 onHover={setActive}
                 onOpen={(i) => {
@@ -603,19 +793,19 @@ export default function NewOrderForStaffPage() {
             <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => goPage(productPage - 1, "first")}
-                disabled={productPage <= 1}
+                onClick={() => goPage(page - 1, "first")}
+                disabled={page <= 1}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ← Previous
               </button>
               <span className="text-xs text-gray-500 tabular-nums">
-                Page {productPage} of {productTotalPages}
+                Page {page} of {productTotalPages}
               </span>
               <button
                 type="button"
-                onClick={() => goPage(productPage + 1, "first")}
-                disabled={productPage >= productTotalPages}
+                onClick={() => goPage(page + 1, "first")}
+                disabled={page >= productTotalPages}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next →
@@ -684,22 +874,65 @@ export default function NewOrderForStaffPage() {
       </button>
       <span className="ml-3 text-xs text-gray-400">or Ctrl+Enter</span>
 
-      {entry && <EntryBox entry={entry} history={pageHistory?.products?.[entry.product.id]} onDone={commitEntry} onCancel={closeEntry} />}
+      {entry && (
+        <EntryBox
+          entry={entry}
+          last={lastRates?.[entry.product.id]}
+          ratesLoading={!!selectedCustomer && lastRates === null}
+          batches={catalogue?.batches?.[entry.product.id] || []}
+          onDone={commitEntry}
+          onCancel={closeEntry}
+        />
+      )}
     </div>
+  );
+}
+
+// The unfinished orders, for anyone to pick up.
+function DraftsPanel({ drafts, now, onOpen, onDiscard }) {
+  if (!drafts.length) return null;
+  const ago = (d) => {
+    const m = Math.round((now - new Date(d).getTime()) / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m} min ago`;
+    if (m < 24 * 60) return `${Math.round(m / 60)} h ago`;
+    return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  };
+  return (
+    <details open className="bg-amber-50/60 border border-amber-200 rounded-xl px-4 py-3 mb-4 max-w-3xl">
+      <summary className="cursor-pointer select-none text-sm font-medium text-amber-900">Unfinished orders ({drafts.length})</summary>
+      <ul className="mt-2 divide-y divide-amber-100">
+        {drafts.map((d) => (
+          <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+            <span className="font-medium text-gray-900">{d.customer_name || d.customer_phone || "No customer yet"}</span>
+            <span className="text-xs text-gray-500">
+              {d.item_count} item{d.item_count === 1 ? "" : "s"} · {d.updated_by || d.created_by || "staff"} · {ago(d.updated_at)}
+            </span>
+            <span className="ml-auto flex gap-2">
+              <button onClick={() => onOpen(d.id)} className="px-3 py-1 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800">
+                Continue
+              </button>
+              <button onClick={() => onDiscard(d.id)} className="px-3 py-1 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-white">
+                Discard
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
 // The products on one page, as a grid of cards or a list (with or without
 // pictures). The highlighted one is what the arrow keys move and Enter adds.
-function ProductList({ view, products, active, items, history, itemsRef, onHover, onOpen, dimmed }) {
+function ProductList({ view, products, active, items, lastRates, itemsRef, onHover, onOpen, dimmed }) {
   const cart = Object.fromEntries(items.map((i) => [i.product_id, i]));
-  const last = (p) => history?.products?.[p.id]?.last?.rate;
+  const last = (p) => lastRates?.[p.id]?.rate;
 
   if (view === "grid") {
     return (
       <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 ${dimmed ? "opacity-60" : ""}`}>
         {products.map((p, i) => {
-          const imgs = visibleImages(p.images);
           const inCart = cart[p.id];
           return (
             <button
@@ -718,9 +951,9 @@ function ProductList({ view, products, active, items, history, itemsRef, onHover
                   {inCart.quantity}
                 </span>
               )}
-              {imgs.length > 0 ? (
+              {p.thumb_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={imgs[0].image_url} alt={p.name} loading="lazy" className="w-full h-20 object-contain" />
+                <img src={p.thumb_url} alt={p.name} loading="lazy" decoding="async" className="w-full h-20 object-contain" />
               ) : (
                 <div className="w-full h-20 bg-gray-50 rounded flex items-center justify-center text-[10px] text-gray-300">No image</div>
               )}
@@ -747,7 +980,6 @@ function ProductList({ view, products, active, items, history, itemsRef, onHover
         <span className="text-right">In order</span>
       </div>
       {products.map((p, i) => {
-        const imgs = pics ? visibleImages(p.images) : [];
         const inCart = cart[p.id];
         return (
           <button
@@ -763,13 +995,14 @@ function ProductList({ view, products, active, items, history, itemsRef, onHover
           >
             <span className="flex items-center gap-3 min-w-0">
               {pics &&
-                (imgs.length > 0 ? (
+                (p.thumb_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imgs[0].image_url} alt="" loading="lazy" className="w-10 h-10 object-contain flex-shrink-0" />
+                  <img src={p.thumb_url} alt="" loading="lazy" decoding="async" className="w-10 h-10 object-contain flex-shrink-0" />
                 ) : (
                   <span className="w-10 h-10 bg-gray-50 rounded flex-shrink-0" />
                 ))}
-              <span className="truncate text-gray-800">{p.name}</span>
+              <span className={`truncate ${p.is_active ? "text-gray-800" : "text-gray-400"}`}>{p.name}</span>
+              {!p.is_active && <span className="text-[10px] text-gray-400 border border-gray-200 rounded px-1">inactive</span>}
             </span>
             <span className="hidden sm:block text-right text-xs text-gray-500 tabular-nums">{stepFor(p)}</span>
             <span className="hidden sm:block text-right text-xs text-gray-500 tabular-nums">{p.price ? `₹${p.price}` : "—"}</span>
@@ -805,18 +1038,16 @@ const expiresSoon = (raw) => {
 // to the batches (earliest expiry first, the first one in stock chosen);
 // ↑↓ pick a batch and Enter adds the line. A product with no Marg batches
 // skips the batch step.
-function EntryBox({ entry, history, onDone, onCancel }) {
+function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
   const { product, step } = entry;
   const [qty, setQty] = useState(entry.qty);
   const [rate, setRate] = useState(entry.rate);
   const [rateTouched, setRateTouched] = useState(false);
   const [field, setField] = useState("qty"); // qty | rate | batch
-  const [batches, setBatches] = useState(null); // null while loading
   const [batchPick, setBatchPick] = useState(null); // index into batches
   const qtyRef = useRef(null);
   const rateRef = useRef(null);
   const batchRef = useRef(null);
-  const last = history?.last;
   // the partner's last rate can arrive after the box opens: use it if the
   // rate hasn't been typed yet and nothing better was there
   const shownRate = !rateTouched && entry.rateFrom !== "cart" && entry.rateFrom !== "last" && last?.rate != null ? String(last.rate) : rate;
@@ -826,15 +1057,6 @@ function EntryBox({ entry, history, onDone, onCancel }) {
     qtyRef.current?.select();
   }, []);
 
-  useEffect(() => {
-    let off = false;
-    apiFetch(`/admin/products/${product.id}/batches`)
-      .then((d) => !off && setBatches(d.batches || []))
-      .catch(() => !off && setBatches([]));
-    return () => {
-      off = true;
-    };
-  }, [product.id]);
 
   // the batch already on the line, else the earliest-expiring one in stock
   const defaultPick = () => {
@@ -872,7 +1094,7 @@ function EntryBox({ entry, history, onDone, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div
-        className="w-full max-w-md bg-white rounded-xl shadow-2xl p-5"
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-5"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
@@ -928,7 +1150,7 @@ function EntryBox({ entry, history, onDone, onCancel }) {
           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-base tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500"
         />
         <p className="text-xs text-gray-400 mt-1">
-          {last ? `Last charged ₹${last.rate}` : "Not bought by this partner"}
+          {last ? `Last charged ₹${last.rate}` : ratesLoading ? "Checking past rates…" : "Not bought by this partner"}
           {product.price ? ` · selling price ₹${product.price}` : ""}
           {parseRate(shownRate) != null && ` · line ${money(parseRate(shownRate) * snapped)}`}
         </p>
@@ -955,16 +1177,15 @@ function EntryBox({ entry, history, onDone, onCancel }) {
           }}
           className={`border rounded-lg max-h-44 overflow-y-auto outline-none ${field === "batch" ? "border-blue-500 ring-2 ring-blue-200" : "border-gray-300"}`}
         >
-          {batches === null ? (
-            <p className="px-3 py-2 text-xs text-gray-400">Loading batches…</p>
-          ) : batches.length === 0 ? (
+          {batches.length === 0 ? (
             <p className="px-3 py-2 text-xs text-gray-400">No Marg batches for this product — it will go on the order without one.</p>
           ) : (
             <>
-              <div className="grid grid-cols-[1fr_80px_70px_70px] gap-2 px-3 py-1 text-[11px] text-gray-400 bg-gray-50 sticky top-0">
+              <div className="grid grid-cols-[1fr_72px_64px_72px_72px] gap-2 px-3 py-1 text-[11px] text-gray-400 bg-gray-50 sticky top-0">
                 <span>Batch</span>
                 <span>Expiry</span>
                 <span className="text-right">Stock</span>
+                <span className="text-right">P. rate</span>
                 <span className="text-right">MRP</span>
               </div>
               {batches.map((b) => {
@@ -980,7 +1201,7 @@ function EntryBox({ entry, history, onDone, onCancel }) {
                       setBatchPick(batches.indexOf(b));
                       batchRef.current?.focus();
                     }}
-                    className={`w-full grid grid-cols-[1fr_80px_70px_70px] gap-2 px-3 py-1.5 text-left text-xs tabular-nums ${
+                    className={`w-full grid grid-cols-[1fr_72px_64px_72px_72px] gap-2 px-3 py-1.5 text-left text-xs tabular-nums ${
                       on ? "bg-blue-50 text-gray-900 font-medium" : out ? "text-gray-300" : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
@@ -990,6 +1211,7 @@ function EntryBox({ entry, history, onDone, onCancel }) {
                     </span>
                     <span className={!out && expiresSoon(b.exp) ? "text-amber-700" : ""}>{fmtExpiry(b.exp) || "—"}</span>
                     <span className="text-right">{out ? "out" : fmtStock(b.stock)}</span>
+                    <span className="text-right">{b.prate ? `₹${b.prate}` : "—"}</span>
                     <span className="text-right">{b.mrp ? `₹${b.mrp}` : "—"}</span>
                   </button>
                 );
@@ -1003,6 +1225,11 @@ function EntryBox({ entry, history, onDone, onCancel }) {
           </p>
         )}
         {batches && batches.length > 0 && !batches.some((b) => b.stock > 0) && <p className="text-xs text-amber-700 mt-1">No batch in stock.</p>}
+        {chosen?.prate > 0 && parseRate(shownRate) != null && parseRate(shownRate) < chosen.prate && (
+          <p className="text-xs text-red-600 mt-1">
+            The rate ₹{parseRate(shownRate)} is below this batch&apos;s purchase rate ₹{chosen.prate}.
+          </p>
+        )}
 
         <div className="flex items-center gap-2 mt-4">
           <button onClick={done} className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">

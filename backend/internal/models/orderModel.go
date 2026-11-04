@@ -90,6 +90,9 @@ type OrderItem struct {
 	LineTotal *float64 `json:"line_total,omitempty"`
 	// Remarks is a staff note against this line. Internal.
 	Remarks *string `json:"remarks,omitempty"`
+	// Moq is the product's minimum order quantity (0: none set), so staff
+	// editing the line step its quantity in whole multiples of it.
+	Moq int `json:"moq,omitempty"`
 }
 
 type OrderEvent struct {
@@ -351,7 +354,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		`SELECT oi.id, oi.order_id, oi.product_id,
 		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
 		        oi.quantity, oi.created_at, oi.selected_batch_code, oi.marg_pushed_at,
-		        oi.rate, oi.line_total, oi.remarks
+		        oi.rate, oi.line_total, oi.remarks, COALESCE(p.moq, 0)
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1
@@ -366,7 +369,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	o.Items = []OrderItem{}
 	for itemRows.Next() {
 		var item OrderItem
-		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal, &item.Remarks); err != nil {
+		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal, &item.Remarks, &item.Moq); err != nil {
 			return nil, err
 		}
 		o.Items = append(o.Items, item)

@@ -260,6 +260,14 @@ export default function AdminOrderDetail() {
   // --- Update item quantity ---
   const [qtyDrafts, setQtyDrafts] = useState({}); // { [itemId]: string } — pending textbox edits, not yet saved
 
+  // Quantities move in whole multiples of the product's MOQ (item.moq; 1
+  // when none is set): − and + step to the multiple below / above, a typed
+  // number snaps to the nearest one, and nothing goes under one MOQ.
+  const stepOf = (item) => (item.moq > 0 ? item.moq : 1);
+  const snapNearest = (qty, step) => Math.max(step, Math.round(qty / step) * step);
+  const qtyDown = (item) => Math.floor((item.quantity - 1) / stepOf(item)) * stepOf(item);
+  const qtyUp = (item) => Math.ceil((item.quantity + 1) / stepOf(item)) * stepOf(item);
+
   const handleUpdateItem = async (itemId, newQty) => {
     if (!Number.isInteger(newQty) || newQty < 1) return;
     try {
@@ -286,8 +294,10 @@ export default function AdminOrderDetail() {
     });
     if (raw === undefined) return;
     const parsed = parseInt(raw, 10);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed === item.quantity) return;
-    handleUpdateItem(item.id, parsed);
+    if (!Number.isInteger(parsed) || parsed < 1) return;
+    const snapped = snapNearest(parsed, stepOf(item));
+    if (snapped === item.quantity) return;
+    handleUpdateItem(item.id, snapped);
   };
 
   // --- Update item rate ---
@@ -453,6 +463,7 @@ export default function AdminOrderDetail() {
             product_id: product.id,
             product_name: product.name,
             quantity,
+            moq: product.moq || 0,
             selected_batch_code: null,
           },
         ]);
@@ -1001,15 +1012,18 @@ export default function AdminOrderDetail() {
                     <td className="py-2 px-1">
                       <div className="flex items-center justify-center gap-1">
                         <button
-                          onClick={() => handleUpdateItem(item.id, item.quantity - 1)}
-                          disabled={!canEdit || item.quantity <= 1}
+                          onClick={() => handleUpdateItem(item.id, qtyDown(item))}
+                          disabled={!canEdit || qtyDown(item) < stepOf(item)}
+                          title={stepOf(item) > 1 ? `Down to ${qtyDown(item)} (multiples of ${stepOf(item)})` : undefined}
                           className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           &minus;
                         </button>
                         <input
                           type="number"
-                          min={1}
+                          min={stepOf(item)}
+                          step={stepOf(item)}
+                          title={stepOf(item) > 1 ? `Multiples of ${stepOf(item)} (MOQ)` : undefined}
                           value={qtyDrafts[item.id] ?? item.quantity}
                           disabled={!canEdit}
                           onChange={(e) =>
@@ -1022,8 +1036,9 @@ export default function AdminOrderDetail() {
                           className="w-10 text-center font-medium text-gray-900 border border-gray-200 rounded-md py-1 focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <button
-                          onClick={() => handleUpdateItem(item.id, item.quantity + 1)}
+                          onClick={() => handleUpdateItem(item.id, qtyUp(item))}
                           disabled={!canEdit}
+                          title={stepOf(item) > 1 ? `Up to ${qtyUp(item)} (multiples of ${stepOf(item)})` : undefined}
                           className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-gray-500 hover:border-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           +

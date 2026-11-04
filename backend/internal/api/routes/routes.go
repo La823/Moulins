@@ -803,7 +803,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderEditStaff.Use(middleware.StaffOnly)
 	orderEditStaff.Use(middleware.RequirePermission(db, "orders_edit", rdb))
 
-	orderEditStaff.HandleFunc("/orders", orders.CreateOrderForCustomerHandler(db)).Methods("POST")
+	orderEditStaff.HandleFunc("/orders", orders.CreateOrderForCustomerHandler(db, rdb)).Methods("POST")
+	// the staff order page: whole catalogue + batches, and a partner's last rates (Redis)
+	orderEditStaff.HandleFunc("/orders/quick-catalogue", orders.QuickCatalogueHandler(db, rdb)).Methods("GET")
+	orderEditStaff.HandleFunc("/partners/{id}/last-rates", orders.LastRatesHandler(db, rdb)).Methods("GET")
+	// unfinished staff orders, saved as they are built
+	orderEditStaff.HandleFunc("/order-drafts", orders.ListOrderDraftsHandler(db)).Methods("GET")
+	orderEditStaff.HandleFunc("/order-drafts", orders.CreateOrderDraftHandler(db)).Methods("POST")
+	orderEditStaff.HandleFunc("/order-drafts/{id}", orders.GetOrderDraftHandler(db)).Methods("GET")
+	orderEditStaff.HandleFunc("/order-drafts/{id}", orders.UpdateOrderDraftHandler(db)).Methods("PUT")
+	orderEditStaff.HandleFunc("/order-drafts/{id}", orders.DeleteOrderDraftHandler(db)).Methods("DELETE")
 	orderEditStaff.HandleFunc("/orders/{id}/details", orders.UpdateOrderDetailsHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/status", orders.UpdateOrderStatusHandler(db)).Methods("PUT")
 	orderEditStaff.HandleFunc("/orders/{id}/items", orders.AddOrderItemHandler(db)).Methods("POST")

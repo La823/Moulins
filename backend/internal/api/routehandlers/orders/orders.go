@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/mailer"
 	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/middleware"
@@ -474,7 +475,9 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 // explicitly in the body (customer_id) instead of being taken from the
 // caller's own JWT, and the acting staff member's id is recorded as the
 // order.created event's actor rather than the customer's.
-func CreateOrderForCustomerHandler(db *pgxpool.Pool) http.HandlerFunc {
+// rdb, when given, drops the customer's cached last rates (quick.go) once
+// the order is in, so the next order sees the rates just entered.
+func CreateOrderForCustomerHandler(db *pgxpool.Pool, rdb ...*cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		staffIDStr, ok := r.Context().Value("user_id").(string)
 		if !ok {
@@ -490,6 +493,9 @@ func CreateOrderForCustomerHandler(db *pgxpool.Pool) http.HandlerFunc {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req struct {
 			CustomerID uuid.UUID `json:"customer_id"`
+			// DraftID is the unfinished order this was built in (drafts.go);
+			// it is deleted once the order is placed.
+			DraftID *uuid.UUID `json:"draft_id"`
 			models.CreateOrderRequest
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -571,6 +577,14 @@ func CreateOrderForCustomerHandler(db *pgxpool.Pool) http.HandlerFunc {
 			log.Printf("create order for customer error: %v", err)
 			http.Error(w, "could not create order", http.StatusInternalServerError)
 			return
+		}
+		if len(rdb) > 0 {
+			rdb[0].Del(r.Context(), lastRatesKey(req.CustomerID.String()))
+		}
+		if req.DraftID != nil {
+			if err := models.DeleteOrderDraft(r.Context(), db, *req.DraftID); err != nil {
+				log.Printf("create order for customer: delete draft %s: %v", req.DraftID, err)
+			}
 		}
 		notifyOrderPlacedEmail(db, orderID)
 		// Staff placed this one on a customer's behalf; they do not need
