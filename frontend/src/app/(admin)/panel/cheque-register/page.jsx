@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
-import POPicker, { PAY_KEY, inr, outstanding, poLabel } from "@/components/admin/cheques/POPicker";
+import InvoicePicker, { PAY_KEY, inr, isNote, outstanding, toLinks } from "@/components/admin/cheques/InvoicePicker";
 import ManufacturerPicker, { forgetManufacturers } from "@/components/admin/cheques/ManufacturerPicker";
 
 // Cheque register (admin only): every payment to a supplier — cheques and
-// transfers — the purchase orders each one pays, where each cheque is
-// (made, in the office, handed over, cleared), remarks against it, and the
-// received POs still to be paid, due by the supplier's credit period.
+// transfers, often post-dated — the Marg purchase invoices each one pays
+// (less any debit notes it takes off), where each cheque is (made, in the
+// office, handed over, cleared), remarks against it, and the invoices still
+// to be paid, due by the supplier's credit period.
 // Backend: internal/cheques/register.go.
 
 const STATUS = {
@@ -51,12 +52,12 @@ export default function ChequeRegisterPage() {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-800">Cheque Register</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Payments to suppliers, the purchase orders they pay, and what is still to be paid.</p>
+          <p className="text-xs text-gray-400 mt-0.5">Payments to suppliers, the purchase invoices they pay, and what is still to be paid.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setEditing({ draft: {} })} className={primaryCls}>+ Record payment</button>
           <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden bg-white">
-            {[["payments", "Cheques & payments"], ["dues", "To be made"], ["suppliers", "Manufacturers"]].map(([k, l]) => (
+            {[["payments", "Cheques & payments"], ["dues", "To be paid"], ["suppliers", "Manufacturers"]].map(([k, l]) => (
               <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 text-sm ${tab === k ? "bg-gray-900 text-white font-medium" : "text-gray-600 hover:bg-gray-50"}`}>{l}</button>
             ))}
           </div>
@@ -64,7 +65,7 @@ export default function ChequeRegisterPage() {
       </div>
 
       {tab === "payments" && <PaymentsTab refresh={refresh} onOpen={(id) => setEditing({ id })} say={say} changed={changed} />}
-      {tab === "dues" && <DuesTab refresh={refresh} say={say} changed={changed} onRecord={(draft) => setEditing({ draft })} />}
+      {tab === "dues" && <DuesTab refresh={refresh} say={say} onRecord={(draft) => setEditing({ draft })} />}
       {tab === "suppliers" && <SuppliersTab say={say} />}
 
       {editing && (
@@ -94,6 +95,7 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
   const [status, setStatus] = useState("");
   const [method, setMethod] = useState("");
   const [linked, setLinked] = useState("");
+  const [postDated, setPostDated] = useState(false);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -119,6 +121,7 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
       if (status) qs.set("status", status);
       if (method) qs.set("method", method);
       if (linked) qs.set("linked", linked);
+      if (postDated) qs.set("post_dated", "1");
       if (q.trim()) qs.set("search", q.trim());
       try {
         const d = await apiFetch(`/admin/cheques/register?${qs}`);
@@ -130,7 +133,7 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
     return () => {
       off = true;
     };
-  }, [page, status, method, linked, q, say, refresh]);
+  }, [page, status, method, linked, postDated, q, say, refresh]);
 
   const setRowStatus = async (p, s) => {
     try {
@@ -155,9 +158,12 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
               {l} <span className={status === k ? "text-gray-300" : "text-gray-400"}>{n}</span>
             </button>
           ))}
+          <button onClick={() => filter(setPostDated)(!postDated)} className={`ml-2 px-3 py-1 rounded-full text-xs border ${postDated ? "bg-blue-600 text-white border-blue-600" : "border-blue-200 text-blue-700 hover:bg-blue-50"}`}>
+            Post-dated <span className={postDated ? "text-blue-100" : "text-blue-400"}>{counts.post_dated || 0}</span>
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search payee, cheque no., PO no., bill no." className={`${inputCls} max-w-sm`} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search payee, cheque no., bill no." className={`${inputCls} max-w-sm`} />
           <select value={method} onChange={(e) => filter(setMethod)(e.target.value)} className={`${inputCls} w-auto`}>
             <option value="">Cheques & transfers</option>
             <option value="cheque">Cheques only</option>
@@ -165,8 +171,8 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
           </select>
           <select value={linked} onChange={(e) => filter(setLinked)(e.target.value)} className={`${inputCls} w-auto`}>
             <option value="">Linked or not</option>
-            <option value="yes">Linked to POs</option>
-            <option value="no">Not linked to a PO</option>
+            <option value="yes">Linked to invoices</option>
+            <option value="no">Not linked to an invoice</option>
           </select>
         </div>
       </div>
@@ -183,7 +189,7 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
                 <th className="text-left font-medium px-4 py-2">Cheque / ref</th>
                 <th className="text-left font-medium px-4 py-2">Payee</th>
                 <th className="text-right font-medium px-4 py-2">Amount</th>
-                <th className="text-left font-medium px-4 py-2">POs</th>
+                <th className="text-left font-medium px-4 py-2">Invoices</th>
                 <th className="text-left font-medium px-4 py-2">Status</th>
                 <th className="text-left font-medium px-4 py-2">Last remark</th>
               </tr>
@@ -191,7 +197,10 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
             <tbody className="divide-y divide-gray-100">
               {data.payments.map((p) => (
                 <tr key={p.id} onClick={() => onOpen(p.id)} className="hover:bg-gray-50 cursor-pointer align-top">
-                  <td className="px-4 py-2.5 whitespace-nowrap text-gray-700">{fmtDate(p.payment_date)}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap text-gray-700">
+                    {fmtDate(p.payment_date)}
+                    {p.payment_date > today() && !["cleared", "cancelled"].includes(p.status) && <span className="block text-xs text-blue-700">post-dated</span>}
+                  </td>
                   <td className="px-4 py-2.5 whitespace-nowrap">
                     <div className="text-gray-900">{p.method === "cheque" ? p.cheque_no : METHODS[p.method]}</div>
                     <div className="text-xs text-gray-400">{p.bank || (p.method === "cheque" ? "" : "")}</div>
@@ -202,8 +211,8 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap text-gray-900">{inr(p.amount)}</td>
                   <td className="px-4 py-2.5 max-w-48">
-                    {p.po_numbers.length ? (
-                      <span className="text-gray-700">{p.po_numbers.slice(0, 3).join(", ")}{p.po_numbers.length > 3 ? ` +${p.po_numbers.length - 3}` : ""}</span>
+                    {p.invoice_nos.length ? (
+                      <span className="text-gray-700">{p.invoice_nos.slice(0, 3).join(", ")}{p.invoice_nos.length > 3 ? ` +${p.invoice_nos.length - 3}` : ""}</span>
                     ) : (
                       <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Not linked</span>
                     )}
@@ -234,7 +243,7 @@ function PaymentsTab({ refresh, onOpen, say, changed }) {
   );
 }
 
-// ---- one payment: details, POs, status, remarks ------------------------------
+// ---- one payment: details, invoices, status, remarks -------------------------
 
 function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
   const d0 = draft || {};
@@ -243,7 +252,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
     method: "cheque", bank: "", cheque_no: "", payment_date: today(), payee: d0.payee || "",
     manufacturer_id: d0.manufacturer_id || null, other_payee: false, amount: d0.amount ? String(d0.amount) : "", status: "made",
   }));
-  const [links, setLinks] = useState(() => (id ? [] : (d0.pos || []).map((po) => ({ po, amount: outstanding(po).toFixed(2), own: 0 }))));
+  const [links, setLinks] = useState(() => (id ? [] : (d0.invoices || []).map((inv) => ({ inv, amount: outstanding(inv).toFixed(2), own: 0 }))));
   const [remark, setRemark] = useState("");
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
@@ -258,7 +267,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
         if (off) return;
         setP(x);
         setForm({ method: x.method, bank: x.bank || "", cheque_no: x.cheque_no || "", payment_date: x.payment_date || "", payee: x.payee, manufacturer_id: x.manufacturer_id, other_payee: !x.manufacturer_id, amount: String(x.amount), status: x.status });
-        setLinks(x.allocations.map((a) => ({ po: { ...a, paid: a.paid_total }, amount: a.amount.toFixed(2), own: a.amount })));
+        setLinks(x.invoices.map((a) => ({ inv: a, amount: Math.abs(a.amount).toFixed(2), own: a.amount })));
       } catch (e) {
         if (off) return;
         say(e.message || "Could not load payment", true);
@@ -279,7 +288,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
         ...form,
         amount: Number(form.amount),
         manufacturer_id: form.other_payee ? null : form.manufacturer_id,
-        allocations: links.map((l) => ({ po_id: l.po.po_id, amount: Number(l.amount) || 0 })),
+        invoices: toLinks(links),
         remark: id ? "" : remark,
       };
       const out = await apiFetch(id ? `/admin/cheques/register/${id}` : "/admin/cheques/register", { method: id ? "PUT" : "POST", body: JSON.stringify(body) });
@@ -377,8 +386,8 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
             </div>
 
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-1.5">Purchase orders this pays</div>
-              <POPicker links={links} setLinks={setLinks} total={form.amount} />
+              <div className="text-xs font-medium text-gray-500 mb-1.5">Invoices this pays</div>
+              <InvoicePicker links={links} setLinks={setLinks} total={form.amount} manufacturerId={form.other_payee ? null : form.manufacturer_id} />
             </div>
 
             <div>
@@ -402,7 +411,7 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
                         {e.kind === "remark" ? e.note
                           : e.kind === "status" ? <>Marked <b>{STATUS[e.status]?.label || e.status}</b>{e.note ? ` — ${e.note}` : ""}</>
                           : e.kind === "created" ? <>Recorded{e.status ? <> as <b>{STATUS[e.status]?.label}</b></> : ""}{e.note ? ` — ${e.note}` : ""}</>
-                          : "Details or POs changed"}
+                          : "Details or invoices changed"}
                       </div>
                       <div className="text-xs text-gray-400">{e.actor || "—"} · {fmtWhen(e.created_at)}</div>
                     </li>
@@ -417,16 +426,16 @@ function PaymentDrawer({ id, draft, say, onClose, onSaved }) {
   );
 }
 
-// ---- to be made ---------------------------------------------------------------
+// ---- to be paid -----------------------------------------------------------------
 
-function DuesTab({ refresh, say, changed, onRecord }) {
+function DuesTab({ refresh, say, onRecord }) {
   const router = useRouter();
   const [data, setData] = useState(null);
   const [older, setOlder] = useState(false);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
-  const [picked, setPicked] = useState({});
-  const [receiving, setReceiving] = useState(null); // a PO line, or {} to search
+  // ticked invoices and notes, all from one supplier (a cheque has one payee)
+  const [picked, setPicked] = useState({ supplier: null, keys: {} });
   const [fromEdit, setFromEdit] = useState(null);
 
   useEffect(() => {
@@ -453,18 +462,19 @@ function DuesTab({ refresh, say, changed, onRecord }) {
     };
   }, [older, q, say, refresh, reload]);
 
-  const groups = useMemo(() => {
-    const m = new Map();
-    for (const d of data?.dues || []) {
-      const k = d.company || "No supplier";
-      if (!m.has(k)) m.set(k, []);
-      m.get(k).push(d);
-    }
-    return [...m.entries()];
-  }, [data]);
-  const sel = (data?.dues || []).filter((d) => picked[d.po_id]);
-  const selTotal = sel.reduce((s, d) => s + outstanding(d), 0);
+  const dues = data?.dues || [];
+  const keyOf = (s) => s.manufacturer_id || "party:" + s.name;
   const now = today();
+  const toggle = (s, invs, on) =>
+    setPicked((p) => {
+      const keys = p.supplier === keyOf(s) ? { ...p.keys } : {};
+      for (const v of invs) keys[v.invoice_key] = on;
+      return { supplier: keyOf(s), keys };
+    });
+  const supplier = dues.find((s) => keyOf(s) === picked.supplier);
+  const sel = supplier ? [...supplier.invoices, ...supplier.notes].filter((v) => picked.keys[v.invoice_key]) : [];
+  const selTotal = sel.reduce((t, v) => t + (isNote(v) ? -1 : 1) * outstanding(v), 0);
+  const totals = dues.reduce((t, s) => ({ out: t.out + s.outstanding, overdue: t.overdue + s.overdue, credits: t.credits + s.credits }), { out: 0, overdue: 0, credits: 0 });
 
   const saveFrom = async () => {
     try {
@@ -475,7 +485,7 @@ function DuesTab({ refresh, say, changed, onRecord }) {
       say(e.message || "Could not save the date", true);
     }
   };
-  const draft = () => ({ pos: sel, payee: sel[0]?.company || "", manufacturer_id: sel.find((d) => d.manufacturer_id)?.manufacturer_id || null, amount: selTotal.toFixed(2) });
+  const draft = () => ({ invoices: sel, payee: supplier?.name || "", manufacturer_id: supplier?.manufacturer_id || null, amount: Math.max(0, selTotal).toFixed(2) });
   const writeCheque = () => {
     try {
       sessionStorage.setItem(PAY_KEY, JSON.stringify(draft()));
@@ -486,9 +496,9 @@ function DuesTab({ refresh, say, changed, onRecord }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200">
       <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO no., supplier, product, bill no." className={`${inputCls} max-w-sm`} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search supplier, bill no., Marg no." className={`${inputCls} max-w-sm`} />
         <div className="text-sm text-gray-600 flex items-center gap-2">
-          Received from
+          Invoices from
           {fromEdit === null ? (
             <button onClick={() => setFromEdit(data?.from || today())} className="font-medium text-gray-900 underline decoration-dotted underline-offset-2">{fmtDate(data?.from)}</button>
           ) : (
@@ -500,79 +510,87 @@ function DuesTab({ refresh, say, changed, onRecord }) {
           )}
         </div>
         <label className="text-sm text-gray-600 flex items-center gap-1.5 cursor-pointer select-none">
-          <input type="checkbox" checked={older} onChange={(e) => setOlder(e.target.checked)} /> include older POs
+          <input type="checkbox" checked={older} onChange={(e) => setOlder(e.target.checked)} /> include older invoices
         </label>
-        <button onClick={() => setReceiving({})} className={`${btnCls} ml-auto`}>Goods received…</button>
+        {data && (
+          <div className="ml-auto text-sm text-gray-600">
+            {dues.length} suppliers · unpaid <b className="text-gray-900">{inr(totals.out)}</b>
+            {totals.overdue > 0 && <span className="text-red-600"> · overdue {inr(totals.overdue)}</span>}
+            {totals.credits > 0 && <span className="text-emerald-700"> · debit notes {inr(totals.credits)}</span>}
+          </div>
+        )}
       </div>
       <p className="px-4 pt-3 text-xs text-gray-400">
-        Received POs not yet fully paid. What a PO owes is its bill amount; until the bill is entered it is quantity × rate (marked est.).
-        Due = received date + the supplier&apos;s credit period. POs received before the date above count as settled.
+        Marg purchase invoices not yet fully paid, and debit notes not yet taken off a cheque. Due = invoice date + the supplier&apos;s credit period.
+        Invoices dated before the date above count as settled. Tick a supplier&apos;s invoices (and notes) to write one cheque for them.
       </p>
 
       {sel.length > 0 && (
         <div className="sticky top-0 z-10 mx-4 mt-3 flex flex-wrap items-center gap-3 bg-gray-900 text-white rounded-lg px-4 py-2.5 text-sm">
-          <span>{sel.length} PO{sel.length > 1 ? "s" : ""} selected · unpaid {inr(selTotal)}</span>
+          <span>{supplier.name} · {sel.length} ticked · cheque for {inr(Math.max(0, selTotal))}</span>
           <button onClick={writeCheque} className="px-3 py-1 bg-white text-gray-900 rounded font-medium">Write cheque</button>
           <button onClick={() => onRecord(draft())} className="px-3 py-1 border border-white/40 rounded">Record payment</button>
-          <button onClick={() => setPicked({})} className="text-white/60 ml-auto">Clear</button>
+          <button onClick={() => setPicked({ supplier: null, keys: {} })} className="text-white/60 ml-auto">Clear</button>
         </div>
       )}
 
       {!data ? (
         <div className="p-8"><Loader /></div>
-      ) : groups.length === 0 ? (
+      ) : dues.length === 0 ? (
         <p className="p-8 text-center text-sm text-gray-400">Nothing to pay{q ? " matches" : ""}.</p>
       ) : (
         <div className="p-4 space-y-4">
-          {groups.map(([company, rows]) => {
-            const owed = rows.reduce((s, d) => s + outstanding(d), 0);
-            const allOn = rows.every((d) => picked[d.po_id]);
+          {dues.map((s) => {
+            const mine = picked.supplier === keyOf(s);
+            const allOn = mine && s.invoices.every((v) => picked.keys[v.invoice_key]);
             return (
-              <div key={company} className="border border-gray-200 rounded-lg overflow-x-auto">
-                <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 text-sm">
-                  <input type="checkbox" checked={allOn} onChange={() => setPicked((x) => ({ ...x, ...Object.fromEntries(rows.map((d) => [d.po_id, !allOn])) }))} />
-                  <span className="font-medium text-gray-900">{company}</span>
-                  <span className="text-xs text-gray-400">{rows[0].credit_days != null ? `${rows[0].credit_days} days credit` : "no credit period set"}</span>
-                  <span className="ml-auto text-gray-700">{inr(owed)}</span>
+              <div key={keyOf(s)} className="border border-gray-200 rounded-lg overflow-x-auto">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-gray-50 text-sm">
+                  <input type="checkbox" checked={allOn} onChange={() => toggle(s, s.invoices, !allOn)} />
+                  <span className="font-medium text-gray-900">{s.name}</span>
+                  <span className="text-xs text-gray-400">
+                    {s.manufacturer_code || "not linked to a manufacturer"} · {s.credit_days != null ? `${s.credit_days} days credit` : "no credit period set"}
+                  </span>
+                  <span className="ml-auto text-gray-700">
+                    {s.overdue > 0 && <span className="text-red-600 mr-3">overdue {inr(s.overdue)}</span>}
+                    {s.credits > 0 ? <>unpaid {inr(s.outstanding)} − notes {inr(s.credits)} = <b>{inr(s.balance)}</b></> : <b>{inr(s.outstanding)}</b>}
+                  </span>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="text-xs text-gray-400">
                     <tr>
                       <th className="w-8"></th>
-                      <th className="text-left font-normal px-2 py-1.5">PO</th>
-                      <th className="text-left font-normal px-2 py-1.5">Received</th>
-                      <th className="text-left font-normal px-2 py-1.5">Bill</th>
-                      <th className="text-right font-normal px-2 py-1.5">Owes</th>
+                      <th className="text-left font-normal px-2 py-1.5">Supplier bill</th>
+                      <th className="text-left font-normal px-2 py-1.5">Marg no.</th>
+                      <th className="text-left font-normal px-2 py-1.5">Date</th>
+                      <th className="text-right font-normal px-2 py-1.5">Amount</th>
                       <th className="text-right font-normal px-2 py-1.5">Paid</th>
                       <th className="text-right font-normal px-2 py-1.5">Unpaid</th>
                       <th className="text-left font-normal px-2 py-1.5">Due</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {rows.map((d) => (
-                      <tr key={d.po_id} className="align-top">
-                        <td className="px-2 py-2 text-center"><input type="checkbox" checked={!!picked[d.po_id]} onChange={() => setPicked((x) => ({ ...x, [d.po_id]: !x[d.po_id] }))} /></td>
-                        <td className="px-2 py-2"><div className="text-gray-900">{d.po_number}</div><div className="text-xs text-gray-400 max-w-56 truncate">{d.product}</div></td>
-                        <td className="px-2 py-2 whitespace-nowrap text-gray-700">{fmtDate(d.received_on)}</td>
-                        <td className="px-2 py-2">
-                          {d.bill_number || d.bill_amount != null ? (
-                            <button onClick={() => setReceiving(d)} className="text-left">
-                              <div className="text-gray-800">{d.bill_number || "—"}</div>
-                              <div className="text-xs text-gray-400">{d.bill_date ? fmtDate(d.bill_date) : ""}</div>
-                            </button>
-                          ) : (
-                            <button onClick={() => setReceiving(d)} className="text-xs text-blue-700 hover:underline">Enter bill</button>
-                          )}
-                        </td>
-                        <td className="px-2 py-2 text-right whitespace-nowrap text-gray-700">{inr(d.owed)}{d.owed_is_estimate && <span className="block text-xs text-amber-700">est.</span>}</td>
-                        <td className="px-2 py-2 text-right whitespace-nowrap text-gray-500">{d.paid ? inr(d.paid) : "—"}</td>
-                        <td className="px-2 py-2 text-right whitespace-nowrap font-medium text-gray-900">{inr(outstanding(d))}</td>
-                        <td className={`px-2 py-2 whitespace-nowrap ${d.due_on && d.due_on < now ? "text-red-600 font-medium" : "text-gray-700"}`}>
-                          {d.due_on ? fmtDate(d.due_on) : <span className="text-xs text-gray-400">no credit period</span>}
-                          {d.due_on && d.due_on < now && <span className="block text-xs">overdue</span>}
-                        </td>
-                      </tr>
-                    ))}
+                    {[...s.invoices, ...s.notes].map((v) => {
+                      const note = isNote(v);
+                      const late = !note && v.due_on && v.due_on < now;
+                      return (
+                        <tr key={v.invoice_key} className={`align-top ${note ? "bg-emerald-50/40" : ""}`}>
+                          <td className="px-2 py-2 text-center">
+                            <input type="checkbox" checked={mine && !!picked.keys[v.invoice_key]} onChange={(e) => toggle(s, [v], e.target.checked)} />
+                          </td>
+                          <td className={`px-2 py-2 ${note ? "text-emerald-700" : "text-gray-900"}`}>{note ? "Debit note" : v.supplier_bill_no || "—"}</td>
+                          <td className="px-2 py-2 text-gray-500">{v.marg_no}</td>
+                          <td className="px-2 py-2 whitespace-nowrap text-gray-700">{fmtDate(v.bill_date)}</td>
+                          <td className="px-2 py-2 text-right whitespace-nowrap text-gray-700">{note ? "−" : ""}{inr(v.total)}</td>
+                          <td className="px-2 py-2 text-right whitespace-nowrap text-gray-500">{v.used ? inr(v.used) : "—"}</td>
+                          <td className={`px-2 py-2 text-right whitespace-nowrap font-medium ${note ? "text-emerald-700" : "text-gray-900"}`}>{note ? "−" : ""}{inr(outstanding(v))}</td>
+                          <td className={`px-2 py-2 whitespace-nowrap ${late ? "text-red-600 font-medium" : "text-gray-700"}`}>
+                            {note ? <span className="text-xs text-emerald-700">takes off a cheque</span> : v.due_on ? fmtDate(v.due_on) : <span className="text-xs text-gray-400">no credit period</span>}
+                            {late && <span className="block text-xs">overdue</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -580,114 +598,6 @@ function DuesTab({ refresh, say, changed, onRecord }) {
           })}
         </div>
       )}
-
-      {receiving && (
-        <ReceiveModal
-          po={receiving.po_id ? receiving : null}
-          say={say}
-          onClose={() => setReceiving(null)}
-          onDone={() => {
-            setReceiving(null);
-            changed();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// Goods arriving for a PO line: marks it received and stores the bill.
-function ReceiveModal({ po: start, say, onClose, onDone }) {
-  const formFor = (x) => x && {
-    received_on: x.received_on || today(),
-    qty_received: x.qty_received ?? x.quantity ?? "",
-    bill_number: x.bill_number || "",
-    bill_date: x.bill_date || "",
-    bill_amount: x.bill_amount ?? "",
-  };
-  const [po, setPoState] = useState(start);
-  const [f, setF] = useState(() => formFor(start));
-  const setPo = (x) => {
-    setPoState(x);
-    setF(formFor(x));
-  };
-  const [found, setList] = useState([]);
-  const [q, setQ] = useState("");
-  const seq = useRef(0);
-  const list = po || q.trim().length < 2 ? [] : found;
-
-  useEffect(() => {
-    if (po || q.trim().length < 2) return;
-    const t = setTimeout(async () => {
-      const n = ++seq.current;
-      try {
-        const res = await apiFetch(`/admin/cheques/pos?open=1&search=${encodeURIComponent(q.trim())}`);
-        if (n === seq.current) setList(res.pos || []);
-      } catch {}
-    }, 250);
-    return () => clearTimeout(t);
-  }, [q, po]);
-
-  const save = async () => {
-    try {
-      await apiFetch(`/admin/cheques/pos/${po.po_id}/receive`, {
-        method: "POST",
-        body: JSON.stringify({
-          received_on: f.received_on,
-          qty_received: f.qty_received === "" ? null : Number(f.qty_received),
-          bill_number: f.bill_number,
-          bill_date: f.bill_date || null,
-          bill_amount: f.bill_amount === "" ? null : Number(f.bill_amount),
-        }),
-      });
-      say(`${po.po_number} received`);
-      onDone();
-    } catch (e) {
-      say(e.message || "Could not save", true);
-    }
-  };
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-5">
-        <h3 className="text-base font-semibold text-gray-900 mb-1">Goods received</h3>
-        <p className="text-xs text-gray-400 mb-4">Marks the PO received from this date (the credit period starts then) and stores the supplier&apos;s bill.</p>
-        {!po ? (
-          <>
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find the PO — PO no., supplier or product" className={inputCls} />
-            <ul className="mt-2 max-h-72 overflow-auto divide-y divide-gray-100 text-sm">
-              {list.map((x) => (
-                <li key={x.po_id} onClick={() => setPo(x)} className="px-2 py-2 cursor-pointer hover:bg-gray-50">
-                  <div className="text-gray-900">{poLabel(x)}</div>
-                  <div className="text-xs text-gray-400">{x.company} · {x.status || "no status"} · {x.quantity ?? "?"} × {x.rate != null ? inr(x.rate) : "?"}</div>
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-gray-400 mt-2">Lists POs not yet received. To change the bill on a received PO, use Enter bill on its row.</p>
-          </>
-        ) : !f ? null : (
-          <>
-            <div className="text-sm mb-3">
-              <div className="text-gray-900 font-medium">{poLabel(po)}</div>
-              <div className="text-xs text-gray-400">{po.company} · ordered {po.quantity ?? "?"} × {po.rate != null ? inr(po.rate) : "?"}</div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <L label="Received on"><input type="date" value={f.received_on} onChange={set("received_on")} className={inputCls} /></L>
-              <L label="Quantity received"><input value={f.qty_received} onChange={set("qty_received")} inputMode="decimal" className={inputCls} /></L>
-              <L label="Supplier bill no."><input value={f.bill_number} onChange={set("bill_number")} className={inputCls} /></L>
-              <L label="Bill date"><input type="date" value={f.bill_date} onChange={set("bill_date")} className={inputCls} /></L>
-              <L label="Bill amount (incl. GST)"><input value={f.bill_amount} onChange={set("bill_amount")} inputMode="decimal" placeholder="for this PO" className={inputCls} /></L>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">If one bill covers several POs, enter each PO&apos;s share of it.</p>
-            <div className="flex gap-2 mt-4">
-              <button onClick={save} disabled={!f.received_on} className={primaryCls}>Save</button>
-              {!start && <button onClick={() => setPo(null)} className={btnCls}>Back</button>}
-              <button onClick={onClose} className={btnCls}>Cancel</button>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -736,7 +646,7 @@ function SuppliersTab({ say }) {
           <span className={`text-xs px-1.5 rounded ${flagged ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-500"}`}>{flagged}</span>
         </label>
         <p className="text-xs text-gray-400 w-full">
-          Names follow Marg&apos;s supplier names, which print on cheques. Credit period: days to pay, counted from the day goods are received.
+          Names follow Marg&apos;s supplier names, which print on cheques. Credit period: days to pay, counted from the invoice date.
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -745,7 +655,7 @@ function SuppliersTab({ say }) {
             <tr>
               <th className="text-left font-medium px-4 py-2">Manufacturer</th>
               <th className="text-left font-medium px-4 py-2">Marg party</th>
-              <th className="text-right font-medium px-4 py-2">POs</th>
+              <th className="text-right font-medium px-4 py-2">Invoices</th>
               <th className="text-left font-medium px-4 py-2">Credit</th>
             </tr>
           </thead>
@@ -767,7 +677,7 @@ function SuppliersTab({ say }) {
                   )}
                   <button onClick={() => setLinking(s)} className="text-xs text-blue-700 hover:underline mt-1">{s.marg_parties.length ? "Change" : "Link Marg party…"}</button>
                 </td>
-                <td className="px-4 py-2.5 text-right text-gray-600">{s.pos}</td>
+                <td className="px-4 py-2.5 text-right text-gray-600">{s.invoices}</td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
                   <input
                     defaultValue={s.credit_days ?? ""}
@@ -840,7 +750,7 @@ function MargLinkModal({ mfr, say, onClose, onDone }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-5">
         <h3 className="text-base font-semibold text-gray-900">Link {mfr.code} to Marg</h3>
-        <p className="text-sm text-gray-600 mb-1">{mfr.name} · {mfr.pos} POs</p>
+        <p className="text-sm text-gray-600 mb-1">{mfr.name} · {mfr.invoices} Marg invoices</p>
         {mfr.marg_flag && <p className="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1 mb-3">{mfr.marg_flag}</p>}
         <div className="flex flex-wrap gap-1.5 mb-2">
           {picked.map((p) => (

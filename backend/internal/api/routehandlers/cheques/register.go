@@ -46,7 +46,7 @@ func pathID(r *http.Request) int64 {
 	return id
 }
 
-// GET /admin/cheques/register?status=&method=cheque|transfer&linked=yes|no&search=&page=
+// GET /admin/cheques/register?status=&method=cheque|transfer&linked=yes|no&post_dated=1&search=&page=
 func ListPaymentsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -54,7 +54,8 @@ func ListPaymentsHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if page < 1 {
 			page = 1
 		}
-		f := cheques.Filter{Status: q.Get("status"), Method: q.Get("method"), Linked: q.Get("linked"), Search: q.Get("search"), Limit: 50, Offset: (page - 1) * 50}
+		f := cheques.Filter{Status: q.Get("status"), Method: q.Get("method"), Linked: q.Get("linked"), PostDated: q.Get("post_dated") == "1",
+			Search: q.Get("search"), Limit: 50, Offset: (page - 1) * 50}
 		if f.Status != "" && !cheques.Valid(cheques.Statuses, f.Status) {
 			http.Error(w, "unknown status", http.StatusBadRequest)
 			return
@@ -69,7 +70,7 @@ func ListPaymentsHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/cheques/register/{id} — with the POs it pays and its history.
+// GET /admin/cheques/register/{id} — with the invoices it pays and its history.
 func GetPaymentHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, err := cheques.GetPayment(r.Context(), db, pathID(r))
@@ -123,16 +124,13 @@ func checkPayment(in *cheques.PaymentInput, isNew bool) string {
 			in.Source = "app"
 		}
 	}
-	seen, sum := map[int]bool{}, 0.0
-	for _, a := range in.Allocations {
-		if a.POID <= 0 || seen[a.POID] || a.Amount < 0 {
-			return "each PO can be linked once, with an amount of zero or more"
+	// a note's link takes money off the cheque (saved negative)
+	seen := map[string]bool{}
+	for _, a := range in.Invoices {
+		if strings.TrimSpace(a.InvoiceKey) == "" || seen[a.InvoiceKey] || math.IsNaN(a.Amount) || math.Abs(a.Amount) > 1e11 {
+			return "each invoice can be linked once"
 		}
-		seen[a.POID] = true
-		sum += a.Amount
-	}
-	if sum > in.Amount+0.005 {
-		return "the amounts split over the POs add up to more than the payment"
+		seen[a.InvoiceKey] = true
 	}
 	return ""
 }
@@ -155,6 +153,10 @@ func savePayment(db *pgxpool.Pool, isNew bool) http.HandlerFunc {
 		id, err := cheques.SavePayment(r.Context(), db, id, in, actorID(r))
 		if errors.Is(err, cheques.ErrNotFound) {
 			http.Error(w, "payment not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, cheques.ErrUnknownInvoice) {
+			http.Error(w, "an invoice it pays is no longer in Marg — reload and pick it again", http.StatusBadRequest)
 			return
 		}
 		if err != nil {
@@ -181,7 +183,7 @@ func savePayment(db *pgxpool.Pool, isNew bool) http.HandlerFunc {
 // POST /admin/cheques/register — records a payment (also called when a cheque is printed).
 func CreatePaymentHandler(db *pgxpool.Pool) http.HandlerFunc { return savePayment(db, true) }
 
-// PUT /admin/cheques/register/{id} — edits a payment and the POs it pays.
+// PUT /admin/cheques/register/{id} — edits a payment and the invoices it pays.
 func UpdatePaymentHandler(db *pgxpool.Pool) http.HandlerFunc { return savePayment(db, false) }
 
 // POST /admin/cheques/register/{id}/status {status, note}
@@ -233,8 +235,9 @@ func AddRemarkHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/cheques/dues?older=1&search= — received POs not fully paid,
-// counted from the shared start date.
+// GET /admin/cheques/dues?older=1&search= — per supplier, Marg purchase
+// invoices not fully paid and debit notes not yet used, from the shared start
+// date (all of them with older=1).
 func DuesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		from := cheques.Setting(r.Context(), db, duesFromKey, "2026-10-01")
@@ -267,51 +270,27 @@ func SetDuesFromHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// GET /admin/cheques/pos?search=&open=1 — PO lines to link or receive.
-func FindPOsHandler(db *pgxpool.Pool) http.HandlerFunc {
+// GET /admin/cheques/invoices?search=&manufacturer=<uuid>&open=1 — Marg
+// purchase invoices and debit notes to link to a payment, newest first.
+func FindInvoicesHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		search := strings.TrimSpace(r.URL.Query().Get("search"))
-		if len(search) < 2 {
-			writeJSON(w, map[string]any{"pos": []cheques.Due{}})
+		q := r.URL.Query()
+		var mfr *uuid.UUID
+		if id, err := uuid.Parse(q.Get("manufacturer")); err == nil {
+			mfr = &id
+		}
+		search := strings.TrimSpace(q.Get("search"))
+		if mfr == nil && len(search) < 2 {
+			writeJSON(w, map[string]any{"invoices": []cheques.Invoice{}})
 			return
 		}
-		ps, err := cheques.FindPOs(r.Context(), db, search, r.URL.Query().Get("open") == "1")
+		vs, err := cheques.FindInvoices(r.Context(), db, search, mfr, q.Get("open") == "1")
 		if err != nil {
-			log.Printf("cheque po search: %v", err)
-			http.Error(w, "could not search POs", http.StatusInternalServerError)
+			log.Printf("cheque invoice search: %v", err)
+			http.Error(w, "could not search invoices", http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, map[string]any{"pos": ps})
-	}
-}
-
-// POST /admin/cheques/pos/{id}/receive {received_on, qty_received, bill_number, bill_date, bill_amount}
-func ReceivePOHandler(db *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var rc cheques.Receipt
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&rc); err != nil {
-			http.Error(w, "invalid receipt", http.StatusBadRequest)
-			return
-		}
-		if !dateRe.MatchString(rc.ReceivedOn) || !validDate(&rc.ReceivedOn) || !validDate(rc.BillDate) {
-			http.Error(w, "enter the date the goods arrived (and a valid bill date)", http.StatusBadRequest)
-			return
-		}
-		if (rc.BillAmount != nil && *rc.BillAmount < 0) || (rc.QtyReceived != nil && *rc.QtyReceived < 0) {
-			http.Error(w, "amounts can't be negative", http.StatusBadRequest)
-			return
-		}
-		err := cheques.Receive(r.Context(), db, int(pathID(r)), rc, actorID(r))
-		if errors.Is(err, cheques.ErrNotFound) {
-			http.Error(w, "PO not found", http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			log.Printf("cheque po receive: %v", err)
-			http.Error(w, "could not save", http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
+		writeJSON(w, map[string]any{"invoices": vs})
 	}
 }
 
