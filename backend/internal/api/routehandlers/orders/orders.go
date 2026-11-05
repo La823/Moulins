@@ -962,6 +962,37 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 	})
 }
 
+// deliveryChanges describes which delivery details changed (old → new),
+// for the order's history — the customer sees this.
+func deliveryChanges(old [5]*string, req models.UpdateOrderDetailsRequest) string {
+	val := func(s *string) string {
+		if s == nil || strings.TrimSpace(*s) == "" {
+			return "—"
+		}
+		return strings.TrimSpace(*s)
+	}
+	fields := []struct {
+		label    string
+		old, new *string
+	}{
+		{"delivery person", old[0], req.DeliveryPerson},
+		{"tracking no.", old[1], req.TrackingNumber},
+		{"expected delivery", old[2], req.ExpectedDelivery},
+		{"delivery notes", old[3], req.DeliveryNotes},
+		{"e-way bill no.", old[4], req.EwayBillNumber},
+	}
+	var parts []string
+	for _, f := range fields {
+		if val(f.old) != val(f.new) {
+			parts = append(parts, fmt.Sprintf("%s %s → %s", f.label, val(f.old), val(f.new)))
+		}
+	}
+	if len(parts) == 0 {
+		return "Delivery details were saved (no change)"
+	}
+	return "Delivery details updated: " + strings.Join(parts, "; ")
+}
+
 // formatBatchExpiryForPDF turns Marg's raw "YYYYMMDD" expiry into "MM/YYYY".
 //
 // The day is dropped deliberately: a batch expires at the end of its stated
@@ -1153,14 +1184,19 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		var oldStatus string
+		_ = db.QueryRow(r.Context(), `SELECT status FROM orders WHERE id = $1`, id).Scan(&oldStatus)
 		if err := models.UpdateOrderStatus(r.Context(), db, id, body.Status); err != nil {
 			log.Printf("update order status error: %v", err)
 			http.Error(w, "could not update status", http.StatusInternalServerError)
 			return
 		}
 
-		_ = models.InsertOrderEvent(r.Context(), db, id, "status."+body.Status,
-			fmt.Sprintf("Order status changed to %s", body.Status), actorID(r))
+		desc := fmt.Sprintf("Order status changed to %s", body.Status)
+		if oldStatus != "" && oldStatus != body.Status {
+			desc = fmt.Sprintf("Order status changed from %s to %s", oldStatus, body.Status)
+		}
+		_ = models.InsertOrderEvent(r.Context(), db, id, "status."+body.Status, desc, actorID(r))
 		notifyOrderStatusEmail(db, id, body.Status)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1183,13 +1219,19 @@ func UpdateOrderDetailsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// what the delivery details were, so the history can say what changed
+		var old [5]*string
+		_ = db.QueryRow(r.Context(), `
+			SELECT delivery_person, tracking_number, to_char(expected_delivery, 'YYYY-MM-DD'), delivery_notes, eway_bill_number
+			FROM orders WHERE id = $1`, id).Scan(&old[0], &old[1], &old[2], &old[3], &old[4])
+
 		if err := models.UpdateOrderDetails(r.Context(), db, id, req); err != nil {
 			log.Printf("update order details error: %v", err)
 			http.Error(w, "could not update order details", http.StatusInternalServerError)
 			return
 		}
 
-		_ = models.InsertOrderEvent(r.Context(), db, id, "delivery.updated", "Delivery details were updated", actorID(r))
+		_ = models.InsertOrderEvent(r.Context(), db, id, "delivery.updated", deliveryChanges(old, req), actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
@@ -1301,15 +1343,19 @@ func UpdateOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := models.UpdateOrderItem(r.Context(), db, itemID, body.Quantity); err != nil {
+		name, oldQty, err := models.UpdateOrderItem(r.Context(), db, itemID, body.Quantity)
+		if err != nil {
 			log.Printf("update order item error: %v", err)
 			http.Error(w, "could not update item", http.StatusInternalServerError)
 			return
 		}
 
 		orderID, _ := uuid.Parse(vars["id"])
-		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.updated",
-			fmt.Sprintf("Item quantity changed to %d", body.Quantity), actorID(r))
+		desc := fmt.Sprintf("Item quantity changed to %d", body.Quantity)
+		if name != "" {
+			desc = fmt.Sprintf("%s: quantity %d → %d", name, oldQty, body.Quantity)
+		}
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.updated", desc, actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
@@ -1436,14 +1482,21 @@ func DeleteOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		if err := models.DeleteOrderItem(r.Context(), db, itemID); err != nil {
+		name, qty, found, err := models.DeleteOrderItem(r.Context(), db, itemID)
+		if err != nil {
 			log.Printf("delete order item error: %v", err)
 			http.Error(w, "could not delete item", http.StatusInternalServerError)
 			return
 		}
 
 		orderID, _ := uuid.Parse(vars["id"])
-		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.removed", "An item was removed from the order", actorID(r))
+		if found {
+			desc := "An item was removed from the order"
+			if name != "" {
+				desc = fmt.Sprintf("Removed %s (qty %d)", name, qty)
+			}
+			_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.removed", desc, actorID(r))
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "deleted"})

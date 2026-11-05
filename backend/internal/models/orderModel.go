@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -561,12 +562,17 @@ func UpdateOrderDetails(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID
 	return err
 }
 
-func UpdateOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID, quantity int) error {
-	_, err := db.Exec(ctx,
-		`UPDATE order_items SET quantity = $1 WHERE id = $2`,
-		quantity, itemID,
-	)
-	return err
+// UpdateOrderItem sets a line's quantity and returns the product's name and
+// the quantity it had, for the order's history.
+func UpdateOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID, quantity int) (name string, oldQty int, err error) {
+	err = db.QueryRow(ctx, `
+		UPDATE order_items oi SET quantity = $1
+		FROM (SELECT i.id, i.quantity, COALESCE(NULLIF(i.product_name, ''), p.name, '') AS name
+		      FROM order_items i LEFT JOIN products p ON p.id = i.product_id
+		      WHERE i.id = $2 FOR UPDATE OF i) old
+		WHERE oi.id = old.id
+		RETURNING old.name, old.quantity`, quantity, itemID).Scan(&name, &oldQty)
+	return name, oldQty, err
 }
 
 // UpdateOrderItemBatch sets (or clears, if code is empty) which Marg batch
@@ -659,9 +665,17 @@ func SaveOrderPricing(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID,
 	return tx.Commit(ctx)
 }
 
-func DeleteOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID) error {
-	_, err := db.Exec(ctx, `DELETE FROM order_items WHERE id = $1`, itemID)
-	return err
+// DeleteOrderItem removes a line and returns what it was (name and
+// quantity), for the order's history; found is false when it was gone already.
+func DeleteOrderItem(ctx context.Context, db *pgxpool.Pool, itemID uuid.UUID) (name string, qty int, found bool, err error) {
+	err = db.QueryRow(ctx, `
+		DELETE FROM order_items oi USING order_items i LEFT JOIN products p ON p.id = i.product_id
+		WHERE oi.id = $1 AND i.id = oi.id
+		RETURNING COALESCE(NULLIF(i.product_name, ''), p.name, ''), i.quantity`, itemID).Scan(&name, &qty)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", 0, false, nil
+	}
+	return name, qty, err == nil, err
 }
 
 // AddOrderItem adds a new line to an already-placed order — staff adding a

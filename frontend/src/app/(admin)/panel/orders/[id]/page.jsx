@@ -418,6 +418,22 @@ export default function AdminOrderDetail() {
   const [addingOpen, setAddingOpen] = useState(false);
   const [pastRatesOpen, togglePastRates] = usePastRatesDrawer();
 
+  // --- Activity log: open or folded, remembered between orders ---
+  const [activityOpen, setActivityOpen] = useState(() => {
+    try {
+      return localStorage.getItem("orderDetail.activityOpen") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleActivity = () =>
+    setActivityOpen((o) => {
+      try {
+        localStorage.setItem("orderDetail.activityOpen", o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
+
   const commitToOrder = async ({ product, qty, rate, batch }) => {
     setError("");
     const r = parseRate(rate);
@@ -1287,9 +1303,26 @@ export default function AdminOrderDetail() {
         {/* Activity Timeline */}
         {order.events?.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Activity Log
-            </h3>
+            {/* Folds away to one line; the choice is remembered for every order. */}
+            <button
+              type="button"
+              onClick={toggleActivity}
+              aria-expanded={activityOpen}
+              className={`w-full flex items-center justify-between gap-3 text-left ${activityOpen ? "mb-4" : ""}`}
+            >
+              <h3 className="text-sm font-semibold text-gray-700">
+                Activity Log <span className="font-normal text-gray-400">({order.events.length})</span>
+              </h3>
+              <span className="flex items-center gap-2 min-w-0 text-xs text-gray-400">
+                {!activityOpen && (
+                  <span className="truncate">Latest: {order.events[order.events.length - 1].description}</span>
+                )}
+                <svg className={`w-4 h-4 shrink-0 transition-transform ${activityOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                </svg>
+              </span>
+            </button>
+            {activityOpen && (
             <div className="relative pl-6">
               <div className="absolute left-[7px] top-1 bottom-1 w-px bg-gray-200" />
               <div className="space-y-3">
@@ -1329,6 +1362,7 @@ export default function AdminOrderDetail() {
                 ))}
               </div>
             </div>
+            )}
           </div>
         )}
 
