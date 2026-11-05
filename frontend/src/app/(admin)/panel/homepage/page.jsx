@@ -6,7 +6,14 @@ import { apiFetch } from "@/lib/api";
 
 export default function HomepageContentPage() {
   const { user } = useAuth();
+  // Admins, and staff with the Homepage permissions (Users → permissions):
+  // view opens the page, edit saves and adds, delete removes slides — the
+  // same permissions the API checks.
   const isAdmin = user?.role === "admin";
+  const perms = user?.permissions || [];
+  const canView = isAdmin || perms.includes("homepage_view");
+  const canEdit = isAdmin || perms.includes("homepage_edit");
+  const canDelete = isAdmin || perms.includes("homepage_delete");
 
   const [highlights, setHighlights] = useState(null);
   const [highlightsForm, setHighlightsForm] = useState(null);
@@ -17,14 +24,14 @@ export default function HomepageContentPage() {
   const [highlightsSaved, setHighlightsSaved] = useState(false);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canView) return;
     apiFetch("/home-highlights")
       .then((data) => {
         setHighlights(data);
         setHighlightsForm(data);
       })
       .catch(console.error);
-  }, [isAdmin]);
+  }, [canView]);
 
   const uploadHighlightImage = async (file) => {
     const { upload_url, key } = await apiFetch("/admin/home-highlights/upload-url", {
@@ -94,11 +101,11 @@ export default function HomepageContentPage() {
   };
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canView) return;
     apiFetch("/home-carousel")
       .then(setCarouselSlides)
       .catch(console.error);
-  }, [isAdmin]);
+  }, [canView]);
 
   const [focusForm, setFocusForm] = useState(null);
   const [focusCards, setFocusCards] = useState(null);
@@ -107,14 +114,14 @@ export default function HomepageContentPage() {
   const [focusSaved, setFocusSaved] = useState(false);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canView) return;
     apiFetch("/home-focus")
       .then((data) => {
         setFocusForm({ heading: data.heading, description: data.description });
         setFocusCards(data.cards);
       })
       .catch(console.error);
-  }, [isAdmin]);
+  }, [canView]);
 
   const handleSaveFocusSection = async (e) => {
     e.preventDefault();
@@ -135,7 +142,7 @@ export default function HomepageContentPage() {
     }
   };
 
-  if (!isAdmin) {
+  if (!canView) {
     return <p className="text-gray-500">You don&apos;t have access to this page.</p>;
   }
 
@@ -210,7 +217,7 @@ export default function HomepageContentPage() {
             <div className="flex items-center gap-3">
               <button
                 type="submit"
-                disabled={savingHighlights}
+                disabled={savingHighlights || !canEdit}
                 className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
               >
                 {savingHighlights ? "Saving..." : "Save Changes"}
@@ -230,7 +237,7 @@ export default function HomepageContentPage() {
             </h3>
             <button
               onClick={handleAddSlide}
-              disabled={addingSlide}
+              disabled={addingSlide || !canEdit}
               className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 disabled:opacity-50"
             >
               {addingSlide ? "Adding..." : "+ Add Slide"}
@@ -249,7 +256,8 @@ export default function HomepageContentPage() {
                       prev.map((s) => (s.position === updated.position ? updated : s))
                     )
                   }
-                  onDelete={() => handleDeleteSlide(slide.position)}
+                  onDelete={canDelete ? () => handleDeleteSlide(slide.position) : null}
+                  canEdit={canEdit}
                 />
               ))}
             </div>
@@ -285,7 +293,7 @@ export default function HomepageContentPage() {
             <div className="flex items-center gap-3">
               <button
                 type="submit"
-                disabled={savingFocus}
+                disabled={savingFocus || !canEdit}
                 className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
               >
                 {savingFocus ? "Saving..." : "Save Heading & Description"}
@@ -297,6 +305,7 @@ export default function HomepageContentPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {focusCards.map((card) => (
               <FocusCardEditor
+                canEdit={canEdit}
                 key={card.position}
                 card={card}
                 onSaved={(updated) =>
@@ -313,7 +322,7 @@ export default function HomepageContentPage() {
   );
 }
 
-function CarouselSlideEditor({ slide, onSaved, onDelete }) {
+function CarouselSlideEditor({ slide, onSaved, onDelete, canEdit }) {
   const [form, setForm] = useState(slide);
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -365,13 +374,15 @@ function CarouselSlideEditor({ slide, onSaved, onDelete }) {
     <form onSubmit={handleSave} className="border border-gray-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-medium text-gray-500">Slide {slide.position}</p>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-xs text-red-500 hover:text-red-700"
-        >
-          Delete
-        </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Delete
+          </button>
+        )}
       </div>
       {previewUrl ? (
         <img src={previewUrl} alt="" className="w-full h-32 object-cover rounded-lg mb-3" />
@@ -437,7 +448,7 @@ function CarouselSlideEditor({ slide, onSaved, onDelete }) {
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || !canEdit}
           className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save Slide"}
@@ -448,7 +459,7 @@ function CarouselSlideEditor({ slide, onSaved, onDelete }) {
   );
 }
 
-function FocusCardEditor({ card, onSaved }) {
+function FocusCardEditor({ card, onSaved, canEdit }) {
   const [form, setForm] = useState(card);
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -533,7 +544,7 @@ function FocusCardEditor({ card, onSaved }) {
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || !canEdit}
           className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save Card"}
