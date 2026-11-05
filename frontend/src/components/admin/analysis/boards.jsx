@@ -16,6 +16,7 @@ import {
   useMonthly, useCities, useMovers, useNotSelling,
 } from "./reports";
 import { YearsLink } from "./years";
+import { DayBlock } from "./day";
 
 // The Analysis home (three blocks + the company trend), each block's board
 // of cards, and the full report page behind each card. Pages under
@@ -162,6 +163,9 @@ function Home() {
         s={s}
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-5">
+        <Block title="Day to day" href={`${BASE}/daily`} open="Open the day →" loading={false}>
+          <DayBlock />
+        </Block>
         <Block title="Net sales" href={link("net-sales")} loading={!months}>
           <NetSalesBlock months={months} />
         </Block>

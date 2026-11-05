@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 import { SortHeader, fmtDate, fmtQty } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
+import { useCompanyMonthly, withCompanies, splitSeries } from "./companySplit";
 import { WindowNote, fmtMonth } from "@/components/admin/MargPeriod";
 import { PRODUCT_COMPANIES } from "@/components/admin/MargDemand";
 import {
@@ -364,6 +365,8 @@ function MonthBadges({ m, best }) {
 export function SalesTrend({ s, netDefault = false }) {
   const raw = useMonthly(s);
   const [netOfCredit, setNetOfCredit] = useUrlState("net", netDefault);
+  const [byCompany, setByCompany] = useUrlState("split", false);
+  const split = useCompanyMonthly(s, byCompany);
   if (!raw) return <Loader />;
   if (!raw.length) return <Empty text="No bills yet" />;
 
@@ -392,6 +395,11 @@ export function SalesTrend({ s, netDefault = false }) {
         <input type="checkbox" checked={netOfCredit} onChange={(e) => setNetOfCredit(e.target.checked)} />
         Show sales and profit net of credit notes
       </label>
+      <label className="text-xs text-gray-600 flex items-center gap-1.5 cursor-pointer select-none mb-3">
+        <input type="checkbox" checked={byCompany} onChange={(e) => setByCompany(e.target.checked)} />
+        Split by company: Moulins against third party &amp; others (goods only; freight stays in the total)
+        {byCompany && !split && <span className="text-gray-400">loading…</span>}
+      </label>
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-3 mb-5">
         <Tile label={netOfCredit ? "Net sales this year" : "Sales this year"} value={money0(t.sales)} sub={`credit notes ${money0(t.returns)}`} />
         <Tile label={netOfCredit ? "Net profit this year" : "Profit this year"} value={money0(t.p)} sub={`${pct(t.goods ? (100 * t.p) / t.goods : 0)} of goods sold, before GST`} />
@@ -402,10 +410,10 @@ export function SalesTrend({ s, netDefault = false }) {
       </div>
       <div className="grid gap-5 lg:grid-cols-2 mb-5">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <MonthlyChart monthly={months} series={[{ key: "sales", label: netOfCredit ? "Net sales" : "Sales", color: "#2a78d6" }]} note={gstWord(s)} />
+          <MonthlyChart monthly={withCompanies(months, split, netOfCredit)} series={splitSeries("sales", netOfCredit ? "Net sales" : "Sales", byCompany && !!split, false)} title={byCompany && split ? `Monthly ${netOfCredit ? "net sales" : "sales"} by company` : undefined} note={gstWord(s)} />
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <MonthlyChart monthly={months} series={[{ key: "p", label: netOfCredit ? "Net profit" : "Profit", color: "#2a78d6" }]} note="before GST" />
+          <MonthlyChart monthly={withCompanies(months, split, netOfCredit)} series={splitSeries("p", netOfCredit ? "Net profit" : "Profit", byCompany && !!split, true)} title={byCompany && split ? `Monthly ${netOfCredit ? "net profit" : "profit"} by company` : undefined} note="before GST" />
         </div>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">

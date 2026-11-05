@@ -1212,10 +1212,32 @@ func AddOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 			ProductID   uuid.UUID `json:"product_id"`
 			ProductName string    `json:"product_name"`
 			Quantity    int       `json:"quantity"`
+			// optional, from the order page's product browser
+			Rate      *float64 `json:"rate"`
+			BatchCode *string  `json:"batch_code"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
+		}
+		if body.Rate != nil && (*body.Rate < 0 || math.IsNaN(*body.Rate) || *body.Rate > 1e9) {
+			http.Error(w, "rate must be zero or more", http.StatusBadRequest)
+			return
+		}
+		if body.BatchCode != nil && *body.BatchCode == "" {
+			body.BatchCode = nil
+		}
+		if body.BatchCode != nil {
+			stock, found, err := models.MargBatchStock(r.Context(), db, *body.BatchCode)
+			if err != nil {
+				log.Printf("add order item: batch stock lookup: %v", err)
+				http.Error(w, "could not check the batch's stock", http.StatusInternalServerError)
+				return
+			}
+			if !found || stock <= 0 {
+				http.Error(w, "that batch has no stock any more — choose another", http.StatusBadRequest)
+				return
+			}
 		}
 		if body.ProductID == uuid.Nil {
 			http.Error(w, "product_id is required", http.StatusBadRequest)
@@ -1235,6 +1257,17 @@ func AddOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 			log.Printf("add order item error: %v", err)
 			http.Error(w, "could not add item", http.StatusInternalServerError)
 			return
+		}
+		// the line is in; its rate and batch are best-effort on top
+		if body.Rate != nil {
+			if err := models.SaveOrderPricing(r.Context(), db, orderID, []models.OrderItemRate{{ItemID: itemID, Rate: body.Rate}}, nil, false, nil); err != nil {
+				log.Printf("add order item: rate: %v", err)
+			}
+		}
+		if body.BatchCode != nil {
+			if err := models.UpdateOrderItemBatch(r.Context(), db, itemID, *body.BatchCode); err != nil {
+				log.Printf("add order item: batch: %v", err)
+			}
 		}
 
 		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.added",

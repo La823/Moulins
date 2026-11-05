@@ -105,8 +105,9 @@ type LastRate struct {
 }
 
 // GetLastRates returns, for every product the partner has been charged
-// for, the most recent rate: their latest Marg sale bill line (the same
-// party link as GetRateHistory), else their latest app order with a rate.
+// for, the most recent rate: whichever is newer of their latest Marg sale
+// bill line (the same party link as GetRateHistory) and their latest app or
+// staff order with a rate. A bill and an order on the same day: the bill.
 func GetLastRates(ctx context.Context, db *pgxpool.Pool, partnerID string) (map[string]LastRate, error) {
 	out := map[string]LastRate{}
 	rows, err := db.Query(ctx, `
@@ -128,9 +129,12 @@ func GetLastRates(ctx context.Context, db *pgxpool.Pool, partnerID string) (map[
 			WHERE o.user_id = $1::uuid AND oi.rate IS NOT NULL AND oi.rate > 0 AND o.status <> 'cancelled'
 			ORDER BY oi.product_id, o.created_at DESC
 		)
-		SELECT pid, rate, d, 'bill' FROM bill
-		UNION ALL
-		SELECT pid, rate, d, 'order' FROM ord WHERE pid NOT IN (SELECT pid FROM bill)`, partnerID)
+		SELECT DISTINCT ON (pid) pid, rate, d, src FROM (
+			SELECT pid, rate, d, 'bill' AS src FROM bill
+			UNION ALL
+			SELECT pid, rate, d, 'order' FROM ord
+		) x
+		ORDER BY pid, d::date DESC, (src = 'bill') DESC`, partnerID)
 	if err != nil {
 		return nil, err
 	}

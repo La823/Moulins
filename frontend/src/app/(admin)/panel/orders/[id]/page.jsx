@@ -8,6 +8,7 @@ import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRate
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
 import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
+import ProductPicker, { entryBoxOpen, parseRate, usePastRatesDrawer } from "@/components/admin/orders/ProductPicker";
 
 const STATUSES = [
   "pending",
@@ -410,76 +411,63 @@ export default function AdminOrderDetail() {
     }
   };
 
-  // --- Add product to order ---
-  const [productQuery, setProductQuery] = useState("");
-  const [productResults, setProductResults] = useState([]);
-  const [showProductResults, setShowProductResults] = useState(false);
-  const [addingProduct, setAddingProduct] = useState(false);
+  // --- Add products to the order ---
+  // The same product browser as the new-order page (ProductPicker), in a
+  // window: Enter on a product adds it with its quantity, rate and batch; on
+  // a product already on the order, it changes whichever of those changed.
+  const [addingOpen, setAddingOpen] = useState(false);
+  const [pastRatesOpen, togglePastRates] = usePastRatesDrawer();
 
-  useEffect(() => {
-    const q = productQuery.trim();
-    if (!q) {
-      setProductResults([]);
-      return;
-    }
-    const t = setTimeout(() => {
-      apiFetch(`/admin/products?search=${encodeURIComponent(q)}&limit=15`)
-        .then((data) => setProductResults(data.products || []))
-        .catch(() => setProductResults([]));
-    }, 250);
-    return () => clearTimeout(t);
-  }, [productQuery]);
-
-  const handleAddProduct = async (product) => {
-    setProductQuery("");
-    setProductResults([]);
-    setShowProductResults(false);
-    setAddingProduct(true);
+  const commitToOrder = async ({ product, qty, rate, batch }) => {
     setError("");
-    const quantity = Math.max(1, product.moq || 1);
+    const r = parseRate(rate);
+    const existing = items.find((i) => i.product_id === product.id);
     try {
-      const res = await apiFetch(`/admin/orders/${id}/items`, {
-        method: "POST",
-        body: JSON.stringify({
-          product_id: product.id,
-          product_name: product.name,
-          quantity,
-        }),
-      });
-
-      // Render the new row straight from the POST's own response instead of
-      // waiting on a re-fetch. Adding used to cost three sequential round
-      // trips (insert, then the full order, then nothing for batches) to a
-      // database in another region, which is where the ~2s came from — the
-      // work itself is two inserts. The POST returns the new item_id, and
-      // the row only needs id/name/quantity/batch, so there's nothing left
-      // to wait for.
-      if (res?.item_id) {
-        setItems((prev) => [
-          ...prev,
-          {
-            id: res.item_id,
-            order_id: id,
-            product_id: product.id,
-            product_name: product.name,
-            quantity,
-            moq: product.moq || 0,
-            selected_batch_code: null,
-          },
-        ]);
+      if (!existing) {
+        const res = await apiFetch(`/admin/orders/${id}/items`, {
+          method: "POST",
+          body: JSON.stringify({ product_id: product.id, product_name: product.name, quantity: qty, rate: r, batch_code: batch?.code || null }),
+        });
+        // Render the new row straight from the POST's own response instead
+        // of waiting on a re-fetch — the hosted database is in another region.
+        if (res?.item_id) {
+          setItems((prev) => [
+            ...prev,
+            {
+              id: res.item_id,
+              order_id: id,
+              product_id: product.id,
+              product_name: product.name,
+              quantity: qty,
+              moq: product.moq || 0,
+              rate: r,
+              selected_batch_code: batch?.code || null,
+            },
+          ]);
+        }
+        setSuccess(`${product.name} added to order`);
+      } else {
+        const jobs = [];
+        if (qty !== existing.quantity) {
+          jobs.push(apiFetch(`/admin/orders/${id}/items/${existing.id}`, { method: "PUT", body: JSON.stringify({ quantity: qty }) }));
+        }
+        if ((existing.rate ?? null) !== r) {
+          jobs.push(apiFetch(`/admin/orders/${id}/rates`, { method: "PUT", body: JSON.stringify({ rates: [{ item_id: existing.id, rate: r }] }) }));
+        }
+        if (batch?.code && batch.code !== existing.selected_batch_code) {
+          jobs.push(apiFetch(`/admin/orders/${id}/items/${existing.id}/batch`, { method: "PUT", body: JSON.stringify({ batch_code: batch.code }) }));
+        }
+        if (!jobs.length) return;
+        await Promise.all(jobs);
+        setItems((prev) =>
+          prev.map((i) => (i.id === existing.id ? { ...i, quantity: qty, rate: r, selected_batch_code: batch?.code || i.selected_batch_code } : i)),
+        );
+        setSuccess(`${product.name} updated`);
       }
-      setSuccess(`${product.name} added to order`);
-      setAddingProduct(false);
-
-      // Reconcile in the background, and crucially refresh the batch options
-      // too: batchInfoByItem is keyed by order_item_id, so without this the
-      // new row has no entry and its batch dropdown stays missing until the
-      // page is manually reloaded. Both refreshes run together rather than
-      // one after the other.
+      // Reconcile in the background, batch options too (keyed by order line).
       Promise.all([loadOrder(), loadBatchOptions()]).catch(() => {});
     } catch (err) {
       setError(err.message);
-      setAddingProduct(false);
     }
   };
 
@@ -1201,33 +1189,50 @@ export default function AdminOrderDetail() {
           )}
 
           {canEdit && (
-            <div className="relative mt-4 max-w-sm">
-              <input
-                type="text"
-                value={productQuery}
-                onChange={(e) => setProductQuery(e.target.value)}
-                onFocus={() => setShowProductResults(true)}
-                onBlur={() => setTimeout(() => setShowProductResults(false), 150)}
-                disabled={addingProduct}
-                placeholder={addingProduct ? "Adding…" : "+ Add a product…"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
-              />
-              {showProductResults && productResults.length > 0 && (
-                <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
-                  {productResults.map((p) => (
-                    <li
-                      key={p.id}
-                      onMouseDown={() => handleAddProduct(p)}
-                      className="px-3 py-2 cursor-pointer hover:bg-gray-50 text-gray-800"
-                    >
-                      {p.name}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setAddingOpen(true)}
+              className="mt-4 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-800 hover:bg-gray-50"
+            >
+              + Add products
+            </button>
           )}
         </div>
+
+        {addingOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-4 overflow-y-auto"
+            onMouseDown={(e) => e.target === e.currentTarget && setAddingOpen(false)}
+            onKeyDown={(e) => {
+              // Esc from the search box closes the window (inside the
+              // quantity box it closes only the box)
+              if (e.key === "Escape" && !entryBoxOpen() && e.target.tagName === "INPUT") setAddingOpen(false);
+            }}
+          >
+            <div className={`w-full max-w-6xl bg-white rounded-xl shadow-2xl p-5 my-4 ${pastRatesOpen ? "lg:mr-[380px]" : ""}`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-semibold text-gray-900">Add products to this order</h3>
+                <button onClick={() => setAddingOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2" title="Close (Esc in the search box)">
+                  ✕
+                </button>
+              </div>
+              <ProductPicker
+                customer={order?.user_id ? { id: order.user_id } : null}
+                lines={items.map((i) => ({
+                  product_id: i.product_id,
+                  quantity: i.quantity,
+                  rate: i.rate,
+                  batch: i.selected_batch_code ? { code: i.selected_batch_code } : null,
+                }))}
+                onCommit={commitToOrder}
+                drawerOpen={pastRatesOpen}
+                onToggleDrawer={togglePastRates}
+                hint="Esc in the search box closes"
+                autoFocus
+              />
+            </div>
+          </div>
+        )}
 
         {/* Bill Photos */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
