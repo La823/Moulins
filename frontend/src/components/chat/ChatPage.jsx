@@ -25,12 +25,57 @@ function threadLabel(c, myId) {
   return "Support";
 }
 
-// Conversation-list name color: black for group threads, green for a direct
-// chat with an admin, blue for a direct chat with an employee.
-function nameColorClass(c) {
-  if (c.type === "thread") return "text-gray-900";
-  if (c.role === "admin") return "text-green-600";
-  if (c.role === "employee") return "text-blue-600";
+// What kind of chat a row is, shown beside its name — a customer can have
+// several (one group chat per staff member they're assigned to, one before
+// any assignment, and old 1-to-1 chats), all with the same name otherwise.
+// Staff see who else is in a group chat; a customer sees group or direct.
+function chatTag(c, me) {
+  if (c.type !== "thread") return "direct";
+  if (me?.role === "partner") return "group";
+  const client = (c.participants || []).find((p) => p.role === "partner");
+  const staff = (c.participants || []).find((p) => p.id !== client?.id);
+  if (!staff) return "customer & admins";
+  if (staff.id === me?.id) return "assigned to you";
+  return `with ${displayName(staff)}`;
+}
+
+// The tag as a small coloured badge: gray for the default group chat,
+// blue for one with an assigned staff member, green when that is you,
+// amber for an old 1-to-1 chat.
+function ChatTag({ c, me, className = "" }) {
+  const text = chatTag(c, me);
+  const cls =
+    text === "direct"
+      ? "bg-amber-50 text-amber-700 ring-amber-200"
+      : text === "assigned to you"
+        ? "bg-green-50 text-green-700 ring-green-200"
+        : text.startsWith("with ")
+          ? "bg-blue-50 text-blue-700 ring-blue-200"
+          : "bg-gray-100 text-gray-600 ring-gray-200";
+  return (
+    <span className={`inline-block align-middle rounded-full px-1.5 py-px text-[10px] font-medium ring-1 ring-inset whitespace-nowrap ${cls} ${className}`}>
+      {text}
+    </span>
+  );
+}
+
+// Message bubbles are coloured by who sent them: yours dark, a customer's
+// gray, a staff member's blue, an admin's violet (sender_role comes with
+// group-chat messages; without it a bubble stays gray).
+const BUBBLE = {
+  partner: { bubble: "bg-gray-100 text-gray-900", name: "text-gray-500" },
+  employee: { bubble: "bg-blue-50 text-gray-900 ring-1 ring-inset ring-blue-100", name: "text-blue-700" },
+  admin: { bubble: "bg-violet-50 text-gray-900 ring-1 ring-inset ring-violet-100", name: "text-violet-700" },
+};
+
+// A chat's name is coloured like its tag (ChatTag), so the kind of chat
+// reads at a glance: blue with an assigned staff member, green when that is
+// you, amber for an old 1-to-1 chat, dark for the default group chat.
+function nameColorClass(c, me) {
+  const text = chatTag(c, me);
+  if (text === "direct") return "text-amber-700";
+  if (text === "assigned to you") return "text-green-700";
+  if (text.startsWith("with ")) return "text-blue-700";
   return "text-gray-900";
 }
 
@@ -168,7 +213,7 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
   const newContacts = contacts.filter((c) => !directIds.has(c.id));
   const filteredConversations = search.trim()
     ? conversations.filter((c) =>
-        (c.type === "thread" ? threadLabel(c, user?.id) : displayName(c)).toLowerCase().includes(search.trim().toLowerCase())
+        `${c.type === "thread" ? threadLabel(c, user?.id) : displayName(c)} ${chatTag(c, user)}`.toLowerCase().includes(search.trim().toLowerCase())
       )
     : conversations;
   const activeThread = active?.type === "thread" ? conversations.find((c) => c.type === "thread" && c.id === active.id) : null;
@@ -243,8 +288,9 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className={`text-[13px] font-medium truncate ${nameColorClass(c)}`}>
+                      <p className={`text-[13px] font-medium truncate ${nameColorClass(c, user)}`}>
                         {c.type === "thread" ? threadLabel(c, user?.id) : displayName(c)}
+                        <ChatTag c={c} me={user} className="ml-1.5" />
                       </p>
                       <p className="text-xs text-gray-500 truncate max-w-[180px]">{c.last_message}</p>
                     </div>
@@ -270,7 +316,11 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
             <>
               <div className="p-4 border-b border-gray-200 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p
+                    className={`text-sm font-semibold ${
+                      active.type === "thread" ? (activeThread ? nameColorClass(activeThread, user) : "text-gray-900") : nameColorClass({ type: "direct" }, user)
+                    }`}
+                  >
                     {active.type === "thread"
                       ? activeThread
                         ? threadLabel(activeThread, user?.id)
@@ -278,6 +328,10 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
                       : activeDirectPartner
                         ? displayName(activeDirectPartner)
                         : "..."}
+                    {active.type === "thread" && activeThread && (
+                      <ChatTag c={activeThread} me={user} className="ml-2" />
+                    )}
+                    {active.type !== "thread" && activeDirectPartner && <ChatTag c={{ type: "direct" }} me={user} className="ml-2" />}
                   </p>
                   <p className="text-xs text-gray-400">{connected ? "Connected" : "Connecting..."}</p>
                 </div>
@@ -291,15 +345,16 @@ export default function ChatPage({ basePath, heightOffsetPx = 140 }) {
                 ) : (
                   messages.map((m) => {
                     const mine = m.sender_id === user?.id;
+                    const look = BUBBLE[m.sender_role] || BUBBLE.partner;
                     return (
                       <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                         <div
                           className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm ${
-                            mine ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-900"
+                            mine ? "bg-gray-900 text-white" : look.bubble
                           }`}
                         >
                           {!mine && active.type === "thread" && m.sender_name && (
-                            <p className="text-[10px] font-semibold mb-0.5 text-gray-500 capitalize">
+                            <p className={`text-[10px] font-semibold mb-0.5 capitalize ${look.name}`}>
                               {m.sender_name}
                               {m.sender_role === "admin" ? " · Admin" : m.sender_role === "employee" ? " · Employee" : ""}
                             </p>

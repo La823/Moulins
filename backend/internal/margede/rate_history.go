@@ -52,8 +52,23 @@ type ProductRateHistory struct {
 	MaxRate   *float64    `json:"max_rate"`
 	AvgRate   *float64    `json:"avg_rate"` // weighted by quantity
 	Times     int         `json:"times"`
-	// Purchase bill lines (this financial year) of the batches in Points.
+	// Purchase bill lines (this financial year) of the batches in Points
+	// and of the batches picked on the order's lines (AddLineBatches).
 	Purchases []BatchPurchase `json:"purchases"`
+	// The batches picked on the order's lines, as Marg's stock knows them.
+	LineBatches []LineBatch `json:"line_batches,omitempty"`
+}
+
+// LineBatch is a batch picked on an order line: its purchase rate and the
+// supplier invoice Marg's stock records — what a batch bought before this
+// financial year has instead of a purchase bill.
+type LineBatch struct {
+	Batch           string     `json:"batch"`
+	PurchaseRate    *float64   `json:"purchase_rate,omitempty"`
+	MRP             *float64   `json:"mrp,omitempty"`
+	Expiry          *time.Time `json:"expiry,omitempty"`
+	SupplierInvoice *string    `json:"supplier_invoice,omitempty"`
+	SupplierDate    *time.Time `json:"supplier_invoice_date,omitempty"`
 }
 
 // BatchPurchase is one purchase bill line that brought a batch in.
@@ -243,6 +258,77 @@ func addBatchPurchases(ctx context.Context, db *pgxpool.Pool, out RateHistory) e
 			}
 		}
 	}
+	return appendPurchases(ctx, db, out, ids, batches)
+}
+
+// AddLineBatches adds the batches picked on the order's lines (product id →
+// batch names) to out: their purchase bills, where not already there from
+// the partner's sales, and their stock record. Independent of the partner's
+// Marg link — the batch is Marg's whoever it goes to.
+func AddLineBatches(ctx context.Context, db *pgxpool.Pool, out RateHistory, want map[string][]string) error {
+	have := map[string]bool{} // product id + "|" + batch already in Purchases
+	for id, h := range out.Products {
+		for _, p := range h.Points {
+			b := ""
+			if p.Batch != nil {
+				b = *p.Batch
+			}
+			have[id+"|"+b] = out.PartyCode != nil
+		}
+	}
+	var ids, batches, newIDs, newBatches []string
+	for id, bs := range want {
+		if out.Products[id] == nil {
+			continue
+		}
+		for _, b := range bs {
+			if b == "" {
+				continue
+			}
+			ids = append(ids, id)
+			batches = append(batches, b)
+			if !have[id+"|"+b] {
+				have[id+"|"+b] = true
+				newIDs = append(newIDs, id)
+				newBatches = append(newBatches, b)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := appendPurchases(ctx, db, out, newIDs, newBatches); err != nil {
+		return err
+	}
+	rows, err := db.Query(ctx, `
+		SELECT want.product_id, want.batch, NULLIF(st.purchase_rate, 0)::float8, NULLIF(st.mrp, 0)::float8,
+		       st.expiry, NULLIF(TRIM(st.supplier_invoice), ''), st.supplier_invoice_date
+		FROM unnest($1::text[], $2::text[]) AS want(product_id, batch)
+		JOIN products p ON p.id::text = want.product_id
+		JOIN LATERAL (
+			SELECT s.purchase_rate, s.mrp, s.expiry, s.supplier_invoice, s.supplier_invoice_date FROM marg_ede_stock s
+			WHERE s.product_pid::text = p.marg_code AND COALESCE(s.batch, '') = want.batch AND NOT s.is_deleted
+			LIMIT 1
+		) st ON TRUE`, ids, batches)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid string
+		var lb LineBatch
+		if err := rows.Scan(&pid, &lb.Batch, &lb.PurchaseRate, &lb.MRP, &lb.Expiry, &lb.SupplierInvoice, &lb.SupplierDate); err != nil {
+			return err
+		}
+		h := out.Products[pid]
+		h.LineBatches = append(h.LineBatches, lb)
+	}
+	return rows.Err()
+}
+
+// appendPurchases adds the purchase bill lines of each (product id, batch)
+// pair to that product's Purchases.
+func appendPurchases(ctx context.Context, db *pgxpool.Pool, out RateHistory, ids, batches []string) error {
 	if len(ids) == 0 {
 		return nil
 	}

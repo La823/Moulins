@@ -7,12 +7,19 @@ const WS_URL = API_URL.replace(/^http/, "ws");
 
 // Maintains one live WebSocket connection to the chat backend for the
 // lifetime of the page, reconnecting on drop. onMessage fires for every
-// {type:"message", message:{...}} frame the server pushes.
-export function useChatSocket(onMessage) {
+// {type:"message", message:{...}} frame the server pushes, and
+// onNotification (optional) for every {type:"notification", notification:{...}}
+// — a broadcast or alert just added to this user's inbox.
+export function useChatSocket(onMessage, onNotification) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef(null);
   const onMessageRef = useRef(onMessage);
-  onMessageRef.current = onMessage;
+  const onNotificationRef = useRef(onNotification);
+  // the latest handlers, for the socket's callbacks (kept out of render)
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+    onNotificationRef.current = onNotification;
+  });
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -36,6 +43,7 @@ export function useChatSocket(onMessage) {
         try {
           const data = JSON.parse(event.data);
           if (data.type === "message") onMessageRef.current?.(data.message);
+          else if (data.type === "notification") onNotificationRef.current?.(data.notification);
         } catch {
           // ignore malformed frames
         }

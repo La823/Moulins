@@ -309,12 +309,20 @@ export default function CustomerNavbar() {
     };
   }, [mobileMenuOpen]);
 
+  // reloaded when a notification arrives live (LiveNotifications)
+  const [notifReload, setNotifReload] = useState(0);
+  useEffect(() => {
+    const bump = () => setNotifReload((n) => n + 1);
+    window.addEventListener("live-notification", bump);
+    return () => window.removeEventListener("live-notification", bump);
+  }, []);
+
   useEffect(() => {
     if (!user || user.role === "visitor") return;
     apiFetch("/notifications?limit=5")
       .then((data) => setNotifications(data.notifications || []))
       .catch(() => {});
-  }, [user]);
+  }, [user, notifReload]);
 
   const markNotifRead = async (recipientId) => {
     setNotifications((prev) =>

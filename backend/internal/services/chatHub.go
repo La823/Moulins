@@ -13,10 +13,31 @@ import (
 type ChatHub struct {
 	mu    sync.RWMutex
 	conns map[uuid.UUID]map[*websocket.Conn]bool
+	// A websocket connection takes one writer at a time; messages and
+	// notifications can be written from several requests at once.
+	writeMu sync.Mutex
 }
 
+// liveHub is the hub the server runs, for code that isn't handed one —
+// the notification service pushes new notifications through it to users
+// who have the website open.
+var liveHub *ChatHub
+
 func NewChatHub() *ChatHub {
-	return &ChatHub{conns: make(map[uuid.UUID]map[*websocket.Conn]bool)}
+	h := &ChatHub{conns: make(map[uuid.UUID]map[*websocket.Conn]bool)}
+	liveHub = h
+	return h
+}
+
+// NotifyLive sends a payload to every given user who is connected; a no-op
+// before the hub exists (tools that send notifications without a server).
+func NotifyLive(userIDs []uuid.UUID, payload interface{}) {
+	if liveHub == nil {
+		return
+	}
+	for _, id := range userIDs {
+		liveHub.SendToUser(id, payload)
+	}
 }
 
 func (h *ChatHub) Register(userID uuid.UUID, conn *websocket.Conn) {
@@ -56,6 +77,8 @@ func (h *ChatHub) SendToUser(userID uuid.UUID, payload interface{}) {
 	}
 	h.mu.RUnlock()
 
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
 	for _, c := range conns {
 		_ = c.WriteJSON(payload)
 	}

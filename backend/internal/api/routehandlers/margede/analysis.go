@@ -202,6 +202,17 @@ func RateHistoryHandler(db *pgxpool.Pool) http.HandlerFunc {
 			exclude = &e
 		}
 		out, err := margede.GetRateHistory(r.Context(), db, partnerID, products, exclude, 100)
+		if err == nil {
+			// batches=<product id>:<batch>,… — the batches picked on the
+			// order's lines, whose purchases show too
+			lines := map[string][]string{}
+			for _, pb := range strings.Split(r.URL.Query().Get("batches"), ",") {
+				if id, b, ok := strings.Cut(pb, ":"); ok && b != "" {
+					lines[id] = append(lines[id], b)
+				}
+			}
+			err = margede.AddLineBatches(r.Context(), db, out, lines)
+		}
 		if err != nil {
 			log.Printf("rate history %s: %v", partnerID, err)
 			http.Error(w, "could not load rate history", http.StatusInternalServerError)

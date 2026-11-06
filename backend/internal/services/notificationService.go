@@ -40,6 +40,12 @@ func DispatchBroadcast(ctx context.Context, db *pgxpool.Pool, notification *mode
 		return err
 	}
 
+	liveImage := ""
+	if notification.ImageKey != nil && *notification.ImageKey != "" {
+		liveImage = utils.GetPublicURL(*notification.ImageKey)
+	}
+	notifyLive(eligibleUserIDs, notification.ID, notification.Title, notification.Body, notification.DeepLink, liveImage)
+
 	tokens, err := models.GetDeviceTokensForUsers(ctx, db, eligibleUserIDs)
 	if err != nil {
 		log.Printf("notification %s: failed to fetch device tokens: %v", notification.ID, err)
@@ -89,6 +95,7 @@ func SendDirectNotification(ctx context.Context, db *pgxpool.Pool, userID uuid.U
 	if err := models.CreateRecipientsBatch(ctx, db, notificationID, []uuid.UUID{userID}); err != nil {
 		return err
 	}
+	notifyLive([]uuid.UUID{userID}, notificationID, title, body, deepLink, "")
 
 	tokens, err := models.GetDeviceTokensForUsers(ctx, db, []uuid.UUID{userID})
 	if err != nil {
@@ -112,6 +119,19 @@ func SendDirectNotification(ctx context.Context, db *pgxpool.Pool, userID uuid.U
 	}
 
 	return models.UpdateNotificationStatus(ctx, db, notificationID, "sent", 1, successCount, len(tokens)-successCount)
+}
+
+// notifyLive tells users with the website open about a notification just
+// added to their inbox, so the page can chime and show it at once.
+func notifyLive(userIDs []uuid.UUID, id uuid.UUID, title, body string, deepLink *string, imageURL string) {
+	n := map[string]any{"id": id, "title": title, "body": body}
+	if deepLink != nil && *deepLink != "" {
+		n["deep_link"] = *deepLink
+	}
+	if imageURL != "" {
+		n["image_url"] = imageURL
+	}
+	NotifyLive(userIDs, map[string]any{"type": "notification", "notification": n})
 }
 
 // SendPushOnly delivers a best-effort FCM push without touching the

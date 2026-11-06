@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Breadcrumbs, { BreadcrumbProvider } from "@/components/admin/Breadcrumbs";
+import LiveNotifications from "@/components/LiveNotifications";
 
 const ICONS = {
   dashboard: (
@@ -583,6 +584,7 @@ export default function AdminLayout({ children }) {
             })}
           </header>
           <main className="p-3 sm:p-6">{children}</main>
+          <LiveNotifications />
         </div>
       </div>
       {menuOpen && (

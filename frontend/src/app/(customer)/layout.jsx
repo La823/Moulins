@@ -6,6 +6,7 @@ import Footer from "@/components/customer/Footer";
 import CartDrawer from "@/components/customer/CartDrawer";
 import SmoothScroll from "@/components/customer/SmoothScroll";
 import { BecomePartnerModal } from "@/components/customer/BecomePartner";
+import LiveNotifications from "@/components/LiveNotifications";
 
 export default function CustomerLayout({ children }) {
   // The partner panel and team-member panel are each their own full-screen
@@ -19,6 +20,7 @@ export default function CustomerLayout({ children }) {
       <>
         {children}
         <CartDrawer />
+        <LiveNotifications />
       </>
     );
   }
@@ -33,6 +35,7 @@ export default function CustomerLayout({ children }) {
       <Footer />
       <CartDrawer />
       <BecomePartnerModal />
+      <LiveNotifications />
     </div>
   );
 }

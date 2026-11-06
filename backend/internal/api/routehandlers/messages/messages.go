@@ -250,6 +250,16 @@ func sendGroupMessage(r *http.Request, db *pgxpool.Pool, hub *services.ChatHub, 
 		return
 	}
 
+	// who sent it, as the history query gives it (sender_name/sender_role),
+	// so a message arriving live is labelled and coloured like a loaded one
+	if sender, err := models.GetUserByID(r.Context(), db, senderID); err == nil {
+		name, role := sender.PhoneNumber, sender.Role
+		if sender.Username != nil && *sender.Username != "" {
+			name = *sender.Username
+		}
+		msg.SenderName, msg.SenderRole = &name, &role
+	}
+
 	payload := map[string]interface{}{"type": "message", "message": msg}
 	for _, recipientID := range recipients {
 		hub.SendToUser(recipientID, payload)

@@ -561,7 +561,18 @@ export default function AdminOrderDetail() {
 
   // What this partner was charged before for each product on the order
   // (Marg bills and earlier orders) — the hint under each line's rate.
-  const rateHistory = useRateHistory(order?.user_id, items.map((i) => i.product_id), id);
+  // The batch picked on each line (its Marg name), whose purchases the panel shows.
+  const lineBatchOf = (item) => {
+    const info = batchInfoByItem[item.id];
+    const code = item.selected_batch_code || info?.defaultCode || "";
+    return (info?.batches || []).find((b) => b.code === code)?.curbatch || "";
+  };
+  const rateHistory = useRateHistory(
+    order?.user_id,
+    items.map((i) => i.product_id),
+    id,
+    items.map((i) => lineBatchOf(i) && `${i.product_id}:${lineBatchOf(i)}`).filter(Boolean),
+  );
 
   // The selected order line, whose history the side panel shows. Defaults
   // to the first line; ↑/↓ move it unless the cursor is in a field (where
@@ -607,6 +618,7 @@ export default function AdminOrderDetail() {
       data={rateHistory}
       position={selectedIndex}
       count={items.length}
+      lineBatch={selectedItem ? lineBatchOf(selectedItem) : ""}
     />
   );
 

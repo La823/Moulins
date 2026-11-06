@@ -26,19 +26,23 @@ const SOURCE = {
 
 // Fetches the history of all productIds for partnerId in one request.
 // excludeOrder keeps the order being edited out of its own history.
-export function useRateHistory(partnerId, productIds, excludeOrder) {
+// lineBatches ("<product id>:<batch>") are the batches picked on the order's
+// lines, whose purchases show too.
+export function useRateHistory(partnerId, productIds, excludeOrder, lineBatches) {
   const [data, setData] = useState(null);
   const key = [...new Set(productIds || [])].sort().join(",");
+  const batchKey = [...new Set(lineBatches || [])].sort().join(",");
   useEffect(() => {
     if (!partnerId || !key) return;
     let cancelled = false;
     const p = new URLSearchParams({ products: key });
     if (excludeOrder) p.set("exclude_order", excludeOrder);
+    if (batchKey) p.set("batches", batchKey);
     apiFetch(`/admin/partners/${partnerId}/rate-history?${p}`)
       .then((d) => { if (!cancelled) setData(d); })
       .catch(() => { if (!cancelled) setData({ unavailable: true, products: {} }); });
     return () => { cancelled = true; };
-  }, [partnerId, key, excludeOrder]);
+  }, [partnerId, key, excludeOrder, batchKey]);
   return data;
 }
 
@@ -181,8 +185,9 @@ function Stat({ label, value, sub }) {
 // The order page's side panel: everything this party bought of the selected
 // product, grouped by batch — each batch with its MRP, purchase rate and
 // expiry, then every sale from it with the rate charged and the margin over
-// purchase. Earlier app orders (no batch) come last.
-export function ProductHistoryPanel({ productName, history, data, position, count }) {
+// purchase. Earlier app orders (no batch) come last. lineBatch is the batch
+// picked on the line; its purchases lead the purchases box.
+export function ProductHistoryPanel({ productName, history, data, position, count, lineBatch }) {
   const [openBill, setOpenBill] = useState(null); // the bill point shown in full
   const [view, setView] = useState("list"); // list: every sale, newest first | batch: grouped by batch
   const header = (
@@ -242,8 +247,17 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
     }
     g.purchases = purchasesOf.get(k) || [];
   }
-  // The purchases box: every purchase of the sold batches, newest first.
-  const purchases = [...purchasesOf.values()].flat().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const lb = lineBatch && (history?.line_batches || []).find((b) => b.batch === lineBatch);
+  if (lb && !purchasesOf.has(lineBatch) && lb.supplier_invoice) {
+    purchasesOf.set(lineBatch, [{
+      kind: "earlier", date: lb.supplier_invoice_date, ref: lb.supplier_invoice, batch: lineBatch,
+      rate: lb.purchase_rate, mrp: lb.mrp,
+    }]);
+  }
+  // The purchases box: the line's batch first, then the sold batches, newest first.
+  const purchases = [...purchasesOf.values()].flat().sort(
+    (a, b) => (b.batch === lineBatch) - (a.batch === lineBatch) || new Date(b.date || 0) - new Date(a.date || 0),
+  );
 
   return (
     <div>
@@ -420,6 +434,9 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
             <h4 className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-2">
               Purchases of these batches
             </h4>
+            {lineBatch && !purchasesOf.has(lineBatch) && (
+              <p className="text-[10px] text-gray-400 mb-1.5">No purchase found for {lineBatch}, the batch on this line.</p>
+            )}
             {purchases.length === 0 ? (
               <p className="text-[10px] text-gray-400">No purchase found for the batches sold to this party.</p>
             ) : (
@@ -437,7 +454,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {purchases.map((pu, i) => (
-                      <PurchaseRow key={`pu-${pu.ref}-${i}`} p={pu} onOpen={setOpenBill} />
+                      <PurchaseRow key={`pu-${pu.ref}-${i}`} p={pu} onOpen={setOpenBill} onLine={!!lineBatch && pu.batch === lineBatch} />
                     ))}
                   </tbody>
                 </table>
@@ -496,14 +513,18 @@ function BillModal({ point, onClose }) {
 // A purchase that brought a batch in, as a row of the purchases box: a
 // purchase bill this financial year, or the supplier invoice of a batch
 // bought before it ("earlier", no bill to open).
-function PurchaseRow({ p, onOpen }) {
+// onLine marks the batch picked on the order line.
+function PurchaseRow({ p, onOpen, onLine }) {
   return (
     <tr
       onClick={() => p.voucher && onOpen(p)}
-      className={p.voucher ? "cursor-pointer hover:bg-amber-50" : ""}
+      className={`${p.voucher ? "cursor-pointer hover:bg-amber-50" : ""} ${onLine ? "bg-blue-50/60" : ""}`}
       title={p.voucher ? "Open the whole purchase bill" : "Bought before this financial year; Marg's stock records the supplier invoice"}
     >
-      <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">{p.batch || "—"}</td>
+      <td className="px-1.5 py-1 text-gray-700 whitespace-nowrap">
+        {p.batch || "—"}
+        {onLine && <div className="text-[9px] font-medium text-blue-700">on this line</div>}
+      </td>
       <td className="px-1.5 py-1 text-right font-medium text-amber-800 whitespace-nowrap">{money(p.rate)}</td>
       <td className="px-1.5 py-1 text-right text-gray-600 whitespace-nowrap">{money(p.mrp)}</td>
       <td className="px-1.5 py-1 text-right text-green-700 whitespace-nowrap">

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 
 const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
@@ -59,6 +60,7 @@ export default function CheckoutPage() {
         }),
       });
       clearCartLocal();
+      playSound("order"); // the order went through
       router.push(`/orders/${res.order_id}`);
     } catch (err) {
       setError(err.message || "Failed to place order");

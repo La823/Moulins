@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import { useRateHistory, RateHint } from "@/components/admin/MargRateHistory";
 import ProductPicker, { entryBoxOpen, fmtExpiry, fmtStock, money, parseRate, snapNearest, usePastRatesDrawer } from "@/components/admin/orders/ProductPicker";
 
@@ -295,6 +296,7 @@ export default function NewOrderForStaffPage() {
         }),
       });
       loadedSnapshot.current = snapshot(); // nothing left to save
+      playSound("order"); // the order went through
       router.push(`/panel/orders/${res.order_id}`);
     } catch (err) {
       setError(err.message);
