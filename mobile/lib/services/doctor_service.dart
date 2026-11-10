@@ -1,12 +1,31 @@
 import '../config/api.dart';
 import '../models/doctor.dart';
+import 'json_cache.dart';
 
 class DoctorService {
   final _dio = createDio();
 
+  /// Whether the last getDoctors answer was the saved copy (no internet).
+  static bool lastFromCache = false;
+
+  // The doctor list and each doctor's products are saved on the phone each
+  // time they load, and shown from there with no internet (json_cache.dart).
   Future<List<Doctor>> getDoctors() async {
-    final res = await _dio.get('/doctors');
-    return (res.data as List<dynamic>).map((e) => Doctor.fromJson(e)).toList();
+    lastFromCache = false;
+    return JsonCache.fetch(
+      'doctors',
+      () async => (await _dio.get('/doctors')).data,
+      (data) => (data as List<dynamic>).map((e) => Doctor.fromJson(e)).toList(),
+      onCache: () => lastFromCache = true,
+    );
+  }
+
+  /// Saves every doctor's assigned products (and so their pages) for offline
+  /// use; a few at a time, in the background, after the list loads online.
+  Future<void> saveAllForOffline(List<Doctor> doctors) async {
+    for (var i = 0; i < doctors.length; i += 4) {
+      await Future.wait(doctors.skip(i).take(4).map((d) => getDoctorProducts(d.id).then((_) {}, onError: (_) {})));
+    }
   }
 
   // GET /doctor/me — a doctor-role login's own profile.
@@ -96,10 +115,11 @@ class DoctorService {
   }
 
   Future<List<DoctorProduct>> getDoctorProducts(String doctorId) async {
-    final res = await _dio.get('/doctors/$doctorId/products');
-    return (res.data as List<dynamic>)
-        .map((e) => DoctorProduct.fromJson(e))
-        .toList();
+    return JsonCache.fetch(
+      'doctor_products_$doctorId',
+      () async => (await _dio.get('/doctors/$doctorId/products')).data,
+      (data) => (data as List<dynamic>).map((e) => DoctorProduct.fromJson(e)).toList(),
+    );
   }
 
   Future<void> addDoctorProduct(String doctorId, String productId) async {

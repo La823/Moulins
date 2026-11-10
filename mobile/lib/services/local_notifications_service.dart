@@ -6,6 +6,10 @@ import 'package:http/http.dart' as http;
 /// app is in the foreground (Android only auto-shows these when the app is
 /// backgrounded/closed — foreground messages are silent unless we display
 /// them ourselves).
+///
+/// Pushes come on one of three channels (the server names it in the push and
+/// in its data as `channel`, see utils/fcm.go). On Android 8+ the channel
+/// decides the sound, and people can change each one in the phone's settings.
 class LocalNotificationsService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
@@ -17,6 +21,26 @@ class LocalNotificationsService {
     importance: Importance.high,
   );
 
+  // Reminders before a meeting, with the phone's default sound.
+  static const _meetingChannel = AndroidNotificationChannel(
+    'meeting_reminders',
+    'Meeting reminders',
+    description: 'Reminders before your meetings with doctors',
+    importance: Importance.high,
+  );
+
+  // New orders (staff), with the order sound in res/raw/order.mp3.
+  static const _orderChannel = AndroidNotificationChannel(
+    'order_alerts',
+    'New orders',
+    description: 'When a new order is placed',
+    importance: Importance.high,
+    sound: RawResourceAndroidNotificationSound('order'),
+    playSound: true,
+  );
+
+  static const _channels = [_channel, _meetingChannel, _orderChannel];
+
   static Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
@@ -24,12 +48,23 @@ class LocalNotificationsService {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     await _plugin.initialize(const InitializationSettings(android: androidInit));
 
-    await _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    for (final c in _channels) {
+      await android?.createNotificationChannel(c);
+    }
   }
 
-  static Future<void> show({required String title, required String body, String? imageUrl, String? notificationId}) async {
+  /// [channelId] is the push's channel; an unknown or missing one shows on
+  /// Broadcasts, as before.
+  static Future<void> show({
+    required String title,
+    required String body,
+    String? imageUrl,
+    String? notificationId,
+    String? channelId,
+  }) async {
+    final channel = _channels.firstWhere((c) => c.id == channelId, orElse: () => _channel);
+
     StyleInformation styleInformation = BigTextStyleInformation(
       body,
       contentTitle: title,
@@ -64,11 +99,12 @@ class LocalNotificationsService {
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _channel.id,
-          _channel.name,
-          channelDescription: _channel.description,
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
           importance: Importance.high,
           priority: Priority.high,
+          sound: channel.sound,
           styleInformation: styleInformation,
           color: const Color(0xFF00A6A4),
         ),

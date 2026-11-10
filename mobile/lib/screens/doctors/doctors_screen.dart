@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../models/doctor.dart';
 import '../../services/doctor_service.dart';
+import '../../services/meeting_service.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
@@ -23,6 +24,7 @@ class DoctorsScreen extends ConsumerStatefulWidget {
 class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
   List<Doctor>? _doctors;
   bool _loading = true;
+  bool _offline = false; // showing the doctors saved on the phone
   final _service = DoctorService();
 
   @override
@@ -36,8 +38,14 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       final d = await _service.getDoctors();
       setState(() {
         _doctors = d;
+        _offline = DoctorService.lastFromCache;
         _loading = false;
       });
+      // keep every doctor's page (products, meetings) on the phone too
+      if (!_offline) {
+        _service.saveAllForOffline(d);
+        MeetingService().getMeetings().then((_) {}, onError: (_) {});
+      }
     } catch (_) {
       setState(() => _loading = false);
     }
@@ -520,6 +528,22 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
           const ProfileButton(),
           const SizedBox(width: 4),
         ],
+        bottom: _offline
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(32),
+                child: Container(
+                  height: 32,
+                  color: Colors.orange.shade50,
+                  alignment: Alignment.center,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.cloud_off, size: 14, color: Colors.orange.shade700),
+                    const SizedBox(width: 6),
+                    Text('Offline: showing doctors saved on this phone. Pull down to retry.',
+                        style: TextStyle(fontSize: 12, color: Colors.orange.shade700)),
+                  ]),
+                ),
+              )
+            : null,
       ),
       body: ResponsiveCenter(
         child: _loading
@@ -555,11 +579,15 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                       itemBuilder: (ctx, i) {
                         final d = _doctors![i];
                         return GestureDetector(
-                            onTap: () => Navigator.push(
-                                ctx,
-                                MaterialPageRoute(
-                                    builder: (_) =>
-                                        DoctorDetailScreen(doctor: d))),
+                            onTap: () => Navigator.push<bool>(
+                                    ctx,
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            DoctorDetailScreen(doctor: d))).then((deleted) {
+                                  if (deleted == true && mounted) {
+                                    setState(() => _doctors?.removeWhere((x) => x.id == d.id));
+                                  }
+                                }),
                             child: Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(

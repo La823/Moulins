@@ -56,7 +56,7 @@ class AppDrawer extends ConsumerWidget {
               ),
             // Doctors' CRM/contact tracking isn't relevant to a doctor's
             // own login — they're the record being tracked, not the tracker.
-            if (user?.role != 'doctor')
+            if (user?.role != 'doctor' && user?.role != 'retailer')
               ListTile(
                 leading: const Icon(Icons.people_outline, color: _teal),
                 title: const Text('Doctors'),
@@ -67,7 +67,7 @@ class AppDrawer extends ConsumerWidget {
               ),
             // Slideshow presentations are a sales-pitch tool — not
             // relevant to a doctor's own login either.
-            if (user?.role != 'doctor')
+            if (user?.role != 'doctor' && user?.role != 'retailer')
               ListTile(
                 leading: const Icon(Icons.slideshow_outlined, color: _teal),
                 title: const Text('Presentations'),
@@ -77,6 +77,23 @@ class AppDrawer extends ConsumerWidget {
                 },
               ),
             if (user?.role == 'partner') ...[
+              // the shops the partner supplies, and their orders
+              ListTile(
+                leading: const Icon(Icons.storefront_outlined, color: _teal),
+                title: const Text('My Retailers'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/retailers');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.move_to_inbox_outlined, color: _teal),
+                title: const Text('Retailer Orders'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  context.push('/retailer-orders');
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.groups_outlined, color: _teal),
                 title: const Text('My Team'),
@@ -120,6 +137,7 @@ class AppDrawer extends ConsumerWidget {
                 },
               ),
             ],
+            if (user?.role != 'retailer')
             ListTile(
               leading: const Icon(Icons.play_circle_outline, color: _teal),
               title: const Text('Learning'),

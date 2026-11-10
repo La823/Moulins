@@ -190,6 +190,8 @@ const NAV_ITEMS = [
   { label: "All Bills", href: "/panel/all-bills", permission: "marg_bills_view", icon: ICONS.orders },
   { label: "Day Book 2025-26", href: "/panel/marg-daybook", permission: "marg_accounts_view", icon: ICONS.orders },
   { label: "Analysis", href: "/panel/marg-analysis", permission: "marg_analysis_view", icon: ICONS.analysis },
+  // Government websites' notices (CDSCO, CBIC GST, GST Council, DoP), for every admin and staff member.
+  { label: "Official Updates", href: "/panel/official-updates", icon: ICONS.learning },
   { label: "Cheques", href: "/panel/cheques", adminOnly: true, icon: ICONS.payments },
   { label: "Cheque Register", href: "/panel/cheque-register", adminOnly: true, icon: ICONS.orders },
   {

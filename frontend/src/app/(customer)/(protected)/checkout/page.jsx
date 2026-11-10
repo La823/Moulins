@@ -15,6 +15,9 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, itemCount, clearCartLocal } = useCart();
   const { user } = useAuth();
+  // A retailer orders from their partner, not Moulins: no transport or
+  // address, and the order goes to /retailer-orders.
+  const isRetailer = user?.role === "retailer";
   const [notes, setNotes] = useState("");
   const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState("courier");
@@ -46,6 +49,19 @@ export default function CheckoutPage() {
     setSubmitting(true);
 
     try {
+      if (isRetailer) {
+        const res = await apiFetch("/retailer-orders", {
+          method: "POST",
+          body: JSON.stringify({
+            items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity })),
+            notes: notes.trim() || undefined,
+          }),
+        });
+        clearCartLocal();
+        playSound("order");
+        router.push(`/retailer-panel/orders/${res.id}`);
+        return;
+      }
       const res = await apiFetch("/orders", {
         method: "POST",
         body: JSON.stringify({
@@ -141,7 +157,14 @@ export default function CheckoutPage() {
         })}
       </div>
 
+      {isRetailer && (
+        <p className="mb-8 text-sm text-gray-600">
+          This order will be sent to your partner, who will confirm the rates.
+        </p>
+      )}
+
       {/* Transport mode */}
+      {!isRetailer && (<>
       <div className="mb-8">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           Mode of Transportation
@@ -219,6 +242,7 @@ export default function CheckoutPage() {
           </p>
         )}
       </div>
+      </>)}
 
       {/* Notes */}
       <div className="mb-8">

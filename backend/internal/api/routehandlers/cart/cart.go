@@ -28,6 +28,12 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not fetch cart", http.StatusInternalServerError)
 			return
 		}
+		// a retailer sees MRP only, not Moulins' price to their partner
+		if middleware.IsRetailer(r) {
+			for i := range items {
+				items[i].Price, items[i].Stock = 0, 0
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"items": items})
 	}

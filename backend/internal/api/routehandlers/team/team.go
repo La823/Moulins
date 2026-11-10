@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -24,10 +25,21 @@ func getRole(r *http.Request) string {
 }
 
 // POST /team — a partner creates a login for a new team member.
+// The messages are shown to the partner as they are, so they say what went
+// wrong and what to do.
+const (
+	msgTeamPartnersOnly  = "Only partner accounts can add team members."
+	msgTeamBadRequest    = "The request could not be read. Please update the app and try again."
+	msgTeamPhoneRequired = "Please enter the team member's phone number and a password."
+	msgTeamWeakPassword  = "The password must be at least 8 characters long and include an uppercase letter, a lowercase letter and a number."
+	msgTeamPhoneTaken    = "This phone number is already registered to another account. Please use a phone number that has not been registered before."
+	msgTeamServerError   = "The team member could not be added at this time. Please try again in a few minutes."
+)
+
 func CreateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if getRole(r) != "partner" {
-			http.Error(w, "only partners can create team members", http.StatusForbidden)
+			http.Error(w, msgTeamPartnersOnly, http.StatusForbidden)
 			return
 		}
 
@@ -38,25 +50,60 @@ func CreateTeamMemberHandler(db *pgxpool.Pool) http.HandlerFunc {
 			Email       *string `json:"email"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			http.Error(w, msgTeamBadRequest, http.StatusBadRequest)
 			return
 		}
 		if body.PhoneNumber == "" || body.Password == "" {
-			http.Error(w, "phone_number and password are required", http.StatusBadRequest)
+			http.Error(w, msgTeamPhoneRequired, http.StatusBadRequest)
 			return
 		}
 		if err := utils.ValidatePasswordStrength(body.Password); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, msgTeamWeakPassword, http.StatusBadRequest)
 			return
 		}
 		if body.Email != nil && *body.Email == "" {
 			body.Email = nil
 		}
+		if body.Username != nil && *body.Username == "" {
+			body.Username = nil
+		}
 
-		id, err := models.CreateTeamMember(r.Context(), db, getUserID(r), body.PhoneNumber, body.Password, body.Username, body.Email)
+		// A phone number has one login. One of this partner's own removed
+		// members is brought back (same account, so their history returns
+		// with them); anyone else's number is refused with a reason.
+		ownerID := getUserID(r)
+		existing, role, teamOwner, removed, found, err := models.PhoneOwner(r.Context(), db, body.PhoneNumber)
+		if err != nil {
+			log.Printf("create team member: phone lookup: %v", err)
+			http.Error(w, msgTeamServerError, http.StatusInternalServerError)
+			return
+		}
+		if found {
+			if role == "team_member" && removed && teamOwner != nil && *teamOwner == ownerID {
+				if err := models.RestoreTeamMember(r.Context(), db, existing, body.Password, body.Username, body.Email); err != nil {
+					log.Printf("create team member: restore %s: %v", existing, err)
+					http.Error(w, msgTeamServerError, http.StatusInternalServerError)
+					return
+				}
+				middleware.RestoreUser(existing)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{"id": existing, "restored": true})
+				return
+			}
+			http.Error(w, msgTeamPhoneTaken, http.StatusConflict)
+			return
+		}
+
+		id, err := models.CreateTeamMember(r.Context(), db, ownerID, body.PhoneNumber, body.Password, body.Username, body.Email)
 		if err != nil {
 			log.Printf("create team member error: %v", err)
-			http.Error(w, "could not create team member", http.StatusInternalServerError)
+			// Two partners adding the same number at the same moment.
+			if strings.Contains(err.Error(), "users_phone_number_key") {
+				http.Error(w, msgTeamPhoneTaken, http.StatusConflict)
+				return
+			}
+			http.Error(w, msgTeamServerError, http.StatusInternalServerError)
 			return
 		}
 

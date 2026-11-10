@@ -132,7 +132,7 @@ type CreateOrderItemRequest struct {
 // customer's cart (whatever it happened to contain) is cleared on commit,
 // matching the checkout flow's assumption that req.Items came from it.
 func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
-	return createOrder(ctx, db, userID, userID, "Order was placed", req, false)
+	return createOrder(ctx, db, userID, userID, "Order was placed", req, false, false)
 }
 
 // CreateOrderForCustomer lets a staff member place an order on behalf of a
@@ -141,12 +141,19 @@ func CreateOrder(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, req Cr
 // trail, and the customer's cart is left untouched since these items didn't
 // come from it.
 func CreateOrderForCustomer(ctx context.Context, db *pgxpool.Pool, userID, staffID uuid.UUID, req CreateOrderRequest) (uuid.UUID, error) {
-	return createOrder(ctx, db, userID, staffID, "Order was placed by staff on behalf of the customer", req, true)
+	return createOrder(ctx, db, userID, staffID, "Order was placed by staff on behalf of the customer", req, true, false)
+}
+
+// createOrderKeepingCart places a partner's own order whose items didn't
+// come from their cart (a retailer order forwarded to Moulins), so the cart
+// is left as it is.
+func createOrderKeepingCart(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, eventDescription string, req CreateOrderRequest) (uuid.UUID, error) {
+	return createOrder(ctx, db, userID, userID, eventDescription, req, false, true)
 }
 
 // withRates keeps each line's Rate and BatchCode (staff orders); otherwise
-// they are dropped.
-func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUID, eventDescription string, req CreateOrderRequest, withRates bool) (uuid.UUID, error) {
+// they are dropped. keepCart leaves the customer's cart alone on their own order.
+func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUID, eventDescription string, req CreateOrderRequest, withRates, keepCart bool) (uuid.UUID, error) {
 	transportMode := ""
 	if req.TransportMode != nil {
 		transportMode = *req.TransportMode
@@ -208,7 +215,7 @@ func createOrder(ctx context.Context, db *pgxpool.Pool, userID, actorID uuid.UUI
 	// Only clear it for the customer's own checkout flow (actorID ==
 	// userID) — a staff-placed order's items didn't come from the
 	// customer's cart, so their cart shouldn't be touched.
-	if actorID == userID {
+	if actorID == userID && !keepCart {
 		if err = ClearCart(ctx, tx, userID); err != nil {
 			return uuid.Nil, err
 		}

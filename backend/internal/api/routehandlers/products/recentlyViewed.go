@@ -43,6 +43,9 @@ func ListRecentlyViewedHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		loadProductRelationsBatch(r, db, recent)
+		if middleware.IsRetailer(r) {
+			forRetailers(recent)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(recent)

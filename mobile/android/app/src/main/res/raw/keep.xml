@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The order sound is only named from Dart (the order_alerts channel), so
+     keep resource shrinking from dropping it. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/order" />

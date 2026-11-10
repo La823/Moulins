@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import LocationPicker from "@/components/LocationPicker";
 
 const emptyProfileForm = { name: "", phone: "", email: "", speciality: "", clinic_name: "", dob: "", anniversary: "" };
@@ -68,6 +69,11 @@ function DetailField({ label, value, placeholder, icon }) {
 export default function DoctorDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  // Only the partner may delete a doctor; team members share the list but
+  // the server refuses them (DeleteDoctorHandler).
+  const canDelete = user && user.role !== "team_member";
+  const [deleting, setDeleting] = useState(false);
   const [doctor, setDoctor] = useState(null);
   const [meetings, setMeetings] = useState([]);
   const [presentations, setPresentations] = useState([]);
@@ -231,6 +237,20 @@ export default function DoctorDetailPage() {
     }
   };
 
+  // Removes the doctor from the list. Their meetings, visit logs and
+  // presentations are kept on the server (the doctor is only marked deleted).
+  const deleteDoctor = async () => {
+    if (!window.confirm(`Delete Dr. ${doctor.name}? They will be removed from your doctor list, and reminders for their upcoming meetings will stop. Their past meetings and visit records are kept.`)) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/doctors/${id}`, { method: "DELETE" });
+      router.back();
+    } catch (err) {
+      alert(`The doctor could not be deleted: ${err.message}`);
+      setDeleting(false);
+    }
+  };
+
   const assignedIds = new Set(assignedProducts.map((p) => p.product_id));
 
   const filteredProducts = allProducts.filter(
@@ -278,6 +298,15 @@ export default function DoctorDetailPage() {
             >
               Edit Profile
             </button>
+            {canDelete && (
+              <button
+                onClick={deleteDoctor}
+                disabled={deleting}
+                className="text-sm px-4 py-2 border border-red-200 rounded-lg text-red-600 hover:border-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            )}
             <Link
               href={`/meetings?doctor_id=${doctor.id}`}
               className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500 transition-colors"

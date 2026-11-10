@@ -10,11 +10,11 @@ class Validators {
   /// Null when [value] satisfies all strong-password rules, otherwise a
   /// message describing the first unmet rule.
   static String? passwordError(String value) {
-    if (value.length < 8) return 'Password must be at least 8 characters';
-    if (!_upper.hasMatch(value)) return 'Password must include an uppercase letter';
-    if (!_lower.hasMatch(value)) return 'Password must include a lowercase letter';
-    if (!_digit.hasMatch(value)) return 'Password must include a number';
-    if (!_special.hasMatch(value)) return 'Password must include a special character';
+    if (value.length < 8) return 'The password must be at least 8 characters long.';
+    if (!_upper.hasMatch(value)) return 'The password must include at least one uppercase letter.';
+    if (!_lower.hasMatch(value)) return 'The password must include at least one lowercase letter.';
+    if (!_digit.hasMatch(value)) return 'The password must include at least one number.';
+    if (!_special.hasMatch(value)) return 'The password must include at least one special character, such as @, # or !.';
     return null;
   }
 
@@ -35,7 +35,7 @@ class Validators {
   /// Null when [value] is a valid 10-digit Indian phone number (with or
   /// without a +91/91 prefix), otherwise a message.
   static String? phoneError(String value) {
-    if (normalizePhone(value) == null) return 'Enter a valid 10-digit phone number';
+    if (normalizePhone(value) == null) return 'Please enter a valid 10-digit mobile number.';
     return null;
   }
 }

@@ -8,6 +8,7 @@ import '../../widgets/cart_drawer.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/favorite_service.dart';
+import '../../services/offline_files.dart';
 import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
 import '../../utils/responsive.dart';
@@ -47,7 +48,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
     setState(() => _loading = true);
     try {
       final favs = await FavoriteService().getFavorites();
-      setState(() { _favorites = favs; _offline = false; _loading = false; });
+      setState(() { _favorites = favs; _offline = FavoriteService.lastFromCache; _loading = false; });
     } catch (_) {
       setState(() { _favorites = []; _offline = true; _loading = false; });
     }
@@ -140,6 +141,29 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                 ],
               ),
             ),
+
+          // Favourites are saved on the phone in full (images, documents,
+          // audio) while online; this shows while that is happening.
+          ValueListenableBuilder<(int, int)?>(
+            valueListenable: OfflineFiles.progress,
+            builder: (_, p, __) => p == null
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, value: p.$2 > 0 ? p.$1 / p.$2 : null, color: teal),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('Saving favourites for offline use… ${p.$1} of ${p.$2} files',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                      ],
+                    ),
+                  ),
+          ),
 
           Expanded(
             child: isSearching

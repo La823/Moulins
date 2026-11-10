@@ -1,19 +1,29 @@
 import '../config/api.dart';
 import '../models/product.dart';
 import 'offline_cache.dart';
+import 'offline_files.dart';
 
 class FavoriteService {
   final _dio = createDio();
+
+  /// Whether the last getFavorites answer was the saved copy (no internet).
+  static bool lastFromCache = false;
 
   Future<List<Product>> getFavorites() async {
     try {
       final res = await _dio.get('/favorites');
       final products = (res.data as List<dynamic>).map((e) => Product.fromJson(e)).toList();
       await OfflineCache.saveFavorites(products);
+      lastFromCache = false;
+      // images, documents and audio too, in the background
+      OfflineFiles.saveProducts(products);
       return products;
     } catch (e) {
       final cached = await OfflineCache.loadFavorites();
-      if (cached.isNotEmpty) return cached;
+      if (cached.isNotEmpty) {
+        lastFromCache = true;
+        return cached;
+      }
       rethrow;
     }
   }

@@ -37,6 +37,8 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/meetings"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/messages"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/notifications"
+	officialupdatesHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/officialupdates"
+	retailersHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/retailers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
@@ -123,6 +125,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// visitors reach only /auth/me and their partnership request — see
 	// middleware/visitor.go before adding a route they should have
 	protected.Use(middleware.VisitorLimits)
+	// retailers likewise reach only the routes in middleware/retailer.go
+	protected.Use(middleware.RetailerLimits)
 	protected.HandleFunc("/profile/address/billing-from-gst", userauth.SetBillingAddressFromGSTHandler(db, rdb)).Methods("POST")
 	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/visitor/partnership-request", visitors.MyRequestHandler(db)).Methods("GET")
@@ -136,6 +140,24 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.Handle("/orders", middleware.DenyRole("doctor")(orders.CreateOrderHandler(db))).Methods("POST")
 	protected.HandleFunc("/orders", orders.ListMyOrdersHandler(db)).Methods("GET")
 	protected.HandleFunc("/orders/{id}", orders.GetOrderHandler(db)).Methods("GET")
+
+	// Retailers: shops a partner onboards, who order from the partner (role
+	// checks inside each handler). Literal paths before /retailer-orders/{id}.
+	protected.HandleFunc("/retailers", retailersHandlers.ListHandler(db)).Methods("GET")
+	protected.HandleFunc("/retailers", retailersHandlers.CreateHandler(db)).Methods("POST")
+	protected.HandleFunc("/retailers/{id}", retailersHandlers.UpdateHandler(db)).Methods("PUT")
+	protected.HandleFunc("/retailers/{id}", retailersHandlers.DeleteHandler(db)).Methods("DELETE")
+	protected.HandleFunc("/retailers/{id}/reset-password", retailersHandlers.ResetPasswordHandler(db)).Methods("POST")
+	protected.HandleFunc("/retailer-orders", retailersHandlers.PlaceOrderHandler(db)).Methods("POST")
+	protected.HandleFunc("/retailer-orders", retailersHandlers.ListMineHandler(db)).Methods("GET")
+	protected.HandleFunc("/retailer-orders/incoming", retailersHandlers.ListIncomingHandler(db)).Methods("GET")
+	protected.HandleFunc("/retailer-orders/{id}", retailersHandlers.GetOrderHandler(db)).Methods("GET")
+	protected.HandleFunc("/retailer-orders/{id}/cancel", retailersHandlers.CancelHandler(db)).Methods("PUT")
+	protected.HandleFunc("/retailer-orders/{id}/accept", retailersHandlers.AcceptHandler(db)).Methods("PUT")
+	protected.HandleFunc("/retailer-orders/{id}/reject", retailersHandlers.RejectHandler(db)).Methods("PUT")
+	protected.HandleFunc("/retailer-orders/{id}/dispatch", retailersHandlers.DispatchHandler(db)).Methods("PUT")
+	protected.HandleFunc("/retailer-orders/{id}/deliver", retailersHandlers.DeliverHandler(db)).Methods("PUT")
+	protected.HandleFunc("/retailer-orders/{id}/forward", retailersHandlers.ForwardHandler(db, orders.NotifyNewPartnerOrder)).Methods("POST")
 
 	// employee: view own attendance
 	protected.HandleFunc("/my-attendance", attendance.GetMyAttendanceHandler(db, rdb)).Methods("GET")
@@ -288,6 +310,14 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// Drug license lookup — proxies the internal dl-scraper microservice.
 	// No captcha step needed here, unlike GST.
 	protected.HandleFunc("/dl-lookup/details", dllookup.GetDetailsHandler).Methods("GET")
+
+	// Official updates from government websites (CDSCO, CBIC GST, GST
+	// Council, DoP), read daily by the scheduler. Every admin and staff
+	// member sees them and is notified of new ones.
+	officialUpdatesStaff := protected.PathPrefix("/official-updates").Subrouter()
+	officialUpdatesStaff.Use(middleware.StaffOnly)
+	officialUpdatesStaff.HandleFunc("", officialupdatesHandlers.ListHandler(db)).Methods("GET")
+	officialUpdatesStaff.HandleFunc("/check", officialupdatesHandlers.CheckHandler(db)).Methods("POST")
 
 	// admin-only routes — nothing permission-gated lives here anymore
 	// except things too sensitive to delegate (creating admin/staff logins

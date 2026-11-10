@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../services/offline_files.dart';
 import '../models/product.dart';
 
 /// Small square product image, used wherever a product appears in a list —
@@ -30,6 +31,7 @@ class ProductThumbnail extends StatelessWidget {
             ? _fallback()
             : CachedNetworkImage(
                 imageUrl: url,
+                cacheManager: OfflineFiles.cache,
                 // contain, not cover: these are packs and strips shot on
                 // white, and cropping them loses the pack edges.
                 fit: BoxFit.contain,

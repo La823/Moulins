@@ -310,6 +310,7 @@ func GetDueReminders(ctx context.Context, db *pgxpool.Pool, kind string) ([]Meet
 
 	query := meetingSelect + fmt.Sprintf(`
 		WHERE m.status = 'upcoming'
+		  AND (d.id IS NULL OR d.is_deleted = FALSE) -- no reminders for a deleted doctor's meetings
 		  AND m.%s = FALSE
 		  AND m.scheduled_at > now()
 		  AND m.scheduled_at <= now() + interval '%s'`, reminderCol, interval)

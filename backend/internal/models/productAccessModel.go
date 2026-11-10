@@ -43,6 +43,11 @@ func ResolveProductViewer(ctx context.Context, db *pgxpool.Pool, userID uuid.UUI
 		if err := db.QueryRow(ctx, `SELECT team_owner_id FROM users WHERE id = $1`, userID).Scan(&owner); err == nil && owner != nil {
 			return ProductViewer{PartnerID: owner}
 		}
+	case RoleRetailer:
+		// a retailer sees exactly what their partner sees
+		if partner, ok, err := RetailerPartner(ctx, db, userID); err == nil && ok {
+			return ProductViewer{PartnerID: &partner}
+		}
 	}
 	id := userID
 	return ProductViewer{PartnerID: &id}

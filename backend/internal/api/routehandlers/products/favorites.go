@@ -28,6 +28,9 @@ func ListFavoritesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		loadProductRelationsBatch(r, db, favs)
+		if middleware.IsRetailer(r) {
+			forRetailers(favs)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(favs)

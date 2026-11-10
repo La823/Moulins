@@ -9,6 +9,7 @@ import '../../models/transport.dart';
 import '../../models/transport_mode.dart';
 import '../../services/order_service.dart';
 import '../../services/transport_service.dart';
+import '../../services/retailer_service.dart';
 import '../../utils/responsive.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
@@ -139,7 +140,40 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
+  bool get _isRetailer => ref.read(authProvider).user?.role == 'retailer';
+
+  // A retailer's cart goes to their partner (retailer_service.dart), not Moulins.
+  Future<void> _placeRetailerOrder() async {
+    final items = ref.read(cartProvider);
+    if (items.isEmpty) return;
+    setState(() => _placing = true);
+    try {
+      final id = await RetailerService().placeOrder(items);
+      ref.read(cartProvider.notifier).clearLocal();
+      if (mounted) {
+        context.go('/retailer-orders/$id');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Your order has been sent to your partner.'),
+          backgroundColor: Color(0xFF00A6A4),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      await ref.read(cartProvider.notifier).loadFromServer();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(RetailerService.messageOf(e, fallback: 'The order could not be placed. Please try again.')),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _placing = false);
+    }
+  }
+
   Future<void> _placeOrder() async {
+    if (_isRetailer) return _placeRetailerOrder();
     final items = ref.read(cartProvider);
     if (items.isEmpty) return;
 
@@ -274,6 +308,15 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                       child: Column(
                         children: [
+                          // Transport and address are for orders to Moulins; a
+                          // retailer's order goes to their partner.
+                          if (_isRetailer)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('This order will be sent to your partner, who will confirm the rates.',
+                                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                            ),
+                          if (!_isRetailer) ...[
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Text('Mode of Transportation', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
@@ -335,9 +378,12 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                               ),
                             ),
                           ],
+                          ],
                       const SizedBox(height: 16),
-                      _addressSummary(context),
-                      const SizedBox(height: 16),
+                      if (!_isRetailer) ...[
+                        _addressSummary(context),
+                        const SizedBox(height: 16),
+                      ],
                       SizedBox(
                         width: double.infinity,
                         height: 52,

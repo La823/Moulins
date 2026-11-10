@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../providers/auth_provider.dart';
 import '../../models/doctor.dart';
 import '../../models/meeting.dart';
 import '../../models/presentation.dart';
@@ -12,16 +14,19 @@ import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
 import '../../utils/validators.dart';
 import '../../widgets/location_picker_screen.dart';
+import '../../widgets/presentation_download_button.dart';
+import '../../services/presentation_downloads.dart';
 
-class DoctorDetailScreen extends StatefulWidget {
+/// Pops with `true` when the doctor was deleted, so the list can drop them.
+class DoctorDetailScreen extends ConsumerStatefulWidget {
   final Doctor doctor;
   const DoctorDetailScreen({super.key, required this.doctor});
 
   @override
-  State<DoctorDetailScreen> createState() => _DoctorDetailScreenState();
+  ConsumerState<DoctorDetailScreen> createState() => _DoctorDetailScreenState();
 }
 
-class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
+class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
   static const teal = Color(0xFF00A6A4);
   List<DoctorProduct> _assigned = [];
   bool _loading = true;
@@ -64,7 +69,14 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loadingPresentations = false);
+      // No internet: this doctor's downloaded presentations.
+      final saved = (await PresentationDownloads.list()).where((d) => d.doctorId == _doctor.id).map((d) => d.asPresentation).toList();
+      if (mounted) {
+        setState(() {
+          _presentations = saved;
+          _loadingPresentations = false;
+        });
+      }
     }
   }
 
@@ -376,6 +388,42 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
         ),
       );
 
+  // Only the partner may delete a doctor (the server refuses team members).
+  // The doctor is marked deleted, not erased: past meetings and visit
+  // records stay, and their upcoming meetings stop sending reminders.
+  Future<void> _deleteDoctor() async {
+    final name = _doctor.name;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete doctor?'),
+        content: Text(
+            'Dr. $name will be removed from your doctor list, and reminders for their upcoming meetings will stop. '
+            'Their past meetings and visit records will be kept.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _service.deleteDoctor(_doctor.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Dr. $name has been deleted.'),
+        backgroundColor: teal,
+        behavior: SnackBarBehavior.floating,
+      ));
+      Navigator.pop(context, true);
+    } catch (_) {
+      _showError('The doctor could not be deleted. Please check your internet connection and try again.');
+    }
+  }
+
   void _showAddProductSheet() {
     showModalBottomSheet(
       context: context,
@@ -384,7 +432,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
       builder: (_) => _AddProductSheet(
         doctorId: widget.doctor.id,
         alreadyAssigned: _assigned.map((p) => p.productId).toSet(),
-        // Re-fetch from the server after each assign instead of mutating
+        // Re-fetch from the server after assigning instead of mutating
         // _assigned locally — avoids the list drifting out of sync with the
         // backend (which is the source of duplicate-looking rows) if a tap
         // fires while a previous assign is still in flight.
@@ -431,6 +479,23 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
             tooltip: 'Generate presentation from assigned products',
             onPressed: _generatingPresentation ? null : _generatePresentation,
           ),
+          if (ref.watch(authProvider).user?.role != 'team_member')
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.black54),
+              onSelected: (v) {
+                if (v == 'delete') _deleteDoctor();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(children: [
+                    Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                    SizedBox(width: 10),
+                    Text('Delete doctor', style: TextStyle(color: Colors.red)),
+                  ]),
+                ),
+              ],
+            ),
         ],
       ),
       body: ResponsiveCenter(child: ListView(
@@ -719,6 +784,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 ),
                               ),
                               Text('${p.slideCount} slide${p.slideCount != 1 ? 's' : ''}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
+                              PresentationDownloadButton(presentationId: p.id, name: p.name),
                             ],
                           ),
                         ),
@@ -849,11 +915,13 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
       );
 }
 
-// ── Bottom sheet to pick and assign a product ──────────────────────────────
+// ── Bottom sheet to pick and assign products ───────────────────────────────
+// Tick any number of products (the ticks survive searching), then assign
+// them all at once with the button at the bottom.
 class _AddProductSheet extends StatefulWidget {
   final String doctorId;
   final Set<String> alreadyAssigned;
-  final void Function(Product) onAdded;
+  final void Function(List<Product>) onAdded;
 
   const _AddProductSheet({
     required this.doctorId,
@@ -872,7 +940,8 @@ class _AddProductSheetState extends State<_AddProductSheet> {
   List<Product> _products = [];
   bool _loading = true;
   String _search = '';
-  String? _assigningId;
+  final Map<String, Product> _selected = {};
+  bool _assigning = false;
 
   @override
   void initState() {
@@ -889,22 +958,50 @@ class _AddProductSheetState extends State<_AddProductSheet> {
     }
   }
 
-  Future<void> _assign(Product product) async {
-    if (_assigningId != null) return;
-    setState(() => _assigningId = product.id);
-    try {
-      await _doctorService.addDoctorProduct(widget.doctorId, product.id);
-      widget.onAdded(product);
-      if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${product.name} assigned'), backgroundColor: const Color(0xFF00A6A4), behavior: SnackBarBehavior.floating),
-      );
-    } catch (_) {
-      if (mounted) setState(() => _assigningId = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not assign product'), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
-      );
+  void _toggle(Product p) {
+    if (_assigning) return;
+    setState(() => _selected.containsKey(p.id) ? _selected.remove(p.id) : _selected[p.id] = p);
+  }
+
+  // Assigns every ticked product (in parallel, one call each). Ones that
+  // fail stay ticked so they can be retried; the sheet closes when all went.
+  Future<void> _assignSelected() async {
+    if (_assigning || _selected.isEmpty) return;
+    setState(() => _assigning = true);
+    final picked = _selected.values.toList();
+    final failed = <Product>[];
+    await Future.wait(picked.map((p) async {
+      try {
+        await _doctorService.addDoctorProduct(widget.doctorId, p.id);
+      } catch (_) {
+        failed.add(p);
+      }
+    }));
+    final done = picked.where((p) => !failed.contains(p)).toList();
+    if (done.isNotEmpty) widget.onAdded(done);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (failed.isEmpty) {
+      Navigator.pop(context);
+      messenger.showSnackBar(SnackBar(
+        content: Text(done.length == 1 ? '${done.first.name} assigned' : '${done.length} products assigned'),
+        backgroundColor: const Color(0xFF00A6A4),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
     }
+    setState(() {
+      _assigning = false;
+      for (final p in done) {
+        _selected.remove(p.id);
+        widget.alreadyAssigned.add(p.id);
+      }
+    });
+    messenger.showSnackBar(SnackBar(
+      content: Text('${done.length} assigned, ${failed.length} could not be. They are still ticked; try again.'),
+      backgroundColor: Colors.red,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   List<Product> get _filtered {
@@ -927,11 +1024,19 @@ class _AddProductSheetState extends State<_AddProductSheet> {
           const SizedBox(height: 12),
           Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Assign Product', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('Assign Products', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+                if (_selected.isNotEmpty)
+                  TextButton(
+                    onPressed: _assigning ? null : () => setState(_selected.clear),
+                    child: Text('Clear (${_selected.length})', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 12),
@@ -965,7 +1070,11 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (_, i) {
                           final p = _filtered[i];
+                          final ticked = _selected.containsKey(p.id);
                           return ListTile(
+                            onTap: () => _toggle(p),
+                            selected: ticked,
+                            selectedTileColor: const Color(0xFF00A6A4).withAlpha(18),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
@@ -975,28 +1084,39 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                             ),
                             title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                             subtitle: p.categories.isNotEmpty ? Text(p.categories.first, style: const TextStyle(fontSize: 12, color: Color(0xFF00A6A4))) : null,
-                            trailing: ElevatedButton(
-                              onPressed: _assigningId == null ? () => _assign(p) : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF00A6A4),
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: _assigningId == p.id
-                                  ? const SizedBox(
-                                      width: 14, height: 14,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                    )
-                                  : const Text('Assign', style: TextStyle(fontSize: 13)),
+                            trailing: Checkbox(
+                              value: ticked,
+                              activeColor: const Color(0xFF00A6A4),
+                              onChanged: _assigning ? null : (_) => _toggle(p),
                             ),
                           );
                         },
                       ),
           ),
+          if (_selected.isNotEmpty)
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _assigning ? null : _assignSelected,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A6A4),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: _assigning
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : Text('Assign ${_selected.length} product${_selected.length == 1 ? '' : 's'}',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

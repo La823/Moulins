@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/officialupdates"
+	"github.com/lavanyaarora/server/internal/utils"
 )
 
 // StartScheduler runs a lightweight background ticker for time-based jobs.
@@ -24,6 +26,7 @@ func StartScheduler(db *pgxpool.Pool) {
 	defer ticker.Stop()
 
 	var lastBirthdayRunDate string
+	var lastOfficialUpdatesDate string
 	var margSlot time.Time
 	var lastMargFullDate string
 
@@ -43,6 +46,13 @@ func StartScheduler(db *pgxpool.Pool) {
 			dispatchMargSync(db, window)
 		}
 
+		// Government websites' notices, once a day from 9 AM India time
+		// (again after a restart that day; already-seen items are skipped).
+		if ist := time.Now().In(margsyncIST); ist.Hour() >= officialUpdatesHourIST && ist.Format("2006-01-02") != lastOfficialUpdatesDate {
+			lastOfficialUpdatesDate = ist.Format("2006-01-02")
+			go officialupdates.Run(context.Background(), db, SendDirectNotification)
+		}
+
 		today := time.Now().Format("2006-01-02")
 		if today != lastBirthdayRunDate {
 			dispatchBirthdayReminders(db)
@@ -58,6 +68,9 @@ func StartScheduler(db *pgxpool.Pool) {
 }
 
 var margsyncIST = time.FixedZone("IST", 5*3600+1800)
+
+// officialUpdatesHourIST is when the daily read of government websites runs.
+const officialUpdatesHourIST = 9
 
 // margFullSyncHourIST: the first slot in this hour each day runs a full
 // pull instead of a delta (only in this hour, so a restart later in the day
@@ -334,17 +347,23 @@ func dispatchMeetingReminders(db *pgxpool.Pool) {
 		}
 
 		for _, m := range due {
-			when := "tomorrow"
-			if kind == "1hour" {
-				when = "in 1 hour"
+			left := time.Until(m.ScheduledAt)
+			// A meeting booked less than an hour ahead is due for both; the
+			// hour reminder covers it, so skip the day one.
+			if kind == "1day" && left <= time.Hour {
+				if err := models.MarkReminderSent(ctx, db, m.ID, kind); err != nil {
+					log.Printf("scheduler: failed to mark %s reminder sent for meeting %s: %v", kind, m.ID, err)
+				}
+				continue
 			}
 			title := "Upcoming meeting reminder"
-			body := fmt.Sprintf("Your meeting with %s is %s (%s).", m.DisplayName(), when, m.ScheduledAt.Format("Jan 2, 3:04 PM"))
+			body := fmt.Sprintf("Your meeting with %s is %s.", m.DisplayName(), meetingWhen(m.ScheduledAt, left, kind))
 			deepLink := fmt.Sprintf("/meetings/%s", m.ID)
 
 			// To whoever is going: the assignee, or the partner when the
-			// meeting has no active assignee.
-			if err := SendDirectNotification(ctx, db, m.NotifyUserID, title, body, &deepLink); err != nil {
+			// meeting has no active assignee. On its own channel, with the
+			// phone's default sound.
+			if err := SendDirectNotificationOn(ctx, db, utils.MeetingPush, m.NotifyUserID, title, body, &deepLink); err != nil {
 				log.Printf("scheduler: failed to send %s reminder for meeting %s: %v", kind, m.ID, err)
 				continue
 			}
@@ -353,4 +372,25 @@ func dispatchMeetingReminders(db *pgxpool.Pool) {
 			}
 		}
 	}
+}
+
+// meetingWhen says when a meeting is, in India time: "today at 3:30 PM",
+// "tomorrow at 10:00 AM", or for the hour reminder "in 1 hour (3:30 PM)".
+func meetingWhen(at time.Time, left time.Duration, kind string) string {
+	ist := at.In(margsyncIST)
+	clock := ist.Format("3:04 PM")
+	if kind == "1hour" {
+		if mins := int(left.Round(time.Minute).Minutes()); mins < 55 {
+			return fmt.Sprintf("in %d min (%s)", max(mins, 1), clock)
+		}
+		return "in 1 hour (" + clock + ")"
+	}
+	now := time.Now().In(margsyncIST)
+	switch ist.Format("2006-01-02") {
+	case now.Format("2006-01-02"):
+		return "today at " + clock
+	case now.AddDate(0, 0, 1).Format("2006-01-02"):
+		return "tomorrow at " + clock
+	}
+	return ist.Format("Jan 2") + " at " + clock
 }

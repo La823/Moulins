@@ -170,12 +170,20 @@ func notifyStaffNewOrder(db *pgxpool.Pool, orderID uuid.UUID, excludeUserID uuid
 			if uid == excludeUserID {
 				continue
 			}
-			if err := services.SendDirectNotification(ctx, db, uid, "New order received", body, &deepLink); err != nil {
+			if err := services.SendDirectNotificationOn(ctx, db, utils.OrderPush, uid, "New order received", body, &deepLink); err != nil {
 				// One bad device must not stop the rest being told.
 				log.Printf("staff order notification: send to %s failed: %v", uid, err)
 			}
 		}
 	}()
+}
+
+// NotifyNewPartnerOrder tells staff about an order a partner placed
+// themselves outside checkout (a retailer order forwarded to Moulins), and
+// emails the partner the usual confirmation.
+func NotifyNewPartnerOrder(db *pgxpool.Pool, orderID, partnerID uuid.UUID) {
+	notifyOrderPlacedEmail(db, orderID)
+	notifyStaffNewOrder(db, orderID, uuid.Nil)
 }
 
 func plural(n int) string {

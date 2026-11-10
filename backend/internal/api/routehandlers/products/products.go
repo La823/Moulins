@@ -519,11 +519,14 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		cacheKey := fmt.Sprintf("products:scope=%s:active=%v:p=%d:l=%d:s=%s:cat=%s:form=%s:tag=%s:img=%s:lic=%s:zone=%s:cid=%s:no=%v:so=%v:sb=%s:sd=%s", scope, activeOnly, page, limit, search, category, form, tag, imageCount, licenceType, zone, categoryID, nameOnly, saltOnly, sortBy, sortDir)
 		var cached productListResult
 		if c.GetJSON(r.Context(), cacheKey, &cached) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(cached)
 			if activeOnly && middleware.IsVisitor(r) {
 				forVisitors(cached.Products)
 			}
+			if activeOnly && middleware.IsRetailer(r) {
+				forRetailers(cached.Products)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(cached)
 			return
 		}
 
@@ -567,11 +570,14 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		}
 
 		c.SetJSON(r.Context(), cacheKey, result, 5*time.Minute)
-
-		w.Header().Set("Content-Type", "application/json")
 		if activeOnly && middleware.IsVisitor(r) {
 			forVisitors(result.Products) // after caching: the cache is shared
 		}
+		if activeOnly && middleware.IsRetailer(r) {
+			forRetailers(result.Products) // after caching: shared with their partner
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
 	}
 }
@@ -618,11 +624,14 @@ func GetProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 			http.Error(w, "product not found", http.StatusNotFound)
 			return
 		}
-
-		w.Header().Set("Content-Type", "application/json")
 		if middleware.IsVisitor(r) {
 			forVisitor(p) // p is this request's own copy, fresh or decoded from the cache
 		}
+		if middleware.IsRetailer(r) {
+			forRetailer(p)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(p)
 	}
 }

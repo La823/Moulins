@@ -5,6 +5,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:go_router/go_router.dart';
 import 'package:audioplayers/audioplayers.dart';
+import '../../services/offline_files.dart';
 import '../../models/product.dart';
 import '../../providers/cart_provider.dart';
 import '../../providers/favorites_provider.dart';
@@ -82,7 +83,9 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     }
     setState(() => _audioLoading = true);
     try {
-      await _audioPlayer.play(UrlSource(url));
+      // a saved copy (favourites are saved in full) plays with no internet
+      final saved = await OfflineFiles.cache.getFileFromCache(url);
+      await _audioPlayer.play(saved != null ? DeviceFileSource(saved.file.path) : UrlSource(url));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -195,6 +198,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               final lastViewed = await context.push<int>('/gallery', extra: {
                                 'imageUrls': p.visibleImages.map((img) => img.imageUrl).toList(),
                                 'initialIndex': _selectedImage,
+                                'cacheManager': OfflineFiles.cache,
                               });
                               if (lastViewed != null && mounted) {
                                 setState(() => _selectedImage = lastViewed);
@@ -206,6 +210,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
                               width: double.infinity,
                               child: CachedNetworkImage(
                                 imageUrl: p.visibleImages[i].imageUrl,
+                                cacheManager: OfflineFiles.cache,
                                 fit: BoxFit.contain,
                                 width: double.infinity,
                                 placeholder: (_, __) => Container(color: Colors.grey.shade100),
@@ -511,7 +516,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     if (url.isEmpty || _downloadingDocs.contains(url)) return;
     setState(() => _downloadingDocs.add(url));
     try {
-      final file = await DefaultCacheManager().getSingleFile(url);
+      final file = await OfflineFiles.cache.getSingleFile(url);
       final result = await OpenFilex.open(file.path);
       if (result.type != ResultType.done && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -14,7 +14,11 @@ class CartButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(cartProvider.notifier).itemCount;
+    // Watch the cart itself (not its notifier, which never changes) so the
+    // badge updates the moment anything is added, removed or changed. It
+    // counts products, not units: with order minimums of 10+ a unit count
+    // read "9+" after a single product.
+    final count = ref.watch(cartProvider).length;
 
     return Stack(
       clipBehavior: Clip.none,

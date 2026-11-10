@@ -350,7 +350,13 @@ export default function CustomerNavbar() {
   // generic customer /profile page shouldn't ever appear in their nav.
   // Visitors have no profile or dashboard — both point at becoming a partner.
   const profileHref = (u) =>
-    u.role === "doctor" ? "/doctor-panel/profile" : u.role === "visitor" ? "/become-partner" : "/profile";
+    u.role === "doctor"
+      ? "/doctor-panel/profile"
+      : u.role === "visitor"
+      ? "/become-partner"
+      : u.role === "retailer" // no GST/licence profile: password and account settings
+      ? "/settings"
+      : "/profile";
 
   const dashboardHref = (u) =>
     u.role === "admin" || u.role === "employee"
@@ -359,6 +365,8 @@ export default function CustomerNavbar() {
       ? "/team-panel"
       : u.role === "doctor"
       ? "/doctor-panel"
+      : u.role === "retailer"
+      ? "/retailer-panel"
       : u.role === "visitor"
       ? "/become-partner"
       : "/dashboard";
@@ -369,6 +377,8 @@ export default function CustomerNavbar() {
       ? "Team Panel"
       : u.role === "doctor"
       ? "Doctor Panel"
+      : u.role === "retailer"
+      ? "My Orders"
       : u.role === "visitor"
       ? "Become a partner"
       : "Dashboard";
@@ -392,6 +402,8 @@ export default function CustomerNavbar() {
     navItems = [...navItems, { id: "team-panel", label: "Team Panel", href: "/team-panel" }];
   } else if (user?.role === "doctor") {
     navItems = [...navItems, { id: "doctor-panel", label: "Doctor Panel", href: "/doctor-panel" }];
+  } else if (user?.role === "retailer") {
+    navItems = [...navItems, { id: "retailer-panel", label: "My Orders", href: "/retailer-panel" }];
   }
   // Team members are sub-accounts for field work, not billing — no cart.
   // Doctors can browse the catalog but never order — no cart either.

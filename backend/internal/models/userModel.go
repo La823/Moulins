@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/utils"
 )
@@ -574,6 +575,34 @@ func SoftDeleteTeamMember(ctx context.Context, db *pgxpool.Pool, memberID uuid.U
 		`UPDATE users SET deleted_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL`,
 		memberID,
 	)
+	return err
+}
+
+// PhoneOwner says who already has a login with this phone number: its id,
+// role, partner (for team members) and whether it was removed. found is
+// false when the number is free.
+func PhoneOwner(ctx context.Context, db *pgxpool.Pool, phone string) (id uuid.UUID, role string, teamOwner *uuid.UUID, removed, found bool, err error) {
+	err = db.QueryRow(ctx,
+		`SELECT id, role, team_owner_id, deleted_at IS NOT NULL FROM users WHERE phone_number = $1`, phone,
+	).Scan(&id, &role, &teamOwner, &removed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, "", nil, false, false, nil
+	}
+	return id, role, teamOwner, removed, err == nil, err
+}
+
+// RestoreTeamMember brings a removed team member back onto their team with
+// a new password (and name/email when given). Their past attendance, logs
+// and visits are still attached to the same account.
+func RestoreTeamMember(ctx context.Context, db *pgxpool.Pool, memberID uuid.UUID, password string, username, email *string) error {
+	hashed, err := utils.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, `
+		UPDATE users SET deleted_at = NULL, password_hash = $2, plain_password = $3,
+		       username = COALESCE($4, username), email = COALESCE($5, email), updated_at = now()
+		WHERE id = $1 AND role = 'team_member'`, memberID, hashed, password, username, email)
 	return err
 }
 

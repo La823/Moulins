@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../services/offline_files.dart';
 import '../models/product.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/auth_provider.dart';
@@ -85,6 +86,7 @@ class ProductCard extends ConsumerWidget {
                       child: product.cardImageUrl != null
                           ? CachedNetworkImage(
                               imageUrl: product.cardImageUrl!,
+                              cacheManager: OfflineFiles.cache,
                               fit: BoxFit.contain,
                               width: double.infinity,
                               placeholder: (_, __) => Container(color: Colors.grey.shade100, child: const Center(child: Icon(Icons.medication_outlined, color: Colors.grey))),

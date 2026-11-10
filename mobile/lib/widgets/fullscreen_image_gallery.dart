@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 // Pinch-to-zoom, swipe-between-images full-screen viewer. Registered as a
 // real top-level go_router route (see main.dart) rather than pushed
@@ -19,13 +20,29 @@ import 'package:cached_network_image/cached_network_image.dart';
 // Returns the last-viewed image index via Navigator.pop's result when
 // closed, so the caller can keep its own image carousel in sync.
 class FullScreenImageGalleryScreen extends StatefulWidget {
+  /// An image decoded at about the screen's resolution (with room to zoom)
+  /// rather than at its full size: a large slide or pack shot then turns into
+  /// a picture several times faster and takes far less memory, so swiping
+  /// doesn't wait on it. Also used by the notebook viewer.
+  static ImageProvider screenSized(String url, {BaseCacheManager? cacheManager}) {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final px = views.isEmpty ? 2400.0 : views.first.physicalSize.longestSide;
+    final width = (px * 1.25).clamp(800, 3200).round();
+    return ResizeImage(CachedNetworkImageProvider(url, cacheManager: cacheManager), width: width, allowUpscaling: false);
+  }
+
   final List<String> imageUrls;
   final int initialIndex;
+
+  /// Where images are cached; presentations pass theirs so a downloaded
+  /// deck shows offline. Null = the app's default image cache.
+  final BaseCacheManager? cacheManager;
 
   const FullScreenImageGalleryScreen({
     super.key,
     required this.imageUrls,
     this.initialIndex = 0,
+    this.cacheManager,
   });
 
   @override
@@ -60,6 +77,22 @@ class _FullScreenImageGalleryScreenState extends State<FullScreenImageGalleryScr
     if (zoomed != _zoomedIn) setState(() => _zoomedIn = zoomed);
   }
 
+  ImageProvider _image(int i) =>
+      FullScreenImageGalleryScreen.screenSized(widget.imageUrls[i], cacheManager: widget.cacheManager);
+
+  // Gets the images either side of [i] ready before they are swiped to.
+  void _prepareAround(int i) {
+    for (final j in [i + 1, i - 1, i + 2]) {
+      if (j >= 0 && j < widget.imageUrls.length) precacheImage(_image(j), context).catchError((_) {});
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _prepareAround(_current);
+  }
+
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -87,7 +120,10 @@ class _FullScreenImageGalleryScreenState extends State<FullScreenImageGalleryScr
               // works reliably (PageView's drag recognizer tends to win).
               physics: _zoomedIn ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
               itemCount: widget.imageUrls.length,
-              onPageChanged: (i) => setState(() => _current = i),
+              onPageChanged: (i) {
+                setState(() => _current = i);
+                _prepareAround(i);
+              },
               itemBuilder: (context, i) => InteractiveViewer(
                 transformationController: i == _current ? _transformController : null,
                 minScale: 1,
@@ -100,11 +136,14 @@ class _FullScreenImageGalleryScreenState extends State<FullScreenImageGalleryScr
                   onTap: _toggleChrome,
                   child: SizedBox.expand(
                     child: Center(
-                      child: CachedNetworkImage(
-                        imageUrl: widget.imageUrls[i],
+                      child: Image(
+                        image: _image(i),
                         fit: BoxFit.contain,
-                        placeholder: (_, __) => const CircularProgressIndicator(color: Color(0xFF00A6A4)),
-                        errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+                        gaplessPlayback: true,
+                        // a prepared image shows at once; the spinner only while one is still loading
+                        frameBuilder: (_, child, frame, sync) =>
+                            frame == null && !sync ? const CircularProgressIndicator(color: Color(0xFF00A6A4)) : child,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
                       ),
                     ),
                   ),

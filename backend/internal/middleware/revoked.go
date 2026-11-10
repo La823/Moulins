@@ -35,6 +35,12 @@ func RevokeUser(id uuid.UUID) {
 	revoked.Store(id, struct{}{})
 }
 
+// RestoreUser lets a removed account log in again (a team member added
+// back to their team).
+func RestoreUser(id uuid.UUID) {
+	revoked.Delete(id)
+}
+
 // IsRevoked reports whether id belongs to a removed account.
 func IsRevoked(id uuid.UUID) bool {
 	_, ok := revoked.Load(id)

@@ -87,6 +87,12 @@ func DispatchBroadcast(ctx context.Context, db *pgxpool.Pool, notification *mode
 // shows up in the in-app inbox immediately regardless of push), and a
 // best-effort FCM push to that user's registered devices.
 func SendDirectNotification(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, title, body string, deepLink *string) error {
+	return SendDirectNotificationOn(ctx, db, utils.BroadcastPush, userID, title, body, deepLink)
+}
+
+// SendDirectNotificationOn is SendDirectNotification with the push on a given
+// channel, i.e. with its own sound (meeting reminders, new orders).
+func SendDirectNotificationOn(ctx context.Context, db *pgxpool.Pool, ch utils.PushChannel, userID uuid.UUID, title, body string, deepLink *string) error {
 	notificationID, err := models.CreateSingleUserNotification(ctx, db, title, body, deepLink)
 	if err != nil {
 		return err
@@ -108,7 +114,7 @@ func SendDirectNotification(ctx context.Context, db *pgxpool.Pool, userID uuid.U
 		data["deep_link"] = *deepLink
 	}
 
-	successCount, _, invalidTokens, sendErr := utils.SendMulticast(ctx, tokens, title, body, "", data)
+	successCount, _, invalidTokens, sendErr := utils.SendMulticastOn(ctx, ch, tokens, title, body, "", data)
 	if sendErr != nil {
 		log.Printf("direct notification %s: push send error: %v", notificationID, sendErr)
 	}

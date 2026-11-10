@@ -38,10 +38,35 @@ func InitFCM() {
 	log.Println("FCM client initialized")
 }
 
+// PushChannel is how a push sounds on the phone: the Android notification
+// channel it is posted to (the app creates these; on Android 8+ the channel
+// decides the sound) and the sound iOS plays. A channel the installed app
+// doesn't have yet falls back to broadcast_channel (the manifest default), so
+// older app versions still show every push.
+type PushChannel struct {
+	AndroidChannel string
+	Sound          string // iOS sound: "default" for the phone's own, a bundled file, or "" for none
+}
+
+var (
+	BroadcastPush = PushChannel{AndroidChannel: "broadcast_channel"}
+	// Meeting reminders: the phone's default notification sound.
+	MeetingPush = PushChannel{AndroidChannel: "meeting_reminders", Sound: "default"}
+	// New orders: the order sound bundled with the app (res/raw/order, order.caf).
+	OrderPush = PushChannel{AndroidChannel: "order_alerts", Sound: "order.caf"}
+)
+
 // SendMulticast sends the same notification to up to 500 tokens at a time and
 // reports back which tokens were rejected as invalid/unregistered so callers
 // can prune them. No-ops when Firebase isn't configured.
 func SendMulticast(ctx context.Context, tokens []string, title, body, imageURL string, data map[string]string) (successCount, failureCount int, invalidTokens []string, err error) {
+	return SendMulticastOn(ctx, BroadcastPush, tokens, title, body, imageURL, data)
+}
+
+// SendMulticastOn is SendMulticast on a given channel. The channel id also
+// goes in the data, so the app can post a push that arrives while it is open
+// to the same channel.
+func SendMulticastOn(ctx context.Context, ch PushChannel, tokens []string, title, body, imageURL string, data map[string]string) (successCount, failureCount int, invalidTokens []string, err error) {
 	if fcmClient == nil || len(tokens) == 0 {
 		return 0, 0, nil, nil
 	}
@@ -54,6 +79,15 @@ func SendMulticast(ctx context.Context, tokens []string, title, body, imageURL s
 		}
 		chunk := tokens[i:end]
 
+		withChannel := map[string]string{"channel": ch.AndroidChannel}
+		for k, v := range data {
+			withChannel[k] = v
+		}
+		var apns *messaging.APNSConfig
+		if ch.Sound != "" {
+			apns = &messaging.APNSConfig{Payload: &messaging.APNSPayload{Aps: &messaging.Aps{Sound: ch.Sound}}}
+		}
+
 		msg := &messaging.MulticastMessage{
 			Tokens: chunk,
 			Notification: &messaging.Notification{
@@ -64,12 +98,13 @@ func SendMulticast(ctx context.Context, tokens []string, title, body, imageURL s
 			Android: &messaging.AndroidConfig{
 				Priority: "high",
 				Notification: &messaging.AndroidNotification{
-					ChannelID: "broadcast_channel",
+					ChannelID: ch.AndroidChannel,
 					Priority:  messaging.PriorityHigh,
 					ImageURL:  imageURL,
 				},
 			},
-			Data: data,
+			APNS: apns,
+			Data: withChannel,
 		}
 
 		resp, sendErr := fcmClient.SendEachForMulticast(ctx, msg)

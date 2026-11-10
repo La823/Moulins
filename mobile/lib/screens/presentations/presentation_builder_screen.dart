@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/doctor.dart';
 import '../../models/presentation.dart';
@@ -8,6 +7,8 @@ import '../../models/product.dart';
 import '../../services/doctor_service.dart';
 import '../../services/presentation_service.dart';
 import '../../services/product_service.dart';
+import 'present.dart';
+import '../../widgets/presentation_download_button.dart';
 
 class PresentationBuilderScreen extends StatefulWidget {
   final String presentationId;
@@ -41,7 +42,7 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
 
   // Which viewer "Present" opens — the swipe-through slideshow or the
   // page-turning notebook. Remembered on this device.
-  static const _viewerKey = 'presentation_viewer';
+  static const _viewerKey = presentationViewerKey;
   bool _notebook = false;
 
   @override
@@ -177,17 +178,7 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
         .catchError((_) => false);
   }
 
-  void _present() {
-    if (_slides.isEmpty) return;
-    if (_notebook) {
-      context.push('/notebook', extra: List<PresentationSlide>.of(_slides));
-      return;
-    }
-    context.push('/gallery', extra: {
-      'imageUrls': _slides.map((s) => s.imageUrl).toList(),
-      'initialIndex': 0,
-    });
-  }
+  void _present() => presentSlides(context, _slides, notebook: _notebook);
 
   @override
   Widget build(BuildContext context) {
@@ -221,6 +212,9 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('Save'),
           ),
+          // Downloads the saved version; save first after editing.
+          if (!_loading && _slides.isNotEmpty)
+            PresentationDownloadButton(presentationId: widget.presentationId, name: _nameCtrl.text),
           IconButton(
             icon: const Icon(Icons.play_circle_outline, color: Color(0xFF00A6A4)),
             onPressed: _slides.isEmpty ? null : _present,

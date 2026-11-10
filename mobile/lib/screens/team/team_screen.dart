@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:go_router/go_router.dart';
@@ -25,6 +26,21 @@ class _TeamScreenState extends State<TeamScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  // Why adding a team member failed, in words for the partner. The server
+  // explains its refusals (a phone number already registered, a weak
+  // password); with no answer at all it's the connection.
+  static String _createError(Object e) {
+    if (e is DioException) {
+      if (e.response == null) {
+        return 'Unable to reach the server. Please check your internet connection and try again.';
+      }
+      final data = e.response!.data;
+      // plain-text reasons only, never a proxy's HTML error page
+      if (data is String && data.trim().isNotEmpty && !data.contains('<')) return data.trim();
+    }
+    return 'The team member could not be added at this time. Please try again in a few minutes.';
   }
 
   Future<void> _load() async {
@@ -170,7 +186,7 @@ class _TeamScreenState extends State<TeamScreen> {
                             if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                             _load();
                           } catch (e) {
-                            setSheetState(() { submitting = false; error = 'Could not create team member. Please try again.'; });
+                            setSheetState(() { submitting = false; error = _createError(e); });
                           }
                         },
                   style: ElevatedButton.styleFrom(

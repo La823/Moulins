@@ -1,4 +1,5 @@
 import '../config/api.dart';
+import 'json_cache.dart';
 import '../models/meeting.dart';
 import '../models/meeting_visit_log.dart';
 
@@ -19,11 +20,26 @@ class MeetingService {
     });
   }
 
+  // Saved on the phone each time they load (json_cache.dart). Offline, a
+  // doctor's meetings come from their own saved list, else from the saved
+  // list of all meetings.
   Future<List<Meeting>> getMeetings({String? doctorId}) async {
-    final res = await _dio.get('/meetings', queryParameters: {
-      if (doctorId != null) 'doctor_id': doctorId,
-    });
-    return (res.data as List<dynamic>).map((e) => Meeting.fromJson(e)).toList();
+    List<Meeting> parse(Object? data) => (data as List<dynamic>).map((e) => Meeting.fromJson(e)).toList();
+    try {
+      return await JsonCache.fetch(
+        'meetings_${doctorId ?? 'all'}',
+        () async => (await _dio.get('/meetings', queryParameters: {
+              if (doctorId != null) 'doctor_id': doctorId,
+            }))
+            .data,
+        parse,
+      );
+    } catch (e) {
+      if (doctorId == null || !JsonCache.isNoConnection(e)) rethrow;
+      final all = await JsonCache.get('meetings_all');
+      if (all == null) rethrow;
+      return parse(all).where((m) => m.doctorId == doctorId).toList();
+    }
   }
 
   // Either doctorId or title must be provided — a meeting is identified by

@@ -8,6 +8,9 @@ import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/notification_provider.dart';
 import 'services/local_notifications_service.dart';
+import 'services/presentation_downloads.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/products/products_screen.dart';
 import 'screens/products/product_detail_screen.dart';
@@ -40,6 +43,9 @@ import 'screens/team/team_logs_screen.dart';
 import 'screens/team/my_attendance_screen.dart';
 import 'screens/team/my_daily_log_screen.dart';
 import 'screens/payments/payments_screen.dart';
+import 'screens/retailers/retailers_screen.dart';
+import 'screens/retailers/retailer_orders_screen.dart';
+import 'screens/retailers/retailer_order_detail_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
 import 'models/team_member.dart';
 import 'data/divisions.dart';
@@ -48,10 +54,16 @@ import 'widgets/fullscreen_image_gallery.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Room for a whole presentation's slides decoded at once (default 100 MB),
+  // so turning back and forth doesn't decode them again.
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 250 << 20;
 
   try {
     await Firebase.initializeApp();
     await LocalNotificationsService.init();
+    // iOS shows nothing for a push while the app is open unless asked to;
+    // this lets it show with its sound (the order sound for new orders).
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
     FirebaseMessaging.onMessage.listen((message) {
       final notification = message.notification;
       if (notification != null) {
@@ -60,6 +72,7 @@ void main() async {
           body: notification.body ?? '',
           imageUrl: notification.android?.imageUrl ?? notification.apple?.imageUrl,
           notificationId: message.data['notification_id'],
+          channelId: message.data['channel'] ?? notification.android?.channelId,
         );
       }
     });
@@ -105,14 +118,18 @@ class MoulinsApp extends ConsumerWidget {
             return FullScreenImageGalleryScreen(
               imageUrls: List<String>.from(extra['imageUrls'] as List),
               initialIndex: extra['initialIndex'] as int? ?? 0,
+              cacheManager: extra['cacheManager'] as BaseCacheManager?,
             );
           },
         ),
         // Top-level for the same reasons as /gallery above.
         GoRoute(
           path: '/notebook',
+          // Presentation images come through the presentations cache, so a
+          // downloaded deck plays offline (services/presentation_downloads.dart).
           builder: (_, state) => NotebookPresentationScreen(
             slides: List<PresentationSlide>.from(state.extra as List),
+            imageFor: (url) => FullScreenImageGalleryScreen.screenSized(url, cacheManager: PresentationDownloads.cache),
           ),
         ),
         ShellRoute(
@@ -174,6 +191,18 @@ class MoulinsApp extends ConsumerWidget {
               ],
             ),
             GoRoute(path: '/team', builder: (_, __) => const TeamScreen()),
+            // Retailers: a partner's shops, and their orders to the partner.
+            GoRoute(path: '/retailers', builder: (_, __) => const RetailersScreen()),
+            GoRoute(
+              path: '/retailer-orders',
+              builder: (_, __) => const RetailerOrdersScreen(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (_, state) => RetailerOrderDetailScreen(orderId: state.pathParameters['id']!),
+                ),
+              ],
+            ),
             GoRoute(
               path: '/team/:id',
               builder: (_, state) => TeamMemberDetailScreen(member: state.extra as TeamMember),
@@ -298,15 +327,20 @@ class _AppShellState extends ConsumerState<_AppShell> {
     // Doctor logins are catalog-browsing only — no meetings/doctor-CRM
     // tracking, no order placement.
     final isDoctor = user.role == 'doctor';
+    // Retailers order from their partner, not Moulins: their Orders tab is
+    // their orders to the partner, and there are no meetings.
+    final isRetailer = user.role == 'retailer';
     final destinations = <_NavItem>[
       const _NavItem(route: '/home', icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
       const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),
       if (isPartner)
         const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
-      if (!isDoctor)
+      if (!isDoctor && !isRetailer)
         const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
-      if (!isDoctor)
+      if (!isDoctor && !isRetailer)
         const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+      if (isRetailer)
+        const _NavItem(route: '/retailer-orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'My Orders'),
       if (user.role == 'admin' || user.role == 'employee')
         const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),
     ];

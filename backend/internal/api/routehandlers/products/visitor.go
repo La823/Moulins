@@ -36,6 +36,20 @@ func forVisitor(p *models.Product) {
 	}
 }
 
+// forRetailer blanks what a retailer isn't shown: Moulins' price to the
+// partner (it would show the partner's margin), GST and Moulins' stock.
+// They keep the MRP. Applied after the cache, which a retailer shares with
+// their partner.
+func forRetailer(p *models.Product) {
+	p.Price, p.GstRate, p.Stock = 0, nil, 0
+}
+
+func forRetailers(products []models.Product) {
+	for i := range products {
+		forRetailer(&products[i])
+	}
+}
+
 func forVisitors(products []models.Product) {
 	for i := range products {
 		forVisitor(&products[i])

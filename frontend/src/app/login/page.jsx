@@ -128,6 +128,8 @@ export default function LoginPage() {
         router.push("/panel");
       } else if (user.role === "doctor") {
         router.push("/doctor-panel");
+      } else if (user.role === "retailer") {
+        router.push("/retailer-panel");
       } else {
         router.push("/");
       }

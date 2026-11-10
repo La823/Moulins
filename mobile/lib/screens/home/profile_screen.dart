@@ -212,7 +212,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             color: Colors.white,
             child: Column(
               children: [
-                if (user?.role != 'doctor') ...[
+                // a retailer's orders go to their partner (and they have no
+                // meetings, requests, chat or learning)
+                if (user?.role == 'retailer') ...[
+                  _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/retailer-orders')),
+                  _divider(),
+                ],
+                if (user?.role != 'doctor' && user?.role != 'retailer') ...[
                   _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/orders')),
                   _divider(),
                 ],
@@ -220,15 +226,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _menuItem(Icons.person_outlined, 'My Doctors', () => context.go('/doctors')),
                   _divider(),
                 ],
-                if (user?.role != 'doctor') ...[
+                if (user?.role != 'doctor' && user?.role != 'retailer') ...[
                   _menuItem(Icons.calendar_today_outlined, 'My Meetings', () => context.go('/meetings')),
                   _divider(),
                   _menuItem(Icons.assignment_outlined, 'My Requests', () => context.go('/requests')),
                   _divider(),
                 ],
-                _menuItem(Icons.chat_bubble_outline, 'Messages', () => context.go('/chat')),
-                _divider(),
-                _menuItem(Icons.ondemand_video_outlined, 'Learning', () => context.go('/learning')),
+                if (user?.role != 'retailer') ...[
+                  _menuItem(Icons.chat_bubble_outline, 'Messages', () => context.go('/chat')),
+                  _divider(),
+                  _menuItem(Icons.ondemand_video_outlined, 'Learning', () => context.go('/learning')),
+                ],
               ],
             ),
           ),
