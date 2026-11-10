@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/retailer.dart';
 import '../../services/retailer_service.dart';
 import '../../utils/validators.dart';
+import 'retailer_documents_screen.dart';
 
 /// Partner: their retailers. A retailer logs in with their phone number,
 /// which is also their first password; they see the partner's products
@@ -218,6 +219,12 @@ class _RetailersScreenState extends State<RetailersScreen> {
               title: const Text('Edit details'),
               onTap: () => Navigator.pop(ctx, 'edit')),
           ListTile(
+            leading: const Icon(Icons.verified_outlined),
+            title: const Text('GST & drug licences'),
+            subtitle: const Text('Save and check their numbers'),
+            onTap: () => Navigator.pop(ctx, 'docs'),
+          ),
+          ListTile(
             leading: const Icon(Icons.lock_reset),
             title: const Text('Reset password'),
             subtitle: const Text('Back to their phone number'),
@@ -234,6 +241,10 @@ class _RetailersScreenState extends State<RetailersScreen> {
     if (!mounted) return;
     try {
       if (choice == 'edit') await _showForm(existing: r);
+      if (choice == 'docs') {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => RetailerDocumentsScreen(retailer: r)));
+        _load();
+      }
       if (choice == 'reset' &&
           await _confirm('Reset password?',
               "${r.displayName}'s password will be reset to their phone number, ${r.phone}.", 'Reset')) {
@@ -317,7 +328,9 @@ class _RetailersScreenState extends State<RetailersScreen> {
                             [
                               if (r.shopName != null && r.shopName!.isNotEmpty) r.name,
                               r.phone,
-                              if (r.city != null) r.city!
+                              if (r.city != null) r.city!,
+                              if (r.gstNumber != null) 'GST ${r.gstVerified ? '✓' : '(not checked)'}',
+                              if (r.dlCount > 0) 'DL ${r.dlVerified}/${r.dlCount} checked',
                             ].join(' · '),
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                           ),

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import RetailerDocuments from "@/components/retailers/RetailerDocuments";
 
 // The partner's retailers: the shops they supply. A retailer logs in with
 // their phone number, which is also their first password, sees the
@@ -16,6 +17,7 @@ export default function PartnerRetailersPage() {
   const [form, setForm] = useState(null); // null, or { ...fields, id? }
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [docsFor, setDocsFor] = useState(null); // retailer id whose GST / DL panel is open
 
   const load = useCallback(
     () =>
@@ -141,11 +143,29 @@ export default function PartnerRetailersPage() {
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
           {retailers.map((r) => (
-            <div key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <div key={r.id} className="px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-gray-900">{r.shop_name || r.name}</div>
                 <div className="text-xs text-gray-500">
                   {[r.shop_name ? r.name : null, r.phone, r.city].filter(Boolean).join(" · ")}
+                </div>
+                <div className="text-xs mt-0.5">
+                  {r.gst_number ? (
+                    <span className={r.gst_verified ? "text-green-700" : "text-amber-700"}>
+                      GST {r.gst_number} {r.gst_verified ? "✓" : "(not checked)"}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">No GST on file</span>
+                  )}
+                  <span className="text-gray-300"> · </span>
+                  {r.dl_count > 0 ? (
+                    <span className={r.dl_verified === r.dl_count ? "text-green-700" : "text-amber-700"}>
+                      {r.dl_count} drug licence{r.dl_count === 1 ? "" : "s"}, {r.dl_verified} checked
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">No drug licence on file</span>
+                  )}
                 </div>
               </div>
               <span className="text-xs text-gray-500">
@@ -159,6 +179,13 @@ export default function PartnerRetailersPage() {
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setDocsFor((x) => (x === r.id ? null : r.id))}
+                  className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500"
+                >
+                  GST &amp; DL
+                </button>
                 <button type="button" onClick={() => reset(r)} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-500">
                   Reset password
                 </button>
@@ -166,6 +193,8 @@ export default function PartnerRetailersPage() {
                   Remove
                 </button>
               </div>
+            </div>
+            {docsFor === r.id && <RetailerDocuments retailer={r} onChanged={load} />}
             </div>
           ))}
         </div>

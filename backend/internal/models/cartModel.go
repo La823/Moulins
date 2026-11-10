@@ -26,6 +26,11 @@ type CartItem struct {
 	PackSize    *string `json:"pack_size,omitempty"`
 	ProductForm *string `json:"product_form,omitempty"`
 	IsActive    bool    `json:"is_active"`
+	// For a retailer's cart: the unit they order in and the MRP's unit
+	// (see RetailUnit). Added for retailers; older apps ignore them.
+	PackForm   *string `json:"pack_form,omitempty"`
+	MrpUnit    *string `json:"mrp_unit,omitempty"`
+	RetailUnit string  `json:"retail_unit,omitempty"`
 	// The product's first visible image. A cart is a handful of rows, so
 	// this is a per-row subquery rather than the batched relations loader
 	// the products handler uses — the loader lives in that handler's
@@ -44,6 +49,7 @@ func GetCartItems(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, u
 	query, args := viewer.andVisible(`
 		SELECT ci.id, ci.product_id, ci.quantity, ci.created_at, ci.updated_at,
 			p.name, p.price, p.mrp, p.stock, p.moq, p.pack_size, p.product_form, p.is_active,
+			p.pack_form, p.mrp_unit,
 			(SELECT pi.image_key FROM product_images pi
 			  WHERE pi.product_id = p.id AND NOT pi.hidden
 			  ORDER BY pi.sort_order, pi.created_at
@@ -63,6 +69,7 @@ func GetCartItems(ctx context.Context, db *pgxpool.Pool, viewer ProductViewer, u
 		if err := rows.Scan(
 			&c.ID, &c.ProductID, &c.Quantity, &c.CreatedAt, &c.UpdatedAt,
 			&c.ProductName, &c.Price, &c.Mrp, &c.Stock, &c.Moq, &c.PackSize, &c.ProductForm, &c.IsActive,
+			&c.PackForm, &c.MrpUnit,
 			&c.ImageKey,
 		); err != nil {
 			return nil, err

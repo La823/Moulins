@@ -20,8 +20,10 @@ type RetailerOrderItem struct {
 	ProductID   uuid.UUID `json:"product_id"`
 	ProductName string    `json:"product_name"`
 	Quantity    int       `json:"quantity"`
-	Mrp         *float64  `json:"mrp,omitempty"`
-	Rate        *float64  `json:"rate,omitempty"`
+	Unit        string    `json:"unit"`           // what the quantity counts: "Strip", "Bottle"…
+	PerBox      int       `json:"per_box"`        // units in one of the partner's packs
+	Mrp         *float64  `json:"mrp,omitempty"`  // of one unit
+	Rate        *float64  `json:"rate,omitempty"` // the partner's, per unit
 }
 
 type RetailerOrderEvent struct {
@@ -106,10 +108,20 @@ func PlaceRetailerOrder(ctx context.Context, db *pgxpool.Pool, retailerID, partn
 		if !ok {
 			return uuid.Nil, 0, fmt.Errorf("%w: product %s", ErrProductNotVisible, it.ProductID)
 		}
+		// ordered in single packs (RetailUnit): keep the unit, how many make
+		// a box, and the MRP of one
+		var name string
+		var packSize, packForm, mrpUnit *string
+		var mrp *float64
+		if err := tx.QueryRow(ctx, `SELECT name, pack_size, pack_form, mrp_unit, mrp::float8 FROM products WHERE id = $1`,
+			it.ProductID).Scan(&name, &packSize, &packForm, &mrpUnit, &mrp); err != nil {
+			return uuid.Nil, 0, err
+		}
+		unit, perBox, unitMrp := RetailUnit(packSize, packForm, mrpUnit, mrp)
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO retailer_order_items (retailer_order_id, product_id, product_name, quantity, mrp, sort_order)
-			SELECT $1, p.id, p.name, $3, p.mrp, $4 FROM products p WHERE p.id = $2`,
-			id, it.ProductID, it.Quantity, i); err != nil {
+			INSERT INTO retailer_order_items (retailer_order_id, product_id, product_name, quantity, unit, per_box, mrp, sort_order)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			id, it.ProductID, name, it.Quantity, unit, perBox, unitMrp, i); err != nil {
 			return uuid.Nil, 0, err
 		}
 	}
@@ -170,7 +182,7 @@ func GetRetailerOrder(ctx context.Context, db *pgxpool.Pool, orderID, userID uui
 		return nil, err
 	}
 	rows, err := db.Query(ctx, `
-		SELECT id, product_id, product_name, quantity, mrp::float8, rate::float8
+		SELECT id, product_id, product_name, quantity, COALESCE(unit, 'Unit'), per_box, mrp::float8, rate::float8
 		FROM retailer_order_items WHERE retailer_order_id = $1 ORDER BY sort_order`, orderID)
 	if err != nil {
 		return nil, err
@@ -178,7 +190,7 @@ func GetRetailerOrder(ctx context.Context, db *pgxpool.Pool, orderID, userID uui
 	o.Items = []RetailerOrderItem{}
 	for rows.Next() {
 		var it RetailerOrderItem
-		if err := rows.Scan(&it.ID, &it.ProductID, &it.ProductName, &it.Quantity, &it.Mrp, &it.Rate); err != nil {
+		if err := rows.Scan(&it.ID, &it.ProductID, &it.ProductName, &it.Quantity, &it.Unit, &it.PerBox, &it.Mrp, &it.Rate); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -326,8 +338,9 @@ func ForwardRetailerOrder(ctx context.Context, db *pgxpool.Pool, orderID, partne
 	}
 	note := fmt.Sprintf("For retailer order RO-%d (%s)", o.OrderNo, o.RetailerName)
 	req := CreateOrderRequest{Notes: &note}
+	// Moulins sells the partner whole packs: strips round up to boxes
 	for _, it := range o.Items {
-		req.Items = append(req.Items, CreateOrderItemRequest{ProductID: it.ProductID, ProductName: it.ProductName, Quantity: it.Quantity})
+		req.Items = append(req.Items, CreateOrderItemRequest{ProductID: it.ProductID, ProductName: it.ProductName, Quantity: BoxesFor(it.Quantity, it.PerBox)})
 	}
 	newID, err := createOrderKeepingCart(ctx, db, partnerID, fmt.Sprintf("Order was placed from retailer order RO-%d", o.OrderNo), req)
 	if err != nil {

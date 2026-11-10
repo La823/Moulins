@@ -86,7 +86,7 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
               children: [
                 const Text('Accept order', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                Text('Enter your rate for each product. The retailer will see these rates and the total.',
+                Text('Enter your rate per strip, bottle or other unit the retailer ordered. The retailer will see these rates and the total.',
                     style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
                 const SizedBox(height: 14),
                 ...o.items.map((it) => Padding(
@@ -96,7 +96,7 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(it.productName, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13.5)),
                             Text(
-                                'Qty ${it.quantity}${it.mrp != null ? ' · MRP Rs. ${it.mrp!.toStringAsFixed(2)}' : ''}',
+                                '${it.quantityLabel}${it.mrp != null ? ' · MRP Rs. ${it.mrp!.toStringAsFixed(2)} per ${it.unit.toLowerCase()}' : ''}',
                                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                           ]),
                         ),
@@ -105,8 +105,8 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
                           child: TextField(
                             controller: ctrls[it.id],
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: const InputDecoration(
-                                prefixText: 'Rs. ', isDense: true, border: OutlineInputBorder(), hintText: 'Rate'),
+                            decoration: InputDecoration(
+                                prefixText: 'Rs. ', isDense: true, border: const OutlineInputBorder(), hintText: 'per ${it.unit.toLowerCase()}'),
                           ),
                         ),
                       ]),
@@ -191,7 +191,7 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
 
   Future<void> _forward(RetailerOrder o) async {
     if (!await _confirm('Order these products from Moulins?',
-        'The products and quantities in ${o.number} will be placed as your own order to Moulins.', 'Place order')) {
+        'The products in ${o.number} will be placed as your own order to Moulins, in whole boxes (strips rounded up to full boxes).', 'Place order')) {
       return;
     }
     setState(() => _busy = true);
@@ -300,7 +300,7 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
                                 Text(it.productName,
                                     style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
                                 Text(
-                                    'Qty ${it.quantity}${it.mrp != null ? ' · MRP Rs. ${it.mrp!.toStringAsFixed(2)}' : ''}',
+                                    '${it.quantityLabel}${it.mrp != null ? ' · MRP Rs. ${it.mrp!.toStringAsFixed(2)} per ${it.unit.toLowerCase()}' : ''}',
                                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                               ]),
                             ),

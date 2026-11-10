@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -250,6 +251,106 @@ func ResetPasswordHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"message": "The password has been reset to the retailer's phone number."})
+	}
+}
+
+// ---- GST number and drug licences ----
+
+var gstinPattern = regexp.MustCompile(`^[0-9]{2}[A-Z0-9]{10}[0-9A-Z]Z[0-9A-Z]$`)
+
+// GET /retailers/{id}/documents
+func ListDocumentsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		partner, ok := partnerOnly(w, r)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r, msgNotFound)
+		if !ok {
+			return
+		}
+		docs, err := models.ListRetailerDocuments(r.Context(), db, partner, id)
+		if err != nil {
+			retailerErr(w, err, "list retailer documents")
+			return
+		}
+		writeJSON(w, http.StatusOK, docs)
+	}
+}
+
+// POST /retailers/{id}/documents {kind: gst|dl, number, details}
+// details is the government portal's answer from a check (GST / DL lookup);
+// without it the number is saved unchecked.
+func SaveDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		partner, ok := partnerOnly(w, r)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r, msgNotFound)
+		if !ok {
+			return
+		}
+		var body struct {
+			Kind    string          `json:"kind"`
+			Number  string          `json:"number"`
+			Details json.RawMessage `json:"details"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, msgBadRequest, http.StatusBadRequest)
+			return
+		}
+		number := strings.ToUpper(strings.Join(strings.Fields(body.Number), ""))
+		switch body.Kind {
+		case "gst":
+			if !gstinPattern.MatchString(number) {
+				http.Error(w, "Please enter a valid 15-character GST number.", http.StatusBadRequest)
+				return
+			}
+		case "dl":
+			number = strings.ToUpper(strings.TrimSpace(body.Number))
+			if number == "" || len(number) > 80 {
+				http.Error(w, "Please enter the drug licence number.", http.StatusBadRequest)
+				return
+			}
+		default:
+			http.Error(w, msgBadRequest, http.StatusBadRequest)
+			return
+		}
+		docID, err := models.SaveRetailerDocument(r.Context(), db, partner, id, body.Kind, number, body.Details)
+		if err != nil {
+			retailerErr(w, err, "save retailer document")
+			return
+		}
+		msg := "The number has been saved."
+		if len(body.Details) > 0 && string(body.Details) != "null" {
+			msg = "The number has been checked and saved."
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": docID, "message": msg})
+	}
+}
+
+// DELETE /retailers/{id}/documents/{docId}
+func DeleteDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		partner, ok := partnerOnly(w, r)
+		if !ok {
+			return
+		}
+		id, ok := pathID(w, r, msgNotFound)
+		if !ok {
+			return
+		}
+		docID, err := uuid.Parse(mux.Vars(r)["docId"])
+		if err != nil {
+			http.Error(w, msgNotFound, http.StatusNotFound)
+			return
+		}
+		if err := models.DeleteRetailerDocument(r.Context(), db, partner, id, docID); err != nil {
+			retailerErr(w, err, "delete retailer document")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"message": "The number has been removed."})
 	}
 }
 

@@ -25,6 +25,11 @@ type Retailer struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
 	OrderCount  int        `json:"order_count"`
+	// Their GST number and drug licences on file (retailer_documents).
+	GstNumber   *string `json:"gst_number,omitempty"`
+	GstVerified bool    `json:"gst_verified"`
+	DlCount     int     `json:"dl_count"`
+	DlVerified  int     `json:"dl_verified"`
 }
 
 type RetailerInput struct {
@@ -108,7 +113,11 @@ func RestoreRetailer(ctx context.Context, db *pgxpool.Pool, partnerID, userID uu
 func ListRetailers(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID) ([]Retailer, error) {
 	rows, err := db.Query(ctx, `
 		SELECT u.id, COALESCE(u.username, ''), u.phone_number, r.shop_name, r.address, r.city, r.created_at, u.last_login_at,
-		       (SELECT count(*) FROM retailer_orders o WHERE o.retailer_id = u.id)
+		       (SELECT count(*) FROM retailer_orders o WHERE o.retailer_id = u.id),
+		       (SELECT d.number FROM retailer_documents d WHERE d.retailer_id = u.id AND d.kind = 'gst' ORDER BY d.verified_at DESC NULLS LAST LIMIT 1),
+		       EXISTS (SELECT 1 FROM retailer_documents d WHERE d.retailer_id = u.id AND d.kind = 'gst' AND d.verified_at IS NOT NULL),
+		       (SELECT count(*) FROM retailer_documents d WHERE d.retailer_id = u.id AND d.kind = 'dl'),
+		       (SELECT count(*) FROM retailer_documents d WHERE d.retailer_id = u.id AND d.kind = 'dl' AND d.verified_at IS NOT NULL)
 		FROM retailers r JOIN users u ON u.id = r.user_id
 		WHERE r.partner_id = $1 AND r.removed_at IS NULL
 		ORDER BY r.created_at DESC`, partnerID)
@@ -119,7 +128,8 @@ func ListRetailers(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID) (
 	out := []Retailer{}
 	for rows.Next() {
 		var x Retailer
-		if err := rows.Scan(&x.ID, &x.Name, &x.Phone, &x.ShopName, &x.Address, &x.City, &x.CreatedAt, &x.LastLoginAt, &x.OrderCount); err != nil {
+		if err := rows.Scan(&x.ID, &x.Name, &x.Phone, &x.ShopName, &x.Address, &x.City, &x.CreatedAt, &x.LastLoginAt, &x.OrderCount,
+			&x.GstNumber, &x.GstVerified, &x.DlCount, &x.DlVerified); err != nil {
 			return nil, err
 		}
 		out = append(out, x)

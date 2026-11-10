@@ -35,6 +35,10 @@ export function StatusBadge({ status }) {
   );
 }
 
+// "5 Strips", "1 Bottle"
+const qtyLabel = (it) => `${it.quantity} ${it.unit || "Unit"}${it.quantity === 1 ? "" : "s"}`;
+const perUnit = (it) => `per ${(it.unit || "unit").toLowerCase()}`;
+
 const rs = (n) => `Rs. ${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const when = (d) =>
   new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -171,7 +175,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
     act("reject", { note: reason.trim() }, "The order has been declined.");
   };
   const forward = () => {
-    if (!window.confirm(`The products and quantities in RO-${order.order_no} will be placed as your own order to Moulins.`)) return;
+    if (!window.confirm(`The products in RO-${order.order_no} will be placed as your own order to Moulins, in whole boxes (strips rounded up to full boxes).`)) return;
     act("forward", {}, "The order has been sent to Moulins as your order.");
   };
   const cancel = () => {
@@ -213,9 +217,9 @@ export function RetailerOrderView({ id, incoming, backHref }) {
           <thead className="bg-gray-50 text-gray-500 text-xs">
             <tr>
               <th className="text-left px-4 py-2 font-medium">Product</th>
-              <th className="text-right px-4 py-2 font-medium">Qty</th>
-              <th className="text-right px-4 py-2 font-medium">MRP</th>
-              <th className="text-right px-4 py-2 font-medium">Rate</th>
+              <th className="text-right px-4 py-2 font-medium">Quantity</th>
+              <th className="text-right px-4 py-2 font-medium">MRP (per unit)</th>
+              <th className="text-right px-4 py-2 font-medium">Rate (per unit)</th>
               <th className="text-right px-4 py-2 font-medium">Amount</th>
             </tr>
           </thead>
@@ -223,7 +227,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
             {order.items.map((it) => (
               <tr key={it.id}>
                 <td className="px-4 py-2 text-gray-900">{it.product_name}</td>
-                <td className="px-4 py-2 text-right">{it.quantity}</td>
+                <td className="px-4 py-2 text-right">{qtyLabel(it)}</td>
                 <td className="px-4 py-2 text-right text-gray-500">{it.mrp != null ? rs(it.mrp) : ""}</td>
                 <td className="px-4 py-2 text-right">
                   {accepting ? (
@@ -231,7 +235,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
                       value={rates[it.id] ?? ""}
                       onChange={(e) => setRates((r) => ({ ...r, [it.id]: e.target.value }))}
                       inputMode="decimal"
-                      placeholder="Rate"
+                      placeholder={perUnit(it)}
                       className="w-24 border border-gray-300 rounded px-2 py-1 text-right"
                     />
                   ) : it.rate != null ? (

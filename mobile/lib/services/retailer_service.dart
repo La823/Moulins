@@ -45,6 +45,26 @@ class RetailerService {
 
   Future<void> resetPassword(String id) async => _dio.post('/retailers/$id/reset-password');
 
+  // ---- GST number and drug licences ----
+
+  Future<List<RetailerDocument>> getDocuments(String retailerId) async {
+    final res = await _dio.get('/retailers/$retailerId/documents');
+    return (res.data as List<dynamic>).map((e) => RetailerDocument.fromJson(e)).toList();
+  }
+
+  /// [details] is the portal's answer from a check; without it the number is
+  /// saved unchecked. Returns the server's message.
+  Future<String> saveDocument(String retailerId, {required String kind, required String number, Map<String, dynamic>? details}) async {
+    final res = await _dio.post('/retailers/$retailerId/documents', data: {
+      'kind': kind,
+      'number': number,
+      if (details != null) 'details': details,
+    });
+    return (res.data is Map ? res.data['message'] : null) ?? 'The number has been saved.';
+  }
+
+  Future<void> deleteDocument(String retailerId, String docId) async => _dio.delete('/retailers/$retailerId/documents/$docId');
+
   // ---- orders ----
 
   /// Partner: orders from their retailers. Retailer: their own.

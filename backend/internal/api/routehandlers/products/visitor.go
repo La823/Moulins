@@ -38,10 +38,14 @@ func forVisitor(p *models.Product) {
 
 // forRetailer blanks what a retailer isn't shown: Moulins' price to the
 // partner (it would show the partner's margin), GST and Moulins' stock.
-// They keep the MRP. Applied after the cache, which a retailer shares with
-// their partner.
+// They order single packs (a strip, not the box) with no minimum, so the
+// MRP becomes that of one unit and the MOQ 1. Applied after the cache,
+// which a retailer shares with their partner.
 func forRetailer(p *models.Product) {
 	p.Price, p.GstRate, p.Stock = 0, nil, 0
+	label, _, mrp := models.RetailUnit(p.PackSize, p.PackForm, p.MrpUnit, p.Mrp)
+	unit := "Per " + label
+	p.Mrp, p.MrpUnit, p.RetailUnit, p.Moq = mrp, &unit, label, 1
 }
 
 func forRetailers(products []models.Product) {

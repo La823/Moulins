@@ -8,6 +8,10 @@ class Retailer {
   final String? city;
   final int orderCount;
   final DateTime? lastLoginAt;
+  final String? gstNumber;
+  final bool gstVerified;
+  final int dlCount;
+  final int dlVerified;
 
   Retailer({
     required this.id,
@@ -18,6 +22,10 @@ class Retailer {
     this.city,
     this.orderCount = 0,
     this.lastLoginAt,
+    this.gstNumber,
+    this.gstVerified = false,
+    this.dlCount = 0,
+    this.dlVerified = 0,
   });
 
   /// The shop name when there is one, else the person's name.
@@ -32,6 +40,29 @@ class Retailer {
         city: j['city'],
         orderCount: j['order_count'] ?? 0,
         lastLoginAt: DateTime.tryParse(j['last_login_at'] ?? ''),
+        gstNumber: j['gst_number'],
+        gstVerified: j['gst_verified'] == true,
+        dlCount: j['dl_count'] ?? 0,
+        dlVerified: j['dl_verified'] ?? 0,
+      );
+}
+
+/// A retailer's GST number or drug licence, as their partner saved it.
+class RetailerDocument {
+  final String id;
+  final String kind; // gst | dl
+  final String number;
+  final Map<String, dynamic>? details; // the government portal's answer when last checked
+  final DateTime? verifiedAt;
+
+  RetailerDocument({required this.id, required this.kind, required this.number, this.details, this.verifiedAt});
+
+  factory RetailerDocument.fromJson(Map<String, dynamic> j) => RetailerDocument(
+        id: j['id'] ?? '',
+        kind: j['kind'] ?? '',
+        number: j['number'] ?? '',
+        details: j['details'] is Map ? Map<String, dynamic>.from(j['details']) : null,
+        verifiedAt: DateTime.tryParse(j['verified_at'] ?? ''),
       );
 }
 
@@ -40,23 +71,32 @@ class RetailerOrderItem {
   final String productId;
   final String productName;
   final int quantity;
-  final double? mrp;
-  final double? rate;
+  final String unit; // what the quantity counts: Strip, Bottle…
+  final int perBox; // units in one of the partner's packs
+  final double? mrp; // of one unit
+  final double? rate; // the partner's, per unit
 
   RetailerOrderItem({
     required this.id,
     required this.productId,
     required this.productName,
     required this.quantity,
+    this.unit = 'Unit',
+    this.perBox = 1,
     this.mrp,
     this.rate,
   });
+
+  /// "5 Strips", "1 Bottle".
+  String get quantityLabel => '$quantity ${quantity == 1 ? unit : '${unit}s'}';
 
   factory RetailerOrderItem.fromJson(Map<String, dynamic> j) => RetailerOrderItem(
         id: j['id'] ?? '',
         productId: j['product_id'] ?? '',
         productName: j['product_name'] ?? '',
         quantity: j['quantity'] ?? 0,
+        unit: j['unit'] ?? 'Unit',
+        perBox: j['per_box'] ?? 1,
         mrp: (j['mrp'] as num?)?.toDouble(),
         rate: (j['rate'] as num?)?.toDouble(),
       );

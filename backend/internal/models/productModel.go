@@ -38,6 +38,9 @@ type Product struct {
 	GstRate         *float64          `json:"gst_rate,omitempty"`
 	Mrp             *float64          `json:"mrp,omitempty"`
 	MrpUnit         *string           `json:"mrp_unit,omitempty"`
+	// RetailUnit is what a retailer orders it in ("Strip", "Bottle"); set
+	// only on a retailer's copy (see RetailUnit). Added for retailers.
+	RetailUnit      string            `json:"retail_unit,omitempty"`
 	ProductForm     *string           `json:"product_form,omitempty"`
 	ConsumeType     *string           `json:"consume_type,omitempty"`
 	PackSize        *string           `json:"pack_size,omitempty"`
