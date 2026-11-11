@@ -158,7 +158,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2, value: p.$2 > 0 ? p.$1 / p.$2 : null, color: teal),
                         ),
                         const SizedBox(width: 8),
-                        Text('Saving favourites for offline use… ${p.$1} of ${p.$2} files',
+                        Text('Saving products for offline use… ${p.$1} of ${p.$2} files',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                       ],
                     ),

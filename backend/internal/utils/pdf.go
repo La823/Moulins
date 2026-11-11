@@ -234,6 +234,14 @@ type OrderPDFData struct {
 	ItemsTotal *float64
 	Freight    *float64
 	OrderTotal *float64
+	// GST on the whole bill (not per line), one row between the subtotal
+	// and the freight; nil when nothing is priced. GSTRate is set when every
+	// priced line has the same rate, for "GST @ 5%". OrderTotal then
+	// includes it. GSTMissing names priced products with no GST rate found,
+	// which are left out of it.
+	GST        *float64
+	GSTRate    *float64
+	GSTMissing []string
 	PrintedBy  string
 	PrintedAt  string
 	// CustomerCopy is the copy sent to the customer: no warehouse CODE
@@ -287,6 +295,11 @@ func sanitizeOrderPDFData(tr func(string) string, d OrderPDFData) OrderPDFData {
 		items[i] = it
 	}
 	d.Items = items
+	missing := make([]string, len(d.GSTMissing))
+	for i, s := range d.GSTMissing {
+		missing[i] = f(s)
+	}
+	d.GSTMissing = missing
 	return d
 }
 
@@ -490,13 +503,27 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 		pdf.CellFormat(colTotal-2, 6, money(v), "", 0, "R", false, 0, "")
 		pdf.SetXY(x, y+7)
 	}
-	// A subtotal only earns its row when freight is there to be added to it.
-	if data.Freight != nil {
+	// A subtotal only earns its row when something (GST, freight) is added to it.
+	if data.Freight != nil || data.GST != nil {
 		totalRow("SUBTOTAL", data.ItemsTotal, false)
+	}
+	if data.GST != nil {
+		rate := ""
+		if data.GSTRate != nil {
+			rate = fmt.Sprintf(" @ %s%%", strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", *data.GSTRate), "0"), "."))
+		}
+		totalRow("GST"+rate, data.GST, false)
+	}
+	if data.Freight != nil {
 		totalRow("FREIGHT", data.Freight, false)
 	}
 	totalRow("ORDER TOTAL", data.OrderTotal, true)
 	pdf.SetFont("Arial", "", 9)
+	if len(data.GSTMissing) > 0 {
+		pdf.SetFont("Arial", "I", 7.5)
+		pdf.MultiCell(0, 4, "GST not included for (no GST rate on file): "+strings.Join(data.GSTMissing, ", "), "", "L", false)
+		pdf.SetFont("Arial", "", 9)
+	}
 
 	if pdf.GetY()+40 > bottomLimit {
 		pdf.AddPage()

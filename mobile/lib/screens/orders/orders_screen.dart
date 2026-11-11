@@ -30,10 +30,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   Future<void> _load() async {
     try {
-      final isPartner = ref.read(authProvider).user?.role == 'partner';
-      final orders = isPartner
-          ? await OrderService().getMyOrders()
-          : await OrderService().getAllOrders();
+      // A customer's own orders; a team member's are their team's (the
+      // server pools them). Staff use the staff order screens (main.dart).
+      final orders = await OrderService().getMyOrders();
       setState(() { _orders = orders; _loading = false; });
     } catch (_) {
       setState(() => _loading = false);

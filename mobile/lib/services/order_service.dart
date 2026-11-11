@@ -1,22 +1,27 @@
 import '../config/api.dart';
+import 'json_cache.dart';
 import '../models/order.dart';
 import '../models/cart_item.dart';
 
 class OrderService {
   final _dio = createDio();
 
+  // Orders are remembered on the phone each time they load, and shown from
+  // there with no internet (json_cache.dart).
   Future<List<Order>> getMyOrders() async {
-    final res = await _dio.get('/orders');
-    final data = res.data;
-    if (data is List) {
-      return data.map((e) => Order.fromJson(e)).toList();
-    }
-    return [];
+    return JsonCache.fetch(
+      'orders_mine',
+      () async => (await _dio.get('/orders')).data,
+      (data) => data is List ? data.map((e) => Order.fromJson(e)).toList() : <Order>[],
+    );
   }
 
   Future<Order> getOrder(String id) async {
-    final res = await _dio.get('/orders/$id');
-    return Order.fromJson(res.data);
+    return JsonCache.fetch(
+      'order_$id',
+      () async => (await _dio.get('/orders/$id')).data,
+      (data) => Order.fromJson(data as Map<String, dynamic>),
+    );
   }
 
   Future<String> placeOrder(List<CartItem> items, {String? transportMode, String? transportId}) async {

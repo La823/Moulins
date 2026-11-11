@@ -130,6 +130,37 @@ class PresentationDownloads {
     return d;
   }
 
+  static bool _syncing = false;
+
+  /// Keeps [decks] downloaded: any not on the phone yet, or whose slide count
+  /// changed since, is fetched in the background, one at a time. Used for
+  /// every presentation linked to a doctor, so they all play offline.
+  static Future<void> keepDownloaded(List<Presentation> decks, Future<PresentationDetail> Function(String id) fetch) async {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      final have = {for (final d in await list()) d.id: d};
+      for (final p in decks) {
+        final saved = have[p.id];
+        if (p.slideCount == 0 || (saved != null && saved.slides.length == p.slideCount && saved.name == p.name)) continue;
+        try {
+          await download(await fetch(p.id));
+        } catch (_) {
+          // no connection or a removed deck: tried again next time
+        }
+      }
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  /// Removes every download and its images.
+  static Future<void> removeAll() async {
+    await _save([]);
+    await cache.emptyCache();
+    changes.value++;
+  }
+
   /// Removes a download and the images no other downloaded deck uses.
   static Future<void> remove(String id) async {
     final all = await list();

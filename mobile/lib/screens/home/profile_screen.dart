@@ -230,6 +230,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _menuItem(Icons.assignment_outlined, 'My Requests', () => context.go('/requests')),
                   _divider(),
                 ],
+                _menuItem(Icons.download_for_offline_outlined, 'Offline data', () => context.push('/offline-data')),
+                _divider(),
                 if (user?.role != 'retailer') ...[
                   _menuItem(Icons.chat_bubble_outline, 'Messages', () => context.go('/chat')),
                   _divider(),

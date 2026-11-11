@@ -6,6 +6,7 @@ import '../../models/presentation.dart';
 import '../../services/doctor_service.dart';
 import '../../services/presentation_downloads.dart';
 import '../../services/presentation_service.dart';
+import '../../services/offline_sync.dart';
 import 'present.dart';
 import '../../widgets/presentation_download_button.dart';
 import '../../widgets/notification_bell_button.dart';
@@ -64,6 +65,8 @@ class _PresentationsScreenState extends State<PresentationsScreen> {
     final downloads = {for (final d in await PresentationDownloads.list()) d.id: d};
     try {
       final list = await _service.getPresentations();
+      // Smart sync keeps every presentation on the phone
+      if (OfflineSync.smart) PresentationDownloads.keepDownloaded(list, _service.getPresentation);
       if (!mounted) return;
       setState(() {
         _presentations = list;

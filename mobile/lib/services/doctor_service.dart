@@ -1,6 +1,9 @@
 import '../config/api.dart';
 import '../models/doctor.dart';
 import 'json_cache.dart';
+import 'offline_files.dart';
+import 'product_service.dart';
+import '../models/product.dart';
 
 class DoctorService {
   final _dio = createDio();
@@ -23,8 +26,39 @@ class DoctorService {
   /// Saves every doctor's assigned products (and so their pages) for offline
   /// use; a few at a time, in the background, after the list loads online.
   Future<void> saveAllForOffline(List<Doctor> doctors) async {
+    final productIds = <String>{};
     for (var i = 0; i < doctors.length; i += 4) {
-      await Future.wait(doctors.skip(i).take(4).map((d) => getDoctorProducts(d.id).then((_) {}, onError: (_) {})));
+      await Future.wait(doctors.skip(i).take(4).map((d) => getDoctorProducts(d.id).then(
+            (ps) => productIds.addAll(ps.map((p) => p.productId)),
+            onError: (_) {},
+          )));
+    }
+    await saveProductsForOffline(productIds);
+  }
+
+  static bool _savingProducts = false;
+
+  /// Saves the full page of each product assigned to a doctor (its details,
+  /// and its images, documents and audio, like a favourite), so a doctor's
+  /// products open with no internet.
+  static Future<void> saveProductsForOffline(Iterable<String> productIds) async {
+    if (_savingProducts) return;
+    _savingProducts = true;
+    try {
+      final service = ProductService();
+      final ids = productIds.where((id) => id.isNotEmpty).toSet().toList();
+      final products = <Product>[];
+      for (var i = 0; i < ids.length; i += 4) {
+        // getProduct keeps each product's details for offline use
+        final got = await Future.wait(ids.skip(i).take(4).map((id) => service.getProduct(id).then<Product?>(
+              (p) => p,
+              onError: (_) => null,
+            )));
+        products.addAll(got.whereType<Product>());
+      }
+      await OfflineFiles.saveProducts(products);
+    } finally {
+      _savingProducts = false;
     }
   }
 

@@ -7,7 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// JSON is stored and parsed again with the model's own fromJson, so the
 /// offline copy reads exactly like a fresh one.
 class JsonCache {
-  static const _prefix = 'json_cache_';
+  static const prefix = 'json_cache_';
+  static const _prefix = prefix;
 
   /// A failure with no answer from the server, i.e. no connection, as opposed
   /// to the server refusing (404, 403…), which must not fall back to an old copy.

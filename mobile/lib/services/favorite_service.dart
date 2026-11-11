@@ -2,6 +2,7 @@ import '../config/api.dart';
 import '../models/product.dart';
 import 'offline_cache.dart';
 import 'offline_files.dart';
+import 'offline_sync.dart';
 
 class FavoriteService {
   final _dio = createDio();
@@ -15,8 +16,8 @@ class FavoriteService {
       final products = (res.data as List<dynamic>).map((e) => Product.fromJson(e)).toList();
       await OfflineCache.saveFavorites(products);
       lastFromCache = false;
-      // images, documents and audio too, in the background
-      OfflineFiles.saveProducts(products);
+      // images, documents and audio too, in the background (Smart sync)
+      if (OfflineSync.smart) OfflineFiles.saveProducts(products);
       return products;
     } catch (e) {
       final cached = await OfflineCache.loadFavorites();

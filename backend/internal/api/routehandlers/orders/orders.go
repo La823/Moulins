@@ -879,19 +879,72 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 	// actually shipping. Rate and line total come from the order line,
 	// snapshotted when staff priced it, so a later price change never
 	// rewrites what an order was charged at.
+	// Each product's GST rate too, for the bill's GST at the bottom.
 	mrpByProduct := map[uuid.UUID]float64{}
+	gstByProduct := map[uuid.UUID]float64{}
+	// ids as text: pgx has no encode plan for []uuid.UUID (Postgres casts)
+	idStrings := make([]string, len(productIDs))
+	for i, id := range productIDs {
+		idStrings[i] = id.String()
+	}
 	if mrpRows, err := db.Query(ctx,
-		`SELECT id, mrp FROM products WHERE id = ANY($1) AND mrp IS NOT NULL`, productIDs); err != nil {
+		`SELECT id, mrp::float8, gst_rate::float8 FROM products WHERE id = ANY($1::uuid[])`, idStrings); err != nil {
 		log.Printf("order pdf mrp lookup error: %v", err)
 	} else {
 		for mrpRows.Next() {
 			var id uuid.UUID
-			var mrp float64
-			if err := mrpRows.Scan(&id, &mrp); err == nil {
-				mrpByProduct[id] = mrp
+			var mrp, gst *float64
+			if err := mrpRows.Scan(&id, &mrp, &gst); err == nil {
+				if mrp != nil {
+					mrpByProduct[id] = *mrp
+				}
+				if gst != nil {
+					gstByProduct[id] = *gst
+				}
 			}
 		}
 		mrpRows.Close()
+	}
+	// The GST rate we buy each product at: its latest Marg purchase bill
+	// line (this financial year). It replaces the product's own gst_rate,
+	// which stays only for a product not bought this year.
+	if gstRows, err := db.Query(ctx, `
+		SELECT DISTINCT ON (p.id) p.id, i.gst_percent::float8
+		FROM products p
+		JOIN marg_ede_bill_items i ON i.product_pid::text = p.marg_code AND NOT i.is_deleted AND i.gst_percent IS NOT NULL
+		JOIN marg_ede_bills b ON b.voucher = i.voucher AND b.bill_type = 'P' AND NOT b.is_deleted AND NOT b.is_cancelled
+		WHERE p.id = ANY($1::uuid[])
+		ORDER BY p.id, b.bill_date DESC, b.voucher DESC`, idStrings); err != nil {
+		log.Printf("order pdf purchase gst lookup error: %v", err)
+	} else {
+		for gstRows.Next() {
+			var id uuid.UUID
+			var gst float64
+			if err := gstRows.Scan(&id, &gst); err == nil {
+				gstByProduct[id] = gst
+			}
+		}
+		gstRows.Close()
+	}
+
+	// GST on the whole bill, from each priced line's rate (rates are before
+	// GST); a line whose product has no GST rate is named on the PDF.
+	var gstTotal float64
+	var gstMissing []string
+	rates := map[float64]bool{}
+	priced := false
+	for _, oi := range order.Items {
+		if oi.LineTotal == nil {
+			continue
+		}
+		priced = true
+		g, ok := gstByProduct[oi.ProductID]
+		if !ok {
+			gstMissing = append(gstMissing, oi.ProductName)
+			continue
+		}
+		rates[g] = true
+		gstTotal += *oi.LineTotal * g / 100
 	}
 
 	items := make([]utils.OrderPDFItem, 0, len(order.Items))
@@ -950,7 +1003,7 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 	if printedBy != "" {
 		printedAt = time.Now().Format("02.01.2006 15:04")
 	}
-	return utils.GenerateOrderPDF(utils.OrderPDFData{
+	pdfData := utils.OrderPDFData{
 		OrderNumber:   strings.ToUpper(order.ID.String()[:8]),
 		Date:          order.CreatedAt.Format("2006-01-02"),
 		Status:        order.Status,
@@ -967,7 +1020,24 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 		PrintedBy:    printedBy,
 		PrintedAt:    printedAt,
 		CustomerCopy: customerCopy,
-	})
+	}
+	if priced && order.ItemsTotal != nil {
+		round := func(v float64) float64 { return math.Round(v*100) / 100 }
+		gst := round(gstTotal)
+		pdfData.GST, pdfData.GSTMissing = &gst, gstMissing
+		if len(rates) == 1 && len(gstMissing) == 0 {
+			for r := range rates {
+				rr := r
+				pdfData.GSTRate = &rr
+			}
+		}
+		total := round(*order.ItemsTotal + gst)
+		if order.Freight != nil {
+			total = round(total + *order.Freight)
+		}
+		pdfData.OrderTotal = &total
+	}
+	return utils.GenerateOrderPDF(pdfData)
 }
 
 // deliveryChanges describes which delivery details changed (old → new),

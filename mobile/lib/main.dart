@@ -10,6 +10,9 @@ import 'providers/notification_provider.dart';
 import 'services/local_notifications_service.dart';
 import 'services/presentation_downloads.dart';
 import 'services/notification_links.dart';
+import 'services/offline_sync.dart';
+import 'screens/home/offline_data_screen.dart';
+import 'widgets/offline_choice_sheet.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'screens/login/login_screen.dart';
@@ -61,6 +64,7 @@ void main() async {
   // Room for a whole presentation's slides decoded at once (default 100 MB),
   // so turning back and forth doesn't decode them again.
   PaintingBinding.instance.imageCache.maximumSizeBytes = 250 << 20;
+  await OfflineSync.load();
 
   try {
     await Firebase.initializeApp();
@@ -186,14 +190,18 @@ class MoulinsApp extends ConsumerWidget {
                 ),
               ],
             ),
+            // Staff get the staff order screens here too (rates, Marg,
+            // batches…); everyone else their own orders.
             GoRoute(
               path: '/orders',
-              builder: (_, __) => const OrdersScreen(),
+              builder: (_, __) => const _ForStaff(staff: AdminOrdersScreen(), other: OrdersScreen()),
               routes: [
                 GoRoute(
                   path: ':id',
-                  builder: (_, state) =>
-                      OrderDetailScreen(orderId: state.pathParameters['id']!),
+                  builder: (_, state) => _ForStaff(
+                    staff: AdminOrderDetailScreen(orderId: state.pathParameters['id']!),
+                    other: OrderDetailScreen(orderId: state.pathParameters['id']!),
+                  ),
                 ),
               ],
             ),
@@ -264,6 +272,7 @@ class MoulinsApp extends ConsumerWidget {
               builder: (_, state) => AdminOrderDetailScreen(orderId: state.pathParameters['id']!),
             ),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+            GoRoute(path: '/offline-data', builder: (_, __) => const OfflineDataScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
             ..._divisionRoutes,
           ],
@@ -316,6 +325,19 @@ class _AppShell extends ConsumerStatefulWidget {
   ConsumerState<_AppShell> createState() => _AppShellState();
 }
 
+/// Shows [staff] to admin and employee logins, [other] to everyone else.
+class _ForStaff extends ConsumerWidget {
+  final Widget staff;
+  final Widget other;
+  const _ForStaff({required this.staff, required this.other});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(authProvider).user?.role;
+    return role == 'admin' || role == 'employee' ? staff : other;
+  }
+}
+
 class _NavItem {
   final String route;
   final IconData icon;
@@ -348,6 +370,10 @@ class _AppShellState extends ConsumerState<_AppShell> {
     NotificationLinks.pending.addListener(_openPendingLink);
     // a tap that launched the app was recorded before this frame existed
     WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingLink());
+    // once, after login: how to keep data for offline use
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ref.read(authProvider).user != null) OfflineChoice.askOnce(context);
+    });
     Future.microtask(() =>
         ref.read(authProvider.notifier).loadUser().catchError((_) {}));
     Future.microtask(() => ref.read(notificationsProvider.notifier).load());
@@ -377,6 +403,9 @@ class _AppShellState extends ConsumerState<_AppShell> {
     // Retailers order from their partner, not Moulins: their Orders tab is
     // their orders to the partner, and there are no meetings.
     final isRetailer = user.role == 'retailer';
+    final isStaff = user.role == 'admin' || user.role == 'employee';
+    final canSeeOrders =
+        user.role == 'admin' || user.permissions.contains('orders_view') || user.permissions.contains('orders_edit');
     final destinations = <_NavItem>[
       const _NavItem(route: '/home', icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
       const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),
@@ -384,7 +413,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
         const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
       if (!isDoctor && !isRetailer)
         const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
-      if (!isDoctor && !isRetailer)
+      // staff see orders only with an orders permission
+      if (!isDoctor && !isRetailer && (!isStaff || canSeeOrders))
         const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
       if (isRetailer)
         const _NavItem(route: '/retailer-orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'My Orders'),

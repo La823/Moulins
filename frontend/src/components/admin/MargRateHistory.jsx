@@ -458,7 +458,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
       </FoldBox>
 
       <FoldBox
-        title="Last 5 bills to any party"
+        title={`Last 5 bills of ${productName || "this product"}`}
         tone="gray"
         open={isOpen("any", !hasParty)}
         onToggle={() => toggle("any", !hasParty)}

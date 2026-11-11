@@ -5,6 +5,9 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../models/doctor.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
+import '../../services/presentation_downloads.dart';
+import '../../services/presentation_service.dart';
+import '../../services/offline_sync.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
@@ -42,9 +45,15 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
         _loading = false;
       });
       // keep every doctor's page (products, meetings) on the phone too
-      if (!_offline) {
+      // (the products in full and the presentations with Smart sync)
+      if (!_offline && OfflineSync.smart) {
         _service.saveAllForOffline(d);
         MeetingService().getMeetings().then((_) {}, onError: (_) {});
+        // every presentation linked to a doctor stays on the phone
+        final ps = PresentationService();
+        ps.getPresentations().then((all) {
+          PresentationDownloads.keepDownloaded(all.where((p) => p.doctorId != null).toList(), ps.getPresentation);
+        }, onError: (_) {});
       }
     } catch (_) {
       setState(() => _loading = false);

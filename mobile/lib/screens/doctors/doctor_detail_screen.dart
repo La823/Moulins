@@ -16,6 +16,8 @@ import '../../utils/validators.dart';
 import '../../widgets/location_picker_screen.dart';
 import '../../widgets/presentation_download_button.dart';
 import '../../services/presentation_downloads.dart';
+import '../../services/offline_sync.dart';
+import '../presentations/present.dart';
 
 /// Pops with `true` when the doctor was deleted, so the list can drop them.
 class DoctorDetailScreen extends ConsumerStatefulWidget {
@@ -65,6 +67,8 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
       if (mounted) {
         setState(() {
           _presentations = all.where((p) => p.doctorId == _doctor.id).toList();
+          // keep this doctor's decks on the phone so they play offline
+          if (OfflineSync.smart) PresentationDownloads.keepDownloaded(_presentations, _presentationService.getPresentation);
           _loadingPresentations = false;
         });
       }
@@ -78,6 +82,25 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
         });
       }
     }
+  }
+
+  // Plays a deck straight from here: the downloaded copy if there is one
+  // (works offline), else loaded now.
+  Future<void> _play(Presentation p) async {
+    List<PresentationSlide> slides;
+    final saved = await PresentationDownloads.get(p.id);
+    try {
+      slides = saved?.slides ?? (await _presentationService.getPresentation(p.id)).slides;
+    } catch (_) {
+      _showError('This presentation is not downloaded on this phone. Please connect to the internet and try again.');
+      return;
+    }
+    if (slides.isEmpty) {
+      _showError('This presentation has no slides yet.');
+      return;
+    }
+    final notebook = await notebookPreferred();
+    if (mounted) presentSlides(context, slides, notebook: notebook);
   }
 
   Future<void> _generatePresentation() async {
@@ -154,6 +177,8 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
     try {
       final products = await _service.getDoctorProducts(widget.doctor.id);
       setState(() { _assigned = products; _loading = false; });
+      // this doctor's products, in full, on the phone
+      if (OfflineSync.smart) DoctorService.saveProductsForOffline(products.map((p) => p.productId));
     } catch (_) {
       setState(() => _loading = false);
     }
@@ -784,6 +809,11 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                                 ),
                               ),
                               Text('${p.slideCount} slide${p.slideCount != 1 ? 's' : ''}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
+                              IconButton(
+                                icon: const Icon(Icons.play_circle_outline, color: teal),
+                                tooltip: 'Present',
+                                onPressed: () => _play(p),
+                              ),
                               PresentationDownloadButton(presentationId: p.id, name: p.name),
                             ],
                           ),

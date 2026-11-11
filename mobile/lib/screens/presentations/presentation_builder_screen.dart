@@ -8,6 +8,7 @@ import '../../services/doctor_service.dart';
 import '../../services/presentation_service.dart';
 import '../../services/product_service.dart';
 import 'present.dart';
+import '../../services/presentation_downloads.dart';
 import '../../widgets/presentation_download_button.dart';
 
 class PresentationBuilderScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
   String? _doctorId;
   List<Doctor> _doctors = [];
   bool _loading = true;
+  bool _offlineCopy = false; // showing the downloaded copy (no connection)
   bool _saving = false;
   bool _dirty = false;
   bool _isDefault = false;
@@ -76,7 +78,17 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
         _loading = false;
       });
     } catch (_) {
-      setState(() => _loading = false);
+      // No connection: the downloaded copy, if there is one, so it still plays.
+      final saved = await PresentationDownloads.get(widget.presentationId);
+      if (!mounted) return;
+      setState(() {
+        if (saved != null) {
+          _nameCtrl.text = saved.name;
+          _slides = saved.slides;
+          _offlineCopy = true;
+        }
+        _loading = false;
+      });
     }
   }
 
@@ -221,6 +233,18 @@ class _PresentationBuilderScreenState extends State<PresentationBuilderScreen> {
             tooltip: 'Present',
           ),
         ],
+        bottom: _offlineCopy
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(30),
+                child: Container(
+                  height: 30,
+                  color: Colors.orange.shade50,
+                  alignment: Alignment.center,
+                  child: Text('Offline: showing the downloaded copy. Tap play to present.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
+                ),
+              )
+            : null,
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))

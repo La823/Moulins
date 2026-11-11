@@ -201,6 +201,12 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
           ListTile(
               title: Text(it.productName, style: const TextStyle(fontWeight: FontWeight.w600)),
               subtitle: Text('Qty ${it.quantity}')),
+          if (it.margPushedAt != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Text('This line is already in Marg. A change here does not reach Marg, so make it there too.',
+                  style: TextStyle(fontSize: 12.5, color: Colors.orange.shade800)),
+            ),
           ListTile(
               leading: const Icon(Icons.inventory_2_outlined),
               title: const Text('Choose batch'),
@@ -508,8 +514,8 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Expanded(
                             child: InkWell(
-                              // lines already in Marg are fixed
-                              onTap: canEdit && it.margPushedAt == null && !_busy ? () => _lineMenu(it) : null,
+                              // lines already in Marg stay editable here, as on the website
+                              onTap: canEdit && !_busy ? () => _lineMenu(it) : null,
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(it.productName,
                                     style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
@@ -524,7 +530,7 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                                 if (it.lineTotal != null)
                                   Text('Amount Rs. ${_money.format(it.lineTotal)}',
                                       style: TextStyle(fontSize: 12, color: Colors.grey.shade800)),
-                                if (canEdit && it.margPushedAt == null)
+                                if (canEdit)
                                   const Text('Tap for batch, quantity or remove',
                                       style: TextStyle(fontSize: 11, color: _teal)),
                               ]),
