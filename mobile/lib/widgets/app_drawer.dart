@@ -4,170 +4,154 @@ import 'package:go_router/go_router.dart';
 import '../data/divisions.dart';
 import '../providers/auth_provider.dart';
 
-const _teal = Color(0xFF00A6A4);
-const _ink = Color(0xFF1A1A1A);
+/// White, with the website's red (Tailwind red-600) for the text and icons.
+const _red = Color(0xFFDC2626);
+const _redSoft = Color(0xFFFEF2F2); // red-50, behind the open divisions list
+const _white = Colors.white;
 
-/// Shared hamburger-menu drawer: divisions, doctors, learning. Attaching
-/// this to a screen's Scaffold is enough — Flutter auto-adds the 3-line
-/// menu icon to that screen's AppBar when `drawer` is set and no explicit
-/// `leading` is given.
+/// Shared hamburger-menu drawer: the user's own sections, learning, and the
+/// divisions (folded away behind a + until opened). Attaching this to a
+/// screen's Scaffold is enough — Flutter auto-adds the 3-line menu icon to
+/// that screen's AppBar when `drawer` is set and no explicit `leading` is
+/// given.
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
+    final role = user?.role;
+
+    Widget item(IconData icon, String label, String route) => ListTile(
+          leading: Icon(icon, color: _red),
+          title: Text(label, style: const TextStyle(color: _red, fontWeight: FontWeight.w500)),
+          visualDensity: VisualDensity.compact,
+          onTap: () {
+            Navigator.of(context).pop();
+            context.push(route);
+          },
+        );
 
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: _white,
       child: SafeArea(
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.white),
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: Text(
-                  'Moulins',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: _ink),
-                ),
-              ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Moulins', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _red)),
+                if (user != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    (user.username != null && user.username!.isNotEmpty) ? user.username! : user.phoneNumber,
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ],
+              ]),
             ),
+            Divider(height: 1, color: Colors.grey.shade200),
+            const SizedBox(height: 6),
 
-            if (user?.role == 'partner' || user?.role == 'team_member')
-              ListTile(
-                leading: const Icon(Icons.dashboard_outlined, color: _teal),
-                title: const Text('Dashboard'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/dashboard');
-                },
-              ),
+            if (role == 'partner' || role == 'team_member') item(Icons.dashboard_outlined, 'Dashboard', '/dashboard'),
             // Special-type customers get a tile into their own private catalog.
-            if (user?.isSpecial ?? false)
-              ListTile(
-                leading: const Icon(Icons.star_outline, color: _teal),
-                title: const Text('13 Alpha Unit'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/special');
-                },
-              ),
-            // Doctors' CRM/contact tracking isn't relevant to a doctor's
-            // own login — they're the record being tracked, not the tracker.
-            if (user?.role != 'doctor' && user?.role != 'retailer')
-              ListTile(
-                leading: const Icon(Icons.people_outline, color: _teal),
-                title: const Text('Doctors'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/doctors');
-                },
-              ),
-            // Slideshow presentations are a sales-pitch tool — not
-            // relevant to a doctor's own login either.
-            if (user?.role != 'doctor' && user?.role != 'retailer')
-              ListTile(
-                leading: const Icon(Icons.slideshow_outlined, color: _teal),
-                title: const Text('Presentations'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/presentations');
-                },
-              ),
-            if (user?.role == 'partner') ...[
+            if (user?.isSpecial ?? false) item(Icons.star_outline, '13 Alpha Unit', '/special'),
+            // Doctors' CRM/contact tracking and the sales slideshows aren't
+            // for a doctor's or a retailer's own login.
+            if (role != 'doctor' && role != 'retailer') ...[
+              item(Icons.people_outline, 'Doctors', '/doctors'),
+              item(Icons.slideshow_outlined, 'Presentations', '/presentations'),
+            ],
+            if (role == 'partner') ...[
               // the shops the partner supplies, and their orders
-              ListTile(
-                leading: const Icon(Icons.storefront_outlined, color: _teal),
-                title: const Text('My Retailers'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/retailers');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.move_to_inbox_outlined, color: _teal),
-                title: const Text('Retailer Orders'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/retailer-orders');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.groups_outlined, color: _teal),
-                title: const Text('My Team'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/team');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.payments_outlined, color: _teal),
-                title: const Text('My Payments'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/payments');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.event_available_outlined, color: _teal),
-                title: const Text('Team Attendance'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/team-attendance');
-                },
-              ),
+              item(Icons.storefront_outlined, 'My Retailers', '/retailers'),
+              item(Icons.move_to_inbox_outlined, 'Retailer Orders', '/retailer-orders'),
+              item(Icons.groups_outlined, 'My Team', '/team'),
+              item(Icons.payments_outlined, 'My Payments', '/payments'),
+              item(Icons.event_available_outlined, 'Team Attendance', '/team-attendance'),
             ],
-            if (user?.role == 'team_member') ...[
-              ListTile(
-                leading: const Icon(Icons.event_available_outlined, color: _teal),
-                title: const Text('My Attendance'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/my-attendance');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_note_outlined, color: _teal),
-                title: const Text('My Daily Log'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push('/my-daily-log');
-                },
-              ),
+            if (role == 'team_member') ...[
+              item(Icons.event_available_outlined, 'My Attendance', '/my-attendance'),
+              item(Icons.edit_note_outlined, 'My Daily Log', '/my-daily-log'),
             ],
-            if (user?.role != 'retailer')
-            ListTile(
-              leading: const Icon(Icons.play_circle_outline, color: _teal),
-              title: const Text('Learning'),
-              onTap: () {
-                Navigator.of(context).pop();
-                context.push('/learning');
-              },
-            ),
+            if (role != 'retailer') item(Icons.play_circle_outline, 'Learning', '/learning'),
 
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
-              child: Text(
-                'DIVISIONS',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 1),
-              ),
-            ),
-            for (final d in kDivisions)
-              ListTile(
-                dense: true,
-                title: Text(d.heroLabel, style: const TextStyle(color: _ink)),
-                subtitle: Text(d.heroTitle, style: const TextStyle(fontSize: 11.5)),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  context.push(d.route);
-                },
-              ),
+            const SizedBox(height: 6),
+            Divider(height: 1, color: Colors.grey.shade200),
+            const _DivisionsSection(),
             const SizedBox(height: 16),
           ],
         ),
       ),
     );
+  }
+}
+
+/// The divisions, folded into one row with a + that opens a compact list.
+class _DivisionsSection extends StatefulWidget {
+  const _DivisionsSection();
+
+  @override
+  State<_DivisionsSection> createState() => _DivisionsSectionState();
+}
+
+class _DivisionsSectionState extends State<_DivisionsSection> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ListTile(
+        leading: const Icon(Icons.category_outlined, color: _red),
+        title: const Text('Divisions', style: TextStyle(color: _red, fontWeight: FontWeight.w500)),
+        visualDensity: VisualDensity.compact,
+        onTap: () => setState(() => _open = !_open),
+        trailing: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(color: _red, borderRadius: BorderRadius.circular(15)),
+          child: AnimatedRotation(
+            turns: _open ? 0.125 : 0, // + turns into ×
+            duration: const Duration(milliseconds: 200),
+            child: const Icon(Icons.add, color: _white, size: 20),
+          ),
+        ),
+      ),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: !_open
+            ? const SizedBox(width: double.infinity)
+            : Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                decoration: BoxDecoration(color: _redSoft, borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  children: [
+                    for (final d in kDivisions)
+                      InkWell(
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          context.push(d.route);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                          child: Row(children: [
+                            Icon(Icons.chevron_right, size: 16, color: _red.withValues(alpha: 0.7)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(d.heroLabel, style: const TextStyle(color: _red, fontSize: 13.5)),
+                            ),
+                          ]),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+      ),
+    ]);
   }
 }

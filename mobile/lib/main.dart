@@ -9,6 +9,7 @@ import 'providers/cart_provider.dart';
 import 'providers/notification_provider.dart';
 import 'services/local_notifications_service.dart';
 import 'services/presentation_downloads.dart';
+import 'services/notification_links.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'screens/login/login_screen.dart';
@@ -35,6 +36,8 @@ import 'screens/chat/chat_thread_resolver.dart';
 import 'screens/products/favorites_screen.dart';
 import 'screens/learning/learning_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
+import 'screens/admin/admin_orders_screen.dart';
+import 'screens/admin/admin_order_detail_screen.dart';
 import 'screens/divisions/division_landing_screen.dart';
 import 'screens/team/team_screen.dart';
 import 'screens/team/team_member_detail_screen.dart';
@@ -44,6 +47,7 @@ import 'screens/team/my_attendance_screen.dart';
 import 'screens/team/my_daily_log_screen.dart';
 import 'screens/payments/payments_screen.dart';
 import 'screens/retailers/retailers_screen.dart';
+import 'screens/orders/order_placed_screen.dart';
 import 'screens/retailers/retailer_orders_screen.dart';
 import 'screens/retailers/retailer_order_detail_screen.dart';
 import 'screens/dashboard/dashboard_screen.dart';
@@ -73,9 +77,16 @@ void main() async {
           imageUrl: notification.android?.imageUrl ?? notification.apple?.imageUrl,
           notificationId: message.data['notification_id'],
           channelId: message.data['channel'] ?? notification.android?.channelId,
+          deepLink: message.data['deep_link'],
         );
       }
     });
+    // Tapping a push opens its page: while the app was in the background,
+    // or when the tap launched it.
+    FirebaseMessaging.onMessageOpenedApp.listen((m) => NotificationLinks.open(m.data['deep_link']));
+    FirebaseMessaging.instance.getInitialMessage().then((m) {
+      if (m != null) NotificationLinks.open(m.data['deep_link']);
+    }).catchError((_) {});
   } catch (e) {
     debugPrint('Firebase init failed: $e');
   }
@@ -119,6 +130,18 @@ class MoulinsApp extends ConsumerWidget {
               imageUrls: List<String>.from(extra['imageUrls'] as List),
               initialIndex: extra['initialIndex'] as int? ?? 0,
               cacheManager: extra['cacheManager'] as BaseCacheManager?,
+            );
+          },
+        ),
+        // The green "Order placed!" moment after checkout, full screen (no
+        // bottom bar); goes on to the order by itself.
+        GoRoute(
+          path: '/order-placed',
+          builder: (_, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? const {};
+            return OrderPlacedScreen(
+              next: extra['next'] as String? ?? '/orders',
+              message: extra['message'] as String? ?? 'Your order has been placed.',
             );
           },
         ),
@@ -234,6 +257,12 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/payments', builder: (_, __) => const PaymentsScreen()),
             GoRoute(path: '/learning', builder: (_, __) => const LearningScreen()),
             GoRoute(path: '/admin', builder: (_, __) => const AdminDashboardScreen()),
+            // staff orders, as on the website (orders_view / orders_edit)
+            GoRoute(path: '/admin/orders', builder: (_, __) => const AdminOrdersScreen()),
+            GoRoute(
+              path: '/admin/orders/:id',
+              builder: (_, state) => AdminOrderDetailScreen(orderId: state.pathParameters['id']!),
+            ),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
             ..._divisionRoutes,
@@ -298,9 +327,27 @@ class _NavItem {
 const _teal = Color(0xFF00A6A4);
 
 class _AppShellState extends ConsumerState<_AppShell> {
+  // Opens the page of a tapped notification (notification_links.dart) once
+  // the app is up and logged in.
+  void _openPendingLink() {
+    final route = NotificationLinks.pending.value;
+    if (route == null || !mounted || ref.read(authProvider).user == null) return;
+    NotificationLinks.pending.value = null;
+    context.push(route);
+  }
+
+  @override
+  void dispose() {
+    NotificationLinks.pending.removeListener(_openPendingLink);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    NotificationLinks.pending.addListener(_openPendingLink);
+    // a tap that launched the app was recorded before this frame existed
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingLink());
     Future.microtask(() =>
         ref.read(authProvider.notifier).loadUser().catchError((_) {}));
     Future.microtask(() => ref.read(notificationsProvider.notifier).load());

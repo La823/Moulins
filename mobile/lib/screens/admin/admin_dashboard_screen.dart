@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/admin_service.dart';
 import '../../widgets/notification_bell_button.dart';
@@ -65,6 +66,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final canSeeTransports = isAdmin || user.permissions.contains('orders_edit');
     final canSeeNotifications = isAdmin || user.permissions.contains('notifications');
     final canSeeBroadcastLists = isAdmin || user.permissions.contains('broadcast_lists');
+    final canSeeOrders = isAdmin || user.permissions.contains('orders_view') || user.permissions.contains('orders_edit');
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -106,6 +108,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 const SizedBox(height: 24),
                 const Text('Manage', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _ink)),
                 const SizedBox(height: 10),
+                if (canSeeOrders) ...[
+                  _ManageTile(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Orders',
+                    subtitle: 'See orders, set rates and send them to Marg',
+                    onTap: () => context.push('/admin/orders'),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 if (canSeeProducts) ...[
                   _ManageTile(
                     icon: Icons.medication_outlined,

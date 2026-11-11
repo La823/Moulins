@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../services/notification_links.dart';
 import '../../models/notification_item.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -43,7 +44,9 @@ class NotificationDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasImage = item.imageUrl != null && item.imageUrl!.isNotEmpty;
-    final hasDeepLink = item.deepLink != null && item.deepLink!.isNotEmpty;
+    // the website path in the notification, as the app's screen
+    final route = NotificationLinks.appRouteFor(item.deepLink);
+    final hasDeepLink = route != null;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -106,7 +109,7 @@ class NotificationDetailScreen extends StatelessWidget {
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton(
-                        onPressed: () => context.push(item.deepLink!),
+                        onPressed: () => context.push(route),
                         style: ElevatedButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white),
                         child: const Text('Open'),
                       ),

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'notification_links.dart';
 
 /// Shows a system-tray-style banner for FCM messages that arrive while the
 /// app is in the foreground (Android only auto-shows these when the app is
@@ -46,7 +47,11 @@ class LocalNotificationsService {
     _initialized = true;
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    await _plugin.initialize(const InitializationSettings(android: androidInit));
+    // tapping a banner shown while the app was open opens its page
+    await _plugin.initialize(
+      const InitializationSettings(android: androidInit),
+      onDidReceiveNotificationResponse: (r) => NotificationLinks.open(r.payload),
+    );
 
     final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     for (final c in _channels) {
@@ -62,6 +67,7 @@ class LocalNotificationsService {
     String? imageUrl,
     String? notificationId,
     String? channelId,
+    String? deepLink, // where tapping it goes (notification_links.dart)
   }) async {
     final channel = _channels.firstWhere((c) => c.id == channelId, orElse: () => _channel);
 
@@ -109,6 +115,7 @@ class LocalNotificationsService {
           color: const Color(0xFF00A6A4),
         ),
       ),
+      payload: deepLink,
     );
   }
 }

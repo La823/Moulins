@@ -151,12 +151,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       final id = await RetailerService().placeOrder(items);
       ref.read(cartProvider.notifier).clearLocal();
       if (mounted) {
-        context.go('/retailer-orders/$id');
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Your order has been sent to your partner.'),
-          backgroundColor: Color(0xFF00A6A4),
-          behavior: SnackBarBehavior.floating,
-        ));
+        context.go('/order-placed', extra: {
+          'next': '/retailer-orders/$id',
+          'message': 'Your order has been sent to your partner.',
+        });
       }
     } catch (e) {
       await ref.read(cartProvider.notifier).loadFromServer();
@@ -185,10 +183,10 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       // that, without firing a redundant DELETE /cart.
       ref.read(cartProvider.notifier).clearLocal();
       if (mounted) {
-        context.go('/orders/$orderId');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order placed successfully!'), backgroundColor: Color(0xFF00A6A4), behavior: SnackBarBehavior.floating),
-        );
+        context.go('/order-placed', extra: {
+          'next': '/orders/$orderId',
+          'message': 'Your order has been sent to Moulins.',
+        });
       }
     } catch (e) {
       var message = 'Failed to place order. Please try again.';

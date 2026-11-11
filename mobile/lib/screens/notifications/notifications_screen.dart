@@ -5,6 +5,8 @@ import '../../models/notification_item.dart';
 import '../../providers/notification_provider.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../services/notification_links.dart';
+import 'package:go_router/go_router.dart';
 import 'notification_detail_screen.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -24,6 +26,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   void _onTap(NotificationItem n) {
     if (!n.isRead) {
       ref.read(notificationsProvider.notifier).markAsRead(n.recipientId);
+    }
+    // a notification about something (an order, a meeting) opens it, like
+    // on the website; one without a page (a broadcast) opens its full text
+    final route = NotificationLinks.appRouteFor(n.deepLink);
+    if (route != null) {
+      context.push(route);
+      return;
     }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => NotificationDetailScreen(item: n)),

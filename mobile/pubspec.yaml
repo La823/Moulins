@@ -48,6 +48,7 @@ flutter:
     - assets/icons/
     - assets/partnership/
     - assets/videos/
+    - assets/sounds/
   fonts:
     # Erode — the website's heading serif, used for the spotlight headings
     - family: Erode

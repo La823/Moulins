@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { playSound } from "@/lib/sounds";
+import OrderPlacedOverlay from "@/components/customer/OrderPlacedOverlay";
 import { visibleImages, cardImageUrl } from "@/lib/productImages";
 
 const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
@@ -24,6 +25,9 @@ export default function CheckoutPage() {
   const [transportOptions, setTransportOptions] = useState([]);
   const [transportId, setTransportId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // after a successful order: the green "Order placed!" screen, then the order
+  const [placed, setPlaced] = useState(null); // { href, message }
+  const goToOrder = useCallback(() => router.push(placed?.href || "/orders"), [router, placed]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -59,7 +63,7 @@ export default function CheckoutPage() {
         });
         clearCartLocal();
         playSound("order");
-        router.push(`/retailer-panel/orders/${res.id}`);
+        setPlaced({ href: `/retailer-panel/orders/${res.id}`, message: "Your order has been sent to your partner." });
         return;
       }
       const res = await apiFetch("/orders", {
@@ -77,13 +81,15 @@ export default function CheckoutPage() {
       });
       clearCartLocal();
       playSound("order"); // the order went through
-      router.push(`/orders/${res.order_id}`);
+      setPlaced({ href: `/orders/${res.order_id}`, message: "Your order has been sent to Moulins." });
     } catch (err) {
       setError(err.message || "Failed to place order");
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (placed) return <OrderPlacedOverlay message={placed.message} onDone={goToOrder} />;
 
   if (user?.role === "doctor") {
     return (

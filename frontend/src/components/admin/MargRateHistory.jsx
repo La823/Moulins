@@ -187,9 +187,26 @@ function Stat({ label, value, sub }) {
 // expiry, then every sale from it with the rate charged and the margin over
 // purchase. Earlier app orders (no batch) come last. lineBatch is the batch
 // picked on the line; its purchases lead the purchases box.
+// Two folding boxes: sales to this party (open), and the product's last 5
+// bills to any party with their average (open instead when this party never
+// bought it). The purchases of the batches always show below.
 export function ProductHistoryPanel({ productName, history, data, position, count, lineBatch }) {
   const [openBill, setOpenBill] = useState(null); // the bill point shown in full
   const [view, setView] = useState("list"); // list: every sale, newest first | batch: grouped by batch
+  const productId = history?.product_id;
+  const [recent, setRecent] = useState({}); // product id -> its last bills to any party
+  const [boxes, setBoxes] = useState({}); // "<product>:party" | "<product>:any" -> open or not
+  useEffect(() => {
+    if (!productId || recent[productId]) return;
+    let off = false;
+    // without a partner the route returns the product's latest sale lines to anyone
+    apiFetch(`/admin/orders/product-rates/${productId}`)
+      .then((d) => !off && setRecent((r) => ({ ...r, [productId]: (d?.recent || []).slice(0, 5) })))
+      .catch(() => !off && setRecent((r) => ({ ...r, [productId]: [] })));
+    return () => {
+      off = true;
+    };
+  }, [productId, recent]);
   const header = (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-2">
@@ -259,6 +276,10 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
     (a, b) => (b.batch === lineBatch) - (a.batch === lineBatch) || new Date(b.date || 0) - new Date(a.date || 0),
   );
 
+  const hasParty = points.length > 0;
+  const isOpen = (k, dflt) => boxes[`${productId}:${k}`] ?? dflt;
+  const toggle = (k, dflt) => setBoxes((b) => ({ ...b, [`${productId}:${k}`]: !(b[`${productId}:${k}`] ?? dflt) }));
+
   return (
     <div>
       {header}
@@ -267,12 +288,16 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
           This partner isn&apos;t linked to a Marg party, so only earlier app orders can show here.
         </p>
       )}
-      {points.length === 0 ? (
-        <p className="text-xs text-gray-400 py-2">Never sold to this party before.</p>
+      <FoldBox
+        title="Sales to this party"
+        tone="blue"
+        open={isOpen("party", hasParty)}
+        onToggle={() => toggle("party", hasParty)}
+      >
+      {!hasParty ? (
+        <p className="text-xs text-gray-400 py-1">Never sold to this party before.</p>
       ) : (
         <>
-          <section className="border border-blue-200 rounded-xl p-2.5 mb-3">
-          <h4 className="text-[11px] font-semibold text-blue-800 uppercase tracking-wide mb-2">Sales to this party</h4>
           <div className="grid grid-cols-4 gap-2 mb-3 text-[10px]">
             <Stat label="Last" value={money(history.last?.rate)} sub={history.last ? day(history.last.date, false) : null} />
             <Stat label="Lowest" value={money(history.min_rate)} />
@@ -428,7 +453,18 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
               </div>
             )}
           </div>
-          </section>
+        </>
+      )}
+      </FoldBox>
+
+      <FoldBox
+        title="Last 5 bills to any party"
+        tone="gray"
+        open={isOpen("any", !hasParty)}
+        onToggle={() => toggle("any", !hasParty)}
+      >
+        <RecentBills rows={recent[productId]} />
+      </FoldBox>
 
           <section className="border border-amber-200 rounded-xl p-2.5">
             <h4 className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-2">
@@ -465,10 +501,70 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
             Rates before GST. Margin is over the batch&apos;s purchase rate. Bills are from Marg (this financial year);
             click a bill to see all of it.
           </p>
-        </>
-      )}
       {openBill && <BillModal point={openBill} onClose={() => setOpenBill(null)} />}
     </div>
+  );
+}
+
+// A box that folds: its title row opens and closes it.
+function FoldBox({ title, tone, open, onToggle, children }) {
+  const tones = { blue: ["border-blue-200", "text-blue-800"], gray: ["border-gray-200", "text-gray-800"] };
+  const [border, text] = tones[tone] || tones.gray;
+  return (
+    <section className={`border ${border} rounded-xl mb-3`}>
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-2.5 py-2 text-left">
+        <span className={`text-[11px] font-semibold uppercase tracking-wide ${text}`}>{title}</span>
+        <span className={`text-sm leading-none ${text}`}>{open ? "−" : "+"}</span>
+      </button>
+      {open && <div className="px-2.5 pb-2.5">{children}</div>}
+    </section>
+  );
+}
+
+// The product's last 5 Marg sale bills to any party, with their average rate.
+function RecentBills({ rows }) {
+  if (!rows) return <p className="text-[10px] text-gray-400">Loading…</p>;
+  if (rows.length === 0) return <p className="text-[10px] text-gray-400">This product has not been sold to anyone this year.</p>;
+  const rates = rows.map((r) => r.rate);
+  const avg = rates.reduce((a, b) => a + b, 0) / rates.length;
+  // Marg party names mostly end with the city already
+  const party = (r) => (r.city && !String(r.customer || "").toUpperCase().includes(r.city.toUpperCase()) ? `${r.customer}, ${r.city}` : r.customer);
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-2 mb-2 text-[10px]">
+        <Stat label={`Average of ${rows.length}`} value={money(avg)} />
+        <Stat label="Lowest" value={money(Math.min(...rates))} />
+        <Stat label="Highest" value={money(Math.max(...rates))} />
+      </div>
+      <div className="border border-gray-200 rounded-lg overflow-x-auto">
+        <table className="w-full text-[10px]">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              <th className="px-1.5 py-1 text-left font-medium">Date / bill</th>
+              <th className="px-1.5 py-1 text-left font-medium">Party</th>
+              <th className="px-1.5 py-1 text-right font-medium">Qty</th>
+              <th className="px-1.5 py-1 text-right font-medium">Rate</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((r, i) => (
+              <tr key={`${r.bill_no}-${i}`}>
+                <td className="px-1.5 py-1 whitespace-nowrap">
+                  <div className="text-gray-600">{day(r.date)}</div>
+                  <div className="text-gray-800">{r.bill_no}</div>
+                </td>
+                <td className="px-1.5 py-1 text-gray-700">{party(r)}</td>
+                <td className="px-1.5 py-1 text-right text-gray-700 whitespace-nowrap">
+                  {qty(r.qty)}
+                  {r.free > 0 && <span className="text-green-700"> +{qty(r.free)}</span>}
+                </td>
+                <td className="px-1.5 py-1 text-right font-medium text-gray-900 whitespace-nowrap">{money(r.rate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
