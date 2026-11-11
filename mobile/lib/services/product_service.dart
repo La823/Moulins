@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 import '../config/api.dart';
 import '../models/product.dart';
+import 'json_cache.dart';
 import 'offline_cache.dart';
+import 'product_search.dart';
 
 class ProductService {
   final _dio = createDio();
@@ -60,9 +62,37 @@ class ProductService {
               isFromCache: true);
         }
       }
+      // A search, type or tag with no connection: look through the product
+      // pages saved on the phone. A division by id can't be matched (saved
+      // products carry category names only), so it still needs internet.
+      if (!unfiltered && categoryId.isEmpty && JsonCache.isNoConnection(e)) {
+        if (page > 1) {
+          return ProductListResponse(products: const [], total: 0, page: page, totalPages: 1, isFromCache: true);
+        }
+        final r = ProductSearch.run(
+            _filterSaved(await OfflineCache.loadAllProducts(), category: category, form: form, tag: tag), search,
+            saltOnly: saltOnly);
+        return ProductListResponse(
+            products: r.products,
+            total: r.products.length,
+            page: 1,
+            totalPages: 1,
+            isFromCache: true,
+            suggestions: r.suggestions);
+      }
       rethrow;
     }
   }
+
+  // the website's division-name, type and tag filters, over saved products
+  static List<Product> _filterSaved(List<Product> all,
+          {required String category, required String form, required String tag}) =>
+      all.where((p) {
+        if (category.isNotEmpty && !p.categories.any((c) => c.toLowerCase() == category.toLowerCase())) return false;
+        if (form.isNotEmpty && (p.productForm ?? '').toLowerCase() != form.toLowerCase()) return false;
+        if (tag.isNotEmpty && !p.tags.any((t) => t.toLowerCase() == tag.toLowerCase())) return false;
+        return true;
+      }).toList();
 
   Future<Product> getProduct(String id) async {
     try {

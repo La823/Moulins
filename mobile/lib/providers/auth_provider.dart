@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/offline_sync.dart';
 import '../config/api.dart';
 
 final authServiceProvider = Provider((ref) => AuthService());
@@ -57,6 +58,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await saveToken(token);
       final user = User.fromJson(data['user']);
       await saveCachedUser(jsonEncode(user.toJson()));
+      // this account's offline data, not another's
+      await OfflineSync.useAccount(user.id);
       state = state.copyWith(user: user, loading: false, checked: true);
       unawaited(_registerDeviceToken());
       return true;
@@ -75,6 +78,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final user = await _service.getMe();
       await saveCachedUser(jsonEncode(user.toJson()));
+      await OfflineSync.useAccount(user.id);
       state = state.copyWith(user: user, checked: true);
       unawaited(_registerDeviceToken());
     } on DioException catch (e) {
@@ -92,14 +96,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
       final cached = await getCachedUser();
       if (cached != null) {
-        state = state.copyWith(user: User.fromJson(jsonDecode(cached)), checked: true);
+        final user = User.fromJson(jsonDecode(cached));
+        await OfflineSync.useAccount(user.id);
+        state = state.copyWith(user: user, checked: true);
       } else {
         state = state.copyWith(checked: true);
       }
     } catch (_) {
       final cached = await getCachedUser();
       if (cached != null) {
-        state = state.copyWith(user: User.fromJson(jsonDecode(cached)), checked: true);
+        final user = User.fromJson(jsonDecode(cached));
+        await OfflineSync.useAccount(user.id);
+        state = state.copyWith(user: user, checked: true);
       } else {
         state = state.copyWith(checked: true);
       }
@@ -182,6 +190,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await clearToken();
+    await OfflineSync.useAccount(null);
     state = const AuthState(checked: true);
   }
 

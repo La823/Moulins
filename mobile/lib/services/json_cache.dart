@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'offline_owner.dart';
 
 /// Keeps the server's last answer for a request on the phone, so a screen
 /// can show it with no internet (doctors, their products, meetings). The raw
 /// JSON is stored and parsed again with the model's own fromJson, so the
-/// offline copy reads exactly like a fresh one.
+/// offline copy reads exactly like a fresh one. Kept per account
+/// (offline_owner.dart).
 class JsonCache {
   static const prefix = 'json_cache_';
   static const _prefix = prefix;
@@ -16,12 +18,12 @@ class JsonCache {
 
   static Future<void> put(String key, Object? data) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_prefix$key', jsonEncode(data));
+    await prefs.setString(OfflineOwner.key('$_prefix$key'), jsonEncode(data));
   }
 
   static Future<Object?> get(String key) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('$_prefix$key');
+    final raw = prefs.getString(OfflineOwner.key('$_prefix$key'));
     if (raw == null) return null;
     try {
       return jsonDecode(raw);

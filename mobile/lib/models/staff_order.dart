@@ -9,6 +9,7 @@ class StaffOrder {
   final String partyPhone;
   final String? notes;
   final String transportMode;
+  final String? transportId;
   final String? transportName;
   final int itemCount;
   final double? freight;
@@ -28,6 +29,7 @@ class StaffOrder {
     required this.partyPhone,
     this.notes,
     this.transportMode = '',
+    this.transportId,
     this.transportName,
     this.itemCount = 0,
     this.freight,
@@ -55,6 +57,7 @@ class StaffOrder {
         partyPhone: j['user_phone'] ?? '',
         notes: j['notes'],
         transportMode: j['transport_mode'] ?? '',
+        transportId: j['transport_id'],
         transportName: j['transport_name'],
         itemCount: j['item_count'] ?? (j['items'] as List?)?.length ?? 0,
         freight: _num(j['freight']),
@@ -75,6 +78,9 @@ class StaffOrderPhoto {
   final String type; // bill | tracking
 
   StaffOrderPhoto({required this.id, required this.url, required this.type});
+
+  /// A bill attached as a PDF rather than a photo (by its file name).
+  bool get isPdf => RegExp(r'\.pdf($|\?)', caseSensitive: false).hasMatch(url);
 
   factory StaffOrderPhoto.fromJson(Map<String, dynamic> j) =>
       StaffOrderPhoto(id: j['id'] ?? '', url: j['image_url'] ?? '', type: j['photo_type'] ?? 'bill');

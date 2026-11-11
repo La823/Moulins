@@ -66,7 +66,7 @@ class _PresentationsScreenState extends State<PresentationsScreen> {
     try {
       final list = await _service.getPresentations();
       // Smart sync keeps every presentation on the phone
-      if (OfflineSync.smart) PresentationDownloads.keepDownloaded(list, _service.getPresentation);
+      if (OfflineSync.smartNow) PresentationDownloads.keepDownloaded(list, _service.getPresentation);
       if (!mounted) return;
       setState(() {
         _presentations = list;

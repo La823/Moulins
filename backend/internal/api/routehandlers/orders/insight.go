@@ -99,7 +99,8 @@ func recentSales(r *http.Request, db *pgxpool.Pool, productID uuid.UUID) ([]rece
 			SELECT ld.name, ld.city FROM marg_ede_ledger ld
 			WHERE ld.party_code = b.party_code AND NOT ld.is_deleted ORDER BY ld.marg_id LIMIT 1
 		) l ON TRUE
-		WHERE p.id = $1 AND b.bill_type = 'S' AND NOT b.is_deleted AND NOT b.is_cancelled AND COALESCE(i.rate, 0) > 0
+		WHERE p.id = $1 AND b.bill_type = 'S' AND b.bill_mode IS DISTINCT FROM 'challan' -- sale bills, not challans
+		  AND NOT b.is_deleted AND NOT b.is_cancelled AND COALESCE(i.rate, 0) > 0
 		ORDER BY b.bill_date DESC, b.bill_no DESC
 		LIMIT 10`, productID)
 	if err != nil {

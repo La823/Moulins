@@ -219,6 +219,10 @@ type OrderPDFItem struct {
 	Remarks string
 }
 
+// FreightGSTRate is the GST charged on an order's freight, whatever the
+// products' own rates.
+const FreightGSTRate = 18.0
+
 type OrderPDFData struct {
 	OrderNumber   string
 	Date          string
@@ -242,6 +246,9 @@ type OrderPDFData struct {
 	GST        *float64
 	GSTRate    *float64
 	GSTMissing []string
+	// GST on the freight, always at FreightGSTRate, its own row under the
+	// freight; OrderTotal includes it.
+	FreightGST *float64
 	PrintedBy  string
 	PrintedAt  string
 	// CustomerCopy is the copy sent to the customer: no warehouse CODE
@@ -516,6 +523,9 @@ func GenerateOrderPDF(data OrderPDFData) ([]byte, error) {
 	}
 	if data.Freight != nil {
 		totalRow("FREIGHT", data.Freight, false)
+	}
+	if data.FreightGST != nil {
+		totalRow(fmt.Sprintf("GST ON FREIGHT @ %g%%", FreightGSTRate), data.FreightGST, false)
 	}
 	totalRow("ORDER TOTAL", data.OrderTotal, true)
 	pdf.SetFont("Arial", "", 9)

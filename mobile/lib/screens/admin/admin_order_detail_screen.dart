@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,10 +11,13 @@ import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/product.dart';
 import '../../models/staff_order.dart';
+import '../../models/transport.dart';
+import '../../models/transport_mode.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/admin_order_service.dart';
 import '../../services/product_service.dart';
 import '../../services/retailer_service.dart';
+import '../../services/transport_service.dart';
 import '../../widgets/product_history_panel.dart';
 import 'admin_orders_screen.dart';
 
@@ -159,6 +164,22 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
       ),
     );
     if (ok == true) await _run(() => _service.setStatus(o.id, next), 'The status has been updated.');
+  }
+
+  String _title(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  // the delivery mode, then optionally a transporter of that mode
+  Future<void> _changeTransport() async {
+    final o = _order!;
+    final picked = await showModalBottomSheet<(String, String?)>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _TransportSheet(mode: o.transportMode, transportId: o.transportId),
+    );
+    if (picked == null || !mounted) return;
+    if (picked.$1 == o.transportMode && picked.$2 == o.transportId) return;
+    await _run(() => _service.setTransport(o.id, picked.$1, picked.$2), 'The delivery mode has been changed.');
   }
 
   Future<void> _sendToMarg() async {
@@ -344,7 +365,8 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
   // ---- photos ----
 
   Future<void> _addPhoto(String type) async {
-    final source = await showModalBottomSheet<ImageSource>(
+    // a bill can also be the PDF itself (or any saved file); 'file' below
+    final source = await showModalBottomSheet<Object>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -356,15 +378,32 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Choose from gallery'),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+          if (type == 'bill')
+            ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('Choose a PDF or file'),
+                onTap: () => Navigator.pop(ctx, 'file')),
         ]),
       ),
     );
     if (source == null) return;
-    final file = await ImagePicker().pickImage(source: source, imageQuality: 80, maxWidth: 2000);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    await _run(() => _service.addPhoto(widget.orderId, bytes, file.name, type: type),
-        type == 'tracking' ? 'The tracking photo has been attached.' : 'The bill photo has been attached.');
+    Uint8List bytes;
+    String name;
+    if (source == 'file') {
+      final res = await FilePicker.pickFiles(
+          type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], withData: true);
+      final f = res?.files.firstOrNull;
+      if (f == null || f.bytes == null) return;
+      bytes = f.bytes!;
+      name = f.name;
+    } else {
+      final file = await ImagePicker().pickImage(source: source as ImageSource, imageQuality: 80, maxWidth: 2000);
+      if (file == null) return;
+      bytes = await file.readAsBytes();
+      name = file.name;
+    }
+    await _run(() => _service.addPhoto(widget.orderId, bytes, name, type: type),
+        type == 'tracking' ? 'The tracking photo has been attached.' : 'The bill has been attached.');
   }
 
   Future<void> _deletePhoto(StaffOrderPhoto p) async {
@@ -479,9 +518,29 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                     Text(o.partyPhone, style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
                   Text('Placed ${fmt.format(o.createdAt.toLocal())}',
                       style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
-                  if (o.transportMode.isNotEmpty)
-                    Text('Transport: ${o.transportName ?? o.transportMode}',
-                        style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+                  // staff who can edit change it here; the partner sees the change
+                  InkWell(
+                    onTap: canEdit && !_busy ? _changeTransport : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        Flexible(
+                          child: Text(
+                            o.transportMode.isEmpty
+                                ? 'Delivery: not set'
+                                : 'Delivery: By ${_title(o.transportMode)}'
+                                    '${o.transportName != null ? ' · ${o.transportName}' : ''}',
+                            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                          ),
+                        ),
+                        if (canEdit) ...[
+                          const SizedBox(width: 6),
+                          const Text('Change',
+                              style: TextStyle(fontSize: 12.5, color: _teal, fontWeight: FontWeight.w600)),
+                        ],
+                      ]),
+                    ),
+                  ),
                   if (o.notes != null && o.notes!.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text('Note: ${o.notes}', style: const TextStyle(fontSize: 13)),
@@ -618,26 +677,36 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                 ])),
                 // photos
                 _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Photos', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Bills & tracking', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   if (o.photos.isEmpty)
-                    Text('No bill or tracking photos yet.', style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
+                    Text('No bills or tracking photos yet.', style: TextStyle(fontSize: 13, color: Colors.grey.shade600))
                   else
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: o.photos.asMap().entries.map((e) {
-                        final p = e.value;
+                      children: o.photos.map((p) {
+                        final images = o.photos.where((x) => !x.isPdf).toList();
                         return GestureDetector(
-                          onTap: () => context.push('/gallery', extra: {
-                            'imageUrls': o.photos.map((x) => x.url).toList(),
-                            'initialIndex': e.key,
-                          }),
+                          // a PDF opens in the phone's PDF viewer; photos in the gallery
+                          onTap: () => p.isPdf
+                              ? launchUrl(Uri.parse(p.url), mode: LaunchMode.externalApplication)
+                              : context.push('/gallery', extra: {
+                                  'imageUrls': images.map((x) => x.url).toList(),
+                                  'initialIndex': images.indexOf(p),
+                                }),
                           onLongPress: canEdit ? () => _deletePhoto(p) : null,
                           child: Stack(children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: CachedNetworkImage(imageUrl: p.url, width: 84, height: 84, fit: BoxFit.cover),
+                              child: p.isPdf
+                                  ? Container(
+                                      width: 84,
+                                      height: 84,
+                                      color: Colors.red.shade50,
+                                      child: Icon(Icons.picture_as_pdf, color: Colors.red.shade700, size: 34),
+                                    )
+                                  : CachedNetworkImage(imageUrl: p.url, width: 84, height: 84, fit: BoxFit.cover),
                             ),
                             Positioned(
                               left: 4,
@@ -646,7 +715,7 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                 decoration:
                                     BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-                                child: Text(p.type == 'tracking' ? 'Tracking' : 'Bill',
+                                child: Text(p.type == 'tracking' ? 'Tracking' : (p.isPdf ? 'Bill PDF' : 'Bill'),
                                     style: const TextStyle(color: Colors.white, fontSize: 9.5)),
                               ),
                             ),
@@ -661,7 +730,7 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                         child: OutlinedButton.icon(
                           onPressed: _busy ? null : () => _addPhoto('bill'),
                           icon: const Icon(Icons.receipt_outlined, size: 18),
-                          label: const Text('Bill photo'),
+                          label: const Text('Bill'),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -674,7 +743,8 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                       ),
                     ]),
                     const SizedBox(height: 4),
-                    Text('Hold a photo to delete it.', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                    Text('A bill can be a photo or a PDF. Hold one to delete it.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
                   ],
                 ])),
                 // Marg
@@ -787,6 +857,129 @@ class _ProductPickerState extends State<_ProductPicker> {
             ),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+
+/// Picks a delivery mode and, optionally, one of its transporters; pops
+/// (mode, transporter id or null).
+class _TransportSheet extends StatefulWidget {
+  final String mode;
+  final String? transportId;
+  const _TransportSheet({required this.mode, this.transportId});
+
+  @override
+  State<_TransportSheet> createState() => _TransportSheetState();
+}
+
+class _TransportSheetState extends State<_TransportSheet> {
+  static const _teal = Color(0xFF00A6A4);
+  final _service = TransportService();
+  List<TransportMode>? _modes;
+  List<Transport>? _transports;
+  late String _mode = widget.mode;
+  late String? _transportId = widget.transportId;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.getModes().then((m) {
+      if (mounted) setState(() => _modes = m);
+    }).catchError((_) {
+      if (mounted) setState(() => _error = 'The delivery modes could not be loaded.');
+    });
+    if (_mode.isNotEmpty) _loadTransports();
+  }
+
+  void _loadTransports() {
+    setState(() => _transports = null);
+    final mode = _mode;
+    _service.getTransports(mode: mode).then((t) {
+      if (mounted && mode == _mode) setState(() => _transports = t);
+    }).catchError((_) {
+      if (mounted && mode == _mode) setState(() => _transports = []);
+    });
+  }
+
+  String _title(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  Widget _transporter(String? id, String title, {String? subtitle}) => RadioListTile<String?>(
+        contentPadding: EdgeInsets.zero,
+        value: id,
+        groupValue: _transportId,
+        activeColor: _teal,
+        title: Text(title),
+        subtitle: subtitle != null ? Text(subtitle) : null,
+        onChanged: (v) => setState(() => _transportId = v),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Change delivery mode', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('The partner will see this on the order.',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+            const SizedBox(height: 14),
+            if (_error != null)
+              Text(_error!, style: TextStyle(color: Colors.red.shade700))
+            else if (_modes == null)
+              const Center(child: CircularProgressIndicator(color: _teal))
+            else ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _modes!
+                    .map((m) => ChoiceChip(
+                          label: Text(_title(m.name)),
+                          selected: _mode == m.name,
+                          selectedColor: _teal.withAlpha(40),
+                          onSelected: (_) {
+                            if (_mode == m.name) return;
+                            setState(() {
+                              _mode = m.name;
+                              _transportId = null;
+                            });
+                            _loadTransports();
+                          },
+                        ))
+                    .toList(),
+              ),
+              if (_mode.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text('Transporter', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                Flexible(
+                  child: _transports == null
+                      ? const Padding(
+                          padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(color: _teal)))
+                      : ListView(shrinkWrap: true, children: [
+                          _transporter(null, 'No particular transporter'),
+                          ..._transports!.map(
+                              (t) => _transporter(t.id, t.name, subtitle: t.gstNumber != null ? 'GST ${t.gstNumber}' : null)),
+                        ]),
+                ),
+              ],
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton(
+                onPressed: _mode.isEmpty ? null : () => Navigator.pop(context, (_mode, _transportId)),
+                style: ElevatedButton.styleFrom(backgroundColor: _teal, foregroundColor: Colors.white, elevation: 0),
+                child: const Text('Save'),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }

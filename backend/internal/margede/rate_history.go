@@ -132,7 +132,9 @@ func GetRateHistory(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, 
 				LIMIT 1
 			) st ON TRUE
 			WHERE p.id::text = ANY($1::text[]) AND b.party_code = $2
-			  AND b.bill_type = 'S' AND NOT b.is_deleted AND NOT b.is_cancelled
+			  -- sale bills only: a challan's rate isn't a billed rate
+			  AND b.bill_type = 'S' AND b.bill_mode IS DISTINCT FROM 'challan'
+			  AND NOT b.is_deleted AND NOT b.is_cancelled
 			ORDER BY b.bill_date DESC, b.bill_no DESC`, productIDs, *out.PartyCode)
 		if err != nil {
 			return out, err

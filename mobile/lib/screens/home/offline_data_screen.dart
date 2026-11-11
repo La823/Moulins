@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../services/offline_background.dart';
 import '../../services/offline_files.dart';
 import '../../services/offline_sync.dart';
 
 /// Profile > Offline data: how the app keeps things for use without
-/// internet (Smart sync or Manual), saving everything at once, and clearing
+/// internet (Smart sync or Manual), Wi-Fi only or mobile data too, saving
+/// everything at once or once a day, and clearing
 /// it all. See services/offline_sync.dart.
 class OfflineDataScreen extends StatefulWidget {
   const OfflineDataScreen({super.key});
@@ -15,6 +17,9 @@ class OfflineDataScreen extends StatefulWidget {
 class _OfflineDataScreenState extends State<OfflineDataScreen> {
   static const _teal = Color(0xFF00A6A4);
   bool _smart = OfflineSync.smart;
+  bool _wifiOnly = OfflineSync.wifiOnly;
+  bool _daily = false;
+  DateTime? _lastSaved;
   (int, int)? _counts;
   bool _deleting = false;
 
@@ -26,7 +31,23 @@ class _OfflineDataScreenState extends State<OfflineDataScreen> {
 
   Future<void> _refresh() async {
     final c = await OfflineSync.counts();
-    if (mounted) setState(() => _counts = c);
+    final daily = await OfflineSync.daily();
+    final last = await OfflineSync.lastSaved();
+    if (mounted) {
+      setState(() {
+        _counts = c;
+        _daily = daily;
+        _lastSaved = last;
+      });
+    }
+  }
+
+  String _ago(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} hr ago';
+    return d.inDays == 1 ? 'yesterday' : '${d.inDays} days ago';
   }
 
   void _snack(String text) {
@@ -135,6 +156,36 @@ class _OfflineDataScreenState extends State<OfflineDataScreen> {
           ),
         ]),
         _card([
+          const Text('Download over', style: TextStyle(fontWeight: FontWeight.w600)),
+          RadioListTile<bool>(
+            contentPadding: EdgeInsets.zero,
+            value: false,
+            groupValue: _wifiOnly,
+            activeColor: _teal,
+            title: const Text('Wi-Fi or mobile data'),
+            subtitle: const Text('Downloads automatically on any connection.'),
+            onChanged: (v) async {
+              await OfflineSync.setWifiOnly(false);
+              OfflineBackground.schedule();
+              setState(() => _wifiOnly = false);
+            },
+          ),
+          RadioListTile<bool>(
+            contentPadding: EdgeInsets.zero,
+            value: true,
+            groupValue: _wifiOnly,
+            activeColor: _teal,
+            title: const Text('Wi-Fi only'),
+            subtitle: const Text('Smart sync and the daily save wait for Wi-Fi, to save mobile data. Tapping '
+                '"Save everything offline" below still works on any connection.'),
+            onChanged: (v) async {
+              await OfflineSync.setWifiOnly(true);
+              OfflineBackground.schedule();
+              setState(() => _wifiOnly = true);
+            },
+          ),
+        ]),
+        _card([
           const Text('Save everything now', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text(
@@ -172,6 +223,22 @@ class _OfflineDataScreenState extends State<OfflineDataScreen> {
                       ]),
                     ),
                   ]),
+          ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _daily,
+            activeThumbColor: _teal,
+            title: const Text('Save everything once a day'),
+            subtitle: Text([
+              'New products and orders are saved automatically${_wifiOnly ? ' on Wi-Fi' : ''}, also while the app is '
+                  'closed (when the phone allows it).',
+              if (_lastSaved != null) 'Last saved ${_ago(_lastSaved!)}.',
+            ].join(' ')),
+            onChanged: (v) async {
+              await OfflineSync.setDaily(v);
+              setState(() => _daily = v);
+            },
           ),
         ]),
         _card([

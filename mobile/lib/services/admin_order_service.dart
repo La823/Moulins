@@ -38,6 +38,10 @@ class AdminOrderService {
   Future<void> setStatus(String id, String status) async =>
       _dio.put('/admin/orders/$id/status', data: {'status': status});
 
+  /// The delivery mode and, optionally, the transporter of that mode.
+  Future<void> setTransport(String id, String mode, String? transportId) async =>
+      _dio.put('/admin/orders/$id/transport', data: {'transport_mode': mode, 'transport_id': transportId});
+
   // ---- lines ----
 
   Future<List<LineBatchOptions>> batchOptions(String id) async {
@@ -61,14 +65,21 @@ class AdminOrderService {
 
   // ---- photos ----
 
-  /// Uploads a bill or tracking photo and attaches it to the order.
+  /// Uploads a bill or tracking photo (or a bill as a PDF) and attaches it
+  /// to the order.
   Future<void> addPhoto(String id, Uint8List bytes, String filename, {required String type}) async {
+    final lower = filename.toLowerCase();
+    final contentType = lower.endsWith('.pdf')
+        ? 'application/pdf'
+        : lower.endsWith('.png')
+            ? 'image/png'
+            : 'image/jpeg';
     final res = await _dio.post(
         type == 'tracking' ? '/admin/orders/$id/tracking-upload-url' : '/admin/orders/upload-url',
         data: {'filename': filename});
     await Dio().put(res.data['upload_url'] as String,
         data: Stream.fromIterable([bytes]),
-        options: Options(headers: {'Content-Type': 'image/jpeg', Headers.contentLengthHeader: bytes.length}));
+        options: Options(headers: {'Content-Type': contentType, Headers.contentLengthHeader: bytes.length}));
     await _dio.post('/admin/orders/$id/photos', data: {'image_key': res.data['key'], 'photo_type': type});
   }
 

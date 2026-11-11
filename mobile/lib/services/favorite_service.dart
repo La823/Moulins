@@ -17,7 +17,7 @@ class FavoriteService {
       await OfflineCache.saveFavorites(products);
       lastFromCache = false;
       // images, documents and audio too, in the background (Smart sync)
-      if (OfflineSync.smart) OfflineFiles.saveProducts(products);
+      if (OfflineSync.smartNow) OfflineFiles.saveProducts(products);
       return products;
     } catch (e) {
       final cached = await OfflineCache.loadFavorites();

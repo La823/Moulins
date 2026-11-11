@@ -1021,8 +1021,8 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 		PrintedAt:    printedAt,
 		CustomerCopy: customerCopy,
 	}
+	round := func(v float64) float64 { return math.Round(v*100) / 100 }
 	if priced && order.ItemsTotal != nil {
-		round := func(v float64) float64 { return math.Round(v*100) / 100 }
 		gst := round(gstTotal)
 		pdfData.GST, pdfData.GSTMissing = &gst, gstMissing
 		if len(rates) == 1 && len(gstMissing) == 0 {
@@ -1036,6 +1036,15 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 			total = round(total + *order.Freight)
 		}
 		pdfData.OrderTotal = &total
+	}
+	// Freight always carries GST at 18%, added on top of it.
+	if order.Freight != nil && *order.Freight > 0 {
+		fg := round(*order.Freight * utils.FreightGSTRate / 100)
+		pdfData.FreightGST = &fg
+		if pdfData.OrderTotal != nil {
+			total := round(*pdfData.OrderTotal + fg)
+			pdfData.OrderTotal = &total
+		}
 	}
 	return utils.GenerateOrderPDF(pdfData)
 }

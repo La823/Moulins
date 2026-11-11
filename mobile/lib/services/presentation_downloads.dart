@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/presentation.dart';
+import 'offline_owner.dart';
 
 /// A presentation saved on the phone so it can be shown with no internet:
 /// the deck as it was when downloaded, slides in order.
@@ -66,7 +67,25 @@ class DownloadedPresentation {
 /// [cache] (CachedNetworkImage with this cacheManager), which serves a
 /// downloaded image from the phone and fetches anything else as usual.
 class PresentationDownloads {
-  static const _key = 'downloaded_presentations';
+  static const _baseKey = 'downloaded_presentations';
+  // each account has its own list (offline_owner.dart); the images are shared
+  static String get _key => OfflineOwner.key(_baseKey);
+
+  // slide images other accounts on this phone have downloaded, kept when
+  // this account removes its own
+  static Future<Set<String>> _usedByOthers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final urls = <String>{};
+    for (final k in prefs.getKeys()) {
+      if (!k.startsWith(_baseKey) || k == _key) continue;
+      try {
+        for (final e in jsonDecode(prefs.getString(k) ?? '[]') as List<dynamic>) {
+          urls.addAll(DownloadedPresentation.fromJson(e).slides.map((s) => s.imageUrl));
+        }
+      } catch (_) {}
+    }
+    return urls;
+  }
 
   /// Ticks whenever a deck is downloaded or removed, so every download
   /// button and list on screen can refresh.
@@ -113,7 +132,8 @@ class PresentationDownloads {
     var done = 0;
     onProgress?.call(0, urls.length);
     for (final url in urls) {
-      await cache.downloadFile(url);
+      // an image already on the phone (e.g. from a download cut short) is kept
+      if (await cache.getFileFromCache(url) == null) await cache.downloadFile(url);
       onProgress?.call(++done, urls.length);
     }
     final d = DownloadedPresentation(
@@ -154,11 +174,20 @@ class PresentationDownloads {
     }
   }
 
-  /// Removes every download and its images.
+  /// Removes every download of this account, and the images no other
+  /// account uses.
   static Future<void> removeAll() async {
+    final mine = await list();
     await _save([]);
-    await cache.emptyCache();
     changes.value++;
+    final others = await _usedByOthers();
+    if (others.isEmpty) {
+      await cache.emptyCache();
+      return;
+    }
+    for (final url in {for (final d in mine) ...d.slides.map((s) => s.imageUrl)}) {
+      if (!others.contains(url)) await cache.removeFile(url);
+    }
   }
 
   /// Removes a download and the images no other downloaded deck uses.
@@ -168,7 +197,7 @@ class PresentationDownloads {
     final keep = all.where((d) => d.id != id).toList();
     await _save(keep);
     changes.value++;
-    final stillUsed = {for (final d in keep) ...d.slides.map((s) => s.imageUrl)};
+    final stillUsed = {for (final d in keep) ...d.slides.map((s) => s.imageUrl), ...await _usedByOthers()};
     for (final d in gone) {
       for (final s in d.slides) {
         if (!stillUsed.contains(s.imageUrl)) await cache.removeFile(s.imageUrl);

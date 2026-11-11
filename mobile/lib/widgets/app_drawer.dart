@@ -68,6 +68,8 @@ class AppDrawer extends ConsumerWidget {
               item(Icons.storefront_outlined, 'My Retailers', '/retailers'),
               item(Icons.move_to_inbox_outlined, 'Retailer Orders', '/retailer-orders'),
               item(Icons.groups_outlined, 'My Team', '/team'),
+              // their invoices from Marg (final bills, not app orders)
+              item(Icons.receipt_long_outlined, 'My Bills', '/my-bills'),
               item(Icons.payments_outlined, 'My Payments', '/payments'),
               item(Icons.event_available_outlined, 'Team Attendance', '/team-attendance'),
             ],

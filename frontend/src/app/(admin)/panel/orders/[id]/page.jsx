@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
+import OrderTransport from "@/components/admin/orders/OrderTransport";
 import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 import ProductPicker, { entryBoxOpen, parseRate, usePastRatesDrawer } from "@/components/admin/orders/ProductPicker";
 
@@ -44,6 +45,9 @@ function formatStock(n) {
 // The day is dropped deliberately: a batch expires at the end of its stated
 // month, so a day implies a precision the date does not carry — Marg stores
 // the first of the month regardless of when the batch actually lapses.
+// a bill attached as a PDF rather than a photo (by its file name)
+const isPdf = (url) => /\.pdf($|\?)/i.test(url || "");
+
 function formatBatchExpiry(raw) {
   const trimmed = raw?.trim();
   if (!trimmed || trimmed.length !== 8) return trimmed || "";
@@ -510,7 +514,7 @@ export default function AdminOrderDetail() {
         body: JSON.stringify({ image_key: key }),
       });
       loadOrder().catch(() => {});
-      setSuccess("Bill photo attached");
+      setSuccess("Bill attached");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -793,25 +797,7 @@ export default function AdminOrderDetail() {
                 {order.user_phone || "—"}
               </p>
             </div>
-            <div>
-              <span className="text-gray-400">Transport Mode</span>
-              <p className="text-gray-900 font-medium">
-                {order.transport_mode
-                  ? `By ${order.transport_mode.charAt(0).toUpperCase()}${order.transport_mode.slice(1)}`
-                  : "—"}
-              </p>
-            </div>
-            {order.transport_name && (
-              <div>
-                <span className="text-gray-400">Transport</span>
-                <p className="text-gray-900 font-medium">
-                  {order.transport_name}
-                  {order.transport_gst_number && (
-                    <span className="text-xs text-gray-400 font-normal"> · GST {order.transport_gst_number}</span>
-                  )}
-                </p>
-              </div>
-            )}
+            <OrderTransport order={order} canEdit={canEdit} onSaved={() => loadOrder().catch(() => {})} />
             <div>
               <span className="text-gray-400">Placed on</span>
               <p className="text-gray-900">
@@ -1266,14 +1252,15 @@ export default function AdminOrderDetail() {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-700">
-              Bill Photos ({billPhotos.length})
+              Bills ({billPhotos.length})
             </h3>
             {canEdit && (
               <label className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 cursor-pointer transition-colors">
-                {uploadingPhoto ? "Uploading..." : "+ Add Photo"}
+                {uploadingPhoto ? "Uploading..." : "+ Add Bill"}
+                {/* a photo of the bill, or the bill itself as a PDF */}
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,application/pdf"
                   onChange={handlePhotoUpload}
                   disabled={uploadingPhoto}
                   className="hidden"
@@ -1284,18 +1271,27 @@ export default function AdminOrderDetail() {
 
           {billPhotos.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">
-              No bill photos attached yet
+              No bills attached yet
             </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {billPhotos.map((photo) => (
                 <div key={photo.id} className="relative group">
                   <a href={photo.image_url} target="_blank" rel="noopener noreferrer">
-                    <img
-                      src={photo.image_url}
-                      alt="Bill"
-                      className="w-full h-28 object-cover rounded-lg border border-gray-200"
-                    />
+                    {isPdf(photo.image_url) ? (
+                      <div className="w-full h-28 rounded-lg border border-gray-200 bg-red-50 flex flex-col items-center justify-center gap-1 text-red-700">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                        </svg>
+                        <span className="text-xs font-medium">Bill PDF</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={photo.image_url}
+                        alt="Bill"
+                        className="w-full h-28 object-cover rounded-lg border border-gray-200"
+                      />
+                    )}
                   </a>
                   {canEdit && (
                     <button

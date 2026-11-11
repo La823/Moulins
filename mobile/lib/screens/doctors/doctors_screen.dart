@@ -46,7 +46,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       });
       // keep every doctor's page (products, meetings) on the phone too
       // (the products in full and the presentations with Smart sync)
-      if (!_offline && OfflineSync.smart) {
+      if (!_offline && OfflineSync.smartNow) {
         _service.saveAllForOffline(d);
         MeetingService().getMeetings().then((_) {}, onError: (_) {});
         // every presentation linked to a doctor stays on the phone

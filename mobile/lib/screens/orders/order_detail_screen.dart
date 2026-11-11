@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/order.dart';
 import '../../services/order_service.dart';
 import '../../providers/auth_provider.dart';
@@ -441,7 +442,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Bill Photos (${billPhotos.length})',
+              Text('Bills (${billPhotos.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               if (canEditOrder)
                 TextButton.icon(
@@ -459,7 +460,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: Text('No bill photos attached yet', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+              child: Text('No bills attached yet', style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
             )
           else
             GridView.builder(
@@ -473,17 +474,30 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               itemCount: billPhotos.length,
               itemBuilder: (context, i) {
                 final photo = billPhotos[i];
+                // a bill can be a PDF: it opens in the phone's PDF viewer
+                final isPdf = RegExp(r'\.pdf($|\?)', caseSensitive: false).hasMatch(photo.imageUrl);
                 return GestureDetector(
-                  onTap: () => showDialog(
-                    context: context,
-                    builder: (_) => Dialog(
-                      child: InteractiveViewer(child: Image.network(photo.imageUrl)),
-                    ),
-                  ),
+                  onTap: () => isPdf
+                      ? launchUrl(Uri.parse(photo.imageUrl), mode: LaunchMode.externalApplication)
+                      : showDialog(
+                          context: context,
+                          builder: (_) => Dialog(
+                            child: InteractiveViewer(child: Image.network(photo.imageUrl)),
+                          ),
+                        ),
                   onLongPress: canEditOrder ? () => _deletePhoto(photo.id) : null,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(photo.imageUrl, fit: BoxFit.cover),
+                    child: isPdf
+                        ? Container(
+                            color: Colors.red.shade50,
+                            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              Icon(Icons.picture_as_pdf, color: Colors.red.shade700, size: 34),
+                              const SizedBox(height: 4),
+                              Text('Bill PDF', style: TextStyle(fontSize: 11, color: Colors.red.shade700)),
+                            ]),
+                          )
+                        : Image.network(photo.imageUrl, fit: BoxFit.cover),
                   ),
                 );
               },

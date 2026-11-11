@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/offline_owner.dart';
 import '../services/offline_sync.dart';
 
 /// Asks once (after login, on a fresh install or the first open after this
-/// update) how the app should keep data for use without internet: Smart sync,
+/// update, and once per account) how the app should keep data for use without internet: Smart sync,
 /// or saving everything now. The answer can be changed later under Profile >
 /// Offline data.
 class OfflineChoice {
-  static const _askedKey = 'offline_choice_asked_v1';
+  static String get _askedKey => OfflineOwner.key('offline_choice_asked_v1');
 
   static Future<void> askOnce(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
@@ -23,6 +24,7 @@ class OfflineChoice {
     );
     if (choice == 'all') {
       await OfflineSync.setSmart(true);
+      await OfflineSync.setDaily(true); // and kept up to date once a day
       OfflineSync.saveEverything(); // runs in the background
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -93,8 +95,8 @@ class _ChoiceSheet extends StatelessWidget {
             context,
             icon: Icons.download_for_offline_outlined,
             title: 'Save everything offline',
-            body: 'Also saves your orders and the whole product catalogue with images and documents, starting now. '
-                'Uses a lot of data and storage, so Wi-Fi is best.',
+            body: 'Also saves your orders and the whole product catalogue with images and documents, starting now, '
+                'and refreshes it once a day. Uses a lot of data and storage, so Wi-Fi is best.',
             value: 'all',
           ),
           const SizedBox(height: 10),

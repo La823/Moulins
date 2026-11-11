@@ -68,7 +68,7 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
         setState(() {
           _presentations = all.where((p) => p.doctorId == _doctor.id).toList();
           // keep this doctor's decks on the phone so they play offline
-          if (OfflineSync.smart) PresentationDownloads.keepDownloaded(_presentations, _presentationService.getPresentation);
+          if (OfflineSync.smartNow) PresentationDownloads.keepDownloaded(_presentations, _presentationService.getPresentation);
           _loadingPresentations = false;
         });
       }
@@ -178,7 +178,7 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
       final products = await _service.getDoctorProducts(widget.doctor.id);
       setState(() { _assigned = products; _loading = false; });
       // this doctor's products, in full, on the phone
-      if (OfflineSync.smart) DoctorService.saveProductsForOffline(products.map((p) => p.productId));
+      if (OfflineSync.smartNow) DoctorService.saveProductsForOffline(products.map((p) => p.productId));
     } catch (_) {
       setState(() => _loading = false);
     }

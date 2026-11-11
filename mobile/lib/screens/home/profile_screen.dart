@@ -221,6 +221,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _divider(),
                 ],
                 if (user?.role == 'partner') ...[
+                  _menuItem(Icons.receipt_long_outlined, 'My Bills', () => context.push('/my-bills')),
+                  _divider(),
                   _menuItem(Icons.person_outlined, 'My Doctors', () => context.go('/doctors')),
                   _divider(),
                 ],

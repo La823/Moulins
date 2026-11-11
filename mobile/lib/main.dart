@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'providers/auth_provider.dart';
@@ -10,6 +11,9 @@ import 'providers/notification_provider.dart';
 import 'services/local_notifications_service.dart';
 import 'services/presentation_downloads.dart';
 import 'services/notification_links.dart';
+import 'screens/bills/my_bills_screen.dart';
+import 'services/offline_background.dart';
+import 'services/offline_cache.dart';
 import 'services/offline_sync.dart';
 import 'screens/home/offline_data_screen.dart';
 import 'widgets/offline_choice_sheet.dart';
@@ -65,6 +69,7 @@ void main() async {
   // so turning back and forth doesn't decode them again.
   PaintingBinding.instance.imageCache.maximumSizeBytes = 250 << 20;
   await OfflineSync.load();
+  await OfflineBackground.init(); // "Save everything" with the app closed
 
   try {
     await Firebase.initializeApp();
@@ -224,6 +229,7 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/team', builder: (_, __) => const TeamScreen()),
             // Retailers: a partner's shops, and their orders to the partner.
             GoRoute(path: '/retailers', builder: (_, __) => const RetailersScreen()),
+            GoRoute(path: '/my-bills', builder: (_, __) => const MyBillsScreen()),
             GoRoute(
               path: '/retailer-orders',
               builder: (_, __) => const RetailerOrdersScreen(),
@@ -348,7 +354,19 @@ class _NavItem {
 
 const _teal = Color(0xFF00A6A4);
 
-class _AppShellState extends ConsumerState<_AppShell> {
+class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserver {
+  // the daily "Save everything", when due, each time the app comes back
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // what the background job saved while the app was away
+    SharedPreferences.getInstance().then((p) => p.reload()).then((_) {
+      PresentationDownloads.changes.value++;
+      OfflineCache.forgetLoaded();
+      OfflineSync.runDailyIfDue();
+    });
+  }
+
   // Opens the page of a tapped notification (notification_links.dart) once
   // the app is up and logged in.
   void _openPendingLink() {
@@ -361,6 +379,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
   @override
   void dispose() {
     NotificationLinks.pending.removeListener(_openPendingLink);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -368,11 +387,14 @@ class _AppShellState extends ConsumerState<_AppShell> {
   void initState() {
     super.initState();
     NotificationLinks.pending.addListener(_openPendingLink);
+    WidgetsBinding.instance.addObserver(this);
     // a tap that launched the app was recorded before this frame existed
     WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingLink());
     // once, after login: how to keep data for offline use
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && ref.read(authProvider).user != null) OfflineChoice.askOnce(context);
+      if (mounted && ref.read(authProvider).user != null) {
+        OfflineChoice.askOnce(context).then((_) => OfflineSync.runDailyIfDue());
+      }
     });
     Future.microtask(() =>
         ref.read(authProvider.notifier).loadUser().catchError((_) {}));

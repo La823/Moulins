@@ -1,16 +1,18 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product.dart';
+import 'offline_owner.dart';
 
 /// Lightweight local fallback for browsing products with no connection.
 /// Keeps only what's needed to not dead-end the UI offline: the last
 /// successfully fetched default product list, and every individual product
-/// page the user has actually opened while online.
+/// page the user has actually opened while online. Kept per account
+/// (offline_owner.dart).
 class OfflineCache {
-  static const _listKey = 'cached_product_list';
-  static const _productPrefix = 'cached_product_';
-  static const _favoritesKey = 'cached_favorite_products';
-  static const _favoriteIdsKey = 'cached_favorite_ids';
+  static String get _listKey => OfflineOwner.key('cached_product_list');
+  static String _productKey(String id) => OfflineOwner.key('cached_product_$id');
+  static String get _favoritesKey => OfflineOwner.key('cached_favorite_products');
+  static String get _favoriteIdsKey => OfflineOwner.key('cached_favorite_ids');
 
   static Future<void> saveProductList(List<Product> products) async {
     final prefs = await SharedPreferences.getInstance();
@@ -32,17 +34,45 @@ class OfflineCache {
 
   static Future<void> saveProduct(Product product) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_productPrefix${product.id}', jsonEncode(product.toJson()));
+    await prefs.setString(_productKey(product.id), jsonEncode(product.toJson()));
+    _all = null;
   }
 
   static Future<void> removeProduct(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_productPrefix$id');
+    await prefs.remove(_productKey(id));
+    _all = null;
+  }
+
+  /// Every product page this account has saved (opened, listed, favourited
+  /// or saved with "Save everything"): the catalogue offline search uses.
+  // read once and kept, as offline search runs on every key press; cleared
+  // when a product is saved or removed, or the account changes
+  static List<Product>? _all;
+  static String? _allOwner;
+
+  /// Reads the saved products again next time (e.g. the background job
+  /// saved more while the app was away).
+  static void forgetLoaded() => _all = null;
+
+  static Future<List<Product>> loadAllProducts() async {
+    if (_all != null && _allOwner == OfflineOwner.id) return _all!;
+    final prefs = await SharedPreferences.getInstance();
+    final out = <Product>[];
+    for (final k in prefs.getKeys()) {
+      if (!k.startsWith('cached_product_') || k.startsWith('cached_product_list') || !OfflineOwner.owns(k)) continue;
+      try {
+        out.add(Product.fromJson(jsonDecode(prefs.getString(k) ?? '')));
+      } catch (_) {}
+    }
+    _all = out;
+    _allOwner = OfflineOwner.id;
+    return out;
   }
 
   static Future<Product?> loadProduct(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('$_productPrefix$id');
+    final raw = prefs.getString(_productKey(id));
     if (raw == null) return null;
     try {
       return Product.fromJson(jsonDecode(raw));
