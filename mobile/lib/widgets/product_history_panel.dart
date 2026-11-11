@@ -522,7 +522,8 @@ class _HistoryPanelState extends State<_HistoryPanel> {
                       children: _recentChildren(),
                     ),
                     _foldBox(
-                      'Purchases of these batches',
+                      // never sold to this party: the product's latest purchases instead
+                      h?['purchases_latest'] == true ? 'Latest purchases of this product' : 'Purchases of these batches',
                       icon: Icons.local_shipping_outlined,
                       count: purchases.length + earlier.length,
                       open: _buyOpen ?? true,

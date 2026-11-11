@@ -468,7 +468,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
 
           <section className="border border-amber-200 rounded-xl p-2.5">
             <h4 className="text-[11px] font-semibold text-amber-800 uppercase tracking-wide mb-2">
-              Purchases of these batches
+              {history?.purchases_latest ? "Latest purchases of this product" : "Purchases of these batches"}
             </h4>
             {lineBatch && !purchasesOf.has(lineBatch) && (
               <p className="text-[10px] text-gray-400 mb-1.5">No purchase found for {lineBatch}, the batch on this line.</p>

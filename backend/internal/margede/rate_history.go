@@ -55,6 +55,9 @@ type ProductRateHistory struct {
 	// Purchase bill lines (this financial year) of the batches in Points
 	// and of the batches picked on the order's lines (AddLineBatches).
 	Purchases []BatchPurchase `json:"purchases"`
+	// PurchasesLatest: none of those batches had a purchase bill, so
+	// Purchases holds the product's latest purchase bills instead.
+	PurchasesLatest bool `json:"purchases_latest,omitempty"`
 	// The batches picked on the order's lines, as Marg's stock knows them.
 	LineBatches []LineBatch `json:"line_batches,omitempty"`
 }
@@ -237,7 +240,57 @@ func GetRateHistory(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, 
 			h.Points = h.Points[:perProduct]
 		}
 	}
+	if err := addLatestPurchases(ctx, db, out, 5); err != nil {
+		return out, err
+	}
 	return out, nil
+}
+
+// addLatestPurchases gives each product with no purchase of its sold
+// batches (e.g. never sold to this partner) its latest n purchase bill
+// lines of any batch, so how it was bought always shows.
+func addLatestPurchases(ctx context.Context, db *pgxpool.Pool, out RateHistory, n int) error {
+	var ids []string
+	for id, h := range out.Products {
+		if len(h.Purchases) == 0 {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := db.Query(ctx, `
+		SELECT id, batch, bill_date, voucher, bill_no, name, qty, free, rate, mrp FROM (
+			SELECT p.id::text AS id, i.batch, b.bill_date, b.voucher, b.bill_no, lg.name,
+			       i.qty::float8 AS qty, i.free::float8 AS free, COALESCE(i.rate, 0)::float8 AS rate, i.mrp::float8 AS mrp,
+			       ROW_NUMBER() OVER (PARTITION BY p.id ORDER BY b.bill_date DESC, b.bill_no DESC) AS rn
+			FROM products p
+			JOIN marg_ede_bill_items i ON i.product_pid::text = p.marg_code
+			JOIN marg_ede_bills b ON b.voucher = i.voucher
+			LEFT JOIN LATERAL (
+				SELECT l.name FROM marg_ede_ledger l
+				WHERE l.party_code = b.party_code AND NOT l.is_deleted ORDER BY l.marg_id LIMIT 1
+			) lg ON TRUE
+			WHERE p.id::text = ANY($1::text[]) AND b.bill_type = 'P' AND i.line_kind = 'item'
+			  AND NOT i.is_deleted AND NOT b.is_deleted AND NOT b.is_cancelled
+		) x WHERE rn <= $2
+		ORDER BY bill_date DESC, bill_no DESC`, ids, n)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid string
+		var bp BatchPurchase
+		if err := rows.Scan(&pid, &bp.Batch, &bp.Date, &bp.Voucher, &bp.BillNo, &bp.Supplier,
+			&bp.Qty, &bp.Free, &bp.Rate, &bp.MRP); err != nil {
+			return err
+		}
+		h := out.Products[pid]
+		h.Purchases = append(h.Purchases, bp)
+		h.PurchasesLatest = true
+	}
+	return rows.Err()
 }
 
 // addBatchPurchases fills each product's Purchases with the purchase bill
@@ -274,6 +327,11 @@ func AddLineBatches(ctx context.Context, db *pgxpool.Pool, out RateHistory, want
 				b = *p.Batch
 			}
 			have[id+"|"+b] = out.PartyCode != nil
+		}
+		for _, p := range h.Purchases { // e.g. the latest purchases (addLatestPurchases)
+			if p.Batch != nil {
+				have[id+"|"+*p.Batch] = true
+			}
 		}
 	}
 	var ids, batches, newIDs, newBatches []string
