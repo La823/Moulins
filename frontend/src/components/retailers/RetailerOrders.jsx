@@ -39,6 +39,24 @@ export function StatusBadge({ status }) {
 const qtyLabel = (it) => `${it.quantity} ${it.unit || "Unit"}${it.quantity === 1 ? "" : "s"}`;
 const perUnit = (it) => `per ${(it.unit || "unit").toLowerCase()}`;
 
+// who placed an order, for the partner: a doctor by name and clinic, a
+// retailer by shop
+const buyerName = (o) =>
+  o.buyer_kind === "doctor"
+    ? `${/^dr\.?\s/i.test(o.retailer_name || "") ? "" : "Dr. "}${o.retailer_name}${o.shop_name ? ` · ${o.shop_name}` : ""}`
+    : o.shop_name || o.retailer_name;
+
+function BuyerTag({ kind }) {
+  const doctor = kind === "doctor";
+  return (
+    <span
+      className={`text-[11px] font-semibold px-1.5 py-0.5 rounded mr-1.5 ${doctor ? "bg-indigo-50 text-indigo-700" : "bg-teal-50 text-teal-800"}`}
+    >
+      {doctor ? "Doctor" : "Retailer"}
+    </span>
+  );
+}
+
 const rs = (n) => `Rs. ${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const when = (d) =>
   new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -47,6 +65,7 @@ const when = (d) =>
 export function RetailerOrderList({ incoming, base }) {
   const [orders, setOrders] = useState(null);
   const [status, setStatus] = useState("");
+  const [buyer, setBuyer] = useState(""); // the partner's filter: doctor, retailer or everyone
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -60,8 +79,23 @@ export function RetailerOrderList({ incoming, base }) {
   }, [incoming, status]);
 
   const filters = { "": "All", pending: "New", accepted: "Accepted", dispatched: "Dispatched", delivered: "Delivered" };
+  const shown = orders && orders.filter((o) => !buyer || (o.buyer_kind || "retailer") === buyer);
   return (
     <div>
+      {incoming && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {Object.entries({ "": "Everyone", doctor: "Doctors", retailer: "Retailers" }).map(([k, v]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setBuyer(k)}
+              className={`text-xs px-3 py-1 rounded-full border ${buyer === k ? "bg-teal-600 text-white border-teal-600" : "border-gray-300 text-gray-600 hover:border-gray-500"}`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 mb-5">
         {Object.entries(filters).map(([k, v]) => (
           <button
@@ -77,18 +111,25 @@ export function RetailerOrderList({ incoming, base }) {
       {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
       {orders === null ? (
         <p className="text-sm text-gray-400">Loading…</p>
-      ) : orders.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="text-sm text-gray-500">
-          {incoming ? "No orders from your retailers yet." : "You have not placed any orders yet. Add products to your cart to order from your partner."}
+          {incoming ? "No orders from your doctors or retailers yet." : "You have not placed any orders yet. Add products to your cart to order from your partner."}
         </p>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-          {orders.map((o) => (
+          {shown.map((o) => (
             <Link key={o.id} href={`${base}/${o.id}`} className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50">
               <div className="w-20 font-semibold text-gray-900">RO-{o.order_no}</div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-gray-900 truncate">
-                  {incoming ? o.shop_name || o.retailer_name : `To ${o.partner_name}`}
+                  {incoming ? (
+                    <>
+                      <BuyerTag kind={o.buyer_kind} />
+                      {buyerName(o)}
+                    </>
+                  ) : (
+                    `To ${o.partner_name}`
+                  )}
                 </div>
                 <div className="text-xs text-gray-500">
                   {o.item_count} product{o.item_count === 1 ? "" : "s"} · {when(o.created_at)}
@@ -170,7 +211,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
     act("accept", { rates: out, note: note.trim() }, "The order has been accepted.");
   };
   const reject = () => {
-    const reason = window.prompt("Reason for declining (shown to the retailer):", "");
+    const reason = window.prompt("Reason for declining (shown to the customer):", "");
     if (reason === null) return;
     act("reject", { note: reason.trim() }, "The order has been declined.");
   };
@@ -197,7 +238,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
       </div>
       <p className="text-sm text-gray-600">
         {incoming
-          ? `${order.shop_name ? `${order.shop_name} · ` : ""}${order.retailer_name} · ${order.retailer_phone}`
+          ? `${order.buyer_kind === "doctor" ? "Doctor" : "Retailer"}: ${buyerName(order)} · ${order.retailer_phone}`
           : `To ${order.partner_name}`}
       </p>
       <p className="text-xs text-gray-400 mb-5">Placed {when(order.created_at)}</p>
@@ -207,7 +248,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
 
       {(order.notes || order.partner_note) && (
         <div className="mb-5 space-y-1 text-sm text-gray-700">
-          {order.notes && <p>Retailer&apos;s note: {order.notes}</p>}
+          {order.notes && <p>{order.buyer_kind === "doctor" ? "Doctor" : "Retailer"}&apos;s note: {order.notes}</p>}
           {order.partner_note && <p>Partner&apos;s note: {order.partner_note}</p>}
         </div>
       )}
@@ -266,7 +307,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Note for the retailer (optional)"
+            placeholder="Note for the customer (optional)"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
           />
           <div className="flex gap-2">

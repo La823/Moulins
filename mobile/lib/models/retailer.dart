@@ -119,13 +119,14 @@ class RetailerOrderEvent {
       );
 }
 
-/// A retailer's order to their partner.
+/// A retailer's or a doctor's order to their partner.
 class RetailerOrder {
   final String id;
   final int orderNo;
   final String retailerName;
   final String retailerPhone;
-  final String? shopName;
+  final String? shopName; // a retailer's shop, or a doctor's clinic
+  final String buyerKind; // retailer | doctor
   final String partnerName;
   final String status; // pending, accepted, rejected, cancelled, dispatched, delivered
   final String? notes;
@@ -143,6 +144,7 @@ class RetailerOrder {
     required this.retailerName,
     required this.retailerPhone,
     this.shopName,
+    this.buyerKind = 'retailer',
     required this.partnerName,
     required this.status,
     this.notes,
@@ -156,7 +158,12 @@ class RetailerOrder {
   });
 
   String get number => 'RO-$orderNo';
-  String get retailerDisplay => (shopName != null && shopName!.isNotEmpty) ? shopName! : retailerName;
+  bool get fromDoctor => buyerKind == 'doctor';
+  // a doctor by name (and clinic); a retailer by shop
+  String get retailerDisplay => fromDoctor
+      ? '${RegExp(r'^dr\.?\s', caseSensitive: false).hasMatch(retailerName) ? '' : 'Dr. '}$retailerName'
+          '${shopName != null && shopName!.isNotEmpty ? ' · $shopName' : ''}'
+      : (shopName != null && shopName!.isNotEmpty) ? shopName! : retailerName;
 
   factory RetailerOrder.fromJson(Map<String, dynamic> j) => RetailerOrder(
         id: j['id'] ?? '',
@@ -164,6 +171,7 @@ class RetailerOrder {
         retailerName: j['retailer_name'] ?? '',
         retailerPhone: j['retailer_phone'] ?? '',
         shopName: j['shop_name'],
+        buyerKind: j['buyer_kind'] ?? 'retailer',
         partnerName: j['partner_name'] ?? '',
         status: j['status'] ?? 'pending',
         notes: j['notes'],

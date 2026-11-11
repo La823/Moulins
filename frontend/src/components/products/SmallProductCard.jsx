@@ -14,7 +14,7 @@ export default function SmallProductCard({ product: p }) {
   const router = useRouter();
   const { items } = useCart();
   const { user } = useAuth();
-  const canOrder = user?.role !== "doctor";
+  const canOrder = true; // everyone, doctors too (they order from their partner)
   const images = visibleImages(p.images);
   const inCart = items.some((i) => i.product.id === p.id);
 

@@ -32,8 +32,10 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
   List<RetailerOrder>? _orders;
   String? _error;
   String _status = '';
+  String _buyer = ''; // the partner's filter: '' everyone, doctor, retailer
 
-  bool get _isRetailer => ref.read(authProvider).user?.role == 'retailer';
+  // a retailer or doctor sees their own orders; the partner, their customers'
+  bool get _isRetailer => ref.read(authProvider).user?.buysFromPartner ?? false;
 
   @override
   void initState() {
@@ -60,8 +62,8 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isRetailer = ref.watch(authProvider).user?.role == 'retailer';
-    final list = _orders;
+    final isRetailer = ref.watch(authProvider).user?.buysFromPartner ?? false;
+    final list = _orders?.where((o) => _buyer.isEmpty || o.buyerKind == _buyer).toList();
     final fmt = DateFormat('d MMM yyyy, h:mm a');
     final filters = {
       '': 'All',
@@ -77,7 +79,7 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
-        title: Text(isRetailer ? 'My Orders' : 'Retailer Orders', style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(isRetailer ? 'My Orders' : 'Customer Orders', style: const TextStyle(fontWeight: FontWeight.w600)),
         actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: Column(
@@ -103,6 +105,27 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
                   .toList(),
             ),
           ),
+          if (!isRetailer)
+            SizedBox(
+              height: 46,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+                children: {'': 'Everyone', 'doctor': 'Doctors', 'retailer': 'Retailers'}
+                    .entries
+                    .map((f) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(f.value),
+                            selected: _buyer == f.key,
+                            selectedColor: _teal.withAlpha(40),
+                            visualDensity: VisualDensity.compact,
+                            onSelected: (_) => setState(() => _buyer = f.key),
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ),
           Expanded(
             child: list == null
                 ? const Center(child: CircularProgressIndicator(color: _teal))
@@ -123,7 +146,7 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
                               Text(
                                 isRetailer
                                     ? 'You have not placed any orders yet. Add products to your cart to order from your partner.'
-                                    : 'No orders from your retailers yet.',
+                                    : 'No orders from your doctors or retailers yet.',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(color: Colors.grey, fontSize: 14),
                               ),
@@ -154,8 +177,26 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
                                     ),
                                   ]),
                                   const SizedBox(height: 6),
-                                  Text(isRetailer ? 'To ${o.partnerName}' : o.retailerDisplay,
-                                      style: TextStyle(fontSize: 13.5, color: Colors.grey.shade800)),
+                                  Row(children: [
+                                    if (!isRetailer) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(
+                                            color: (o.fromDoctor ? Colors.indigo : Colors.teal).withAlpha(22),
+                                            borderRadius: BorderRadius.circular(5)),
+                                        child: Text(o.fromDoctor ? 'Doctor' : 'Retailer',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: o.fromDoctor ? Colors.indigo.shade700 : Colors.teal.shade800)),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Expanded(
+                                      child: Text(isRetailer ? 'To ${o.partnerName}' : o.retailerDisplay,
+                                          style: TextStyle(fontSize: 13.5, color: Colors.grey.shade800)),
+                                    ),
+                                  ]),
                                   const SizedBox(height: 4),
                                   Text(
                                     '${o.itemCount} product${o.itemCount == 1 ? '' : 's'} · ${fmt.format(o.createdAt.toLocal())}'

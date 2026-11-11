@@ -148,7 +148,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     final cartIdx = cart.indexWhere((e) => e.product.id == p.id);
     final inCart = cartIdx >= 0;
     final cartQty = inCart ? cart[cartIdx].quantity : 0;
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
 
     return Scaffold(
       backgroundColor: Colors.white,

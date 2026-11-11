@@ -522,7 +522,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 			if activeOnly && middleware.IsVisitor(r) {
 				forVisitors(cached.Products)
 			}
-			if activeOnly && middleware.IsRetailer(r) {
+			if activeOnly && middleware.BuysFromPartner(r) {
 				forRetailers(cached.Products)
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -573,7 +573,7 @@ func ListProductsHandler(db *pgxpool.Pool, activeOnly bool, rdb ...*cache.Client
 		if activeOnly && middleware.IsVisitor(r) {
 			forVisitors(result.Products) // after caching: the cache is shared
 		}
-		if activeOnly && middleware.IsRetailer(r) {
+		if activeOnly && middleware.BuysFromPartner(r) {
 			forRetailers(result.Products) // after caching: shared with their partner
 		}
 
@@ -627,7 +627,7 @@ func GetProductHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		if middleware.IsVisitor(r) {
 			forVisitor(p) // p is this request's own copy, fresh or decoded from the cache
 		}
-		if middleware.IsRetailer(r) {
+		if middleware.BuysFromPartner(r) {
 			forRetailer(p)
 		}
 

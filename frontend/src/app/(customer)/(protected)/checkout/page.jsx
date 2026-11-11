@@ -16,9 +16,9 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, itemCount, clearCartLocal } = useCart();
   const { user } = useAuth();
-  // A retailer orders from their partner, not Moulins: no transport or
-  // address, and the order goes to /retailer-orders.
-  const isRetailer = user?.role === "retailer";
+  // A retailer or a doctor orders from their partner, not Moulins: no
+  // transport or address, and the order goes to /retailer-orders.
+  const isRetailer = user?.role === "retailer" || user?.role === "doctor";
   const [notes, setNotes] = useState("");
   const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState("courier");
@@ -63,7 +63,8 @@ export default function CheckoutPage() {
         });
         clearCartLocal();
         playSound("order");
-        setPlaced({ href: `/retailer-panel/orders/${res.id}`, message: "Your order has been sent to your partner." });
+        const panel = user?.role === "doctor" ? "/doctor-panel" : "/retailer-panel";
+        setPlaced({ href: `${panel}/orders/${res.id}`, message: "Your order has been sent to your partner." });
         return;
       }
       const res = await apiFetch("/orders", {
@@ -91,19 +92,6 @@ export default function CheckoutPage() {
 
   if (placed) return <OrderPlacedOverlay message={placed.message} onDone={goToOrder} />;
 
-  if (user?.role === "doctor") {
-    return (
-      <div className="max-w-2xl mx-auto px-8 py-20 text-center">
-        <p className="text-gray-400 text-sm">Ordering isn&apos;t available on this account.</p>
-        <Link
-          href="/products"
-          className="inline-block mt-4 text-sm text-red-600 hover:text-red-700 transition-colors"
-        >
-          Browse products
-        </Link>
-      </div>
-    );
-  }
 
   if (items.length === 0) {
     return (

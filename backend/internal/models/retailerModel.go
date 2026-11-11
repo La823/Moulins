@@ -46,6 +46,33 @@ var ErrNotYourRetailer = errors.New("retailer not found")
 
 // RetailerPartner is the partner a retailer orders from; ok is false for a
 // removed or unknown retailer.
+// RoleDoctor is a doctor's own login (072_doctor_user_link.sql). Like a
+// retailer, a doctor sees their partner's catalogue at MRP and orders from
+// the partner (retailer_orders, whose retailer_id is the buyer's login).
+const RoleDoctor = "doctor"
+
+// BuysFromPartner: the role orders from a partner (retailer_orders) rather
+// than from Moulins, and sees MRP only.
+func BuysFromPartner(role string) bool { return role == RoleRetailer || role == RoleDoctor }
+
+// BuyerPartner is the partner a retailer or doctor login orders from; ok is
+// false when it isn't linked to one (removed, or not a buyer).
+func BuyerPartner(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, role string) (uuid.UUID, bool, error) {
+	switch role {
+	case RoleRetailer:
+		return RetailerPartner(ctx, db, userID)
+	case RoleDoctor:
+		var partner uuid.UUID
+		err := db.QueryRow(ctx,
+			`SELECT partner_id FROM doctors WHERE user_id = $1 AND NOT is_deleted`, userID).Scan(&partner)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, false, nil
+		}
+		return partner, err == nil, err
+	}
+	return uuid.Nil, false, nil
+}
+
 func RetailerPartner(ctx context.Context, db *pgxpool.Pool, retailerID uuid.UUID) (uuid.UUID, bool, error) {
 	var partner uuid.UUID
 	err := db.QueryRow(ctx,

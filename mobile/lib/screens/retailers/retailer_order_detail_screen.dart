@@ -226,7 +226,7 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
 
   @override
   Widget build(BuildContext context) {
-    final isRetailer = ref.watch(authProvider).user?.role == 'retailer';
+    final isRetailer = (ref.watch(authProvider).user?.buysFromPartner ?? false);
     final o = _order;
     final fmt = DateFormat('d MMM yyyy, h:mm a');
     return Scaffold(

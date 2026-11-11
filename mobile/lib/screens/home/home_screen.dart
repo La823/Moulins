@@ -27,7 +27,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Doctors browse the catalogue but cannot order, so they get no cart —
     // the same rule the products screen applies.
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
 
     return Scaffold(
       backgroundColor: Colors.white,

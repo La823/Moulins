@@ -32,7 +32,7 @@ export default function ProductListRow({ product: p, basePath = "/products" }) {
   const router = useRouter();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { user } = useAuth();
-  const canOrder = user?.role !== "doctor";
+  const canOrder = true; // everyone, doctors too (they order from their partner)
   const favorite = isFavorite(p.id);
   const href = p.is_special ? `/special/${p.id}` : `${basePath}/${p.id}`;
   const mrp = isVisitor(user) ? null : p.mrp ?? p.price;

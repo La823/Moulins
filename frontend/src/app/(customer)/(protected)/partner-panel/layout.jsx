@@ -63,7 +63,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    label: "Retailer Orders",
+    label: "Customer Orders",
     href: "/partner-panel/retailer-orders",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

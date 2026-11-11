@@ -406,8 +406,8 @@ export default function CustomerNavbar() {
     navItems = [...navItems, { id: "retailer-panel", label: "My Orders", href: "/retailer-panel" }];
   }
   // Team members are sub-accounts for field work, not billing — no cart.
-  // Doctors can browse the catalog but never order — no cart either.
-  const showCart = !!user && user.role !== "team_member" && user.role !== "doctor";
+  // Doctors and retailers order from their partner through the cart.
+  const showCart = !!user && user.role !== "team_member";
 
   const isDropdownOpen =
     activeMenu && activeMenu !== "search" && dropdownContent[activeMenu];

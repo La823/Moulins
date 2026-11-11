@@ -140,7 +140,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
-  bool get _isRetailer => ref.read(authProvider).user?.role == 'retailer';
+  // retailers and doctors order from their partner
+  bool get _isRetailer => ref.read(authProvider).user?.buysFromPartner ?? false;
 
   // A retailer's cart goes to their partner (retailer_service.dart), not Moulins.
   Future<void> _placeRetailerOrder() async {

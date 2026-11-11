@@ -43,7 +43,7 @@ func ListRecentlyViewedHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		loadProductRelationsBatch(r, db, recent)
-		if middleware.IsRetailer(r) {
+		if middleware.BuysFromPartner(r) {
 			forRetailers(recent)
 		}
 

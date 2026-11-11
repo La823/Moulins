@@ -28,7 +28,7 @@ func ListFavoritesHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		loadProductRelationsBatch(r, db, favs)
-		if middleware.IsRetailer(r) {
+		if middleware.BuysFromPartner(r) {
 			forRetailers(favs)
 		}
 

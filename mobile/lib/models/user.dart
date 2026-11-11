@@ -37,6 +37,10 @@ class User {
 
   bool get isSpecial => customerType == 'special';
 
+  /// Retailers and doctors order from their partner (MRP only, single
+  /// packs), not from Moulins.
+  bool get buysFromPartner => role == 'retailer' || role == 'doctor';
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'phone_number': phoneNumber,

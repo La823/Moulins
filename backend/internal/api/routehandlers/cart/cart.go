@@ -28,9 +28,9 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not fetch cart", http.StatusInternalServerError)
 			return
 		}
-		// a retailer sees MRP only, not Moulins' price to their partner, and
+		// a retailer or doctor sees MRP only, not Moulins' price to their partner, and
 		// orders single packs with no minimum (see products.forRetailer)
-		if middleware.IsRetailer(r) {
+		if middleware.BuysFromPartner(r) {
 			for i := range items {
 				it := &items[i]
 				mrp := it.Mrp

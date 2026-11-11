@@ -419,8 +419,8 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
     // meetings differently) — team members see their owning partner's
     // doctors, resolved server-side. Not shown to admin/employee logins.
     final isPartner = user.role == 'partner' || user.role == 'team_member';
-    // Doctor logins are catalog-browsing only — no meetings/doctor-CRM
-    // tracking, no order placement.
+    // Doctor logins browse their partner's catalogue and order from the
+    // partner like retailers; no meetings or doctor-CRM tracking.
     final isDoctor = user.role == 'doctor';
     // Retailers order from their partner, not Moulins: their Orders tab is
     // their orders to the partner, and there are no meetings.
@@ -438,7 +438,7 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
       // staff see orders only with an orders permission
       if (!isDoctor && !isRetailer && (!isStaff || canSeeOrders))
         const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
-      if (isRetailer)
+      if (isRetailer || isDoctor)
         const _NavItem(route: '/retailer-orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'My Orders'),
       if (user.role == 'admin' || user.role == 'employee')
         const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),

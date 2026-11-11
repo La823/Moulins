@@ -62,7 +62,7 @@ class ProductListRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = product;
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
     final composition = _composition(p);
     final mrp = p.mrp ?? p.price;
     final mrpText = mrp > 0 ? '₹${mrp.toStringAsFixed(2)}' : '—';

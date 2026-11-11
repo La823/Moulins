@@ -26,7 +26,7 @@ import (
 // Shown to people as they are.
 const (
 	msgPartnersOnly   = "Only partner accounts can manage retailers."
-	msgRetailersOnly  = "Only retailer accounts can place orders with a partner."
+	msgRetailersOnly  = "Only retailer and doctor accounts can place orders with a partner."
 	msgBadRequest     = "The request could not be read. Please update the app and try again."
 	msgNameRequired   = "Please enter the retailer's name."
 	msgPhoneInvalid   = "Please enter a valid 10-digit mobile number."
@@ -37,7 +37,7 @@ const (
 	msgNoItems        = "Please add at least one product to the order."
 	msgBadQuantity    = "Each product must have a quantity of at least 1."
 	msgProductHidden  = "One of the products is no longer available. Please remove it from your cart and try again."
-	msgNoPartner      = "Your retailer account is not linked to a partner. Please contact your partner."
+	msgNoPartner      = "Your account is not linked to a partner. Please contact your partner."
 	msgRatesRequired  = "Please enter a rate for every product in the order."
 	msgAlreadyForward = "This order has already been sent to Moulins."
 	msgServerError    = "This could not be completed at this time. Please try again in a few minutes."
@@ -361,7 +361,7 @@ func DeleteDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 func PlaceOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		retailer, role := me(r)
-		if role != models.RoleRetailer {
+		if !models.BuysFromPartner(role) {
 			http.Error(w, msgRetailersOnly, http.StatusForbidden)
 			return
 		}
@@ -386,7 +386,7 @@ func PlaceOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if body.Notes != nil && strings.TrimSpace(*body.Notes) == "" {
 			body.Notes = nil
 		}
-		partner, ok, err := models.RetailerPartner(r.Context(), db, retailer)
+		partner, ok, err := models.BuyerPartner(r.Context(), db, retailer, role)
 		if err != nil {
 			log.Printf("place retailer order: partner: %v", err)
 			http.Error(w, msgServerError, http.StatusInternalServerError)
@@ -415,7 +415,7 @@ func PlaceOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 func ListMineHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		retailer, role := me(r)
-		if role != models.RoleRetailer {
+		if !models.BuysFromPartner(role) {
 			http.Error(w, msgRetailersOnly, http.StatusForbidden)
 			return
 		}
@@ -481,7 +481,7 @@ func orderErr(w http.ResponseWriter, err error, what string) {
 func CancelHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		retailer, role := me(r)
-		if role != models.RoleRetailer {
+		if !models.BuysFromPartner(role) {
 			http.Error(w, msgRetailersOnly, http.StatusForbidden)
 			return
 		}
@@ -617,7 +617,15 @@ func notifyPartnerNewOrder(db *pgxpool.Pool, orderID uuid.UUID, no int64, partne
 	}
 	link := fmt.Sprintf("/partner-panel/retailer-orders/%s", orderID)
 	body := fmt.Sprintf("%s placed order RO-%d with %d product%s.", who, no, items, plural)
-	if err := services.SendDirectNotificationOn(ctx, db, utils.OrderPush, partner, "New order from a retailer", body, &link); err != nil {
+	title := "New order from a retailer"
+	if o.BuyerKind == "doctor" {
+		name := o.RetailerName
+		if l := strings.ToLower(name); !strings.HasPrefix(l, "dr ") && !strings.HasPrefix(l, "dr.") {
+			name = "Dr. " + name
+		}
+		title, body = "New order from a doctor", fmt.Sprintf("%s placed order RO-%d with %d product%s.", name, no, items, plural)
+	}
+	if err := services.SendDirectNotificationOn(ctx, db, utils.OrderPush, partner, title, body, &link); err != nil {
 		log.Printf("retailer order notify partner: %v", err)
 	}
 }
@@ -634,14 +642,20 @@ func notifyRetailer(db *pgxpool.Pool, orderID uuid.UUID, status string) {
 	var retailer uuid.UUID
 	var no int64
 	var partnerName string
+	var isDoctor bool
 	err := db.QueryRow(ctx, `
-		SELECT o.retailer_id, o.order_no, COALESCE(u.username, u.phone_number)
-		FROM retailer_orders o JOIN users u ON u.id = o.partner_id WHERE o.id = $1`, orderID).Scan(&retailer, &no, &partnerName)
+		SELECT o.retailer_id, o.order_no, COALESCE(u.username, u.phone_number),
+		       EXISTS (SELECT 1 FROM doctors d WHERE d.user_id = o.retailer_id)
+		FROM retailer_orders o JOIN users u ON u.id = o.partner_id WHERE o.id = $1`, orderID).Scan(&retailer, &no, &partnerName, &isDoctor)
 	if err != nil {
 		log.Printf("retailer status notify: %v", err)
 		return
 	}
+	// the buyer's own order page: a doctor's or a retailer's panel
 	link := fmt.Sprintf("/retailer-panel/orders/%s", orderID)
+	if isDoctor {
+		link = fmt.Sprintf("/doctor-panel/orders/%s", orderID)
+	}
 	body := fmt.Sprintf("Your order RO-%d %s by %s.", no, statusWords[status], partnerName)
 	if err := services.SendDirectNotification(ctx, db, retailer, "Order update", body, &link); err != nil {
 		log.Printf("retailer status notify: %v", err)

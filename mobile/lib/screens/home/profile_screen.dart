@@ -212,7 +212,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 // a retailer's orders go to their partner (and they have no
                 // meetings, requests, chat or learning)
-                if (user?.role == 'retailer') ...[
+                if (user?.buysFromPartner ?? false) ...[
                   _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/retailer-orders')),
                   _divider(),
                 ],

@@ -3,12 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/cart_service.dart';
-import 'auth_provider.dart';
 
 class CartNotifier extends StateNotifier<List<CartItem>> {
-  CartNotifier(this._ref) : super([]);
+  CartNotifier() : super([]);
 
-  final Ref _ref;
   final _service = CartService();
 
   // Called once on app start (and again after login) — pulls the
@@ -23,10 +21,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     }
   }
 
-  // Doctors can browse the catalog but never order — block at the source
-  // so every add-to-cart entry point across the app is covered.
   void add(Product product) {
-    if (_ref.read(authProvider).user?.role == 'doctor') return;
     final step = product.moq > 0 ? product.moq : 1;
     final idx = state.indexWhere((e) => e.product.id == product.id);
     final quantity = idx >= 0 ? state[idx].quantity + step : step;
@@ -84,5 +79,5 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
 }
 
 final cartProvider = StateNotifierProvider<CartNotifier, List<CartItem>>(
-  (ref) => CartNotifier(ref),
+  (ref) => CartNotifier(),
 );

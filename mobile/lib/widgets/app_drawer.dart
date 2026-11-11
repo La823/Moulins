@@ -5,8 +5,8 @@ import '../data/divisions.dart';
 import '../providers/auth_provider.dart';
 
 /// White, with the website's red (Tailwind red-600) for the text and icons.
-const _red = Color(0xFFDC2626);
-const _redSoft = Color(0xFFFEF2F2); // red-50, behind the open divisions list
+const _teal = Color(0xFF00A6A4); // the app's teal, as everywhere else
+const _tealSoft = Color(0xFFE6F6F6); // a light teal, behind the open divisions list
 const _white = Colors.white;
 
 /// Shared hamburger-menu drawer: the user's own sections, learning, and the
@@ -23,8 +23,8 @@ class AppDrawer extends ConsumerWidget {
     final role = user?.role;
 
     Widget item(IconData icon, String label, String route) => ListTile(
-          leading: Icon(icon, color: _red),
-          title: Text(label, style: const TextStyle(color: _red, fontWeight: FontWeight.w500)),
+          leading: Icon(icon, color: _teal),
+          title: Text(label, style: const TextStyle(color: _teal, fontWeight: FontWeight.w500)),
           visualDensity: VisualDensity.compact,
           onTap: () {
             Navigator.of(context).pop();
@@ -41,7 +41,7 @@ class AppDrawer extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Moulins', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _red)),
+                const Text('Moulins', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _teal)),
                 if (user != null) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -66,7 +66,7 @@ class AppDrawer extends ConsumerWidget {
             if (role == 'partner') ...[
               // the shops the partner supplies, and their orders
               item(Icons.storefront_outlined, 'My Retailers', '/retailers'),
-              item(Icons.move_to_inbox_outlined, 'Retailer Orders', '/retailer-orders'),
+              item(Icons.move_to_inbox_outlined, 'Customer Orders', '/retailer-orders'),
               item(Icons.groups_outlined, 'My Team', '/team'),
               // their invoices from Marg (final bills, not app orders)
               item(Icons.receipt_long_outlined, 'My Bills', '/my-bills'),
@@ -105,14 +105,14 @@ class _DivisionsSectionState extends State<_DivisionsSection> {
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ListTile(
-        leading: const Icon(Icons.category_outlined, color: _red),
-        title: const Text('Divisions', style: TextStyle(color: _red, fontWeight: FontWeight.w500)),
+        leading: const Icon(Icons.category_outlined, color: _teal),
+        title: const Text('Divisions', style: TextStyle(color: _teal, fontWeight: FontWeight.w500)),
         visualDensity: VisualDensity.compact,
         onTap: () => setState(() => _open = !_open),
         trailing: Container(
           width: 30,
           height: 30,
-          decoration: BoxDecoration(color: _red, borderRadius: BorderRadius.circular(15)),
+          decoration: BoxDecoration(color: _teal, borderRadius: BorderRadius.circular(15)),
           child: AnimatedRotation(
             turns: _open ? 0.125 : 0, // + turns into ×
             duration: const Duration(milliseconds: 200),
@@ -130,7 +130,7 @@ class _DivisionsSectionState extends State<_DivisionsSection> {
                 width: double.infinity,
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                decoration: BoxDecoration(color: _redSoft, borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: _tealSoft, borderRadius: BorderRadius.circular(12)),
                 child: Column(
                   children: [
                     for (final d in kDivisions)
@@ -142,10 +142,10 @@ class _DivisionsSectionState extends State<_DivisionsSection> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                           child: Row(children: [
-                            Icon(Icons.chevron_right, size: 16, color: _red.withValues(alpha: 0.7)),
+                            Icon(Icons.chevron_right, size: 16, color: _teal.withValues(alpha: 0.7)),
                             const SizedBox(width: 6),
                             Expanded(
-                              child: Text(d.heroLabel, style: const TextStyle(color: _red, fontSize: 13.5)),
+                              child: Text(d.heroLabel, style: const TextStyle(color: _teal, fontSize: 13.5)),
                             ),
                           ]),
                         ),

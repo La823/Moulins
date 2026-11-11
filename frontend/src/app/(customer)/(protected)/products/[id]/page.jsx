@@ -20,7 +20,7 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const { addToCart, items, itemCount } = useCart();
   const { user } = useAuth();
-  const canOrder = user?.role !== "doctor";
+  const canOrder = true; // everyone, doctors too (they order from their partner)
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);

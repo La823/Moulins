@@ -34,6 +34,7 @@ class NotificationLinks {
         if (id(1) == 'retailers') return '/retailers';
         return '/dashboard';
       case 'retailer-panel':
+      case 'doctor-panel':
         if (id(1) == 'orders' && id(2) != null) return '/retailer-orders/${id(2)}';
         return '/retailer-orders';
       // staff: a new order opens it on the staff order page; other panel

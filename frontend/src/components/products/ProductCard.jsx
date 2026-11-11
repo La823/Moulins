@@ -16,7 +16,7 @@ export default function ProductCard({ product: p, basePath = "/products" }) {
   const { items } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { user } = useAuth();
-  const canOrder = user?.role !== "doctor";
+  const canOrder = true; // everyone, doctors too (they order from their partner)
   const favorite = isFavorite(p.id);
   const images = visibleImages(p.images);
   const inCart = items.some((i) => i.product.id === p.id);

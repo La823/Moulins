@@ -56,7 +56,7 @@ class ProductCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isFavorite = ref.watch(favoritesProvider).contains(product.id);
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
     final cartItems = ref.watch(cartProvider);
     final cartIdx = cartItems.indexWhere((e) => e.product.id == product.id);
     final inCartQty = cartIdx >= 0 ? cartItems[cartIdx].quantity : 0;

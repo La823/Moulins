@@ -28,6 +28,8 @@ export default function DashboardPage() {
   const [requestsList, setRequestsList] = useState([]);
   const [ledger, setLedger] = useState(null);
   const [balance, setBalance] = useState(null);
+  // partner only: their bills, payments, retailers and team
+  const [partnerData, setPartnerData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Ledger/balance are partner-only — team members never see them, so skip
@@ -52,6 +54,22 @@ export default function DashboardPage() {
       setLoading(false);
     });
   }, [isTeamMember]);
+
+  useEffect(() => {
+    if (!user || isTeamMember) return;
+    const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
+    const list = (x) => (Array.isArray(x) ? x : null);
+    Promise.all([
+      apiFetch("/my/marg-bills").catch(() => null),
+      apiFetch("/payments").then(list).catch(() => null),
+      apiFetch("/retailers").then(list).catch(() => null),
+      apiFetch("/retailer-orders/incoming").then(list).catch(() => null),
+      apiFetch("/team").then(list).catch(() => null),
+      apiFetch(`/team/attendance?date=${today}`).then(list).catch(() => null),
+    ]).then(([bills, payments, retailers, retailerOrders, team, attendance]) =>
+      setPartnerData({ bills, payments, retailers, retailerOrders, team, attendance }),
+    );
+  }, [user, isTeamMember]);
 
   const upcomingMeetings = meetings
     .filter((m) => m.status === "upcoming")
@@ -103,6 +121,8 @@ export default function DashboardPage() {
           )}
         </div>
       )}
+
+      {!isTeamMember && partnerData && <PartnerFigures data={partnerData} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Upcoming meetings */}
@@ -249,14 +269,72 @@ export default function DashboardPage() {
   );
 }
 
-function SummaryCard({ label, value, href }) {
+function SummaryCard({ label, value, href, sub, alert }) {
   return (
     <Link
       href={href}
-      className="border border-gray-200 rounded-lg p-5 hover:border-gray-400 transition-colors"
+      className={`border rounded-lg p-5 hover:border-gray-400 transition-colors ${alert ? "border-orange-300" : "border-gray-200"}`}
     >
       <p className="text-2xl font-light text-gray-900">{value}</p>
       <p className="text-xs text-gray-500 mt-1">{label}</p>
+      {sub && <p className={`text-xs mt-1 ${alert ? "text-orange-700 font-medium" : "text-gray-400"}`}>{sub}</p>}
     </Link>
+  );
+}
+
+const rupees = (v) =>
+  `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+// The partner's figures, like the app's dashboard: what Moulins billed them
+// this financial year, their payments, their retailers and those retailers'
+// orders, and their team. A figure that couldn't be loaded shows a dash.
+function PartnerFigures({ data }) {
+  const { bills, payments, retailers, retailerOrders, team, attendance } = data;
+  const linked = bills?.linked === true;
+  const lastBill = linked
+    ? (bills.bills || []).reduce((last, b) => (!last || new Date(b.date) > new Date(last) ? b.date : last), null)
+    : null;
+  const pending = payments?.filter((p) => p.status === "pending").length ?? 0;
+  const verified = payments?.filter((p) => p.status === "verified").reduce((s, p) => s + Number(p.amount || 0), 0);
+  const waiting = retailerOrders?.filter((o) => o.status === "pending").length ?? 0;
+  const present = attendance?.filter((a) => a.status === "present").length;
+  const dash = "—";
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-10">
+      <SummaryCard
+        label="Billed this financial year"
+        value={linked ? rupees(bills.total) : dash}
+        href="/partner-panel/bills"
+        sub={
+          linked
+            ? `${bills.count} invoice${bills.count === 1 ? "" : "s"}${
+                lastBill ? ` · last ${new Date(lastBill).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""
+              }`
+            : "Not linked to billing yet"
+        }
+      />
+      <SummaryCard
+        label="Payments verified"
+        value={payments ? rupees(verified) : dash}
+        href="/partner-panel/payments"
+        sub={pending > 0 ? `${pending} waiting to be checked` : null}
+        alert={pending > 0}
+      />
+      <SummaryCard
+        label="Retailer orders"
+        value={retailerOrders ? retailerOrders.length : dash}
+        href="/partner-panel/retailer-orders"
+        sub={retailerOrders ? (waiting > 0 ? `${waiting} waiting for you` : "None waiting") : null}
+        alert={waiting > 0}
+      />
+      <SummaryCard label="Retailers" value={retailers ? retailers.length : dash} href="/partner-panel/retailers" />
+      <SummaryCard
+        label="Team members"
+        value={team ? team.length : dash}
+        href="/partner-panel/team"
+        sub={team?.length > 0 && present != null ? `${present} present today` : null}
+      />
+    </div>
   );
 }

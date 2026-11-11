@@ -77,7 +77,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
   Widget build(BuildContext context) {
     final favoriteIds = ref.watch(favoritesProvider);
     final isSearching = _searchCtrl.text.trim().isNotEmpty;
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
 
     return Scaffold(
       endDrawer: const CartDrawer(),

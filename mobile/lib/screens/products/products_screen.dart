@@ -230,7 +230,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   Widget build(BuildContext context) {
     final categories = ref.watch(categoriesProvider);
     final isSpecial = ref.watch(authProvider).user?.isSpecial ?? false;
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
 

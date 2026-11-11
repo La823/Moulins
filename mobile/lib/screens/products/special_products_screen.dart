@@ -45,7 +45,7 @@ class _SpecialProductsScreenState extends ConsumerState<SpecialProductsScreen> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
-    final canOrder = ref.watch(authProvider).user?.role != 'doctor';
+    final canOrder = ref.watch(authProvider).user != null;
 
     return Scaffold(
       backgroundColor: Colors.white,

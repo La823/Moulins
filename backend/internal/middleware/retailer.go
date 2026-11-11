@@ -61,6 +61,13 @@ func RetailerLimits(next http.Handler) http.Handler {
 	})
 }
 
+// BuysFromPartner: the request is from a retailer's or a doctor's login,
+// who see MRP only and order from their partner. Works on public routes too.
+func BuysFromPartner(r *http.Request) bool {
+	_, role, ok := requestUser(r)
+	return ok && models.BuysFromPartner(role)
+}
+
 // IsRetailer: the request is from a retailer's login. Works on public routes
 // too, reading the token itself.
 func IsRetailer(r *http.Request) bool {

@@ -20,7 +20,7 @@ export default function CategoryLandingPage({ categoryName, heroImage, heroLabel
   const [view, setView] = useProductView();
   const { items } = useCart();
   const { user } = useAuth();
-  const canOrder = user?.role !== "doctor";
+  const canOrder = true; // everyone, doctors too (they order from their partner)
   const router = useRouter();
 
   useEffect(() => {
