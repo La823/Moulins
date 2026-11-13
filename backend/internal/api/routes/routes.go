@@ -10,6 +10,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/assignments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
+	bankStatementHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/bankstatements"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/broadcastlists"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/cart"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
@@ -185,6 +186,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/team/visit-logs", dailylogs.GetTeamVisitLogsHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}/attendance/month", attendance.PartnerAttendanceByMonthHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}/daily-logs", dailylogs.GetTeamMemberDailyLogsHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}/settings", team.GetSettingsHandler(db)).Methods("GET")
+	protected.HandleFunc("/team/{id}/settings", team.SaveSettingsHandler(db)).Methods("PUT")
 	protected.HandleFunc("/team/{id}", team.GetTeamMemberHandler(db)).Methods("GET")
 	protected.HandleFunc("/team/{id}", team.UpdateTeamMemberHandler(db)).Methods("PUT")
 	protected.HandleFunc("/team/{id}", team.DeleteTeamMemberHandler(db)).Methods("DELETE")
@@ -351,6 +354,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/cheques/register/{id:[0-9]+}/status", chequeHandlers.SetStatusHandler(db)).Methods("POST")
 	admin.HandleFunc("/cheques/register/{id:[0-9]+}/remarks", chequeHandlers.AddRemarkHandler(db)).Methods("POST")
 	admin.HandleFunc("/cheques/dues", chequeHandlers.DuesHandler(db)).Methods("GET")
+	// bank statements read each day from HDFC's statement emails
+	admin.HandleFunc("/bank-statements", bankStatementHandlers.ListHandler(db)).Methods("GET")
+	admin.HandleFunc("/bank-statements/check", bankStatementHandlers.CheckHandler(db)).Methods("POST")
+	admin.HandleFunc("/bank-statements/{id}/html", bankStatementHandlers.HTMLHandler(db)).Methods("GET")
 	admin.HandleFunc("/cheques/dues/from", chequeHandlers.SetDuesFromHandler(db)).Methods("PUT")
 	admin.HandleFunc("/cheques/invoices", chequeHandlers.FindInvoicesHandler(db)).Methods("GET")
 	admin.HandleFunc("/cheques/suppliers", chequeHandlers.SuppliersHandler(db)).Methods("GET")
@@ -1044,6 +1051,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	notificationsStaff.Use(middleware.StaffOnly)
 	notificationsStaff.Use(middleware.RequirePermission(db, "notifications_view", rdb))
 	notificationsStaff.HandleFunc("/notifications", notifications.ListHandler(db)).Methods("GET")
+	notificationsStaff.HandleFunc("/notifications/auto", notifications.AutoGroupsHandler(db)).Methods("GET")
 	notificationsStaff.HandleFunc("/notifications/{id}/recipients", notifications.RecipientsHandler(db)).Methods("GET")
 
 	notificationsEditStaff := protected.PathPrefix("/admin").Subrouter()

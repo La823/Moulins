@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lavanyaarora/server/internal/bankstatements"
 	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/models"
 	"github.com/lavanyaarora/server/internal/officialupdates"
@@ -27,6 +28,7 @@ func StartScheduler(db *pgxpool.Pool) {
 
 	var lastBirthdayRunDate string
 	var lastOfficialUpdatesDate string
+	var lastBankStatementsHour string
 	var margSlot time.Time
 	var lastMargFullDate string
 
@@ -53,6 +55,15 @@ func StartScheduler(db *pgxpool.Pool) {
 			go officialupdates.Run(context.Background(), db, SendDirectNotification)
 		}
 
+		// HDFC statement emails, once an hour from 8 AM to 8 PM India time
+		// (they arrive between about 7 and 10 AM; see dispatchBankStatements).
+		if ist := time.Now().In(margsyncIST); ist.Hour() >= 8 && ist.Hour() <= 20 {
+			if hour := ist.Format("2006-01-02 15"); hour != lastBankStatementsHour {
+				lastBankStatementsHour = hour
+				dispatchBankStatements(db)
+			}
+		}
+
 		today := time.Now().Format("2006-01-02")
 		if today != lastBirthdayRunDate {
 			dispatchBirthdayReminders(db)
@@ -68,6 +79,27 @@ func StartScheduler(db *pgxpool.Pool) {
 }
 
 var margsyncIST = time.FixedZone("IST", 5*3600+1800)
+
+// dispatchBankStatements reads new HDFC statement emails from the
+// arora.pardeep1973 mailbox and saves each statement (internal/bankstatements).
+// An email already saved is not read again, so the hourly check is just one
+// Gmail search when nothing is new. Off when BANK_STATEMENTS_SCHEDULE=off
+// (local development, so a laptop and the server don't both run it) or when
+// CREDENTIALS_KEY / the Gmail client aren't configured.
+func dispatchBankStatements(db *pgxpool.Pool) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BANK_STATEMENTS_SCHEDULE")), "off") ||
+		os.Getenv("CREDENTIALS_KEY") == "" || os.Getenv("GMAIL_READER_CLIENT_ID") == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		defer cancel()
+		r := bankstatements.Run(ctx, db, 3, SendDirectNotification)
+		if len(r.Saved) > 0 || len(r.Errors) > 0 {
+			log.Printf("scheduler: bank statements saved %v, errors %v", r.Saved, r.Errors)
+		}
+	}()
+}
 
 // officialUpdatesHourIST is when the daily read of government websites runs.
 const officialUpdatesHourIST = 9

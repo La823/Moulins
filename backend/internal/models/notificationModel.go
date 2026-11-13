@@ -30,11 +30,11 @@ type Notification struct {
 }
 
 type CreateNotificationRequest struct {
-	Title           string      `json:"title"`
-	Body            string      `json:"body"`
-	ImageKey        *string     `json:"image_key,omitempty"`
-	DeepLink        *string     `json:"deep_link,omitempty"`
-	BroadcastListID *uuid.UUID  `json:"broadcast_list_id,omitempty"`
+	Title           string     `json:"title"`
+	Body            string     `json:"body"`
+	ImageKey        *string    `json:"image_key,omitempty"`
+	DeepLink        *string    `json:"deep_link,omitempty"`
+	BroadcastListID *uuid.UUID `json:"broadcast_list_id,omitempty"`
 	// IncludeDoctors adds doctor-role users to the "all partners" audience.
 	// Only meaningful when BroadcastListID is nil — a specific broadcast
 	// list is exactly its members, doctors or not.
@@ -188,9 +188,30 @@ func UpdateNotificationStatus(ctx context.Context, db *pgxpool.Pool, id uuid.UUI
 	return err
 }
 
-func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, limit, offset int) ([]Notification, int, error) {
+// Notification kinds for GetAllNotifications. Broadcasts a person composes
+// are stored with audience_type 'all' or 'list'; alerts the system sends on
+// its own (new order, official updates, reminders...) are one 'single_user'
+// row per person.
+const (
+	NotificationKindAll    = ""       // everything (what the released app asks for)
+	NotificationKindManual = "manual" // composed broadcasts
+	NotificationKindAuto   = "auto"   // automatic one-person alerts
+)
+
+func notificationKindFilter(kind string) string {
+	switch kind {
+	case NotificationKindManual:
+		return `WHERE n.audience_type <> 'single_user'`
+	case NotificationKindAuto:
+		return `WHERE n.audience_type = 'single_user'`
+	}
+	return ""
+}
+
+func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, kind string, limit, offset int) ([]Notification, int, error) {
+	where := notificationKindFilter(kind)
 	var total int
-	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM notifications`).Scan(&total); err != nil {
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM notifications n `+where).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -200,6 +221,7 @@ func GetAllNotifications(ctx context.Context, db *pgxpool.Pool, limit, offset in
 			COALESCE(u.username, ''), COALESCE(u.role, '')
 		FROM notifications n
 		LEFT JOIN users u ON u.id = n.created_by
+		`+where+`
 		ORDER BY n.created_at DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
@@ -393,4 +415,112 @@ func SearchUsers(ctx context.Context, db *pgxpool.Pool, query string, limit int)
 		users = append(users, u)
 	}
 	return users, rows.Err()
+}
+
+// AutoAlertRecipient is one person an automatic alert went to.
+type AutoAlertRecipient struct {
+	UserID        uuid.UUID  `json:"user_id"`
+	Username      string     `json:"username"`
+	PhoneNumber   string     `json:"phone_number"`
+	Role          string     `json:"role"`
+	IsRead        bool       `json:"is_read"`
+	ReadAt        *time.Time `json:"read_at,omitempty"`
+	PushDelivered int        `json:"push_delivered"` // this person's devices that got the push
+	PushFailed    int        `json:"push_failed"`
+}
+
+// AutoAlertGroup is one automatic alert as people think of it: the system
+// stores a separate row per person ("New order received" goes to every
+// staff member), so copies with the same title, body and link sent within
+// two minutes of each other are shown together.
+type AutoAlertGroup struct {
+	Title            string               `json:"title"`
+	Body             string               `json:"body"`
+	DeepLink         *string              `json:"deep_link,omitempty"`
+	SentAt           time.Time            `json:"sent_at"`
+	RecipientCount   int                  `json:"recipient_count"`
+	PushSuccessCount int                  `json:"push_success_count"`
+	PushFailureCount int                  `json:"push_failure_count"`
+	ReadCount        int                  `json:"read_count"`
+	Recipients       []AutoAlertRecipient `json:"recipients"`
+}
+
+// GetAutoAlertGroups returns automatic alerts grouped as above, newest first,
+// and how many groups there are in all.
+func GetAutoAlertGroups(ctx context.Context, db *pgxpool.Pool, limit, offset int) ([]AutoAlertGroup, int, error) {
+	rows, err := db.Query(ctx, `
+		WITH s AS (
+			SELECT n.id, n.title, n.body, n.deep_link, n.created_at, n.push_success_count, n.push_failure_count,
+			       CASE WHEN n.created_at - lag(n.created_at) OVER w <= interval '2 minutes' THEN 0 ELSE 1 END AS brk
+			FROM notifications n
+			WHERE n.audience_type = 'single_user'
+			WINDOW w AS (PARTITION BY n.title, n.body, COALESCE(n.deep_link, '') ORDER BY n.created_at)
+		), g AS (
+			SELECT s.*, sum(brk) OVER (PARTITION BY title, body, COALESCE(deep_link, '') ORDER BY created_at) AS grp
+			FROM s
+		)
+		SELECT title, body, max(deep_link), min(created_at), count(*)::int,
+		       sum(push_success_count)::int, sum(push_failure_count)::int,
+		       array_agg(id::text ORDER BY created_at), count(*) OVER ()::int
+		FROM g
+		GROUP BY title, body, COALESCE(deep_link, ''), grp
+		ORDER BY min(created_at) DESC
+		LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	groups := []AutoAlertGroup{}
+	groupOf := map[string]int{}
+	var allIDs []string
+	total := 0
+	for rows.Next() {
+		var g AutoAlertGroup
+		var ids []string
+		if err := rows.Scan(&g.Title, &g.Body, &g.DeepLink, &g.SentAt, &g.RecipientCount,
+			&g.PushSuccessCount, &g.PushFailureCount, &ids, &total); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		g.Recipients = []AutoAlertRecipient{}
+		for _, id := range ids {
+			groupOf[id] = len(groups)
+		}
+		allIDs = append(allIDs, ids...)
+		groups = append(groups, g)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if len(allIDs) == 0 {
+		return groups, total, nil
+	}
+
+	rows, err = db.Query(ctx, `
+		SELECT nr.notification_id::text, u.id, COALESCE(u.username, ''), COALESCE(u.phone_number, ''), COALESCE(u.role, ''),
+		       nr.is_read, nr.read_at, n.push_success_count, n.push_failure_count
+		FROM notification_recipients nr
+		JOIN users u ON u.id = nr.user_id
+		JOIN notifications n ON n.id = nr.notification_id
+		WHERE nr.notification_id = ANY($1::uuid[])
+		ORDER BY u.username`, allIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var nid string
+		var r AutoAlertRecipient
+		if err := rows.Scan(&nid, &r.UserID, &r.Username, &r.PhoneNumber, &r.Role, &r.IsRead, &r.ReadAt,
+			&r.PushDelivered, &r.PushFailed); err != nil {
+			return nil, 0, err
+		}
+		if i, ok := groupOf[nid]; ok {
+			groups[i].Recipients = append(groups[i].Recipients, r)
+			if r.IsRead {
+				groups[i].ReadCount++
+			}
+		}
+	}
+	return groups, total, rows.Err()
 }

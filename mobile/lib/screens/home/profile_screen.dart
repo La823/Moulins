@@ -216,7 +216,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/retailer-orders')),
                   _divider(),
                 ],
-                if (user?.role != 'doctor' && user?.role != 'retailer') ...[
+                // a team member's orders to their partner
+                if (user?.isTeamMember ?? false) ...[
+                  _menuItem(Icons.outbox_outlined, 'My Orders to Partner', () => context.go('/retailer-orders')),
+                  _divider(),
+                ],
+                if (user?.role != 'doctor' && user?.role != 'retailer' && (user?.ordersToMoulins ?? true)) ...[
                   _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/orders')),
                   _divider(),
                 ],

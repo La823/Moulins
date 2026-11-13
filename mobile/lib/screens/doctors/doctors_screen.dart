@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../../models/doctor.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/presentation_downloads.dart';
@@ -528,10 +529,11 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
             tooltip: 'My Meetings',
             onPressed: () => context.push('/meetings'),
           ),
-          IconButton(
-            icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
-            onPressed: _showAddDialog,
-          ),
+          if (ref.watch(authProvider).user?.canAddDoctors ?? true)
+            IconButton(
+              icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
+              onPressed: _showAddDialog,
+            ),
           const ChatButton(),
           const NotificationBellButton(),
           const ProfileButton(),
@@ -569,12 +571,13 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                         const Text('No doctors added yet',
                             style: TextStyle(color: Colors.grey, fontSize: 16)),
                         const SizedBox(height: 12),
-                        TextButton.icon(
-                          icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
-                          label: const Text('Add Doctor',
-                              style: TextStyle(color: Color(0xFF00A6A4))),
-                          onPressed: _showAddDialog,
-                        ),
+                        if (ref.watch(authProvider).user?.canAddDoctors ?? true)
+                          TextButton.icon(
+                            icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
+                            label: const Text('Add Doctor',
+                                style: TextStyle(color: Color(0xFF00A6A4))),
+                            onPressed: _showAddDialog,
+                          ),
                       ],
                     ),
                   )

@@ -1,9 +1,46 @@
+import 'package:dio/dio.dart';
 import '../config/api.dart';
 import '../models/team_member.dart';
 import '../models/team_visit_log.dart';
 
 class TeamService {
   final _dio = createDio();
+
+  /// The server's reason for a refusal, or a fallback, for showing to people.
+  static String messageOf(Object e, {String fallback = 'This could not be completed. Please try again.'}) {
+    if (e is DioException) {
+      if (e.response == null) return 'Unable to reach the server. Please check your internet connection and try again.';
+      final data = e.response!.data;
+      if (data is String && data.trim().isNotEmpty && !data.contains('<')) return data.trim();
+    }
+    return fallback;
+  }
+
+  /// What a team member may do and see: switches plus every doctor and
+  /// retailer of the partner, each marked hidden or not.
+  Future<Map<String, dynamic>> getMemberSettings(String memberId) async {
+    final res = await _dio.get('/team/$memberId/settings');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> saveMemberSettings(
+    String memberId, {
+    required bool canAddDoctors,
+    required bool canAddRetailers,
+    required bool orderToPartner,
+    required bool orderToMoulins,
+    required List<String> hiddenDoctorIds,
+    required List<String> hiddenRetailerIds,
+  }) async {
+    await _dio.put('/team/$memberId/settings', data: {
+      'can_add_doctors': canAddDoctors,
+      'can_add_retailers': canAddRetailers,
+      'order_to_partner': orderToPartner,
+      'order_to_moulins': orderToMoulins,
+      'hidden_doctor_ids': hiddenDoctorIds,
+      'hidden_retailer_ids': hiddenRetailerIds,
+    });
+  }
 
   Future<List<TeamMember>> getTeamMembers() async {
     final res = await _dio.get('/team');

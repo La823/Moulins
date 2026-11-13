@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 
@@ -24,7 +25,7 @@ export default function NotificationsPage() {
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   const fetchHistory = () => {
-    apiFetch("/admin/notifications?limit=10")
+    apiFetch("/admin/notifications?kind=manual&limit=10") // broadcasts people sent; automatic alerts are on Notification History
       .then((data) => setHistory(data.notifications || []))
       .catch(console.error)
       .finally(() => setLoadingHistory(false));
@@ -316,12 +317,17 @@ export default function NotificationsPage() {
       </form>
 
       {/* History */}
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Broadcasts</h3>
+      <div className="flex items-baseline justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700">Recent Broadcasts</h3>
+        <Link href="/panel/notification-history" className="text-xs text-teal-700 hover:underline">
+          Automatic alerts (new orders, updates…) are on Notification History →
+        </Link>
+      </div>
       {loadingHistory ? (
         <Loader size="sm" />
       ) : history.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-          <p className="text-sm text-gray-400">No notifications sent yet</p>
+          <p className="text-sm text-gray-400">No broadcasts sent yet</p>
         </div>
       ) : (
         <div className="space-y-3">

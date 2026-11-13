@@ -49,6 +49,7 @@ func MeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 		cacheKey := fmt.Sprintf("user:%s", userID)
 		var user models.User
 		if rdb.GetJSON(r.Context(), cacheKey, &user) {
+			attachTeamSettings(r, db, &user)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(&user)
 			return
@@ -70,9 +71,26 @@ func MeHandler(db *pgxpool.Pool, rdb *cache.Client) http.HandlerFunc {
 			}
 		}
 
+		u.TeamSettings = nil // cached without it; added fresh on every request
 		rdb.SetJSON(r.Context(), cacheKey, u, 5*time.Minute)
+		attachTeamSettings(r, db, u)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(u)
 	}
+}
+
+// attachTeamSettings adds a team member's settings from their partner. Read
+// on every request (one small query, team members only) so that a partner's
+// change reaches the member's app without waiting for the user cache.
+func attachTeamSettings(r *http.Request, db *pgxpool.Pool, u *models.User) {
+	if u.Role != models.RoleTeamMember {
+		return
+	}
+	s, err := models.GetTeamSettings(r.Context(), db, u.ID)
+	if err != nil {
+		log.Printf("team settings for %s: %v", u.ID, err)
+		s = models.DefaultTeamSettings
+	}
+	u.TeamSettings = &s
 }

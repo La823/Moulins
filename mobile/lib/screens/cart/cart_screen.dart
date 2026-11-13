@@ -140,8 +140,21 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     }
   }
 
-  // retailers and doctors order from their partner
-  bool get _isRetailer => ref.read(authProvider).user?.buysFromPartner ?? false;
+  // Where this cart goes. Retailers and doctors always order from their
+  // partner; a team member as their partner allows — and when both are
+  // allowed they pick (to the partner by default).
+  String _destination = 'partner'; // 'partner' | 'moulins', when choosing
+  bool get _canChoose {
+    final u = ref.read(authProvider).user;
+    return u != null && u.ordersToPartner && u.ordersToMoulins;
+  }
+
+  bool get _isRetailer {
+    final u = ref.read(authProvider).user;
+    if (u == null) return false;
+    if (_canChoose) return _destination == 'partner';
+    return u.ordersToPartner;
+  }
 
   // A retailer's cart goes to their partner (retailer_service.dart), not Moulins.
   Future<void> _placeRetailerOrder() async {
@@ -307,6 +320,29 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                       child: Column(
                         children: [
+                          if (_canChoose) ...[
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('Send this order to', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                for (final d in const [('partner', 'My partner'), ('moulins', 'Moulins')]) ...[
+                                  ChoiceChip(
+                                    label: Text(d.$2),
+                                    selected: _destination == d.$1,
+                                    showCheckmark: false,
+                                    selectedColor: const Color(0xFF00A6A4),
+                                    labelStyle: TextStyle(color: _destination == d.$1 ? Colors.white : const Color(0xFF1A1A1A)),
+                                    onSelected: (_) => setState(() => _destination = d.$1),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           // Transport and address are for orders to Moulins; a
                           // retailer's order goes to their partner.
                           if (_isRetailer)

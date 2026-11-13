@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../providers/auth_provider.dart';
 import '../../models/retailer.dart';
 import '../../services/retailer_service.dart';
 import '../../utils/validators.dart';
@@ -269,18 +271,24 @@ class _RetailersScreenState extends State<RetailersScreen> {
   @override
   Widget build(BuildContext context) {
     final list = _retailers;
+    // a team member sees their partner's retailers; editing, documents and
+    // passwords stay with the partner, and adding needs the partner's leave
+    final user = ProviderScope.containerOf(context).read(authProvider).user;
+    final isPartner = user?.role == 'partner';
+    final canAdd = user?.canAddRetailers ?? false;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
-        title: const Text('My Retailers', style: TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(isPartner ? 'My Retailers' : 'Retailers', style: const TextStyle(fontWeight: FontWeight.w600)),
         actions: [
-          IconButton(
-              icon: const Icon(Icons.person_add_alt_outlined, color: _teal),
-              tooltip: 'Add retailer',
-              onPressed: () => _showForm())
+          if (canAdd)
+            IconButton(
+                icon: const Icon(Icons.person_add_alt_outlined, color: _teal),
+                tooltip: 'Add retailer',
+                onPressed: () => _showForm())
         ],
       ),
       body: list == null
@@ -303,14 +311,18 @@ class _RetailersScreenState extends State<RetailersScreen> {
                         const SizedBox(height: 14),
                         const Text('No retailers yet', style: TextStyle(color: Colors.grey, fontSize: 16)),
                         const SizedBox(height: 6),
-                        Text('Add the shops you supply. They can then order from you in the app.',
+                        Text(
+                            isPartner
+                                ? 'Add the shops you supply. They can then order from you in the app.'
+                                : 'Your partner\'s retailers will show here.',
                             textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
                         const SizedBox(height: 12),
-                        TextButton.icon(
-                          icon: const Icon(Icons.add, color: _teal),
-                          label: const Text('Add a retailer', style: TextStyle(color: _teal)),
-                          onPressed: () => _showForm(),
-                        ),
+                        if (canAdd)
+                          TextButton.icon(
+                            icon: const Icon(Icons.add, color: _teal),
+                            label: const Text('Add a retailer', style: TextStyle(color: _teal)),
+                            onPressed: () => _showForm(),
+                          ),
                       ]),
                     ),
                   ...list.map((r) => Container(
@@ -318,7 +330,7 @@ class _RetailersScreenState extends State<RetailersScreen> {
                         decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
-                          onTap: () => _menu(r),
+                          onTap: isPartner ? () => _menu(r) : null,
                           leading: CircleAvatar(
                             backgroundColor: _teal.withAlpha(25),
                             child: const Icon(Icons.storefront_outlined, color: _teal),

@@ -61,6 +61,9 @@ func BuyerPartner(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, role 
 	switch role {
 	case RoleRetailer:
 		return RetailerPartner(ctx, db, userID)
+	case RoleTeamMember:
+		// whether the partner allows it is checked by the caller
+		return TeamMemberOwner(ctx, db, userID)
 	case RoleDoctor:
 		var partner uuid.UUID
 		err := db.QueryRow(ctx,

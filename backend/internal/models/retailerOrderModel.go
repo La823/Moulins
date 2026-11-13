@@ -40,7 +40,7 @@ type RetailerOrder struct {
 	RetailerName     string               `json:"retailer_name"`
 	RetailerPhone    string               `json:"retailer_phone"`
 	ShopName         *string              `json:"shop_name,omitempty"`
-	BuyerKind        string               `json:"buyer_kind"` // retailer | doctor
+	BuyerKind        string               `json:"buyer_kind"` // retailer | doctor | team_member
 	PartnerID        uuid.UUID            `json:"partner_id"`
 	PartnerName      string               `json:"partner_name"`
 	Status           string               `json:"status"`
@@ -68,7 +68,7 @@ var (
 
 const retailerOrderSelect = `
 	SELECT o.id, o.order_no, o.retailer_id, COALESCE(d.name, ru.username, ''), ru.phone_number,
-	       COALESCE(r.shop_name, d.clinic_name), CASE WHEN d.id IS NOT NULL THEN 'doctor' ELSE 'retailer' END,
+	       COALESCE(r.shop_name, d.clinic_name), CASE WHEN d.id IS NOT NULL THEN 'doctor' WHEN ru.role = 'team_member' THEN 'team_member' ELSE 'retailer' END,
 	       o.partner_id, COALESCE(pu.username, pu.phone_number), o.status, o.notes, o.partner_note,
 	       o.total::float8, o.forwarded_order_id,
 	       (SELECT count(*) FROM retailer_order_items i WHERE i.retailer_order_id = o.id),

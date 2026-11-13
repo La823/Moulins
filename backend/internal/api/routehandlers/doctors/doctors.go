@@ -57,6 +57,31 @@ func getRole(r *http.Request) string {
 	return role
 }
 
+// myID is the requester's own id (not resolved to their partner).
+func myID(r *http.Request) uuid.UUID {
+	id, _ := uuid.Parse(r.Context().Value("user_id").(string))
+	return id
+}
+
+// hiddenFromMe answers 404 and returns true when the requester is a team
+// member whose partner hid this doctor from them — to them it doesn't exist.
+func hiddenFromMe(w http.ResponseWriter, r *http.Request, db *pgxpool.Pool, doctorID uuid.UUID) bool {
+	if getRole(r) != models.RoleTeamMember {
+		return false
+	}
+	hidden, err := models.IsHiddenFromMember(r.Context(), db, myID(r), "doctor", doctorID)
+	if err != nil {
+		log.Printf("doctor %s hidden check: %v", doctorID, err)
+		http.Error(w, "could not load doctor", http.StatusInternalServerError)
+		return true
+	}
+	if hidden {
+		http.Error(w, "doctor not found", http.StatusNotFound)
+		return true
+	}
+	return false
+}
+
 // nextBirthdayOccurrence returns the next upcoming date (this year, or next
 // year if this year's has already passed) that shares dob's month/day, at
 // noon local time to stay clear of any midnight DST edge cases.
@@ -118,6 +143,9 @@ func UpdateDoctorContactNameHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
 			return
 		}
+		if hiddenFromMe(w, r, db, doctorID) {
+			return
+		}
 
 		var req struct {
 			ContactName *string `json:"contact_name"`
@@ -161,6 +189,24 @@ func ListDoctorsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "could not fetch doctors", http.StatusInternalServerError)
 			return
 		}
+		// a team member doesn't see the doctors their partner hid from them
+		if getRole(r) == models.RoleTeamMember {
+			hidden, err := models.HiddenFromMember(r.Context(), db, myID(r), "doctor")
+			if err != nil {
+				log.Printf("list doctors: hidden: %v", err)
+				http.Error(w, "could not fetch doctors", http.StatusInternalServerError)
+				return
+			}
+			if len(hidden) > 0 {
+				kept := doctors[:0]
+				for _, d := range doctors {
+					if !hidden[d.ID] {
+						kept = append(kept, d)
+					}
+				}
+				doctors = kept
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(doctors)
 	}
@@ -176,6 +222,19 @@ func CreateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if req.Name == "" {
 			http.Error(w, "name is required", http.StatusBadRequest)
 			return
+		}
+
+		if getRole(r) == models.RoleTeamMember {
+			ts, err := models.GetTeamSettings(r.Context(), db, myID(r))
+			if err != nil {
+				log.Printf("create doctor: team settings: %v", err)
+				http.Error(w, "could not create doctor", http.StatusInternalServerError)
+				return
+			}
+			if !ts.CanAddDoctors {
+				http.Error(w, "Your partner has not allowed you to add doctors.", http.StatusForbidden)
+				return
+			}
 		}
 
 		userID := getUserID(r, db)
@@ -212,6 +271,9 @@ func GetDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
 			return
 		}
+		if hiddenFromMe(w, r, db, doctorID) {
+			return
+		}
 
 		doctor, err := models.GetDoctorByID(r.Context(), db, doctorID)
 		if err != nil {
@@ -233,6 +295,9 @@ func UpdateDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
+			return
+		}
+		if hiddenFromMe(w, r, db, doctorID) {
 			return
 		}
 
@@ -300,6 +365,9 @@ func DeleteDoctorHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
 			return
 		}
+		if hiddenFromMe(w, r, db, doctorID) {
+			return
+		}
 
 		doctor, err := models.GetDoctorByID(r.Context(), db, doctorID)
 		if err != nil {
@@ -331,6 +399,9 @@ func UpdateDoctorLastMeetingHandler(db *pgxpool.Pool) http.HandlerFunc {
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
+			return
+		}
+		if hiddenFromMe(w, r, db, doctorID) {
 			return
 		}
 
@@ -368,6 +439,9 @@ func ListDoctorProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
 			return
 		}
+		if hiddenFromMe(w, r, db, doctorID) {
+			return
+		}
 
 		doctor, err := models.GetDoctorByID(r.Context(), db, doctorID)
 		if err != nil {
@@ -396,6 +470,9 @@ func AddDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
+			return
+		}
+		if hiddenFromMe(w, r, db, doctorID) {
 			return
 		}
 
@@ -508,6 +585,9 @@ func RemoveDoctorProductHandler(db *pgxpool.Pool) http.HandlerFunc {
 		doctorID, err := uuid.Parse(mux.Vars(r)["id"])
 		if err != nil {
 			http.Error(w, "invalid doctor id", http.StatusBadRequest)
+			return
+		}
+		if hiddenFromMe(w, r, db, doctorID) {
 			return
 		}
 

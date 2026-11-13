@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -392,6 +393,21 @@ func CreateOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
+		}
+
+		// A team member orders from Moulins only when their partner allows it
+		// (otherwise their orders go to the partner: POST /retailer-orders).
+		if role, _ := r.Context().Value("role").(string); role == models.RoleTeamMember {
+			ts, err := models.GetTeamSettings(r.Context(), db, userID)
+			if err != nil {
+				log.Printf("create order: team settings: %v", err)
+				http.Error(w, "could not place order", http.StatusInternalServerError)
+				return
+			}
+			if !ts.OrderToMoulins {
+				http.Error(w, "Your partner has set your orders to go to them, not to Moulins. Please update the app to send this order to your partner.", http.StatusForbidden)
+				return
+			}
 		}
 
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -993,6 +1009,12 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 		}
 		items = append(items, pdfItem)
 	}
+	// Products in alphabetical order on the challan, so the warehouse can
+	// find each line on the shelf list (the order itself keeps the order the
+	// lines were added in).
+	sort.SliceStable(items, func(i, j int) bool {
+		return strings.ToLower(items[i].ProductName) < strings.ToLower(items[j].ProductName)
+	})
 
 	var transportName string
 	if order.TransportName != nil {

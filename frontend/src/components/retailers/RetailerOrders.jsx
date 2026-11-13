@@ -46,15 +46,13 @@ const buyerName = (o) =>
     ? `${/^dr\.?\s/i.test(o.retailer_name || "") ? "" : "Dr. "}${o.retailer_name}${o.shop_name ? ` · ${o.shop_name}` : ""}`
     : o.shop_name || o.retailer_name;
 
+// a doctor, a retailer, or one of the partner's own team members
+const buyerLabel = (kind) => (kind === "doctor" ? "Doctor" : kind === "team_member" ? "Team member" : "Retailer");
+
 function BuyerTag({ kind }) {
-  const doctor = kind === "doctor";
-  return (
-    <span
-      className={`text-[11px] font-semibold px-1.5 py-0.5 rounded mr-1.5 ${doctor ? "bg-indigo-50 text-indigo-700" : "bg-teal-50 text-teal-800"}`}
-    >
-      {doctor ? "Doctor" : "Retailer"}
-    </span>
-  );
+  const cls =
+    kind === "doctor" ? "bg-indigo-50 text-indigo-700" : kind === "team_member" ? "bg-amber-50 text-amber-800" : "bg-teal-50 text-teal-800";
+  return <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded mr-1.5 ${cls}`}>{buyerLabel(kind)}</span>;
 }
 
 const rs = (n) => `Rs. ${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -84,7 +82,7 @@ export function RetailerOrderList({ incoming, base }) {
     <div>
       {incoming && (
         <div className="flex flex-wrap gap-2 mb-3">
-          {Object.entries({ "": "Everyone", doctor: "Doctors", retailer: "Retailers" }).map(([k, v]) => (
+          {Object.entries({ "": "Everyone", doctor: "Doctors", retailer: "Retailers", team_member: "My team" }).map(([k, v]) => (
             <button
               key={k}
               type="button"
@@ -238,7 +236,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
       </div>
       <p className="text-sm text-gray-600">
         {incoming
-          ? `${order.buyer_kind === "doctor" ? "Doctor" : "Retailer"}: ${buyerName(order)} · ${order.retailer_phone}`
+          ? `${buyerLabel(order.buyer_kind)}: ${buyerName(order)} · ${order.retailer_phone}`
           : `To ${order.partner_name}`}
       </p>
       <p className="text-xs text-gray-400 mb-5">Placed {when(order.created_at)}</p>
@@ -248,7 +246,7 @@ export function RetailerOrderView({ id, incoming, backHref }) {
 
       {(order.notes || order.partner_note) && (
         <div className="mb-5 space-y-1 text-sm text-gray-700">
-          {order.notes && <p>{order.buyer_kind === "doctor" ? "Doctor" : "Retailer"}&apos;s note: {order.notes}</p>}
+          {order.notes && <p>{buyerLabel(order.buyer_kind)}&apos;s note: {order.notes}</p>}
           {order.partner_note && <p>Partner&apos;s note: {order.partner_note}</p>}
         </div>
       )}

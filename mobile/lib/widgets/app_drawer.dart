@@ -74,6 +74,8 @@ class AppDrawer extends ConsumerWidget {
               item(Icons.event_available_outlined, 'Team Attendance', '/team-attendance'),
             ],
             if (role == 'team_member') ...[
+              // their partner's retailers (less any hidden from them)
+              item(Icons.storefront_outlined, 'Retailers', '/retailers'),
               item(Icons.event_available_outlined, 'My Attendance', '/my-attendance'),
               item(Icons.edit_note_outlined, 'My Daily Log', '/my-daily-log'),
             ],

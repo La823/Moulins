@@ -111,7 +111,13 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 			limit = 20
 		}
 
-		list, total, err := models.GetAllNotifications(r.Context(), db, limit, (page-1)*limit)
+		// ?kind=manual (composed broadcasts) or auto (system alerts); without
+		// it, everything — what the released app's history asks for.
+		kind := r.URL.Query().Get("kind")
+		if kind != models.NotificationKindManual && kind != models.NotificationKindAuto {
+			kind = models.NotificationKindAll
+		}
+		list, total, err := models.GetAllNotifications(r.Context(), db, kind, limit, (page-1)*limit)
 		if err != nil {
 			log.Printf("list notifications error: %v", err)
 			http.Error(w, "could not fetch notifications", http.StatusInternalServerError)
@@ -301,5 +307,33 @@ func RegisterDeviceTokenHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "registered"})
+	}
+}
+
+// GET /admin/notifications/auto?page=&limit= — automatic alerts, each one
+// shown once with everyone it went to (see models.GetAutoAlertGroups).
+func AutoGroupsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if page < 1 {
+			page = 1
+		}
+		if limit <= 0 || limit > 100 {
+			limit = 20
+		}
+		groups, total, err := models.GetAutoAlertGroups(r.Context(), db, limit, (page-1)*limit)
+		if err != nil {
+			log.Printf("list automatic alerts error: %v", err)
+			http.Error(w, "could not fetch automatic alerts", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"alerts": groups,
+			"total":  total,
+			"page":   page,
+			"limit":  limit,
+		})
 	}
 }

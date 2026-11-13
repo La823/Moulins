@@ -77,6 +77,8 @@ func LoginHandler(db *pgxpool.Pool) http.HandlerFunc {
 			}
 		}
 
+		attachTeamSettings(r, db, user)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(LoginResponse{
 			Token: token,

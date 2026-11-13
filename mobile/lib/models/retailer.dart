@@ -126,7 +126,7 @@ class RetailerOrder {
   final String retailerName;
   final String retailerPhone;
   final String? shopName; // a retailer's shop, or a doctor's clinic
-  final String buyerKind; // retailer | doctor
+  final String buyerKind; // retailer | doctor | team_member
   final String partnerName;
   final String status; // pending, accepted, rejected, cancelled, dispatched, delivered
   final String? notes;
@@ -159,6 +159,8 @@ class RetailerOrder {
 
   String get number => 'RO-$orderNo';
   bool get fromDoctor => buyerKind == 'doctor';
+  bool get fromTeamMember => buyerKind == 'team_member';
+  String get buyerLabel => fromDoctor ? 'Doctor' : fromTeamMember ? 'Team' : 'Retailer';
   // a doctor by name (and clinic); a retailer by shop
   String get retailerDisplay => fromDoctor
       ? '${RegExp(r'^dr\.?\s', caseSensitive: false).hasMatch(retailerName) ? '' : 'Dr. '}$retailerName'

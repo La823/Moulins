@@ -6,6 +6,7 @@ import '../../models/team_member.dart';
 import '../../services/doctor_service.dart';
 import '../../services/meeting_service.dart';
 import '../../services/team_service.dart';
+import 'team_member_settings_screen.dart';
 import 'team_month_summary_screen.dart';
 
 const _teal = Color(0xFF00A6A4);
@@ -362,6 +363,24 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey.shade200),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: const Icon(Icons.tune, color: _teal),
+                      title: const Text('Permissions & visibility', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: Text('What they can add, where their orders go, which doctors and retailers they see',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => TeamMemberSettingsScreen(member: _member)),
+                      ),
+                    ),
+                  ),
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(

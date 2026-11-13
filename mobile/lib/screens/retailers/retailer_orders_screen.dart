@@ -32,10 +32,10 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
   List<RetailerOrder>? _orders;
   String? _error;
   String _status = '';
-  String _buyer = ''; // the partner's filter: '' everyone, doctor, retailer
+  String _buyer = ''; // the partner's filter: '' everyone, doctor, retailer, team_member
 
   // a retailer or doctor sees their own orders; the partner, their customers'
-  bool get _isRetailer => ref.read(authProvider).user?.buysFromPartner ?? false;
+  bool get _isRetailer => ref.read(authProvider).user?.hasOrdersToPartner ?? false;
 
   @override
   void initState() {
@@ -62,7 +62,7 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isRetailer = ref.watch(authProvider).user?.buysFromPartner ?? false;
+    final isRetailer = ref.watch(authProvider).user?.hasOrdersToPartner ?? false;
     final list = _orders?.where((o) => _buyer.isEmpty || o.buyerKind == _buyer).toList();
     final fmt = DateFormat('d MMM yyyy, h:mm a');
     final filters = {
@@ -111,7 +111,7 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
-                children: {'': 'Everyone', 'doctor': 'Doctors', 'retailer': 'Retailers'}
+                children: {'': 'Everyone', 'doctor': 'Doctors', 'retailer': 'Retailers', 'team_member': 'My team'}
                     .entries
                     .map((f) => Padding(
                           padding: const EdgeInsets.only(right: 8),
@@ -182,13 +182,13 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                                         decoration: BoxDecoration(
-                                            color: (o.fromDoctor ? Colors.indigo : Colors.teal).withAlpha(22),
+                                            color: (o.fromDoctor ? Colors.indigo : o.fromTeamMember ? Colors.amber : Colors.teal).withAlpha(22),
                                             borderRadius: BorderRadius.circular(5)),
-                                        child: Text(o.fromDoctor ? 'Doctor' : 'Retailer',
+                                        child: Text(o.buyerLabel,
                                             style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
-                                                color: o.fromDoctor ? Colors.indigo.shade700 : Colors.teal.shade800)),
+                                                color: o.fromDoctor ? Colors.indigo.shade700 : o.fromTeamMember ? Colors.amber.shade900 : Colors.teal.shade800)),
                                       ),
                                       const SizedBox(width: 6),
                                     ],

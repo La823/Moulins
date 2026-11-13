@@ -11,7 +11,11 @@ const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
 
 class AdminNotificationsScreen extends StatefulWidget {
-  const AdminNotificationsScreen({super.key});
+  const AdminNotificationsScreen({super.key, this.canSend = true});
+
+  /// False for staff who may only see sent notifications (notifications_view
+  /// without notifications_edit): the form shows, but sending is off.
+  final bool canSend;
 
   @override
   State<AdminNotificationsScreen> createState() => _AdminNotificationsScreenState();
@@ -34,6 +38,11 @@ class _AdminNotificationsScreenState extends State<AdminNotificationsScreen> {
   List<NotificationHistoryItem> _history = [];
   bool _loadingHistory = true;
 
+  // history tab: 'manual' = broadcasts someone sent, 'auto' = system alerts
+  String _historyTab = 'manual';
+  List<AutoAlertGroup>? _autoAlerts;
+  bool _loadingAuto = false;
+
   @override
   void initState() {
     super.initState();
@@ -46,11 +55,111 @@ class _AdminNotificationsScreenState extends State<AdminNotificationsScreen> {
   Future<void> _loadHistory() async {
     setState(() => _loadingHistory = true);
     try {
-      final list = await _service.getHistory();
+      final list = await _service.getHistory(kind: 'manual');
       if (mounted) setState(() { _history = list; _loadingHistory = false; });
     } catch (_) {
       if (mounted) setState(() => _loadingHistory = false);
     }
+  }
+
+  Future<void> _loadAutoAlerts() async {
+    setState(() => _loadingAuto = true);
+    try {
+      final list = await _service.getAutoAlerts();
+      if (mounted) setState(() { _autoAlerts = list; _loadingAuto = false; });
+    } catch (_) {
+      if (mounted) setState(() { _autoAlerts ??= []; _loadingAuto = false; });
+    }
+  }
+
+  Future<void> _refreshHistory() => _historyTab == 'auto' ? _loadAutoAlerts() : _loadHistory();
+
+  String _when(String? iso) {
+    if (iso == null) return '';
+    try {
+      return DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Widget _historyTabs() => Row(
+        children: [
+          for (final t in const [('manual', 'Broadcasts'), ('auto', 'Automatic alerts')]) ...[
+            ChoiceChip(
+              label: Text(t.$2),
+              selected: _historyTab == t.$1,
+              selectedColor: _ink,
+              labelStyle: TextStyle(color: _historyTab == t.$1 ? Colors.white : _ink, fontSize: 12.5, fontWeight: FontWeight.w500),
+              showCheckmark: false,
+              onSelected: (_) {
+                setState(() => _historyTab = t.$1);
+                if (t.$1 == 'auto' && _autoAlerts == null) _loadAutoAlerts();
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      );
+
+  List<Widget> _autoAlertCards() {
+    if (_loadingAuto && _autoAlerts == null) {
+      return [const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: _teal)))];
+    }
+    final list = _autoAlerts ?? [];
+    if (list.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 30),
+          child: Center(child: Text('No automatic alerts yet', style: TextStyle(color: Colors.grey.shade400))),
+        ),
+      ];
+    }
+    return list.map((a) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            title: Text(a.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.body, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Sent to ${a.recipientCount} ${a.recipientCount == 1 ? 'person' : 'people'} · read by ${a.readCount} · ${_when(a.sentAt)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                  ),
+                ],
+              ),
+            ),
+            children: [
+              for (final r in a.recipients)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Icon(r.isRead ? Icons.done_all : Icons.circle_outlined, size: 14, color: r.isRead ? Colors.green : Colors.grey.shade400),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('${r.username.isEmpty ? '—' : r.username} (${r.role})', style: const TextStyle(fontSize: 12.5))),
+                      Text(
+                        r.pushDelivered > 0 ? '${r.pushDelivered} device${r.pushDelivered == 1 ? '' : 's'}' : 'no device',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
   }
 
   Future<void> _pickImage() async {
@@ -120,7 +229,7 @@ class _AdminNotificationsScreenState extends State<AdminNotificationsScreen> {
         title: const Text('Notifications', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
       ),
       body: RefreshIndicator(
-        onRefresh: _loadHistory,
+        onRefresh: _refreshHistory,
         color: _teal,
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -187,7 +296,7 @@ class _AdminNotificationsScreenState extends State<AdminNotificationsScreen> {
                     width: double.infinity,
                     height: 46,
                     child: ElevatedButton(
-                      onPressed: _sending ? null : _send,
+                      onPressed: _sending || !widget.canSend ? null : _send,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _ink,
                         foregroundColor: Colors.white,
@@ -196,21 +305,25 @@ class _AdminNotificationsScreenState extends State<AdminNotificationsScreen> {
                       ),
                       child: _sending
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Text('Send Broadcast'),
+                          : Text(widget.canSend ? 'Send Broadcast' : 'You can view sent notifications only'),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            const Text('Recent Broadcasts', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const Text('History', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 8),
+            _historyTabs(),
             const SizedBox(height: 10),
-            if (_loadingHistory)
+            if (_historyTab == 'auto')
+              ..._autoAlertCards()
+            else if (_loadingHistory)
               const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator(color: _teal)))
             else if (_history.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 30),
-                child: Center(child: Text('No notifications sent yet', style: TextStyle(color: Colors.grey.shade400))),
+                child: Center(child: Text('No broadcasts sent yet', style: TextStyle(color: Colors.grey.shade400))),
               )
             else
               ..._history.map((n) {

@@ -64,6 +64,42 @@ func partnerOnly(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return id, true
 }
 
+// partnerOrMember lets a partner, or one of their team members, through;
+// it returns the partner's id, and for a team member their own id too
+// (member is uuid.Nil for the partner).
+func partnerOrMember(w http.ResponseWriter, r *http.Request, db *pgxpool.Pool) (partner, member uuid.UUID, ok bool) {
+	id, role := me(r)
+	switch role {
+	case "partner":
+		return id, uuid.Nil, true
+	case models.RoleTeamMember:
+		owner, found, err := models.TeamMemberOwner(r.Context(), db, id)
+		if err != nil {
+			log.Printf("team member owner %s: %v", id, err)
+			http.Error(w, msgServerError, http.StatusInternalServerError)
+			return uuid.Nil, uuid.Nil, false
+		}
+		if found {
+			return owner, id, true
+		}
+	}
+	http.Error(w, msgPartnersOnly, http.StatusForbidden)
+	return uuid.Nil, uuid.Nil, false
+}
+
+// ordersToPartner: may this login order from a partner? Retailers and
+// doctors always; a team member when their partner allows it.
+func ordersToPartner(r *http.Request, db *pgxpool.Pool, id uuid.UUID, role string) (bool, error) {
+	if models.BuysFromPartner(role) {
+		return true, nil
+	}
+	if role != models.RoleTeamMember {
+		return false, nil
+	}
+	s, err := models.GetTeamSettings(r.Context(), db, id)
+	return s.OrderToPartner, err
+}
+
 func pathID(w http.ResponseWriter, r *http.Request, msg string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(mux.Vars(r)["id"])
 	if err != nil {
@@ -114,10 +150,11 @@ func readInput(w http.ResponseWriter, r *http.Request) (models.RetailerInput, bo
 	return in, true
 }
 
-// GET /retailers — the partner's retailers.
+// GET /retailers — the partner's retailers; for a team member, their
+// partner's, less any the partner hid from them.
 func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		partner, ok := partnerOnly(w, r)
+		partner, member, ok := partnerOrMember(w, r, db)
 		if !ok {
 			return
 		}
@@ -127,17 +164,45 @@ func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, msgServerError, http.StatusInternalServerError)
 			return
 		}
+		if member != uuid.Nil {
+			hidden, err := models.HiddenFromMember(r.Context(), db, member, "retailer")
+			if err != nil {
+				log.Printf("list retailers: hidden: %v", err)
+				http.Error(w, msgServerError, http.StatusInternalServerError)
+				return
+			}
+			kept := list[:0]
+			for _, rt := range list {
+				if !hidden[rt.ID] {
+					kept = append(kept, rt)
+				}
+			}
+			list = kept
+		}
 		writeJSON(w, http.StatusOK, list)
 	}
 }
 
 // POST /retailers — adds a retailer; their phone number is their login and
-// first password. Re-adding one this partner removed brings them back.
+// first password. Re-adding one this partner removed brings them back. A
+// team member may add one for their partner when the partner allows it.
 func CreateHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		partner, ok := partnerOnly(w, r)
+		partner, member, ok := partnerOrMember(w, r, db)
 		if !ok {
 			return
+		}
+		if member != uuid.Nil {
+			s, err := models.GetTeamSettings(r.Context(), db, member)
+			if err != nil {
+				log.Printf("create retailer: team settings: %v", err)
+				http.Error(w, msgServerError, http.StatusInternalServerError)
+				return
+			}
+			if !s.CanAddRetailers {
+				http.Error(w, "Your partner has not allowed you to add retailers.", http.StatusForbidden)
+				return
+			}
 		}
 		in, ok := readInput(w, r)
 		if !ok {
@@ -361,8 +426,18 @@ func DeleteDocumentHandler(db *pgxpool.Pool) http.HandlerFunc {
 func PlaceOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		retailer, role := me(r)
-		if !models.BuysFromPartner(role) {
-			http.Error(w, msgRetailersOnly, http.StatusForbidden)
+		allowed, err := ordersToPartner(r, db, retailer, role)
+		if err != nil {
+			log.Printf("place retailer order: settings: %v", err)
+			http.Error(w, msgServerError, http.StatusInternalServerError)
+			return
+		}
+		if !allowed {
+			if role == models.RoleTeamMember {
+				http.Error(w, "Your partner has not allowed you to send orders to them.", http.StatusForbidden)
+			} else {
+				http.Error(w, msgRetailersOnly, http.StatusForbidden)
+			}
 			return
 		}
 		var body struct {
@@ -415,7 +490,7 @@ func PlaceOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 func ListMineHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		retailer, role := me(r)
-		if !models.BuysFromPartner(role) {
+		if !models.BuysFromPartner(role) && role != models.RoleTeamMember {
 			http.Error(w, msgRetailersOnly, http.StatusForbidden)
 			return
 		}
@@ -481,7 +556,7 @@ func orderErr(w http.ResponseWriter, err error, what string) {
 func CancelHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		retailer, role := me(r)
-		if !models.BuysFromPartner(role) {
+		if !models.BuysFromPartner(role) && role != models.RoleTeamMember {
 			http.Error(w, msgRetailersOnly, http.StatusForbidden)
 			return
 		}
@@ -618,6 +693,9 @@ func notifyPartnerNewOrder(db *pgxpool.Pool, orderID uuid.UUID, no int64, partne
 	link := fmt.Sprintf("/partner-panel/retailer-orders/%s", orderID)
 	body := fmt.Sprintf("%s placed order RO-%d with %d product%s.", who, no, items, plural)
 	title := "New order from a retailer"
+	if o.BuyerKind == "team_member" {
+		title, body = "New order from your team", fmt.Sprintf("%s (team member) placed order RO-%d with %d product%s.", o.RetailerName, no, items, plural)
+	}
 	if o.BuyerKind == "doctor" {
 		name := o.RetailerName
 		if l := strings.ToLower(name); !strings.HasPrefix(l, "dr ") && !strings.HasPrefix(l, "dr.") {

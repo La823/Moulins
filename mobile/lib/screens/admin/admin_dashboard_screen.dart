@@ -44,8 +44,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final isAdmin = user.role == 'admin';
     try {
       final stats = await AdminService().getDashboardStats(
-        canSeeProducts: isAdmin || user.permissions.contains('products'),
-        canSeePartners: isAdmin || user.permissions.contains('partners'),
+        canSeeProducts: user.can('products'),
+        canSeePartners: user.can('partners'),
         // Employee management is admin-only on the web too — not permission-gated.
         canSeeEmployees: isAdmin,
       );
@@ -59,13 +59,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user!;
     final isAdmin = user.role == 'admin';
-    final canSeeProducts = isAdmin || user.permissions.contains('products');
-    final canSeePartners = isAdmin || user.permissions.contains('partners');
+    final canSeeProducts = user.can('products');
+    final canSeePartners = user.can('partners');
     final canSeeEmployees = isAdmin;
-    final canSeePayments = isAdmin || user.permissions.contains('payments');
+    final canSeePayments = user.can('payments');
     final canSeeTransports = isAdmin || user.permissions.contains('orders_edit');
-    final canSeeNotifications = isAdmin || user.permissions.contains('notifications');
-    final canSeeBroadcastLists = isAdmin || user.permissions.contains('broadcast_lists');
+    final canSeeNotifications = user.can('notifications');
+    final canSendNotifications = isAdmin || user.permissions.contains('notifications_edit');
+    final canSeeBroadcastLists = user.can('broadcast_lists');
     final canSeeOrders = isAdmin || user.permissions.contains('orders_view') || user.permissions.contains('orders_edit');
 
     return Scaffold(
@@ -183,7 +184,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     icon: Icons.campaign_outlined,
                     label: 'Notifications',
                     subtitle: 'Compose and send broadcast notifications',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminNotificationsScreen())),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminNotificationsScreen(canSend: canSendNotifications))),
                   ),
                   const SizedBox(height: 10),
                 ],

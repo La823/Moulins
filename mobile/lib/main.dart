@@ -436,10 +436,14 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
       if (!isDoctor && !isRetailer)
         const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
       // staff see orders only with an orders permission
-      if (!isDoctor && !isRetailer && (!isStaff || canSeeOrders))
+      // a team member: Moulins orders only when their partner allows it
+      if (!isDoctor && !isRetailer && (!isStaff || canSeeOrders) && (!user.isTeamMember || user.ordersToMoulins))
         const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
       if (isRetailer || isDoctor)
         const _NavItem(route: '/retailer-orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'My Orders'),
+      // a team member's orders to their partner
+      if (user.isTeamMember && user.ordersToPartner)
+        const _NavItem(route: '/retailer-orders', icon: Icons.outbox_outlined, selectedIcon: Icons.outbox, label: 'To Partner'),
       if (user.role == 'admin' || user.role == 'employee')
         const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),
     ];

@@ -40,6 +40,10 @@ type User struct {
 	Rid                  *string    `json:"rid,omitempty"`
 	BillingAddress       *string    `json:"billing_address,omitempty"`
 	ShippingAddress      *string    `json:"shipping_address,omitempty"`
+	// TeamSettings: for a team member, what their partner allows them
+	// (adding doctors/retailers, where their orders go). Filled fresh on
+	// login and /auth/me, never cached, so a partner's change shows at once.
+	TeamSettings *TeamSettings `json:"team_settings,omitempty"`
 }
 
 type CreateUserRequest struct {
