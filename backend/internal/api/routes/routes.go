@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lavanyaarora/server/internal/api/handlers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/accountdeletion"
+	aiUsageHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/aiusage"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/assignments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
@@ -356,6 +357,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	admin.HandleFunc("/cheques/register/{id:[0-9]+}/remarks", chequeHandlers.AddRemarkHandler(db)).Methods("POST")
 	admin.HandleFunc("/cheques/dues", chequeHandlers.DuesHandler(db)).Methods("GET")
 	// bank statements read each day from HDFC's statement emails
+	// AI calls: tokens, photo sizes, estimated cost (ai_usage)
+	admin.HandleFunc("/ai-usage", aiUsageHandlers.ReportHandler(db)).Methods("GET")
 	admin.HandleFunc("/bank-statements", bankStatementHandlers.ListHandler(db)).Methods("GET")
 	admin.HandleFunc("/bank-statements/check", bankStatementHandlers.CheckHandler(db)).Methods("POST")
 	admin.HandleFunc("/bank-statements/{id}/html", bankStatementHandlers.HTMLHandler(db)).Methods("GET")

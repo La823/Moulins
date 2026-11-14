@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/lavanyaarora/server/internal/aiusage"
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
@@ -60,6 +62,22 @@ type Item struct {
 	// CanTick: the batch matched, or there was nothing to match against, or
 	// an admin let it through.
 	CanTick bool `json:"can_tick"`
+	// The latest photo's read (ai_usage); nil for a typed batch or no photo.
+	PhotoUsage *PhotoUsage `json:"photo_usage,omitempty"`
+}
+
+// PhotoUsage is a photo's size and what reading it used.
+type PhotoUsage struct {
+	ImageBytes     int     `json:"image_bytes"`
+	ImageWidth     int     `json:"image_width"`
+	ImageHeight    int     `json:"image_height"`
+	PromptTokens   int     `json:"prompt_tokens"`
+	ImageTokens    int     `json:"image_tokens"`
+	OutputTokens   int     `json:"output_tokens"`
+	ThinkingTokens int     `json:"thinking_tokens"`
+	TotalTokens    int     `json:"total_tokens"`
+	CostUSD        float64 `json:"cost_usd"`
+	DurationMs     int     `json:"duration_ms"`
 }
 
 // LogEntry is one step in an order's packing.
@@ -282,13 +300,19 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]Item
 		       oi.quantity,
 		       k.photo_key, k.read_batch, k.read_expiry, k.read_product, k.read_source, k.result, k.result_note,
 		       cu.username, k.checked_at, ou.username, k.override_reason, k.override_at,
-		       k.packed_qty, pu.username, k.packed_at
+		       k.packed_qty, pu.username, k.packed_at,
+		       au.image_bytes, au.image_width, au.image_height, au.prompt_tokens, au.image_tokens, au.output_tokens,
+		       au.thinking_tokens, au.total_tokens, au.cost_usd::float8, au.duration_ms
 		FROM order_items oi
 		LEFT JOIN products p ON p.id = oi.product_id
 		LEFT JOIN order_item_packing k ON k.order_item_id = oi.id
 		LEFT JOIN users cu ON cu.id = k.checked_by
 		LEFT JOIN users ou ON ou.id = k.override_by
 		LEFT JOIN users pu ON pu.id = k.packed_by
+		LEFT JOIN LATERAL (
+			SELECT * FROM ai_usage a WHERE k.photo_key IS NOT NULL AND a.photo_key = k.photo_key
+			ORDER BY a.id DESC LIMIT 1
+		) au ON TRUE
 		WHERE oi.order_id = $1
 		ORDER BY lower(CASE WHEN oi.product_name <> '' THEN oi.product_name ELSE COALESCE(p.name, '') END), oi.id`, orderID)
 	if err != nil {
@@ -300,10 +324,26 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]Item
 		var it Item
 		var photo, rb, re, rp, rs, res, note, cby, oby, oreason, pby *string
 		var pqty *int
+		var ub, uw, uh, upt, uit, uot, utt, utot, ums *int
+		var ucost *float64
 		if err := rows.Scan(&it.OrderItemID, &it.ProductID, &it.ProductName, &it.Quantity,
 			&photo, &rb, &re, &rp, &rs, &res, &note, &cby, &it.CheckedAt, &oby, &oreason, &it.OverrideAt,
-			&pqty, &pby, &it.PackedAt); err != nil {
+			&pqty, &pby, &it.PackedAt,
+			&ub, &uw, &uh, &upt, &uit, &uot, &utt, &utot, &ucost, &ums); err != nil {
 			return nil, err
+		}
+		if utot != nil {
+			n := func(p *int) int {
+				if p == nil {
+					return 0
+				}
+				return *p
+			}
+			it.PhotoUsage = &PhotoUsage{ImageBytes: n(ub), ImageWidth: n(uw), ImageHeight: n(uh), PromptTokens: n(upt),
+				ImageTokens: n(uit), OutputTokens: n(uot), ThinkingTokens: n(utt), TotalTokens: n(utot), DurationMs: n(ums)}
+			if ucost != nil {
+				it.PhotoUsage.CostUSD = *ucost
+			}
 		}
 		it.PhotoURL, it.ReadBatch, it.ReadExpiry, it.ReadProduct, it.ReadSource = photoURL(photo), str(rb), str(re), str(rp), str(rs)
 		it.Result, it.ResultNote, it.CheckedBy, it.OverrideBy, it.OverrideReason = str(res), str(note), str(cby), str(oby), str(oreason)
@@ -390,6 +430,8 @@ type CheckResult struct {
 	ReadProduct string `json:"read_product,omitempty"`
 	Expected    string `json:"expected_batch,omitempty"`
 	PhotoURL    string `json:"photo_url,omitempty"`
+	// the photo and what reading it used
+	Usage *PhotoUsage `json:"usage,omitempty"`
 }
 
 // CheckPhoto stores a line's batch photo, has it read, compares the reading
@@ -410,8 +452,22 @@ func CheckPhoto(ctx context.Context, db *pgxpool.Pool, orderID, itemID, userID u
 	}
 	readCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	r, readErr := readPack(readCtx, image, mimeType, l.productName)
-	res := &CheckResult{PhotoURL: utils.GetPublicURL(key), Expected: l.exp.batch}
+	started := time.Now()
+	r, usage, readErr := readPack(readCtx, image, mimeType, l.productName)
+	took := time.Since(started)
+	w, h := imageSize(image)
+	oid, iid := orderID, itemID
+	if err := aiusage.Record(ctx, db, aiusage.Call{
+		Feature: aiusage.FeaturePackingBatchRead, UserID: userID, OrderID: &oid, OrderItemID: &iid, PhotoKey: key,
+		ImageBytes: len(image), ImageWidth: w, ImageHeight: h, MimeType: mimeType, Usage: usage, Duration: took, Err: readErr,
+	}); err != nil {
+		log.Printf("packing: record ai usage: %v", err) // never stops the packing
+	}
+	res := &CheckResult{PhotoURL: utils.GetPublicURL(key), Expected: l.exp.batch, Usage: &PhotoUsage{
+		ImageBytes: len(image), ImageWidth: w, ImageHeight: h, PromptTokens: usage.PromptTokens, ImageTokens: usage.ImageTokens,
+		OutputTokens: usage.OutputTokens, ThinkingTokens: usage.ThinkingTokens, TotalTokens: usage.TotalTokens,
+		CostUSD: aiusage.Cost(usage), DurationMs: int(took.Milliseconds()),
+	}}
 	if readErr != nil {
 		res.Result = ResultUnreadable
 		res.Note = "The photo could not be read just now. Take it again, or type the batch number."

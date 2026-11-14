@@ -102,10 +102,28 @@ func postGemini(ctx context.Context, key string, body []byte) ([]byte, error) {
 
 // generate returns the model's text and whether it stopped early because
 // it ran out of output tokens.
+// Usage is what one Gemini call used, from the response's usageMetadata.
+type Usage struct {
+	Model          string `json:"model"`
+	PromptTokens   int    `json:"prompt_tokens"`   // everything sent: instructions, text and files
+	ImageTokens    int    `json:"image_tokens"`    // the part of PromptTokens that was images
+	OutputTokens   int    `json:"output_tokens"`   // the answer
+	ThinkingTokens int    `json:"thinking_tokens"` // the model's reasoning, billed as output
+	TotalTokens    int    `json:"total_tokens"`
+}
+
 func generate(ctx context.Context, r geminiRequest) (text string, truncated bool, err error) {
+	text, truncated, _, err = generateWithUsage(ctx, r)
+	return text, truncated, err
+}
+
+// generateWithUsage is generate plus the tokens the call used (zero when
+// the request never got an answer).
+func generateWithUsage(ctx context.Context, r geminiRequest) (text string, truncated bool, usage Usage, err error) {
+	usage.Model = geminiModel
 	key := os.Getenv("GEMINI_API_KEY")
 	if key == "" {
-		return "", false, fmt.Errorf("productrag: GEMINI_API_KEY not configured")
+		return "", false, usage, fmt.Errorf("productrag: GEMINI_API_KEY not configured")
 	}
 	config := map[string]any{
 		"maxOutputTokens": r.MaxTokens,
@@ -124,12 +142,12 @@ func generate(ctx context.Context, r geminiRequest) (text string, truncated bool
 	}
 	b, err := json.Marshal(body)
 	if err != nil {
-		return "", false, err
+		return "", false, usage, err
 	}
 
 	respBody, err := postGemini(ctx, key, b)
 	if err != nil {
-		return "", false, err
+		return "", false, usage, err
 	}
 
 	var parsed struct {
@@ -142,20 +160,38 @@ func generate(ctx context.Context, r geminiRequest) (text string, truncated bool
 			} `json:"content"`
 			FinishReason string `json:"finishReason"`
 		} `json:"candidates"`
+		UsageMetadata struct {
+			PromptTokenCount     int `json:"promptTokenCount"`
+			CandidatesTokenCount int `json:"candidatesTokenCount"`
+			ThoughtsTokenCount   int `json:"thoughtsTokenCount"`
+			TotalTokenCount      int `json:"totalTokenCount"`
+			PromptTokensDetails  []struct {
+				Modality   string `json:"modality"`
+				TokenCount int    `json:"tokenCount"`
+			} `json:"promptTokensDetails"`
+		} `json:"usageMetadata"`
 		PromptFeedback struct {
 			BlockReason string `json:"blockReason"`
 		} `json:"promptFeedback"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return "", false, fmt.Errorf("productrag: parse gemini response: %w", err)
+		return "", false, usage, fmt.Errorf("productrag: parse gemini response: %w", err)
+	}
+	um := parsed.UsageMetadata
+	usage.PromptTokens, usage.OutputTokens, usage.ThinkingTokens, usage.TotalTokens =
+		um.PromptTokenCount, um.CandidatesTokenCount, um.ThoughtsTokenCount, um.TotalTokenCount
+	for _, d := range um.PromptTokensDetails {
+		if d.Modality == "IMAGE" {
+			usage.ImageTokens += d.TokenCount
+		}
 	}
 	if parsed.PromptFeedback.BlockReason != "" || len(parsed.Candidates) == 0 {
-		return "", false, ErrDeclined
+		return "", false, usage, ErrDeclined
 	}
 	c := parsed.Candidates[0]
 	switch c.FinishReason {
 	case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII":
-		return "", false, ErrDeclined
+		return "", false, usage, ErrDeclined
 	}
 	var sb strings.Builder
 	for _, p := range c.Content.Parts {
@@ -163,5 +199,5 @@ func generate(ctx context.Context, r geminiRequest) (text string, truncated bool
 			sb.WriteString(p.Text)
 		}
 	}
-	return strings.TrimSpace(sb.String()), c.FinishReason == "MAX_TOKENS", nil
+	return strings.TrimSpace(sb.String()), c.FinishReason == "MAX_TOKENS", usage, nil
 }

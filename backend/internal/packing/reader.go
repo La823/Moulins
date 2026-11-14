@@ -35,7 +35,7 @@ var readerSchema = map[string]any{
 // pack in the photo. The expected product's name is given so the reader can
 // say whether the pack is that product; the expected batch is not, so it
 // cannot lean the reading towards it.
-func readPack(ctx context.Context, image []byte, mimeType, productName string) (Reading, error) {
+func readPack(ctx context.Context, image []byte, mimeType, productName string) (Reading, productrag.Usage, error) {
 	prompt := `This should be a pack of: ` + productName + `
 
 - "batch": the batch number only, without its label (it usually follows "B.No.", "Batch No.", "Batch", "Lot" or "B."). Empty if it is not visible or not clear.
@@ -43,11 +43,12 @@ func readPack(ctx context.Context, image []byte, mimeType, productName string) (
 - "product_name": the product name printed on the pack, if visible.
 - "product_matches": "no" only if a different product's name is clearly visible; "yes" if this product's name is visible; otherwise "unsure".`
 	var r Reading
-	if err := productrag.ReadImageJSON(ctx, readerSystem, prompt, mimeType, image, readerSchema, &r); err != nil {
-		return Reading{}, err
+	usage, err := productrag.ReadImageJSON(ctx, readerSystem, prompt, mimeType, image, readerSchema, &r)
+	if err != nil {
+		return Reading{}, usage, err
 	}
 	r.Batch = strings.TrimSpace(r.Batch)
 	r.Expiry = strings.TrimSpace(r.Expiry)
 	r.ProductName = strings.TrimSpace(r.ProductName)
-	return r, nil
+	return r, usage, nil
 }

@@ -25,6 +25,7 @@ const ACTION = {
   finished: "Marked Packed",
   reopened: "Reopened",
 };
+const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round((n || 0) / 1024)} KB`);
 const when = (s) =>
   s ? new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 
@@ -145,6 +146,14 @@ export default function OrderPacking({ orderId, status, isAdmin, onChanged }) {
                   )}
                 </div>
                 {it.result_note && <div className="text-xs text-gray-400 mt-0.5">{it.result_note}</div>}
+                {it.photo_usage && (
+                  <div className="text-[11px] text-gray-400 mt-0.5 tabular-nums">
+                    Photo {fmtBytes(it.photo_usage.image_bytes)}
+                    {it.photo_usage.image_width ? ` · ${it.photo_usage.image_width}×${it.photo_usage.image_height}` : ""} · AI read{" "}
+                    {it.photo_usage.total_tokens.toLocaleString("en-IN")} tokens ({it.photo_usage.image_tokens.toLocaleString("en-IN")} image)
+                    {" · "}${it.photo_usage.cost_usd.toFixed(4)} · {(it.photo_usage.duration_ms / 1000).toFixed(1)}s
+                  </div>
+                )}
                 {it.override_reason && (
                   <div className="text-xs text-amber-700 mt-0.5">
                     Allowed by {it.override_by}: {it.override_reason}
