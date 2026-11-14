@@ -201,7 +201,7 @@ class MoulinsApp extends ConsumerWidget {
             // batches…); everyone else their own orders.
             GoRoute(
               path: '/orders',
-              builder: (_, __) => const _ForStaff(staff: AdminOrdersScreen(), other: OrdersScreen()),
+              builder: (_, __) => const _ForStaff(staff: _StaffOrders(), other: OrdersScreen()),
               routes: [
                 GoRoute(
                   path: ':id',
@@ -337,6 +337,22 @@ class _AppShell extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<_AppShell> createState() => _AppShellState();
+}
+
+/// Staff orders for staff with an orders permission; a packer without one
+/// (the dispatch team) gets the Packing list instead of a refused list.
+class _StaffOrders extends ConsumerWidget {
+  const _StaffOrders();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final u = ref.watch(authProvider).user;
+    final seesOrders = u?.role == 'admin' ||
+        (u?.permissions.contains('orders_view') ?? false) ||
+        (u?.permissions.contains('orders_edit') ?? false);
+    if (!seesOrders && (u?.canPack ?? false)) return const PackingListScreen();
+    return const AdminOrdersScreen();
+  }
 }
 
 /// Shows [staff] to admin and employee logins, [other] to everyone else.

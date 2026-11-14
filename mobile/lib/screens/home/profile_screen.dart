@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
+import '../../models/user.dart';
 import '../../providers/onboarding_provider.dart';
 import '../../models/onboarding.dart';
 import '../../config/api.dart';
@@ -221,8 +222,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _menuItem(Icons.outbox_outlined, 'My Orders to Partner', () => context.go('/retailer-orders')),
                   _divider(),
                 ],
-                if (user?.role != 'doctor' && user?.role != 'retailer' && (user?.ordersToMoulins ?? true)) ...[
+                // staff see the staff orders list only with an orders permission
+                // (a dispatch login has none: it gets Packing instead)
+                if (user?.role != 'doctor' && user?.role != 'retailer' && (user?.ordersToMoulins ?? true) &&
+                    !(_isStaff(user) && !_seesStaffOrders(user))) ...[
                   _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/orders')),
+                  _divider(),
+                ],
+                if ((user?.canPack ?? false) && user?.role != 'admin') ...[
+                  _menuItem(Icons.inventory_2_outlined, 'Packing', () => context.go('/packing')),
                   _divider(),
                 ],
                 if (user?.role == 'partner') ...[
@@ -1717,3 +1725,8 @@ class _AddDrugLicenseSectionState extends ConsumerState<_AddDrugLicenseSection> 
     );
   }
 }
+
+bool _isStaff(User? u) => u?.role == 'admin' || u?.role == 'employee';
+
+bool _seesStaffOrders(User? u) =>
+    u?.role == 'admin' || (u?.permissions.contains('orders_view') ?? false) || (u?.permissions.contains('orders_edit') ?? false);
