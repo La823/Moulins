@@ -40,6 +40,12 @@ func CreateUserHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		dispatch := req.StaffGroup != nil && *req.StaffGroup != ""
+		if dispatch && (*req.StaffGroup != models.StaffGroupDispatch || req.Role != "employee") {
+			http.Error(w, "staff_group must be \"dispatch\", for an employee", http.StatusBadRequest)
+			return
+		}
+
 		// Call repository function
 		userID, err := models.CreateUser(
 			r.Context(),
@@ -58,6 +64,14 @@ func CreateUserHandler(db *pgxpool.Pool) http.HandlerFunc {
 			log.Printf("failed to create user: %v", err)
 			http.Error(w, "could not create user", http.StatusInternalServerError)
 			return
+		}
+
+		if dispatch {
+			if err := models.MakeDispatchUser(r.Context(), db, userID); err != nil {
+				log.Printf("make dispatch user %s: %v", userID, err)
+				http.Error(w, "the login was created but could not be put in the dispatch team; please try again from its page", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		// Success response

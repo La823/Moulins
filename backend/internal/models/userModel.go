@@ -44,6 +44,9 @@ type User struct {
 	// (adding doctors/retailers, where their orders go). Filled fresh on
 	// login and /auth/me, never cached, so a partner's change shows at once.
 	TeamSettings *TeamSettings `json:"team_settings,omitempty"`
+	// StaffGroup: for an employee login, a group with its own panel list —
+	// "dispatch" (migration 186); nil for an ordinary employee.
+	StaffGroup *string `json:"staff_group,omitempty"`
 }
 
 type CreateUserRequest struct {
@@ -55,6 +58,8 @@ type CreateUserRequest struct {
 	Pincode     *string `json:"pincode,omitempty"`
 	City        *string `json:"city,omitempty"`
 	State       *string `json:"state,omitempty"`
+	// StaffGroup "dispatch" creates a dispatch-team employee (admins only).
+	StaffGroup *string `json:"staff_group,omitempty"`
 }
 
 type CreateUserResponse struct {
@@ -150,7 +155,7 @@ func GetUserByPhone(
 		SELECT
 			id, phone_number, password_hash, username, email,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
-			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address
+			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address, staff_group
 		FROM users
 		WHERE phone_number = $1;
 	`
@@ -159,7 +164,7 @@ func GetUserByPhone(
 	err := db.QueryRow(ctx, query, phoneNumber).Scan(
 		&u.ID, &u.PhoneNumber, &u.PasswordHash, &u.Username, &u.Email,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
-		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress, &u.StaffGroup,
 	)
 	if err != nil {
 		return nil, err
@@ -198,7 +203,7 @@ func GetUserByID(
 		SELECT
 			id, phone_number, username, email,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
-			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address
+			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address, staff_group
 		FROM users
 		WHERE id = $1;
 	`
@@ -207,7 +212,7 @@ func GetUserByID(
 	err := db.QueryRow(ctx, query, userID).Scan(
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
-		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
+		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress, &u.StaffGroup,
 	)
 	if err != nil {
 		return nil, err
@@ -287,7 +292,7 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 		SELECT id, phone_number, username, email, plain_password,
 			role, customer_type, special_tile_image_key, team_owner_id, is_phone_verified, onboarding_step,
 			default_transport_mode, last_login_at, created_at, updated_at, rid, billing_address, shipping_address,
-			pincode, city, state
+			pincode, city, state, staff_group
 		FROM users
 		WHERE id = $1
 	`
@@ -296,7 +301,7 @@ func GetUserByIDFull(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) (*
 		&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword,
 		&u.Role, &u.CustomerType, &u.SpecialTileImageKey, &u.TeamOwnerID, &u.IsPhoneVerified, &u.OnboardingStep,
 		&u.DefaultTransportMode, &u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.BillingAddress, &u.ShippingAddress,
-		&u.Pincode, &u.City, &u.State,
+		&u.Pincode, &u.City, &u.State, &u.StaffGroup,
 	)
 	if err != nil {
 		return nil, err
@@ -714,7 +719,7 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 	query := `
 		SELECT id, phone_number, username, email, plain_password, role, customer_type, special_tile_image_key,
 			is_phone_verified, onboarding_step, pincode, city, state, latitude, longitude,
-			last_login_at, created_at, updated_at, rid
+			last_login_at, created_at, updated_at, rid, staff_group
 		FROM users
 		WHERE role = $1
 		ORDER BY created_at DESC
@@ -730,7 +735,7 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 		var u User
 		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.Username, &u.Email, &u.PlainPassword, &u.Role, &u.CustomerType, &u.SpecialTileImageKey,
 			&u.IsPhoneVerified, &u.OnboardingStep, &u.Pincode, &u.City, &u.State, &u.Latitude, &u.Longitude,
-			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid); err != nil {
+			&u.LastLoginAt, &u.CreatedAt, &u.UpdatedAt, &u.Rid, &u.StaffGroup); err != nil {
 			return nil, err
 		}
 		if u.SpecialTileImageKey != nil {
@@ -749,7 +754,9 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 // changing their role, which this filter already respects.
 func GetStaffUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error) {
 	rows, err := db.Query(ctx,
-		`SELECT id FROM users WHERE role IN ('admin', 'employee')`)
+		// the dispatch team (staff_group) has no operations features yet,
+		// so it gets none of these alerts
+		`SELECT id FROM users WHERE role IN ('admin', 'employee') AND staff_group IS DISTINCT FROM 'dispatch'`)
 	if err != nil {
 		return nil, err
 	}
@@ -764,4 +771,20 @@ func GetStaffUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error)
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// StaffGroupDispatch is the dispatch team's staff_group.
+const StaffGroupDispatch = "dispatch"
+
+// DispatchPermissions is all a dispatch-team login may do: view products
+// and pack orders (migration 187).
+var DispatchPermissions = []string{"products_view", "packing_edit"}
+
+// MakeDispatchUser puts a new employee login in the dispatch team with only
+// the dispatch permissions.
+func MakeDispatchUser(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID) error {
+	if _, err := db.Exec(ctx, `UPDATE users SET staff_group = $2 WHERE id = $1 AND role = 'employee'`, userID, StaffGroupDispatch); err != nil {
+		return err
+	}
+	return SetPermissions(ctx, db, userID, DispatchPermissions)
 }

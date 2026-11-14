@@ -76,6 +76,7 @@ func notifyOrderStatusEmail(db *pgxpool.Pool, orderID uuid.UUID, status string) 
 
 var orderStatusLabels = map[string]string{
 	"confirmed": "Confirmed",
+	"packed":    "Packed",
 	"shipped":   "Shipped",
 	"delivered": "Delivered",
 	"cancelled": "Cancelled",
@@ -1284,7 +1285,7 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		valid := map[string]bool{
-			"pending": true, "confirmed": true, "transferred": true,
+			"pending": true, "confirmed": true, "transferred": true, "packed": true,
 			"shipped": true, "delivered": true, "cancelled": true,
 			"refunded": true,
 		}
@@ -1729,8 +1730,9 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "order not found", http.StatusNotFound)
 			return
 		}
-		if order.Status != "confirmed" {
-			http.Error(w, "only confirmed orders can be pushed to Marg", http.StatusConflict)
+		// packed orders too: packing (migration 187) can come before the push
+		if order.Status != "confirmed" && order.Status != "packed" {
+			http.Error(w, "only confirmed or packed orders can be pushed to Marg", http.StatusConflict)
 			return
 		}
 

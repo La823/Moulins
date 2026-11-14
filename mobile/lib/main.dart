@@ -44,6 +44,8 @@ import 'screens/products/favorites_screen.dart';
 import 'screens/learning/learning_screen.dart';
 import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/admin/admin_orders_screen.dart';
+import 'screens/packing/packing_list_screen.dart';
+import 'screens/packing/packing_order_screen.dart';
 import 'screens/admin/admin_order_detail_screen.dart';
 import 'screens/divisions/division_landing_screen.dart';
 import 'screens/team/team_screen.dart';
@@ -277,6 +279,12 @@ class MoulinsApp extends ConsumerWidget {
               path: '/admin/orders/:id',
               builder: (_, state) => AdminOrderDetailScreen(orderId: state.pathParameters['id']!),
             ),
+            // packing orders with a batch photo per product (packing_edit)
+            GoRoute(path: '/packing', builder: (_, __) => const PackingListScreen()),
+            GoRoute(
+              path: '/packing/:id',
+              builder: (_, state) => PackingOrderScreen(orderId: state.pathParameters['id']!),
+            ),
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/offline-data', builder: (_, __) => const OfflineDataScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
@@ -433,7 +441,8 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
       const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),
       if (isPartner)
         const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
-      if (!isDoctor && !isRetailer)
+      // the dispatch team has no meetings
+      if (!isDoctor && !isRetailer && !user.isDispatch)
         const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
       // staff see orders only with an orders permission
       // a team member: Moulins orders only when their partner allows it
@@ -444,6 +453,9 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
       // a team member's orders to their partner
       if (user.isTeamMember && user.ordersToPartner)
         const _NavItem(route: '/retailer-orders', icon: Icons.outbox_outlined, selectedIcon: Icons.outbox, label: 'To Partner'),
+      // packers (not admins, who have it under Admin) get their own tab
+      if (user.canPack && user.role != 'admin')
+        const _NavItem(route: '/packing', icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Packing'),
       if (user.role == 'admin' || user.role == 'employee')
         const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),
     ];

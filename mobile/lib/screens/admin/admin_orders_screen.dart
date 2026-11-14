@@ -9,6 +9,7 @@ Color staffOrderStatusColor(String s) => switch (s) {
       'pending' => Colors.orange.shade700,
       'confirmed' => Colors.blue.shade700,
       'transferred' => Colors.indigo.shade600,
+      'packed' => Colors.teal.shade700,
       'shipped' => Colors.purple.shade600,
       'delivered' => Colors.green.shade700,
       'cancelled' => Colors.red.shade600,

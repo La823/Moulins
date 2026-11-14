@@ -41,6 +41,7 @@ import (
 	officialupdatesHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/officialupdates"
 	retailersHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/retailers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
+	packingHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/packing"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
@@ -460,6 +461,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAnalysisStaff.HandleFunc("/marg-analysis/products/{pid:[0-9]+}/expiry", margedeHandlers.ProductExpiryHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/monthly", margedeHandlers.AnalysisMonthlyHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/monthly-companies", margedeHandlers.CompanyMonthlyHandler(db)).Methods("GET")
+	margAnalysisStaff.HandleFunc("/marg-analysis/customer-ratings", margedeHandlers.CustomerRatingsHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/years/monthly", margedeHandlers.AnalysisYearsMonthlyHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/years/customers", margedeHandlers.AnalysisYearsCustomersHandler(db)).Methods("GET")
 	margAnalysisStaff.HandleFunc("/marg-analysis/best-months", margedeHandlers.AnalysisBestMonthsHandler(db)).Methods("GET")
@@ -837,6 +839,23 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	orderStaff.HandleFunc("/orders/{id}/send-log", orders.OrderSendLogHandler(db)).Methods("GET")
 	orderStaff.HandleFunc("/orders/customers/search", orders.SearchCustomersHandler(db)).Methods("GET")
 	orderStaff.HandleFunc("/orders/{id}/pdf", orders.OrderPDFHandler(db)).Methods("GET")
+	// the order's packing (batch photos, who packed it, every step)
+	orderStaff.HandleFunc("/orders/{id}/packing", packingHandlers.GetHandler(db)).Methods("GET")
+
+	// staff routes — packing (migration 187): the dispatch team packs
+	// confirmed orders line by line with a batch photo each; override and
+	// reopen check for admin inside the handler
+	packingStaff := protected.PathPrefix("/admin").Subrouter()
+	packingStaff.Use(middleware.StaffOnly)
+	packingStaff.Use(middleware.RequirePermission(db, "packing_edit", rdb))
+	packingStaff.HandleFunc("/packing/orders", packingHandlers.ListHandler(db)).Methods("GET")
+	packingStaff.HandleFunc("/packing/orders/{id}", packingHandlers.GetHandler(db)).Methods("GET")
+	packingStaff.HandleFunc("/packing/orders/{id}/items/{itemId}/photo", packingHandlers.PhotoHandler(db)).Methods("POST")
+	packingStaff.HandleFunc("/packing/orders/{id}/items/{itemId}/typed", packingHandlers.TypedHandler(db)).Methods("POST")
+	packingStaff.HandleFunc("/packing/orders/{id}/items/{itemId}/packed", packingHandlers.PackedHandler(db)).Methods("PUT")
+	packingStaff.HandleFunc("/packing/orders/{id}/items/{itemId}/override", packingHandlers.OverrideHandler(db)).Methods("POST")
+	packingStaff.HandleFunc("/packing/orders/{id}/finish", packingHandlers.FinishHandler(db)).Methods("POST")
+	packingStaff.HandleFunc("/packing/orders/{id}/reopen", packingHandlers.ReopenHandler(db)).Methods("POST")
 
 	// staff routes — order management (edit: status, quantities, delivery
 	// details, photos, and pushing to Marg), gated separately so "view

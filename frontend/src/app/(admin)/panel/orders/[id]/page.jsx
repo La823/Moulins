@@ -8,6 +8,7 @@ import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRate
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
 import OrderTransport from "@/components/admin/orders/OrderTransport";
+import OrderPacking from "@/components/admin/orders/OrderPacking";
 import { useBreadcrumbTitle, BackLink } from "@/components/admin/Breadcrumbs";
 import ProductPicker, { entryBoxOpen, parseRate, usePastRatesDrawer } from "@/components/admin/orders/ProductPicker";
 
@@ -15,6 +16,7 @@ const STATUSES = [
   "pending",
   "confirmed",
   "transferred",
+  "packed",
   "shipped",
   "delivered",
   "cancelled",
@@ -25,6 +27,7 @@ const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
   confirmed: "bg-blue-50 text-blue-700",
   transferred: "bg-indigo-50 text-indigo-700",
+  packed: "bg-teal-50 text-teal-700",
   shipped: "bg-purple-50 text-purple-700",
   delivered: "bg-green-50 text-green-700",
   cancelled: "bg-red-50 text-red-700",
@@ -1307,6 +1310,14 @@ export default function AdminOrderDetail() {
             </div>
           )}
         </div>
+
+        {/* Packing: batch photos, who packed it, every step */}
+        <OrderPacking
+          orderId={order.id}
+          status={order.status}
+          isAdmin={user?.role === "admin"}
+          onChanged={() => loadOrder().catch(() => {})}
+        />
 
         {/* Activity Timeline */}
         {order.events?.length > 0 && (

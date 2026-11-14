@@ -241,7 +241,9 @@ export default function EmployeeDetailPage() {
                 <h2 className="text-lg font-semibold text-gray-900">
                   {employee.username || "No name"}
                 </h2>
-                <p className="text-sm text-gray-500 capitalize">{employee.role}</p>
+                <p className="text-sm text-gray-500 capitalize">
+                  {employee.staff_group === "dispatch" ? "Dispatch team" : employee.role}
+                </p>
               </div>
             </div>
 
@@ -249,7 +251,7 @@ export default function EmployeeDetailPage() {
               {roleError && (
                 <p className="text-xs text-red-600 mb-2">{roleError}</p>
               )}
-              {employee.role === "employee" ? (
+              {employee.staff_group === "dispatch" ? null : employee.role === "employee" ? (
                 <button
                   onClick={() => handleRoleChange("admin")}
                   disabled={changingRole}
@@ -454,7 +456,16 @@ export default function EmployeeDetailPage() {
 
         {/* Right column — permissions (employees only; admins have full access already) */}
         <div className="lg:col-span-2 min-w-0">
-          {employee.role === "employee" && (
+          {employee.staff_group === "dispatch" && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">Dispatch team</h3>
+              <p className="text-sm text-gray-600">
+                This login can view products only — no editing and no other features for now. Attendance and leave work the same
+                as for employees: link it to their scanner employee in Attendance.
+              </p>
+            </div>
+          )}
+          {employee.role === "employee" && employee.staff_group !== "dispatch" && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
@@ -566,7 +577,7 @@ export default function EmployeeDetailPage() {
           </div>
 
           <UserMeetingsRequests userId={employee.id} />
-          {employee.role === "employee" && (
+          {employee.role === "employee" && employee.staff_group !== "dispatch" && (
             <AssignmentPanel mode="employee" userId={employee.id} />
           )}
         </div>

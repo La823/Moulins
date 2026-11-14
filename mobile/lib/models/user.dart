@@ -39,6 +39,8 @@ class User {
   final String? billingAddress;
   final String? shippingAddress;
   final TeamSettings? teamSettings;
+  /// 'dispatch' for the dispatch team (an employee login); null otherwise.
+  final String? staffGroup;
 
   User({
     required this.id,
@@ -51,6 +53,7 @@ class User {
     this.billingAddress,
     this.shippingAddress,
     this.teamSettings,
+    this.staffGroup,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => User(
@@ -66,6 +69,7 @@ class User {
         teamSettings: json['team_settings'] is Map<String, dynamic>
             ? TeamSettings.fromJson(json['team_settings'] as Map<String, dynamic>)
             : null,
+        staffGroup: json['staff_group'],
       );
 
   String get displayName => username ?? phoneNumber;
@@ -77,6 +81,13 @@ class User {
   bool get buysFromPartner => role == 'retailer' || role == 'doctor';
 
   bool get isTeamMember => role == 'team_member';
+
+  /// The dispatch team: employee logins that view products and pack orders.
+  bool get isDispatch => role == 'employee' && staffGroup == 'dispatch';
+
+  /// May pack orders (batch photo per product): admins, and staff with the
+  /// packing permission.
+  bool get canPack => role == 'admin' || permissions.contains('packing_edit');
 
   TeamSettings get _team => teamSettings ?? const TeamSettings();
 
@@ -115,5 +126,6 @@ class User {
         'billing_address': billingAddress,
         'shipping_address': shippingAddress,
         if (teamSettings != null) 'team_settings': teamSettings!.toJson(),
+        if (staffGroup != null) 'staff_group': staffGroup,
       };
 }

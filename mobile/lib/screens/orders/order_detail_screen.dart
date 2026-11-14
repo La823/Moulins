@@ -139,7 +139,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     }
   }
 
-  static const _statusOptions = ['pending', 'confirmed', 'transferred', 'shipped', 'delivered', 'cancelled', 'refunded'];
+  static const _statusOptions = ['pending', 'confirmed', 'transferred', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
   String _statusLabel(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 

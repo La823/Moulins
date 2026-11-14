@@ -118,6 +118,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                   const SizedBox(height: 10),
                 ],
+                if (user.canPack) ...[
+                  _ManageTile(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'Packing',
+                    subtitle: 'Pack confirmed orders: a batch photo per product, then tick',
+                    onTap: () => context.push('/packing'),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 if (canSeeProducts) ...[
                   _ManageTile(
                     icon: Icons.medication_outlined,
@@ -195,7 +204,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     subtitle: 'Create and manage your personal broadcast lists',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminBroadcastListsScreen())),
                   ),
-                if (!canSeeProducts && !canSeePartners && !canSeeEmployees && !canSeePayments && !canSeeTransports && !canSeeNotifications && !canSeeBroadcastLists)
+                if (!user.canPack && !canSeeProducts && !canSeePartners && !canSeeEmployees && !canSeePayments && !canSeeTransports && !canSeeNotifications && !canSeeBroadcastLists)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(

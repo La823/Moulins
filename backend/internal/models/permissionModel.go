@@ -37,6 +37,7 @@ var ValidPermissions = []PermissionDef{
 	// Orders
 	{Key: "orders_view", Label: "Orders (View)", Desc: "View partner orders and their details", Group: "Orders"},
 	{Key: "orders_edit", Label: "Orders (Edit)", Desc: "Edit order status, item quantities, delivery details, and photos", Group: "Orders"},
+	{Key: "packing_edit", Label: "Packing", Desc: "Pack confirmed orders in the app: photograph each product's batch, tick it, and mark the order Packed", Group: "Orders"},
 
 	// Transports (mode of transportation master data, shown on the Orders panel)
 	{Key: "transports_edit", Label: "Transports (Edit)", Desc: "Create and edit transports and transport modes", Group: "Orders"},

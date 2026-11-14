@@ -30,7 +30,8 @@ export default function EmployeesPage() {
   const fetchEmployees = async () => {
     try {
       const data = await apiFetch("/admin/employees");
-      const emps = Array.isArray(data) ? data : [];
+      // the dispatch team has its own list (/panel/dispatch-team)
+      const emps = (Array.isArray(data) ? data : []).filter((e) => e.staff_group !== "dispatch");
 
       // Fetch permissions for each employee
       const withPerms = await Promise.all(

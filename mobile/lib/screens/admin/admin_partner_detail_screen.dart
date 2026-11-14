@@ -10,6 +10,7 @@ const _statusColors = {
   'pending': Color(0xFFB45309),
   'confirmed': Color(0xFF1D4ED8),
   'transferred': Color(0xFF4F46E5),
+  'packed': Color(0xFF0F766E),
   'shipped': Color(0xFF7C3AED),
   'delivered': Color(0xFF15803D),
   'cancelled': Color(0xFFB91C1C),

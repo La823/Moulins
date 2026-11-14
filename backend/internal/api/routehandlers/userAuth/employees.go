@@ -25,6 +25,7 @@ type EmployeeDetailResponse struct {
 	LastLoginAt     *string   `json:"last_login_at,omitempty"`
 	CreatedAt       string    `json:"created_at"`
 	Permissions     []string  `json:"permissions"`
+	StaffGroup      *string   `json:"staff_group,omitempty"` // "dispatch" for the dispatch team
 }
 
 func GetEmployeeDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
@@ -63,6 +64,7 @@ func GetEmployeeDetailHandler(db *pgxpool.Pool) http.HandlerFunc {
 			IsPhoneVerified: user.IsPhoneVerified,
 			CreatedAt:       user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			Permissions:     perms,
+			StaffGroup:      user.StaffGroup,
 		}
 
 		if user.LastLoginAt != nil {

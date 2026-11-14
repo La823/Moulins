@@ -160,4 +160,4 @@ class StaffOrderItem {
       );
 }
 
-const staffOrderStatuses = ['pending', 'confirmed', 'transferred', 'shipped', 'delivered', 'cancelled', 'refunded'];
+const staffOrderStatuses = ['pending', 'confirmed', 'transferred', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];
