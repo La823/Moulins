@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
+import { useAuth } from "@/context/AuthContext";
 
-// Bank statements (admin only): HDFC emails a statement every morning for the
+// Bank statements (admins, and employees with bank_statements_view; only
+// admins get "Check now"): HDFC emails a statement every morning for the
 // previous day; the server reads the email, opens HDFC's statement page with
 // the saved password and stores every field and transaction
 // (internal/bankstatements, checked hourly 8 AM–8 PM). Each statement shows
@@ -41,6 +43,8 @@ const TYPES = [
 ];
 
 export default function BankStatementsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [from, setFrom] = useState(daysAgo(30));
   const [to, setTo] = useState(ymd(new Date()));
   const [data, setData] = useState(null);
@@ -193,9 +197,11 @@ export default function BankStatementsPage() {
             Read from HDFC&apos;s daily statement emails. Checked every hour from 8 AM to 8 PM.
           </p>
         </div>
-        <button type="button" onClick={checkNow} disabled={checking} className={primaryCls}>
-          {checking ? "Checking…" : "Check now"}
-        </button>
+        {isAdmin && (
+          <button type="button" onClick={checkNow} disabled={checking} className={primaryCls}>
+            {checking ? "Checking…" : "Check now"}
+          </button>
+        )}
       </div>
 
       {checking && <p className="text-sm text-gray-500 mb-3">Reading the mailbox and opening new statements…</p>}

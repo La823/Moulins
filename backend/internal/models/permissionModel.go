@@ -90,6 +90,9 @@ var ValidPermissions = []PermissionDef{
 	{Key: "payments_view", Label: "Payments (View)", Desc: "View partner payment submissions", Group: "Finance"},
 	{Key: "payments_edit", Label: "Payments (Edit)", Desc: "Verify partner payment submissions", Group: "Finance"},
 
+	// Bank Statements (the daily HDFC statements read from email)
+	{Key: "bank_statements_view", Label: "Bank Statements (View)", Desc: "See the daily HDFC bank statements, their transactions and the original statement page", Group: "Finance"},
+
 	// Purchase Orders
 	{Key: "purchase_orders_view", Label: "Purchase Orders (View)", Desc: "View purchase orders", Group: "Finance"},
 	{Key: "purchase_orders_edit", Label: "Purchase Orders (Edit)", Desc: "Create and edit purchase orders", Group: "Finance"},

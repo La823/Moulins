@@ -359,9 +359,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// bank statements read each day from HDFC's statement emails
 	// AI calls: tokens, photo sizes, estimated cost (ai_usage)
 	admin.HandleFunc("/ai-usage", aiUsageHandlers.ReportHandler(db)).Methods("GET")
-	admin.HandleFunc("/bank-statements", bankStatementHandlers.ListHandler(db)).Methods("GET")
+	// viewing is also open to employees with bank_statements_view (see bankStatementsStaff); "check now" stays admin-only
 	admin.HandleFunc("/bank-statements/check", bankStatementHandlers.CheckHandler(db)).Methods("POST")
-	admin.HandleFunc("/bank-statements/{id}/html", bankStatementHandlers.HTMLHandler(db)).Methods("GET")
 	admin.HandleFunc("/cheques/dues/from", chequeHandlers.SetDuesFromHandler(db)).Methods("PUT")
 	admin.HandleFunc("/cheques/invoices", chequeHandlers.FindInvoicesHandler(db)).Methods("GET")
 	admin.HandleFunc("/cheques/suppliers", chequeHandlers.SuppliersHandler(db)).Methods("GET")
@@ -1052,6 +1051,13 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	paymentsEditStaff.Use(middleware.StaffOnly)
 	paymentsEditStaff.Use(middleware.RequirePermission(db, "payments_edit", rdb))
 	paymentsEditStaff.HandleFunc("/payments/{id}/verify", payments.VerifyHandler(db)).Methods("PUT")
+
+	// staff routes — daily HDFC bank statements (view only)
+	bankStatementsStaff := protected.PathPrefix("/admin").Subrouter()
+	bankStatementsStaff.Use(middleware.StaffOnly)
+	bankStatementsStaff.Use(middleware.RequirePermission(db, "bank_statements_view", rdb))
+	bankStatementsStaff.HandleFunc("/bank-statements", bankStatementHandlers.ListHandler(db)).Methods("GET")
+	bankStatementsStaff.HandleFunc("/bank-statements/{id}/html", bankStatementHandlers.HTMLHandler(db)).Methods("GET")
 
 	// staff routes — learning platform management
 	learningEditStaff := protected.PathPrefix("/admin").Subrouter()
