@@ -55,6 +55,7 @@ export default function BankStatementsPage() {
   const [checkMsg, setCheckMsg] = useState("");
   const [viewing, setViewing] = useState(null); // { title, html } or { title, loading }
   const [view, setView] = useState("day"); // "day": one block per date; "email": one block per HDFC email
+  const [acct, setAcct] = useState(""); // account_no to show; "" = every account
 
   const fetchRange = useCallback(() => apiFetch(`/admin/bank-statements?from=${from}&to=${to}`), [from, to]);
 
@@ -95,7 +96,7 @@ export default function BankStatementsPage() {
   };
 
   const viewStatement = async (s) => {
-    const title = `${fmtDate(s.period_from)}${s.period_to !== s.period_from ? ` – ${fmtDate(s.period_to)}` : ""}`;
+    const title = `···${s.account_no.slice(-4)} · ${fmtDate(s.period_from)}${s.period_to !== s.period_from ? ` – ${fmtDate(s.period_to)}` : ""}`;
     setViewing({ title, loading: true });
     try {
       const r = await apiFetch(`/admin/bank-statements/${s.id}/html`);
@@ -118,12 +119,14 @@ export default function BankStatementsPage() {
     [q, type],
   );
 
+  // the statements of the chosen account (or every account)
+  const stmts = useMemo(() => (data ? data.statements.filter((s) => !acct || s.account_no === acct) : []), [data, acct]);
+
   const shown = useMemo(() => {
-    if (!data) return [];
-    return data.statements
+    return stmts
       .map((s) => ({ ...s, shownLines: s.lines.filter(keep) }))
       .filter((s) => s.shownLines.length > 0 || (!q && type === "all"));
-  }, [data, keep, q, type]);
+  }, [stmts, keep, q, type]);
 
   // Day by day: every statement's dates split out. A day's opening is the
   // previous day's closing (the first day starts from the statement's
@@ -131,9 +134,8 @@ export default function BankStatementsPage() {
   // inside a statement with no transactions still show, with the balance
   // carried. Only days within the chosen dates.
   const days = useMemo(() => {
-    if (!data) return [];
     const out = [];
-    for (const s of [...data.statements].sort((a, b) => a.period_from.localeCompare(b.period_from))) {
+    for (const s of [...stmts].sort((a, b) => a.period_from.localeCompare(b.period_from))) {
       const byDate = new Map();
       for (let d = new Date(s.period_from); d <= new Date(s.period_to); d.setUTCDate(d.getUTCDate() + 1))
         byDate.set(d.toISOString().slice(0, 10), []);
@@ -155,8 +157,10 @@ export default function BankStatementsPage() {
           out.push({ key: `${s.id}-${d}`, date: d, stmt: s, opening, closing: bal, debit, credit, dn, cn, lines, shownLines: lines.filter(keep) });
       }
     }
-    return out.reverse().filter((x) => x.shownLines.length > 0 || (!q && type === "all"));
-  }, [data, keep, q, type, from, to]);
+    // newest day first; on one day, accounts in account order
+    out.sort((a, b) => b.date.localeCompare(a.date) || a.stmt.account_no.localeCompare(b.stmt.account_no));
+    return out.filter((x) => x.shownLines.length > 0 || (!q && type === "all"));
+  }, [stmts, keep, q, type, from, to]);
 
   const blocks = view === "day" ? days : shown;
 
@@ -185,8 +189,9 @@ export default function BankStatementsPage() {
   };
 
   if (!data) return <Loader />;
-  const acc = data.accounts.find((a) => a.active) || data.accounts[0];
-  const headroom = acc?.od_limit != null && acc?.latest_closing != null ? acc.od_limit + acc.latest_closing : null;
+  const accounts = data.accounts.filter((a) => a.active || a.statement_count > 0);
+  const cards = accounts.filter((a) => !acct || a.account_no === acct);
+  const many = accounts.length > 1 && !acct; // blocks of several accounts are mixed: label each
 
   return (
     <div className="max-w-6xl">
@@ -222,8 +227,25 @@ export default function BankStatementsPage() {
         </div>
       )}
 
-      {acc && (
-        <div className="mb-5 bg-white border border-gray-200 rounded-xl p-4">
+      {accounts.length > 1 && (
+        <div className="mb-3 inline-flex flex-wrap border border-gray-200 rounded-lg overflow-hidden bg-white">
+          {[["", "All accounts"], ...accounts.map((a) => [a.account_no, `···${a.last4}`])].map(([k, l]) => (
+            <button
+              key={k || "all"}
+              type="button"
+              onClick={() => setAcct(k)}
+              className={`px-3 py-1.5 text-sm ${acct === k ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-50"}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {cards.map((acc) => {
+        const headroom = acc.od_limit != null && acc.latest_closing != null ? acc.od_limit + acc.latest_closing : null;
+        return (
+        <div key={acc.account_no} className="mb-3 last:mb-5 bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-sm font-semibold text-gray-900">
@@ -260,7 +282,8 @@ export default function BankStatementsPage() {
             {acc.statement_count} statement{acc.statement_count === 1 ? "" : "s"} saved since {fmtDate(acc.first_period_from)} · last read {fmtWhen(acc.last_fetched_at)}
           </div>
         </div>
-      )}
+        );
+      })}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -327,6 +350,9 @@ export default function BankStatementsPage() {
                 <header className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-gray-50/60">
                   <div>
                     <div className="font-semibold text-gray-900 text-sm">
+                      {many && (
+                        <span className="mr-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 text-xs font-medium">···{st.account_no.slice(-4)}</span>
+                      )}
                       {view === "day" ? (
                         new Date(b.date).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
                       ) : (
