@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
   confirmed: "bg-blue-50 text-blue-700",
+  packing: "bg-amber-50 text-amber-700",
   transferred: "bg-indigo-50 text-indigo-700",
   packed: "bg-teal-50 text-teal-700",
   shipped: "bg-purple-50 text-purple-700",

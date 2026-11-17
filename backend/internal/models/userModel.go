@@ -752,6 +752,30 @@ func GetUsersByRole(ctx context.Context, db *pgxpool.Pool, role string) ([]User,
 // There is no soft-delete on public.users — the deleted_at column belongs to
 // Supabase's own auth.users — so a departing staff member is handled by
 // changing their role, which this filter already respects.
+// GetPackerUserIDs returns the employees who pack orders — those with the
+// packing_edit permission, which the dispatch team gets by default — to be
+// told when an order is sent to packing. Admins aren't included; they see
+// packing in the panel.
+func GetPackerUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `
+		SELECT u.id FROM users u
+		WHERE u.role = 'employee'
+		  AND EXISTS (SELECT 1 FROM employee_permissions p WHERE p.user_id = u.id AND p.permission = 'packing_edit')`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func GetStaffUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error) {
 	rows, err := db.Query(ctx,
 		// the dispatch team (staff_group) has no operations features yet,
@@ -776,9 +800,10 @@ func GetStaffUserIDs(ctx context.Context, db *pgxpool.Pool) ([]uuid.UUID, error)
 // StaffGroupDispatch is the dispatch team's staff_group.
 const StaffGroupDispatch = "dispatch"
 
-// DispatchPermissions is all a dispatch-team login may do: view products
-// and pack orders (migration 187).
-var DispatchPermissions = []string{"products_view", "packing_edit"}
+// DispatchPermissions is all a dispatch-team login may do: view products,
+// pack orders (migration 187), see Marg stock and record freight bills
+// (migration 190).
+var DispatchPermissions = []string{"products_view", "packing_edit", "marg_stock_view", "freight_bills_edit"}
 
 // MakeDispatchUser puts a new employee login in the dispatch team with only
 // the dispatch permissions.

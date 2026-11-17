@@ -16,6 +16,7 @@ const STATUSES = [
   "pending",
   "confirmed",
   "transferred",
+  "packing",
   "packed",
   "shipped",
   "delivered",
@@ -26,6 +27,7 @@ const STATUSES = [
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
   confirmed: "bg-blue-50 text-blue-700",
+  packing: "bg-amber-50 text-amber-700",
   transferred: "bg-indigo-50 text-indigo-700",
   packed: "bg-teal-50 text-teal-700",
   shipped: "bg-purple-50 text-purple-700",
@@ -679,7 +681,7 @@ export default function AdminOrderDetail() {
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
+                {s === "packing" ? "Sent to packing" : s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
             ))}
           </select>
@@ -689,7 +691,7 @@ export default function AdminOrderDetail() {
               STATUS_STYLES[order.status] || "bg-gray-100 text-gray-600"
             }`}
           >
-            {order.status}
+            {order.status === "packing" ? "Sent to packing" : order.status}
           </span>
         )}
       </div>
@@ -752,7 +754,8 @@ export default function AdminOrderDetail() {
           </div>
         ) : (
           canEdit &&
-          order.status === "confirmed" && (
+          // the server takes confirmed, sent-to-packing and packed orders
+          ["confirmed", "packing", "packed"].includes(order.status) && (
             <button
               onClick={() => setShowMargModal(true)}
               className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
@@ -1315,6 +1318,7 @@ export default function AdminOrderDetail() {
         <OrderPacking
           orderId={order.id}
           status={order.status}
+          canEdit={canEdit}
           isAdmin={user?.role === "admin"}
           onChanged={() => loadOrder().catch(() => {})}
         />

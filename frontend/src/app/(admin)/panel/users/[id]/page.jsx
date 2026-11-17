@@ -19,6 +19,7 @@ import { useBreadcrumbTitle } from "@/components/admin/Breadcrumbs";
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
   confirmed: "bg-blue-50 text-blue-700",
+  packing: "bg-amber-50 text-amber-700",
   transferred: "bg-indigo-50 text-indigo-700",
   packed: "bg-teal-50 text-teal-700",
   shipped: "bg-purple-50 text-purple-700",
@@ -511,7 +512,8 @@ export default function PartnerDetailPage() {
                 className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent disabled:opacity-50"
               >
                 <option value="normal">Normal</option>
-                <option value="special">Special</option>
+                {/* stored as "special" (the app and the catalog check that value); only the label changed */}
+                <option value="special">Third party</option>
               </select>
               {changingType && (
                 <p className="text-xs text-gray-400 mt-1">Updating...</p>
@@ -520,7 +522,7 @@ export default function PartnerDetailPage() {
                 <p className="text-xs text-red-600 mt-1">{typeError}</p>
               )}
               <p className="text-[11px] text-gray-400 mt-1">
-                Special partners get their own private product catalog.
+                Third party partners get their own private product catalog.
               </p>
             </div>
 

@@ -176,6 +176,23 @@ func GeneratePresignedPaymentUploadURL(filename string) (uploadURL string, key s
 	return req.URL, key, nil
 }
 
+// GeneratePresignedFreightBillUploadURL is for a freight bill's photo or PDF
+// (dispatch team, migration 190).
+func GeneratePresignedFreightBillUploadURL(filename string) (uploadURL string, key string, err error) {
+	bucket := os.Getenv("S3_BUCKET")
+	key = fmt.Sprintf("freight-bills/%s-%s", uuid.New().String(), filename)
+
+	req, err := s3PresignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		return "", "", err
+	}
+
+	return req.URL, key, nil
+}
+
 func GeneratePresignedResumeUploadURL(filename string) (uploadURL string, key string, err error) {
 	bucket := os.Getenv("S3_BUCKET")
 	key = fmt.Sprintf("resumes/%s-%s", uuid.New().String(), filename)

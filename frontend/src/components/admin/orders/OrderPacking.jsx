@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 // An order's packing (backend internal/packing): the dispatch team packs
-// confirmed orders in the app, photographing each product's batch; the
-// photo is read by AI and compared with the batch on the order. Shows each
-// line's photo, what was read, the result and who ticked it, plus every
-// step. Admins can let a mismatched batch through and reopen a packed order.
+// orders sent to packing in the app, photographing each product's batch;
+// the photo is read by AI and compared with the batch on the order. Every
+// photo is kept: each line shows its latest, and the log has every one
+// (retakes too). Shows what was read, the result and who ticked it, and who
+// the order is assigned to (rotation, internal/dispatch) — staff who can
+// edit orders can hand it to another packer. Admins can let a mismatched
+// batch through and reopen a packed order.
 
 const RESULT = {
   match: ["Matched", "bg-green-50 text-green-700"],
@@ -29,13 +32,14 @@ const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Ma
 const when = (s) =>
   s ? new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 
-export default function OrderPacking({ orderId, status, isAdmin, onChanged }) {
+export default function OrderPacking({ orderId, status, isAdmin, canEdit, onChanged }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [reload, setReload] = useState(0);
+  const [packers, setPackers] = useState(null); // loaded when the reassign picker opens
 
   useEffect(() => {
     let off = false;
@@ -54,7 +58,7 @@ export default function OrderPacking({ orderId, status, isAdmin, onChanged }) {
   if (error) return null; // no orders permission for packing, or not reachable: leave the page as it was
   if (!data) return null;
   const started = data.log.length > 0;
-  if (!started && data.status !== "confirmed" && data.status !== "packed") return null;
+  if (!started && data.status !== "packing" && data.status !== "packed") return null;
 
   const act = async (fn) => {
     setBusy(true);
@@ -78,8 +82,17 @@ export default function OrderPacking({ orderId, status, isAdmin, onChanged }) {
       }),
     );
   };
+  const loadPackers = () => {
+    if (packers) return;
+    apiFetch("/admin/dispatch/packers")
+      .then((d) => setPackers(d.packers || []))
+      .catch(() => setPackers([]));
+  };
+  const assign = (userId) =>
+    act(() => apiFetch(`/admin/orders/${orderId}/packing-assignee`, { method: "PUT", body: JSON.stringify({ user_id: userId }) }));
+
   const reopen = () => {
-    const reason = prompt("Reopen this order for packing? It goes back to Confirmed. Reason (optional):");
+    const reason = prompt("Reopen this order for packing? It goes back to Sent to packing, on the dispatch team's list. Reason (optional):");
     if (reason === null) return;
     act(() => apiFetch(`/admin/packing/orders/${orderId}/reopen`, { method: "POST", body: JSON.stringify({ reason }) }));
   };
@@ -94,8 +107,36 @@ export default function OrderPacking({ orderId, status, isAdmin, onChanged }) {
               ? `Packed by ${data.packed_by || "someone"} on ${when(data.packed_at)}`
               : started
                 ? `${data.ticked} of ${data.items.length} products ticked`
-                : "Not started. The dispatch team packs it in the app."}
+                : "Sent to packing. The dispatch team packs it in the app."}
           </p>
+          {data.status !== "packed" && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-gray-500">Assigned to</span>
+              {canEdit ? (
+                <select
+                  value={data.assigned_to_id || ""}
+                  onFocus={loadPackers}
+                  onMouseDown={loadPackers}
+                  disabled={busy}
+                  onChange={(e) => assign(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-xs text-gray-900 bg-white"
+                >
+                  <option value="">Nobody (whole team)</option>
+                  {data.assigned_to_id && !packers?.some((p) => p.id === data.assigned_to_id) && (
+                    <option value={data.assigned_to_id}>{data.assigned_to}</option>
+                  )}
+                  {(packers || []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.skip ? " (out of rotation)" : !p.present ? " (absent)" : p.on_leave ? " (on leave)" : ""} · {p.open} open
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="font-medium text-gray-800">{data.assigned_to || "Nobody (whole team)"}</span>
+              )}
+            </div>
+          )}
         </div>
         {isAdmin && data.status === "packed" && (
           <button
@@ -160,7 +201,7 @@ export default function OrderPacking({ orderId, status, isAdmin, onChanged }) {
                   </div>
                 )}
               </div>
-              {isAdmin && data.status === "confirmed" && (it.result === "mismatch" || it.result === "unreadable") && !it.override_at && (
+              {isAdmin && data.status === "packing" && (it.result === "mismatch" || it.result === "unreadable") && !it.override_at && (
                 <button
                   type="button"
                   disabled={busy}

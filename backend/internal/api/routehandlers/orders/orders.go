@@ -22,6 +22,7 @@ import (
 	"github.com/lavanyaarora/server/internal/margsync"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/models"
+	"github.com/lavanyaarora/server/internal/dispatch"
 	"github.com/lavanyaarora/server/internal/services"
 	"github.com/lavanyaarora/server/internal/utils"
 )
@@ -76,6 +77,7 @@ func notifyOrderStatusEmail(db *pgxpool.Pool, orderID uuid.UUID, status string) 
 
 var orderStatusLabels = map[string]string{
 	"confirmed": "Confirmed",
+	"packing":   "Sent to packing",
 	"packed":    "Packed",
 	"shipped":   "Shipped",
 	"delivered": "Delivered",
@@ -186,6 +188,67 @@ func notifyStaffNewOrder(db *pgxpool.Pool, orderID uuid.UUID, excludeUserID uuid
 func NotifyNewPartnerOrder(db *pgxpool.Pool, orderID, partnerID uuid.UUID) {
 	notifyOrderPlacedEmail(db, orderID)
 	notifyStaffNewOrder(db, orderID, uuid.Nil)
+}
+
+// notifyPackers assigns an order sent to packing to the next dispatch
+// member in turn (dispatch.AssignNext: round-robin among those present
+// today) and tells them, with the order sound; the tap opens the order's
+// packing screen in the app (the web link opens the packing list). When
+// nobody is in turn the whole dispatch team (employees with packing_edit)
+// is told instead. Async and best-effort like notifyStaffNewOrder; the
+// employee who sent it isn't told about their own action.
+func notifyPackers(db *pgxpool.Pool, orderID uuid.UUID, actor *uuid.UUID) {
+	go func() {
+		ctx := context.Background()
+		title := "Order sent to packing"
+		var packers []uuid.UUID
+		assignee, err := dispatch.AssignNext(ctx, db, orderID)
+		if err != nil {
+			log.Printf("packing rotation: order %s: %v", orderID, err)
+		}
+		if assignee != uuid.Nil {
+			packers, title = []uuid.UUID{assignee}, "Order assigned to you for packing"
+			name := assignee.String()
+			if u, err := models.GetUserByID(ctx, db, assignee); err == nil {
+				if u.Username != nil && *u.Username != "" {
+					name = *u.Username
+				} else if u.PhoneNumber != "" {
+					name = u.PhoneNumber
+				}
+			}
+			_ = models.InsertOrderEvent(ctx, db, orderID, "packing.assigned", "Packing assigned to "+name+" (rotation)", nil)
+		} else if packers, err = models.GetPackerUserIDs(ctx, db); err != nil {
+			log.Printf("packing notification: failed to list packers: %v", err)
+			return
+		}
+		if len(packers) == 0 {
+			return
+		}
+		order, err := models.GetOrderByID(ctx, db, orderID)
+		if err != nil {
+			log.Printf("packing notification: failed to load order %s: %v", orderID, err)
+			return
+		}
+		customer := "a customer"
+		if user, err := models.GetUserByID(ctx, db, order.UserID); err == nil {
+			if user.Username != nil && *user.Username != "" {
+				customer = *user.Username
+			} else if user.PhoneNumber != "" {
+				customer = user.PhoneNumber
+			}
+		}
+		items := len(order.Items)
+		body := fmt.Sprintf("%s's order with %d item%s is ready to pack", customer, items, plural(items))
+		deepLink := "/panel/packing?order=" + orderID.String()
+		for _, uid := range packers {
+			if actor != nil && uid == *actor {
+				continue
+			}
+			if err := services.SendDirectNotificationOn(ctx, db, utils.OrderPush, uid, title, body, &deepLink); err != nil {
+				log.Printf("packing notification: send to %s failed: %v", uid, err)
+			}
+		}
+	}()
 }
 
 func plural(n int) string {
@@ -1284,8 +1347,10 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// flow: pending -> confirmed -> packing (sent to packing) -> packed
+		// -> shipped -> delivered, or cancelled
 		valid := map[string]bool{
-			"pending": true, "confirmed": true, "transferred": true, "packed": true,
+			"pending": true, "confirmed": true, "transferred": true, "packing": true, "packed": true,
 			"shipped": true, "delivered": true, "cancelled": true,
 			"refunded": true,
 		}
@@ -1308,6 +1373,9 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		_ = models.InsertOrderEvent(r.Context(), db, id, "status."+body.Status, desc, actorID(r))
 		notifyOrderStatusEmail(db, id, body.Status)
+		if body.Status == "packing" && oldStatus != "packing" {
+			notifyPackers(db, id, actorID(r))
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": body.Status})
@@ -1730,9 +1798,10 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "order not found", http.StatusNotFound)
 			return
 		}
-		// packed orders too: packing (migration 187) can come before the push
-		if order.Status != "confirmed" && order.Status != "packed" {
-			http.Error(w, "only confirmed or packed orders can be pushed to Marg", http.StatusConflict)
+		// orders sent to packing or packed too: packing (migration 187) can
+		// come before the push
+		if order.Status != "confirmed" && order.Status != "packing" && order.Status != "packed" {
+			http.Error(w, "only confirmed, sent to packing or packed orders can be pushed to Marg", http.StatusConflict)
 			return
 		}
 

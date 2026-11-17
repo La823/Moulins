@@ -5,7 +5,7 @@ import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import Loader from "@/components/Loader";
 
-// Packing: confirmed orders waiting for the dispatch team (who pack them in
+// Packing: orders sent to packing, waiting for the dispatch team (who pack them in
 // the app with a batch photo per product), and the orders packed lately.
 // Each row opens the order, whose Packing section has the photos and log.
 
@@ -44,7 +44,7 @@ export default function PackingPage() {
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-gray-800">Packing</h2>
         <p className="text-xs text-gray-400 mt-0.5">
-          The dispatch team packs confirmed orders in the app: a photo of each product&apos;s batch, checked against the order, then a tick.
+          The dispatch team packs orders marked Sent to packing in the app: a photo of each product&apos;s batch, checked against the order, then a tick.
           When every product is ticked the order becomes Packed.
         </p>
       </div>
@@ -91,6 +91,11 @@ export default function PackingPage() {
                       {r.customer || "Unknown"}
                     </Link>
                     {r.city && <span className="block text-[11px] text-gray-400">{r.city}</span>}
+                    {view !== "packed" && (
+                      <span className="block text-[11px] text-gray-500">
+                        {r.assigned_to ? `Assigned to ${r.assigned_to}` : "Not assigned"}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{when(r.created_at)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">

@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
   confirmed: "bg-blue-50 text-blue-700 border-blue-200",
+  packing: "bg-amber-50 text-amber-700 border-amber-200",
   transferred: "bg-indigo-50 text-indigo-700 border-indigo-200",
   packed: "bg-teal-50 text-teal-700 border-teal-200",
   shipped: "bg-purple-50 text-purple-700 border-purple-200",
@@ -20,6 +21,7 @@ const STATUSES = [
   "pending",
   "confirmed",
   "transferred",
+  "packing",
   "packed",
   "shipped",
   "delivered",
@@ -32,6 +34,7 @@ const STATUS_TABS = [
   { value: "pending", label: "Pending" },
   { value: "confirmed", label: "Confirmed" },
   { value: "transferred", label: "Transferred" },
+  { value: "packing", label: "Sent to packing" },
   { value: "packed", label: "Packed" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
@@ -351,7 +354,7 @@ function AdminOrdersPageInner() {
                     >
                       {STATUSES.map((s) => (
                         <option key={s} value={s}>
-                          {s}
+                          {s === "packing" ? "sent to packing" : s}
                         </option>
                       ))}
                     </select>

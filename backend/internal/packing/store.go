@@ -17,15 +17,22 @@ import (
 	"github.com/lavanyaarora/server/internal/utils"
 )
 
-// Packing (migration 187): the dispatch team packs confirmed orders line by
-// line. Each line gets a photo of its batch print, read by Gemini and
-// compared with the batch expected; a line can be ticked only after a match
-// (or an admin's override), and when every line is ticked the order goes
-// from confirmed to packed. Every step is logged with who did it.
+// Packing (migration 187): the dispatch team packs orders line by line.
+// Order flow: pending -> confirmed -> packing ("sent to packing", set by an
+// employee) -> packed -> shipped, or cancelled. The dispatch team sees and
+// packs only orders sent to packing. Each line gets a photo of its batch
+// print, read by Gemini and compared with the batch expected; a line can be
+// ticked only after a match (or an admin's override), and when every line is
+// ticked the order goes from packing to packed. Every step is logged with
+// who did it.
+
+// StatusToPack is the order status "sent to packing": the orders the
+// dispatch team sees and packs.
+const StatusToPack = "packing"
 
 var (
 	ErrNotFound    = errors.New("packing: not found")
-	ErrNotPackable = errors.New("packing: only confirmed orders can be packed")
+	ErrNotPackable = errors.New("packing: only orders sent to packing can be packed")
 	ErrNotChecked  = errors.New("packing: this product's batch has not been matched yet")
 	ErrNotAllDone  = errors.New("packing: not every product is ticked")
 )
@@ -102,6 +109,8 @@ type Order struct {
 	TransportName string     `json:"transport_name,omitempty"`
 	Notes         string     `json:"notes,omitempty"`
 	MargOrderNo   string     `json:"marg_order_no,omitempty"`
+	AssignedTo    string     `json:"assigned_to,omitempty"`
+	AssignedToID  string     `json:"assigned_to_id,omitempty"`
 	PackedAt      *time.Time `json:"packed_at,omitempty"`
 	PackedBy      string     `json:"packed_by,omitempty"`
 	Items         []Item     `json:"items"`
@@ -122,6 +131,10 @@ type ListRow struct {
 	Started   bool       `json:"started"`
 	PackedAt  *time.Time `json:"packed_at,omitempty"`
 	PackedBy  string     `json:"packed_by,omitempty"`
+	// who the rotation (or a person) gave it to; Mine: the viewer
+	AssignedTo   string `json:"assigned_to,omitempty"`
+	AssignedToID string `json:"assigned_to_id,omitempty"`
+	Mine         bool   `json:"mine"`
 }
 
 func photoURL(key *string) string {
@@ -138,10 +151,11 @@ func str(s *string) string {
 	return *s
 }
 
-// List returns the orders to pack (confirmed, oldest first) or, for
-// view "packed", the last 100 packed orders, newest first.
-func List(ctx context.Context, db *pgxpool.Pool, view string) ([]ListRow, error) {
-	where, order := `o.status = 'confirmed'`, `o.created_at`
+// List returns the orders to pack (sent to packing; the viewer's own
+// first, then oldest first) or, for view "packed", the last 100 packed
+// orders, newest first.
+func List(ctx context.Context, db *pgxpool.Pool, view string, viewer uuid.UUID) ([]ListRow, error) {
+	where, order := `o.status = '`+StatusToPack+`'`, `(o.packing_assigned_to IS NOT DISTINCT FROM $1) DESC, o.created_at`
 	if view == "packed" {
 		where, order = `o.status = 'packed'`, `o.packed_at DESC NULLS LAST, o.updated_at DESC`
 	}
@@ -151,13 +165,16 @@ func List(ctx context.Context, db *pgxpool.Pool, view string) ([]ListRow, error)
 		       (SELECT COUNT(*) FROM order_items oi JOIN order_item_packing k ON k.order_item_id = oi.id
 		        WHERE oi.order_id = o.id AND k.packed_at IS NOT NULL AND k.packed_qty = oi.quantity)::int,
 		       EXISTS (SELECT 1 FROM order_packing_log l WHERE l.order_id = o.id),
-		       o.packed_at, COALESCE(pu.username, '')
+		       o.packed_at, COALESCE(pu.username, ''),
+		       COALESCE(NULLIF(au.username, ''), au.phone_number, ''), COALESCE(o.packing_assigned_to::text, ''),
+		       o.packing_assigned_to IS NOT DISTINCT FROM $1
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
 		LEFT JOIN users pu ON pu.id = o.packed_by
+		LEFT JOIN users au ON au.id = o.packing_assigned_to
 		WHERE `+where+`
 		ORDER BY `+order+`
-		LIMIT 100`)
+		LIMIT 100`, viewer)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +182,8 @@ func List(ctx context.Context, db *pgxpool.Pool, view string) ([]ListRow, error)
 	out := []ListRow{}
 	for rows.Next() {
 		var r ListRow
-		if err := rows.Scan(&r.ID, &r.Status, &r.CreatedAt, &r.Customer, &r.City, &r.Items, &r.Ticked, &r.Started, &r.PackedAt, &r.PackedBy); err != nil {
+		if err := rows.Scan(&r.ID, &r.Status, &r.CreatedAt, &r.Customer, &r.City, &r.Items, &r.Ticked, &r.Started, &r.PackedAt, &r.PackedBy,
+			&r.AssignedTo, &r.AssignedToID, &r.Mine); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -242,13 +260,15 @@ func Get(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Order, erro
 		var phone, city, mode, tname, notes, margNo, packedBy *string
 		err := db.QueryRow(ctx, `
 			SELECT o.id::text, o.status, o.created_at, COALESCE(NULLIF(u.username, ''), u.phone_number, ''), u.phone_number, u.city,
-			       o.transport_mode, t.name, o.notes, o.marg_order_no, o.packed_at, pu.username
+			       o.transport_mode, t.name, o.notes, o.marg_order_no, o.packed_at, pu.username,
+			       COALESCE(NULLIF(au.username, ''), au.phone_number, ''), COALESCE(o.packing_assigned_to::text, '')
 			FROM orders o
 			LEFT JOIN users u ON u.id = o.user_id
 			LEFT JOIN users pu ON pu.id = o.packed_by
+			LEFT JOIN users au ON au.id = o.packing_assigned_to
 			LEFT JOIN transports t ON t.id = o.transport_id
 			WHERE o.id = $1`, orderID).Scan(&o.ID, &o.Status, &o.CreatedAt, &o.Customer, &phone, &city,
-			&mode, &tname, &notes, &margNo, &o.PackedAt, &packedBy)
+			&mode, &tname, &notes, &margNo, &o.PackedAt, &packedBy, &o.AssignedTo, &o.AssignedToID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound = true
 			return
@@ -289,7 +309,7 @@ func Get(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Order, erro
 		}
 	}
 	o.Items, o.Log = items, log
-	o.CanFinish = o.Status == "confirmed" && len(items) > 0 && o.Ticked == len(items)
+	o.CanFinish = o.Status == StatusToPack && len(items) > 0 && o.Ticked == len(items)
 	return &o, nil
 }
 
@@ -408,7 +428,7 @@ func loadLine(ctx context.Context, db *pgxpool.Pool, orderID, itemID uuid.UUID) 
 	if err != nil {
 		return nil, err
 	}
-	if l.status != "confirmed" {
+	if l.status != StatusToPack {
 		return &l, ErrNotPackable
 	}
 	exp, err := expectations(ctx, db, orderID)
@@ -647,8 +667,9 @@ func Override(ctx context.Context, db *pgxpool.Pool, orderID, itemID, userID uui
 	return nil
 }
 
-// Finish marks a confirmed order packed once every line is ticked at its
-// current quantity, in one statement so a line changed meanwhile stops it.
+// Finish marks an order sent to packing as packed once every line is ticked
+// at its current quantity, in one statement so a line changed meanwhile
+// stops it.
 func Finish(ctx context.Context, db *pgxpool.Pool, orderID, userID uuid.UUID) error {
 	var status string
 	if err := db.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, orderID).Scan(&status); err != nil {
@@ -657,13 +678,13 @@ func Finish(ctx context.Context, db *pgxpool.Pool, orderID, userID uuid.UUID) er
 		}
 		return err
 	}
-	if status != "confirmed" {
+	if status != StatusToPack {
 		return ErrNotPackable
 	}
 	tag, err := db.Exec(ctx, `
 		WITH up AS (
 			UPDATE orders o SET status = 'packed', packed_at = now(), packed_by = $2, updated_at = now()
-			WHERE o.id = $1 AND o.status = 'confirmed'
+			WHERE o.id = $1 AND o.status = 'packing'
 			  AND EXISTS (SELECT 1 FROM order_items WHERE order_id = $1)
 			  AND NOT EXISTS (
 				SELECT 1 FROM order_items oi LEFT JOIN order_item_packing k ON k.order_item_id = oi.id
@@ -671,7 +692,7 @@ func Finish(ctx context.Context, db *pgxpool.Pool, orderID, userID uuid.UUID) er
 			RETURNING o.id
 		), ev AS (
 			INSERT INTO order_events (order_id, event_type, description, actor_id)
-			SELECT id, 'status.packed', 'Order status changed from confirmed to packed', $2 FROM up
+			SELECT id, 'status.packed', 'Order status changed from packing to packed', $2 FROM up
 		)
 		INSERT INTO order_packing_log (order_id, user_id, action, detail)
 		SELECT id, $2, 'finished', 'All products packed; order marked Packed' FROM up`, orderID, userID)
@@ -684,17 +705,18 @@ func Finish(ctx context.Context, db *pgxpool.Pool, orderID, userID uuid.UUID) er
 	return nil
 }
 
-// Reopen takes a packed order back to confirmed (admins only), keeping its
-// checks and ticks so only what changed needs doing again.
+// Reopen takes a packed order back to "sent to packing" (admins only), so it
+// is back on the dispatch team's list, keeping its checks and ticks so only
+// what changed needs doing again.
 func Reopen(ctx context.Context, db *pgxpool.Pool, orderID, userID uuid.UUID, reason string) error {
 	tag, err := db.Exec(ctx, `
 		WITH up AS (
-			UPDATE orders SET status = 'confirmed', packed_at = NULL, packed_by = NULL, updated_at = now()
+			UPDATE orders SET status = 'packing', packed_at = NULL, packed_by = NULL, updated_at = now()
 			WHERE id = $1 AND status = 'packed'
 			RETURNING id
 		), ev AS (
 			INSERT INTO order_events (order_id, event_type, description, actor_id)
-			SELECT id, 'status.confirmed', 'Order status changed from packed to confirmed', $2 FROM up
+			SELECT id, 'status.packing', 'Order status changed from packed to packing', $2 FROM up
 		)
 		INSERT INTO order_packing_log (order_id, user_id, action, detail)
 		SELECT id, $2, 'reopened', 'Reopened for packing' || CASE WHEN $3 <> '' THEN ': ' || $3 ELSE '' END FROM up`,

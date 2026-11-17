@@ -57,7 +57,7 @@ func fail(w http.ResponseWriter, what string, err error) {
 	case errors.Is(err, packing.ErrNotFound):
 		http.Error(w, "That order or product was not found.", http.StatusNotFound)
 	case errors.Is(err, packing.ErrNotPackable):
-		http.Error(w, "This order is not waiting to be packed (only Confirmed orders are packed).", http.StatusConflict)
+		http.Error(w, "This order is not waiting to be packed (only orders Sent to packing are packed).", http.StatusConflict)
 	case errors.Is(err, packing.ErrNotChecked):
 		http.Error(w, "This product can be ticked once a photo of its batch matches. Take the photo (again), or ask an admin to allow it.", http.StatusConflict)
 	case errors.Is(err, packing.ErrNotAllDone):
@@ -71,7 +71,7 @@ func fail(w http.ResponseWriter, what string, err error) {
 // GET /admin/packing/orders?view=to_pack|packed
 func ListHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := packing.List(r.Context(), db, r.URL.Query().Get("view"))
+		rows, err := packing.List(r.Context(), db, r.URL.Query().Get("view"), userID(r))
 		if err != nil {
 			fail(w, "list", err)
 			return
@@ -245,6 +245,6 @@ func ReopenHandler(db *pgxpool.Pool) http.HandlerFunc {
 			fail(w, "reopen", err)
 			return
 		}
-		writeJSON(w, map[string]string{"status": "confirmed"})
+		writeJSON(w, map[string]string{"status": packing.StatusToPack})
 	}
 }

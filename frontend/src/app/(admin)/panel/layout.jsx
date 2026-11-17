@@ -213,6 +213,8 @@ const NAV_ITEMS = [
     ],
   },
   { label: "Transports", href: "/panel/transports", permission: "transports_edit", icon: ICONS.truck },
+  // the dispatch team's freight bills (added in the MPPL Team app)
+  { label: "Freight Bills", href: "/panel/freight-bills", permission: "freight_bills_view", icon: ICONS.truck },
   {
     label: "Users",
     icon: ICONS.partners,

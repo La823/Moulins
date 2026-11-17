@@ -12,6 +12,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/attendance"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/auth"
 	bankStatementHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/bankstatements"
+	dispatchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/dispatch"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/broadcastlists"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/cart"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/categories"
@@ -858,6 +859,28 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	packingStaff.HandleFunc("/packing/orders/{id}/items/{itemId}/override", packingHandlers.OverrideHandler(db)).Methods("POST")
 	packingStaff.HandleFunc("/packing/orders/{id}/finish", packingHandlers.FinishHandler(db)).Methods("POST")
 	packingStaff.HandleFunc("/packing/orders/{id}/reopen", packingHandlers.ReopenHandler(db)).Methods("POST")
+
+	// staff routes — dispatch team, part 2 (migration 190): the packing
+	// rotation and freight bills. Freight routes check freight_bills_edit /
+	// freight_bills_view inside the handlers (own bills vs every bill).
+	dispatchStaff := protected.PathPrefix("/admin").Subrouter()
+	dispatchStaff.Use(middleware.StaffOnly)
+	dispatchStaff.HandleFunc("/dispatch/packers", dispatchHandlers.PackersHandler(db)).Methods("GET")
+	dispatchStaff.HandleFunc("/freight-bills", dispatchHandlers.ListFreightHandler(db)).Methods("GET")
+	dispatchStaff.HandleFunc("/freight-bills", dispatchHandlers.CreateFreightHandler(db)).Methods("POST")
+	dispatchStaff.HandleFunc("/freight-bills/upload-url", dispatchHandlers.FreightUploadURLHandler(db)).Methods("POST")
+	dispatchStaff.HandleFunc("/freight-bills/{id}", dispatchHandlers.UpdateFreightHandler(db)).Methods("PUT")
+	dispatchStaff.HandleFunc("/freight-bills/{id}", dispatchHandlers.DeleteFreightHandler(db)).Methods("DELETE")
+
+	dispatchRotationStaff := protected.PathPrefix("/admin").Subrouter()
+	dispatchRotationStaff.Use(middleware.StaffOnly)
+	dispatchRotationStaff.Use(middleware.RequirePermission(db, "employees_edit", rdb))
+	dispatchRotationStaff.HandleFunc("/dispatch/packers/{id}/rotation", dispatchHandlers.SetRotationHandler(db)).Methods("PUT")
+
+	dispatchAssignStaff := protected.PathPrefix("/admin").Subrouter()
+	dispatchAssignStaff.Use(middleware.StaffOnly)
+	dispatchAssignStaff.Use(middleware.RequirePermission(db, "orders_edit", rdb))
+	dispatchAssignStaff.HandleFunc("/orders/{id}/packing-assignee", dispatchHandlers.AssignHandler(db)).Methods("PUT")
 
 	// staff routes — order management (edit: status, quantities, delivery
 	// details, photos, and pushing to Marg), gated separately so "view
