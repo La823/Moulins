@@ -42,6 +42,7 @@ type Item struct {
 	OrderItemID   string `json:"order_item_id"`
 	ProductID     string `json:"product_id"`
 	ProductName   string `json:"product_name"`
+	InventoryCode string `json:"inventory_code,omitempty"` // warehouse rack code
 	Quantity      int    `json:"quantity"`
 	MargLinked    bool   `json:"marg_linked"`
 	ExpectedBatch string `json:"expected_batch,omitempty"` // empty: none chosen on the order
@@ -317,7 +318,7 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]Item
 	rows, err := db.Query(ctx, `
 		SELECT oi.id::text, oi.product_id::text,
 		       CASE WHEN oi.product_name <> '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS name,
-		       oi.quantity,
+		       COALESCE(p.inventory_code, ''), oi.quantity,
 		       k.photo_key, k.read_batch, k.read_expiry, k.read_product, k.read_source, k.result, k.result_note,
 		       cu.username, k.checked_at, ou.username, k.override_reason, k.override_at,
 		       k.packed_qty, pu.username, k.packed_at,
@@ -346,7 +347,7 @@ func loadItems(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) ([]Item
 		var pqty *int
 		var ub, uw, uh, upt, uit, uot, utt, utot, ums *int
 		var ucost *float64
-		if err := rows.Scan(&it.OrderItemID, &it.ProductID, &it.ProductName, &it.Quantity,
+		if err := rows.Scan(&it.OrderItemID, &it.ProductID, &it.ProductName, &it.InventoryCode, &it.Quantity,
 			&photo, &rb, &re, &rp, &rs, &res, &note, &cby, &it.CheckedAt, &oby, &oreason, &it.OverrideAt,
 			&pqty, &pby, &it.PackedAt,
 			&ub, &uw, &uh, &upt, &uit, &uot, &utt, &utot, &ucost, &ums); err != nil {

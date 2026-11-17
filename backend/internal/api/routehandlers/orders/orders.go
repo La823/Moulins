@@ -798,6 +798,7 @@ func stripInternalPricing(r *http.Request, order *models.Order) {
 		order.Items[i].Rate = nil
 		order.Items[i].LineTotal = nil
 		order.Items[i].Remarks = nil
+		order.Items[i].InventoryCode = nil
 	}
 }
 

@@ -83,7 +83,7 @@ func Sync(ctx context.Context, db *pgxpool.Pool, creds Credentials, from time.Ti
 	err := db.QueryRow(ctx, `
 		INSERT INTO etime_sync_runs (date_from, date_to, triggered_by)
 		VALUES ($1, $2, $3) RETURNING id`,
-		from.Format(isoDate), to.Format(isoDate), triggeredBy).Scan(&runID)
+		from.Format(isoDate), to.Format(isoDate), triggeredByOrNull(triggeredBy)).Scan(&runID)
 	if err != nil {
 		return nil, fmt.Errorf("could not record sync run: %w", err)
 	}
@@ -225,6 +225,14 @@ func store(ctx context.Context, db *pgxpool.Pool, days []DayRecord, punches []Pu
 		inserted = int(tag.RowsAffected())
 	}
 	return inserted, tx.Commit(ctx)
+}
+
+// triggeredByOrNull stores a scheduled run (uuid.Nil) with no triggered_by.
+func triggeredByOrNull(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
 }
 
 func GetRun(ctx context.Context, db *pgxpool.Pool, id int) (*SyncRun, error) {

@@ -10,6 +10,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routes"
 	"github.com/lavanyaarora/server/internal/cache"
 	"github.com/lavanyaarora/server/internal/database"
+	"github.com/lavanyaarora/server/internal/etimeoffice"
 	"github.com/lavanyaarora/server/internal/margede"
 	"github.com/lavanyaarora/server/internal/middleware"
 	"github.com/lavanyaarora/server/internal/server"
@@ -53,6 +54,7 @@ func main() {
 
 	go services.StartScheduler(db)
 	go margede.StartScheduler(db)
+	go etimeoffice.StartScheduler(db)
 
 	rdb := cache.New()
 	chatHub := services.NewChatHub()

@@ -94,6 +94,9 @@ type OrderItem struct {
 	// Moq is the product's minimum order quantity (0: none set), so staff
 	// editing the line step its quantity in whole multiples of it.
 	Moq int `json:"moq,omitempty"`
+	// InventoryCode is the warehouse rack code (products.inventory_code), as
+	// printed on the order sheet. Internal: stripped for customers.
+	InventoryCode *string `json:"inventory_code,omitempty"`
 }
 
 type OrderEvent struct {
@@ -362,7 +365,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		`SELECT oi.id, oi.order_id, oi.product_id,
 		        CASE WHEN oi.product_name != '' THEN oi.product_name ELSE COALESCE(p.name, '') END AS product_name,
 		        oi.quantity, oi.created_at, oi.selected_batch_code, oi.marg_pushed_at,
-		        oi.rate, oi.line_total, oi.remarks, COALESCE(p.moq, 0)
+		        oi.rate, oi.line_total, oi.remarks, COALESCE(p.moq, 0), p.inventory_code
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1
@@ -377,7 +380,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 	o.Items = []OrderItem{}
 	for itemRows.Next() {
 		var item OrderItem
-		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal, &item.Remarks, &item.Moq); err != nil {
+		if err := itemRows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName, &item.Quantity, &item.CreatedAt, &item.SelectedBatchCode, &item.MargPushedAt, &item.Rate, &item.LineTotal, &item.Remarks, &item.Moq, &item.InventoryCode); err != nil {
 			return nil, err
 		}
 		o.Items = append(o.Items, item)
