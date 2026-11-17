@@ -28,9 +28,11 @@ func ScheduleEnabled() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv("ETIME_SCHEDULE")), "off")
 }
 
-// nextHour is the next full hour (IST) after t.
+// nextHour is the next full hour in IST after t. Not t.Truncate(time.Hour):
+// that rounds in UTC, and IST is UTC+5:30, so it lands on the half hour.
 func nextHour(t time.Time) time.Time {
-	return t.In(istZone).Truncate(ScheduleInterval).Add(ScheduleInterval)
+	l := t.In(istZone)
+	return time.Date(l.Year(), l.Month(), l.Day(), l.Hour()+1, 0, 0, 0, istZone)
 }
 
 // StartScheduler syncs attendance at the top of every hour. Runs are
