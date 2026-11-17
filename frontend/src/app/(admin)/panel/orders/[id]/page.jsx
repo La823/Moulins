@@ -86,6 +86,7 @@ export default function AdminOrderDetail() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingTracking, setUploadingTracking] = useState(false);
   const [showMargModal, setShowMargModal] = useState(false);
+  const [margResend, setMargResend] = useState(false); // send again after changes
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [whatsAppError, setWhatsAppError] = useState("");
   const [sendLog, setSendLog] = useState([]);
@@ -741,8 +742,28 @@ export default function AdminOrderDetail() {
       </div>
 
       {/* Marg ERP push */}
-      <div className="mb-6">
-        {order.marg_order_no ? (
+      <div className="mb-6 space-y-2">
+        {order.marg_order_no && order.marg_changed_at ? (
+          // changed after it was sent: Marg no longer matches the order
+          <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex flex-wrap items-center gap-3">
+            <div className="flex-1 min-w-[16rem]">
+              <p className="font-medium">Changed after it was sent to Marg (Order No. {order.marg_order_no})</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Last change {new Date(order.marg_changed_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}.
+                Send it again to create a new Marg order with the current products and quantities, then delete Order
+                No. {order.marg_order_no} in Marg.
+              </p>
+            </div>
+            {canEdit && ["confirmed", "packing", "packed"].includes(order.status) && (
+              <button
+                onClick={() => { setMargResend(true); setShowMargModal(true); }}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700"
+              >
+                Send to Marg again
+              </button>
+            )}
+          </div>
+        ) : order.marg_order_no ? (
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
@@ -757,12 +778,18 @@ export default function AdminOrderDetail() {
           // the server takes confirmed, sent-to-packing and packed orders
           ["confirmed", "packing", "packed"].includes(order.status) && (
             <button
-              onClick={() => setShowMargModal(true)}
+              onClick={() => { setMargResend(false); setShowMargModal(true); }}
               className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
             >
               Send to Marg
             </button>
           )
+        )}
+        {order.marg_replaced_order_nos?.length > 0 && (
+          <p className="text-xs text-gray-500">
+            Sent again after changes. Earlier Marg order{order.marg_replaced_order_nos.length > 1 ? "s" : ""}{" "}
+            <b className="text-gray-700">{order.marg_replaced_order_nos.join(", ")}</b> should be deleted in Marg.
+          </p>
         )}
       </div>
 
@@ -1551,12 +1578,18 @@ export default function AdminOrderDetail() {
       {showMargModal && (
         <MargBatchPickerModal
           orderId={id}
+          resend={margResend}
+          replacing={order.marg_order_no || ""}
           onClose={() => setShowMargModal(false)}
           onPushed={(result) => {
             setShowMargModal(false);
-            setOrder((prev) => ({ ...prev, marg_order_no: result.marg_order_no, marg_pushed_at: new Date().toISOString() }));
+            setOrder((prev) => ({ ...prev, marg_order_no: result.marg_order_no, marg_pushed_at: new Date().toISOString(), marg_changed_at: null }));
             loadOrder().catch(() => {});
-            setSuccess(`Order pushed to Marg — Order No. ${result.marg_order_no}`);
+            setSuccess(
+              result.replaced
+                ? `Sent to Marg again — new Order No. ${result.marg_order_no}. Now delete Order No. ${result.replaced} in Marg.`
+                : `Order pushed to Marg — Order No. ${result.marg_order_no}`
+            );
           }}
         />
       )}

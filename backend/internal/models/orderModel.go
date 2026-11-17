@@ -51,6 +51,11 @@ type Order struct {
 	MargOrderNo       *string    `json:"marg_order_no,omitempty"`
 	MargPushedAt      *time.Time `json:"marg_pushed_at,omitempty"`
 	MargInsertOrderID *string    `json:"marg_insert_order_id,omitempty"`
+	// MargChangedAt: a line was changed after the order was sent to Marg,
+	// so Marg no longer matches (migration 191). MargReplacedOrderNos are
+	// the Marg orders an earlier send made, to be deleted in Marg.
+	MargChangedAt        *time.Time `json:"marg_changed_at,omitempty"`
+	MargReplacedOrderNos []string   `json:"marg_replaced_order_nos,omitempty"`
 }
 
 type UpdateOrderDetailsRequest struct {
@@ -340,7 +345,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 			COALESCE(u.phone_number, '') AS user_phone,
 			t.name, t.gst_number,
 			o.marg_order_no, o.marg_pushed_at, o.marg_insert_order_id,
-			o.freight
+			o.freight, o.marg_changed_at, o.marg_replaced_order_nos
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
 		LEFT JOIN transports t ON t.id = o.transport_id
@@ -354,7 +359,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		&o.UserName, &o.UserPhone,
 		&o.TransportName, &o.TransportGstNumber,
 		&o.MargOrderNo, &o.MargPushedAt, &o.MargInsertOrderID,
-		&o.Freight,
+		&o.Freight, &o.MargChangedAt, &o.MargReplacedOrderNos,
 	)
 	if err != nil {
 		return nil, err
@@ -562,6 +567,46 @@ func SetOrderMargInsertOrderID(ctx context.Context, db *pgxpool.Pool, orderID uu
 		insertOrderID, orderID,
 	)
 	return err
+}
+
+// MarkOrderChangedAfterMarg flags an order whose lines changed after it was
+// sent to Marg, so the order page offers to send it again. A no-op for an
+// order not sent yet.
+func MarkOrderChangedAfterMarg(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) error {
+	_, err := db.Exec(ctx,
+		`UPDATE orders SET marg_changed_at = NOW() WHERE id = $1 AND marg_order_no IS NOT NULL`, orderID)
+	return err
+}
+
+// ResetOrderForMargResend makes a changed order sendable to Marg again as a
+// new Marg order: its current Marg order number moves to
+// marg_replaced_order_nos (to be deleted in Marg by hand) and every line
+// goes back to not sent. Returns the replaced number. Refused (ok false)
+// unless the order was sent and changed since.
+func ResetOrderForMargResend(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (replaced string, ok bool, err error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	defer tx.Rollback(ctx)
+	err = tx.QueryRow(ctx, `
+		UPDATE orders o SET
+			marg_replaced_order_nos = o.marg_replaced_order_nos || old.no,
+			marg_order_no = NULL, marg_pushed_at = NULL, marg_insert_order_id = NULL,
+			marg_changed_at = NULL, updated_at = NOW()
+		FROM (SELECT id, marg_order_no AS no FROM orders WHERE id = $1 FOR UPDATE) old
+		WHERE o.id = old.id AND old.no IS NOT NULL AND o.marg_changed_at IS NOT NULL
+		RETURNING old.no`, orderID).Scan(&replaced)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE order_items SET marg_pushed_at = NULL WHERE order_id = $1`, orderID); err != nil {
+		return "", false, err
+	}
+	return replaced, true, tx.Commit(ctx)
 }
 
 func UpdateOrderDetails(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID, req UpdateOrderDetailsRequest) error {

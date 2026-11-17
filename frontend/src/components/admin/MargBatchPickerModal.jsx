@@ -6,7 +6,9 @@ import { apiFetch } from "@/lib/api";
 // Read-only preview of what "Send Order to Marg" will actually push — batch
 // selection itself now happens inline on the order page (a dropdown per
 // item), not here. This just confirms the final picture before sending.
-export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
+// resend: the order changed after it was sent; it goes to Marg again as a
+// new order, replacing Marg order no. `replacing` (deleted in Marg by hand).
+export default function MargBatchPickerModal({ orderId, onClose, onPushed, resend = false, replacing = "" }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +37,7 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
     setSubmitting(true);
     setError("");
     try {
-      const result = await apiFetch(`/admin/orders/${orderId}/push-to-marg`, {
+      const result = await apiFetch(`/admin/orders/${orderId}/push-to-marg${resend ? "?resend=1" : ""}`, {
         method: "POST",
       });
       onPushed?.(result);
@@ -54,7 +56,7 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">Send Order to Marg</h3>
+            <h3 className="text-base font-semibold text-gray-900">{resend ? "Send Order to Marg Again" : "Send Order to Marg"}</h3>
             <p className="text-xs text-gray-400 mt-0.5">
               Preview of what will be sent — change a batch from the order page if needed
             </p>
@@ -67,6 +69,13 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          {resend && (
+            <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+              This sends the whole order below to Marg as a <b>new order</b>. Marg can&apos;t change an order
+              already sent, so after sending, <b>delete Marg Order No. {replacing}</b> in Marg, or the
+              order will be there twice.
+            </div>
+          )}
           {loading ? (
             <p className="text-sm text-gray-400">Loading preview...</p>
           ) : items.length === 0 ? (
@@ -135,7 +144,7 @@ export default function MargBatchPickerModal({ orderId, onClose, onPushed }) {
               disabled={!canSubmit || submitting}
               className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
             >
-              {submitting ? "Sending..." : "Confirm & Send"}
+              {submitting ? "Sending..." : resend ? "Confirm & Send Again" : "Confirm & Send"}
             </button>
           </div>
         </div>

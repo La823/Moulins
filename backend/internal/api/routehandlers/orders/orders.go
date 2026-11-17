@@ -784,6 +784,14 @@ func GetOrderHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// markChangedAfterMarg flags the order when a line changed after it was sent
+// to Marg (best effort: the edit itself already succeeded).
+func markChangedAfterMarg(r *http.Request, db *pgxpool.Pool, orderID uuid.UUID) {
+	if err := models.MarkOrderChangedAfterMarg(r.Context(), db, orderID); err != nil {
+		log.Printf("mark order %s changed after marg: %v", orderID, err)
+	}
+}
+
 // stripInternalPricing removes the per-line rates and the order total unless
 // the caller is staff. Rates are entered by us when an order is received and
 // are not a customer-facing figure.
@@ -1493,6 +1501,7 @@ func AddOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.added",
 			fmt.Sprintf("Added %s (qty %d)", body.ProductName, body.Quantity), actorID(r))
+		markChangedAfterMarg(r, db, orderID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -1535,6 +1544,9 @@ func UpdateOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 			desc = fmt.Sprintf("%s: quantity %d → %d", name, oldQty, body.Quantity)
 		}
 		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.updated", desc, actorID(r))
+		if oldQty != body.Quantity {
+			markChangedAfterMarg(r, db, orderID)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "updated"})
@@ -1583,6 +1595,10 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 			log.Printf("update order item batch error: %v", err)
 			http.Error(w, "could not update batch selection", http.StatusInternalServerError)
 			return
+		}
+		// the batch is the product code Marg receives
+		if orderID, err := uuid.Parse(mux.Vars(r)["id"]); err == nil {
+			markChangedAfterMarg(r, db, orderID)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1675,6 +1691,7 @@ func DeleteOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 				desc = fmt.Sprintf("Removed %s (qty %d)", name, qty)
 			}
 			_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.removed", desc, actorID(r))
+			markChangedAfterMarg(r, db, orderID)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1804,6 +1821,33 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if order.Status != "confirmed" && order.Status != "packing" && order.Status != "packed" {
 			http.Error(w, "only confirmed, sent to packing or packed orders can be pushed to Marg", http.StatusConflict)
 			return
+		}
+
+		// ?resend=1: the order changed after it was sent. Marg's API only
+		// inserts lines, so the whole order goes again as a new Marg order
+		// and the old one is deleted in Marg by hand (its number is kept in
+		// marg_replaced_order_nos and shown on the order page).
+		replaced := ""
+		if r.URL.Query().Get("resend") == "1" {
+			if order.MargOrderNo == nil || order.MargChangedAt == nil {
+				http.Error(w, "this order has not changed since it was sent to Marg", http.StatusConflict)
+				return
+			}
+			no, ok, err := models.ResetOrderForMargResend(r.Context(), db, orderID)
+			if err != nil {
+				log.Printf("push-to-marg[%s]: reset for resend: %v", orderID, err)
+				http.Error(w, "could not prepare the order to send again", http.StatusInternalServerError)
+				return
+			}
+			if !ok {
+				http.Error(w, "this order has not changed since it was sent to Marg", http.StatusConflict)
+				return
+			}
+			replaced = no
+			if order, err = models.GetOrderByID(r.Context(), db, orderID); err != nil {
+				http.Error(w, "order not found", http.StatusNotFound)
+				return
+			}
 		}
 
 		// Resume semantics: only items with no marg_pushed_at yet actually
@@ -1973,12 +2017,20 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "pushed to marg but failed to save the result — check Marg directly", http.StatusInternalServerError)
 			return
 		}
-		_ = models.InsertOrderEvent(r.Context(), db, orderID, "marg.pushed",
-			fmt.Sprintf("Order pushed to Marg ERP (Order No. %s)", margOrderNo), actorID(r))
+		desc := fmt.Sprintf("Order pushed to Marg ERP (Order No. %s)", margOrderNo)
+		if replaced == "" && len(order.MargReplacedOrderNos) > 0 {
+			// a resend that failed part-way and was retried
+			replaced = order.MargReplacedOrderNos[len(order.MargReplacedOrderNos)-1]
+		}
+		if replaced != "" {
+			desc = fmt.Sprintf("Order sent to Marg again after changes (Order No. %s, replaces %s, to be deleted in Marg)", margOrderNo, replaced)
+		}
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "marg.pushed", desc, actorID(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"marg_order_no": margOrderNo,
+			"replaced":      replaced,
 		})
 	}
 }
