@@ -291,15 +291,20 @@ func RegisterDeviceTokenHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var req struct {
-			Token    string `json:"token"`
-			Platform string `json:"platform"`
+			Token    string  `json:"token"`
+			Platform string  `json:"platform"`
+			App      *string `json:"app"`       // client / team; absent from older apps
+			Build    *int    `json:"app_build"` // build number; absent from older apps
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
 			http.Error(w, "token is required", http.StatusBadRequest)
 			return
 		}
+		if req.App != nil && *req.App != "client" && *req.App != "team" {
+			req.App = nil
+		}
 
-		if err := models.UpsertDeviceToken(r.Context(), db, userID, req.Token, req.Platform); err != nil {
+		if err := models.UpsertDeviceToken(r.Context(), db, userID, req.Token, req.Platform, req.App, req.Build); err != nil {
 			log.Printf("register device token error: %v", err)
 			http.Error(w, "could not register device token", http.StatusInternalServerError)
 			return

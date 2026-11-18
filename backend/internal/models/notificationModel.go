@@ -351,12 +351,15 @@ func MarkNotificationRead(ctx context.Context, db *pgxpool.Pool, recipientID, us
 
 // --- Device tokens ---
 
-func UpsertDeviceToken(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, token, platform string) error {
+// UpsertDeviceToken records a phone's push token. app and build are the app
+// (client / team) and build number it runs; nil from apps that predate the
+// update check (migration 192).
+func UpsertDeviceToken(ctx context.Context, db *pgxpool.Pool, userID uuid.UUID, token, platform string, app *string, build *int) error {
 	_, err := db.Exec(ctx, `
-		INSERT INTO device_tokens (user_id, token, platform, last_seen_at)
-		VALUES ($1, $2, $3, NOW())
-		ON CONFLICT (token) DO UPDATE SET user_id = $1, platform = $3, last_seen_at = NOW()
-	`, userID, token, platform)
+		INSERT INTO device_tokens (user_id, token, platform, last_seen_at, app, app_build)
+		VALUES ($1, $2, $3, NOW(), $4, $5)
+		ON CONFLICT (token) DO UPDATE SET user_id = $1, platform = $3, last_seen_at = NOW(), app = $4, app_build = $5
+	`, userID, token, platform, app, build)
 	return err
 }
 

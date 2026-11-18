@@ -198,6 +198,7 @@ const NAV_ITEMS = [
   { label: "Cheque Register", href: "/panel/cheque-register", adminOnly: true, icon: ICONS.orders },
   { label: "Bank Statements", href: "/panel/bank-statements", permission: "bank_statements_view", icon: ICONS.payments },
   { label: "AI Usage", href: "/panel/ai-usage", adminOnly: true, icon: ICONS.analysis },
+  { label: "App Versions", href: "/panel/app-versions", adminOnly: true, icon: ICONS.analysis },
   {
     // Supply chain: stock, what needs ordering, and the purchase orders.
     label: "SCM",

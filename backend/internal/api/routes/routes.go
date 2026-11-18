@@ -44,6 +44,7 @@ import (
 	retailersHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/retailers"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/orders"
 	packingHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/packing"
+	appVersionHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/appversion"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
@@ -92,6 +93,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// chat websocket (authenticates itself via ?token= query param, since
 	// browsers can't set an Authorization header on a WebSocket handshake)
 	router.HandleFunc("/ws", messages.WebSocketHandler(db, chatHub)).Methods("GET")
+
+	// public: the apps check for an update on open, before signing in
+	router.HandleFunc("/app-version", appVersionHandlers.CheckHandler(db)).Methods("GET")
 
 	// public auth routes
 	router.HandleFunc("/auth/login", auth.LoginHandler(db)).Methods("POST")
@@ -360,6 +364,10 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// bank statements read each day from HDFC's statement emails
 	// AI calls: tokens, photo sizes, estimated cost (ai_usage)
 	admin.HandleFunc("/ai-usage", aiUsageHandlers.ReportHandler(db)).Methods("GET")
+	// app update prompts (migration 192)
+	admin.HandleFunc("/app-versions", appVersionHandlers.ListHandler(db)).Methods("GET")
+	admin.HandleFunc("/app-versions/remind-old", appVersionHandlers.RemindOldHandler(db)).Methods("POST")
+	admin.HandleFunc("/app-versions/{app}/{platform}", appVersionHandlers.UpdateHandler(db)).Methods("PUT")
 	// viewing is also open to employees with bank_statements_view (see bankStatementsStaff); "check now" stays admin-only
 	admin.HandleFunc("/bank-statements/check", bankStatementHandlers.CheckHandler(db)).Methods("POST")
 	admin.HandleFunc("/cheques/dues/from", chequeHandlers.SetDuesFromHandler(db)).Methods("PUT")
