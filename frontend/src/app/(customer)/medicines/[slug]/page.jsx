@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
@@ -7,9 +8,11 @@ import {
   jsonLd,
   productIdFromSlug,
   productPath,
+  slugify,
 } from "@/lib/publicCatalog";
 import PublicCatalogCta from "@/components/customer/PublicCatalogCta";
 import { displayName, productTitle } from "@/lib/seoTitle";
+import { publicSalts, saltPath, saltsOf } from "@/lib/salts";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +67,12 @@ export default async function MedicinePage({ params }) {
   const related = division
     ? all.filter((o) => o.product_id !== p.product_id && divisionForProduct(o)?.slug === division.slug).slice(0, 8)
     : [];
+
+  // links to the salt pages (/salts/…) for this product's salts that have one
+  const saltPages = new Map(publicSalts(all).map((s) => [s.slug, s]));
+  const saltLinks = saltsOf(p)
+    .map((name) => saltPages.get(slugify(name)))
+    .filter(Boolean);
 
   const facts = [
     ["Composition", p.composition],
@@ -131,9 +140,19 @@ export default async function MedicinePage({ params }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-start">
         <div>
-          <div className="aspect-square bg-white flex items-center justify-center border border-gray-100">
+          <div className="relative aspect-square bg-white flex items-center justify-center border border-gray-100">
             {p.images[0] ? (
-              <img src={p.images[0]} alt={p.name} className="max-h-full max-w-full object-contain" />
+              // resized to the screen (the S3 original is far bigger than a
+              // phone needs) and fetched first, as the page's main picture
+              <Image
+                src={p.images[0]}
+                alt={p.name}
+                fill
+                sizes="(max-width: 768px) 100vw, 640px"
+                loading="eager"
+                fetchPriority="high"
+                className="object-contain"
+              />
             ) : (
               <div className="w-full h-full bg-gray-50" />
             )}
@@ -171,6 +190,20 @@ export default async function MedicinePage({ params }) {
                 </div>
               ))}
             </dl>
+          )}
+
+          {saltLinks.length > 0 && (
+            <p className="text-sm text-gray-500 -mt-4 mb-8">
+              More products with{" "}
+              {saltLinks.map((s, i) => (
+                <span key={s.slug}>
+                  {i > 0 && (i === saltLinks.length - 1 ? " and " : ", ")}
+                  <Link href={saltPath(s.name)} className="text-gray-700 underline underline-offset-2 hover:text-gray-900">
+                    {s.name}
+                  </Link>
+                </span>
+              ))}
+            </p>
           )}
 
           <p className="text-sm text-gray-500 mb-5">

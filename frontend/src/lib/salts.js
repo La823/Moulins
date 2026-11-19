@@ -8,6 +8,9 @@ import { slugify } from "@/lib/publicCatalog";
 // Trailing salt forms folded into the base drug
 const SALT_FORM = /\s+(hydrochloride|dihydrochloride|hcl|hydrobromide|sodium|potassium|calcium|magnesium|mesylate|maleate|besylate|besilate|succinate|tartrate|fumarate|dihydrate|trihydrate|monohydrate|hydrate|anhydrous|acetate|propionate|dipropionate|valerate|furoate|phosphate|bromide|benzoate)$/i;
 
+// Preservatives listed in compositions; nobody searches a medicine by these
+const EXCIPIENT = /^(benzyl alcohol|chlorbutol|chlorobutanol|benzalkonium chloride|methyl ?paraben|propyl ?paraben|sodium benzoate)$/i;
+
 // Ingredient names, not descriptions like "Herbal Brain Syrup"
 const NOT_A_SALT = /\b(herbal|support|for|with|and|syrup|tablets?|capsules?|powder|extract of|each|contains|solutions?)\b|[:&()]/i;
 
@@ -32,7 +35,8 @@ export function saltsOf(product) {
       names
         .split(" + ")
         .filter((s) => s.length >= 3 && s.split(/\s+/).length <= 4 && !NOT_A_SALT.test(s))
-        .map((s) => tidy(baseSalt(s))),
+        .map((s) => tidy(baseSalt(s)))
+        .filter((s) => !EXCIPIENT.test(s)),
     ),
   ];
 }

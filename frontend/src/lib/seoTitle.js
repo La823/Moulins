@@ -57,13 +57,13 @@ export function saltNames(composition) {
     // a line break after a strength separates salts; elsewhere it just wraps
     .replace(/(\d[^\n]*)\n/g, "$1 + ")
     .replace(/\n/g, " ")
-    .split(/\s*\+\s*|,\s*(?=[A-Z])/)
+    .split(/\s*\+\s*|\s+&\s+|,\s*(?=[A-Z])/)
     .map((s) =>
       s
         .replace(/\(.*?\)/g, " ")
         .replace(/\b(I\.?P\.?|B\.?P\.?|U\.?S\.?P\.?)\b/g, " ")
         .replace(/\s\d.*$/, "") // strength onwards
-        .replace(/[\s:;.-]+$/, "")
+        .replace(/[\s:;.–-]+$/, "")
         .replace(/\s+/g, " ")
         .trim(),
     )

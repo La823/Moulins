@@ -5,9 +5,13 @@ import {
   SITE_URL,
   getDivision,
   getDivisionProducts,
+  getPublicProducts,
   jsonLd,
   productPath,
+  slugify,
 } from "@/lib/publicCatalog";
+import { DIVISION_TEXTS } from "@/lib/divisionTexts";
+import { publicSalts, saltPath, saltsOf } from "@/lib/salts";
 import PublicCatalogCta from "@/components/customer/PublicCatalogCta";
 
 // Rendered per request from the in-memory catalogue (see publicCatalog.js),
@@ -34,6 +38,21 @@ export default async function DivisionPage({ params }) {
   if (!d) notFound();
   const products = await getDivisionProducts(d);
   const forms = [...new Set(products.map((p) => p.form).filter(Boolean))].sort();
+  const text = DIVISION_TEXTS[d.slug];
+
+  // the division's most used salts that have a salt page, most products first
+  const saltPages = new Map(publicSalts(await getPublicProducts()).map((s) => [s.slug, s]));
+  const saltCount = new Map();
+  for (const p of products) {
+    for (const name of saltsOf(p)) {
+      const s = saltPages.get(slugify(name));
+      if (s) saltCount.set(s.slug, { s, n: (saltCount.get(s.slug)?.n || 0) + 1 });
+    }
+  }
+  const keySalts = [...saltCount.values()]
+    .sort((a, b) => b.n - a.n || a.s.name.localeCompare(b.s.name))
+    .slice(0, 10)
+    .map((x) => x.s);
 
   const structured = [
     {
@@ -80,6 +99,9 @@ export default async function DivisionPage({ params }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-8 py-10">
         <div className="flex flex-wrap items-end justify-between gap-6 mb-10">
           <div className="max-w-2xl">
+            {text ? (
+              <p className="text-gray-600">{text.intro}</p>
+            ) : (
             <p className="text-gray-600">
               {d.label} is the {areaOf(d)} of Moulins Pharmaceuticals
               {products.length > 0 && (
@@ -90,6 +112,7 @@ export default async function DivisionPage({ params }) {
               )}
               .
             </p>
+            )}
           </div>
           <PublicCatalogCta privateHref={d.privateRoute} label={`from ${d.label}`} />
         </div>
@@ -117,6 +140,32 @@ export default async function DivisionPage({ params }) {
               </li>
             ))}
           </ul>
+        )}
+
+        {text && (
+          <section className="mt-20 max-w-3xl">
+            <h2 className="text-xl font-light text-gray-900 mb-4">About {d.label}</h2>
+            <p className="text-gray-600 leading-relaxed">{text.about}</p>
+            {keySalts.length > 0 && (
+              <p className="text-sm text-gray-500 mt-5">
+                <span className="text-gray-400">Key salts: </span>
+                {keySalts.map((s, i) => (
+                  <span key={s.slug}>
+                    {i > 0 && ", "}
+                    <Link href={saltPath(s.name)} className="text-gray-700 underline underline-offset-2 hover:text-gray-900">
+                      {s.name}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+            {forms.length > 0 && (
+              <p className="text-sm text-gray-500 mt-2">
+                <span className="text-gray-400">Dosage forms: </span>
+                {forms.join(", ")}
+              </p>
+            )}
+          </section>
         )}
 
         <div className="mt-16 pt-8 border-t border-gray-200">
