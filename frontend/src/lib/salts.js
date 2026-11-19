@@ -70,4 +70,8 @@ export function buildSaltIndex(products) {
 // repeat its own product page.
 export const MIN_SALT_PRODUCTS = 2;
 
-export const publicSalts = (products) => buildSaltIndex(products).filter((s) => s.products.length >= MIN_SALT_PRODUCTS);
+// The products' main photos, for the salt page's picture in search results
+// and its sitemap entry (the first one is the page's own picture)
+export const saltImages = (salt, max = 5) => salt.products.map((p) => p.images[0]).filter(Boolean).slice(0, max);
+
+export const publicSalts =(products) => buildSaltIndex(products).filter((s) => s.products.length >= MIN_SALT_PRODUCTS);

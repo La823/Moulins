@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SITE_URL, getPublicProducts, jsonLd, productPath } from "@/lib/publicCatalog";
-import { publicSalts, saltPath, saltsOf } from "@/lib/salts";
+import { publicSalts, saltImages, saltPath, saltsOf } from "@/lib/salts";
 import { displayName } from "@/lib/seoTitle";
 import PublicCatalogCta from "@/components/customer/PublicCatalogCta";
 
@@ -30,7 +30,11 @@ export async function generateMetadata({ params }) {
     title,
     description: description.length > 160 ? `${description.slice(0, 159).trimEnd()}…` : description,
     alternates: { canonical: saltPath(s.name) },
-    openGraph: { title, url: saltPath(s.name) },
+    openGraph: {
+      title,
+      url: saltPath(s.name),
+      ...(saltImages(s, 1)[0] && { images: [{ url: saltImages(s, 1)[0], alt: `${s.name} — Moulins Pharmaceuticals` }] }),
+    },
   };
 }
 
@@ -48,7 +52,15 @@ export default async function SaltPage({ params }) {
   }
   const combos = [...groups.entries()].sort((a, b) => a[0].split(" + ").length - b[0].split(" + ").length || a[0].localeCompare(b[0]));
 
+  const images = saltImages(s);
   const structured = [
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: `${s.name} Products & Brands`,
+      url: `${SITE_URL}${saltPath(s.name)}`,
+      ...(images[0] && { primaryImageOfPage: { "@type": "ImageObject", url: images[0] }, image: images }),
+    },
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
