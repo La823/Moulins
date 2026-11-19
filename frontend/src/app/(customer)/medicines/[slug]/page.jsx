@@ -9,6 +9,7 @@ import {
   productPath,
 } from "@/lib/publicCatalog";
 import PublicCatalogCta from "@/components/customer/PublicCatalogCta";
+import { displayName, productTitle } from "@/lib/seoTitle";
 
 export const dynamic = "force-dynamic";
 
@@ -27,17 +28,16 @@ export async function generateMetadata({ params }) {
   const { product: p } = await findProduct((await params).slug);
   if (!p) return {};
   const division = divisionForProduct(p);
-  const title = p.composition ? `${p.name} (${clip(p.composition, 60)})` : p.name;
-  const details = [p.form, p.packSize].filter(Boolean).join(", ");
+  // "Bravodine Solution 100 ml – Povidone-Iodine" (+ " | Moulins Pharmaceuticals" from the layout)
+  const title = productTitle(p);
+  // "Bravodine Solution 100 ml by Moulins Pharmaceuticals, part of the Misbella
+  // Derma & Skin division. Contains Povidone-Iodine IP 10% w/v."
+  const division_ = division && [division.label, division.desc].filter(Boolean).join(" ");
   const description = clip(
-    [
-      `${p.name} by Moulins Pharmaceuticals`,
-      p.composition && `Composition: ${p.composition}`,
-      details,
-      division && `${division.label} division${division.desc ? ` (${division.desc})` : ""}`,
-    ]
-      .filter(Boolean)
-      .join(". ") + ".",
+    `${displayName(p.name)} by Moulins Pharmaceuticals${division_ ? `, part of the ${division_} division` : ""}.` +
+      // before the composition, which is what gets cut off when it's long
+      (p.form ? ` Dosage form: ${p.form}.` : "") +
+      (p.composition ? ` Contains ${p.composition.replace(/\s+/g, " ").trim()}.` : ""),
     160,
   );
   return {
