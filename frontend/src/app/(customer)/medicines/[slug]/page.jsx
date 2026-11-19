@@ -80,10 +80,38 @@ export default async function MedicinePage({ params }) {
     ...(division ? [{ name: division.label, item: `${SITE_URL}/divisions/${division.slug}` }] : []),
     { name: p.name, item: `${SITE_URL}${productPath(p)}` },
   ];
+  // What search engines read about the product itself: name, brand, picture,
+  // composition. No price (rates are for signed-in partners only), so Google
+  // won't show a price-style rich result, but it ties the name to the image.
+  const url = `${SITE_URL}${productPath(p)}`;
+  const product = {
+    "@type": "Product",
+    "@id": `${url}#product`,
+    url,
+    name: p.name,
+    sku: String(p.product_id),
+    ...(p.images.length > 0 && { image: p.images }),
+    description: [p.composition && `Composition: ${p.composition}`, [p.form, p.packSize].filter(Boolean).join(", ")]
+      .filter(Boolean)
+      .join(". ") || `${p.name} by Moulins Pharmaceuticals`,
+    // brand_name is often just the full product name (with pack); then the
+    // company is the brand
+    brand: { "@type": "Brand", name: p.brand && p.brand !== p.name ? p.brand : "Moulins Pharmaceuticals" },
+    manufacturer: { "@type": "Organization", name: "Moulins Pharmaceuticals Pvt. Ltd.", url: `${SITE_URL}/` },
+    ...(division && { category: division.desc ? `${division.label} (${division.desc})` : division.label }),
+    additionalProperty: facts
+      .filter(([label, value]) => label !== "Brand" && !(label === "Strength" && value === p.composition))
+      .map(([label, value]) => ({ "@type": "PropertyValue", name: label, value })),
+  };
   const structured = {
     "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, ...c })),
+    "@graph": [
+      product,
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, ...c })),
+      },
+    ],
   };
 
   return (
