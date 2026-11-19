@@ -97,7 +97,6 @@ export default async function MedicinePage({ params }) {
     // brand_name is often just the full product name (with pack); then the
     // company is the brand
     brand: { "@type": "Brand", name: p.brand && p.brand !== p.name ? p.brand : "Moulins Pharmaceuticals" },
-    manufacturer: { "@type": "Organization", name: "Moulins Pharmaceuticals Pvt. Ltd.", url: `${SITE_URL}/` },
     ...(division && { category: division.desc ? `${division.label} (${division.desc})` : division.label }),
     additionalProperty: facts
       .filter(([label, value]) => label !== "Brand" && !(label === "Strength" && value === p.composition))
