@@ -1,4 +1,5 @@
 import { PUBLIC_DIVISIONS, SITE_URL, getPublicProducts, productPath } from "@/lib/publicCatalog";
+import { publicSalts, saltPath } from "@/lib/salts";
 
 // Built per request (from the in-memory catalogue, refreshed hourly) so a
 // new product reaches it without a rebuild. Only publicly reachable pages go
@@ -24,6 +25,13 @@ export default async function sitemap() {
       changeFrequency: "monthly",
       priority: 0.7,
       ...(p.images[0] && { images: [p.images[0]] }),
+    })),
+    { url: `${SITE_URL}/salts`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+    ...publicSalts(products).map((s) => ({
+      url: `${SITE_URL}${saltPath(s.name)}`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.6,
     })),
     { url: `${SITE_URL}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/careers`, lastModified: now, changeFrequency: "weekly", priority: 0.5 },
