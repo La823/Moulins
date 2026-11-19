@@ -142,6 +142,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	protected.HandleFunc("/visitor/events", visitors.EventsHandler(db)).Methods("POST")
 	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/balance", userauth.GetMyBalanceHandler(db)).Methods("GET")
+	protected.HandleFunc("/profile/expected-payment", userauth.GetMyExpectedPaymentHandler(db)).Methods("GET")
 
 	// order routes (any authenticated user, except doctors — catalog
 	// browsing only, no ordering)
