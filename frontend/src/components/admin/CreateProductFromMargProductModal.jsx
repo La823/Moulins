@@ -3,6 +3,14 @@
 import { useState } from "react";
 import { apiFetch } from "@/lib/api";
 
+// Marg's salt, to start the Composition box with, unless it is a short code
+// like "SGB" (Marg's placeholder on 500+ products) rather than a salt name;
+// three products went live with "SGB" as their composition that way.
+function realSalt(salt) {
+  const s = salt?.trim() || "";
+  return /^[A-Z0-9]{1,4}$/.test(s) ? "" : s;
+}
+
 export default function CreateProductFromMargProductModal({ product, onClose, onCreated }) {
   const [form, setForm] = useState({
     name: product.name?.trim() || "",
@@ -10,7 +18,7 @@ export default function CreateProductFromMargProductModal({ product, onClose, on
     mrp: product.mrp != null ? String(product.mrp) : "",
     stock: product.total_stock != null ? String(Math.max(0, Math.floor(product.total_stock))) : "0",
     brand_name: product.company?.trim() || "",
-    key_ingredients: product.salt?.trim() || "",
+    key_ingredients: realSalt(product.salt),
     moq: "1",
   });
   const [submitting, setSubmitting] = useState(false);

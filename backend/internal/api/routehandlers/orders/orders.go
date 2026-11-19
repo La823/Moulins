@@ -792,6 +792,33 @@ func markChangedAfterMarg(r *http.Request, db *pgxpool.Pool, orderID uuid.UUID) 
 	}
 }
 
+// splitByBatch spreads any line asking a batch for more than it holds over
+// the next batches, as extra lines (models.SplitOrderLinesByBatch). Best
+// effort: on an error the order keeps its lines as they were. Each split is
+// noted in the order's history, so the partner sees why a product now has
+// two lines; batch numbers stay out of it.
+// It reports whether any line changed.
+func splitByBatch(r *http.Request, db *pgxpool.Pool, orderID uuid.UUID) bool {
+	splits, changed, err := models.SplitOrderLinesByBatch(r.Context(), db, orderID)
+	if err != nil {
+		log.Printf("split order %s by batch: %v", orderID, err)
+		return false
+	}
+	for _, s := range splits {
+		qtys := make([]string, len(s.Parts))
+		codes := make([]string, len(s.Parts))
+		for i, p := range s.Parts {
+			qtys[i] = strconv.Itoa(p.Quantity)
+			codes[i] = fmt.Sprintf("%s×%d", p.Batch, p.Quantity)
+		}
+		log.Printf("order %s: %s %d split by batch: %s", orderID, s.ProductName, s.Total, strings.Join(codes, ", "))
+		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.split",
+			fmt.Sprintf("%s: %d split into %s, to ship from %d batches", s.ProductName, s.Total, strings.Join(qtys, " + "), len(s.Parts)),
+			actorID(r))
+	}
+	return changed
+}
+
 // stripInternalPricing removes the per-line rates and the order total unless
 // the caller is staff. Rates are entered by us when an order is received and
 // are not a customer-facing figure.
@@ -1385,6 +1412,10 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		if body.Status == "packing" && oldStatus != "packing" {
 			notifyPackers(db, id, actorID(r))
 		}
+		// confirmed: the lines now get their batches, before packing and Marg
+		if body.Status != oldStatus {
+			splitByBatch(r, db, id)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": body.Status})
@@ -1502,6 +1533,7 @@ func AddOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.added",
 			fmt.Sprintf("Added %s (qty %d)", body.ProductName, body.Quantity), actorID(r))
 		markChangedAfterMarg(r, db, orderID)
+		splitByBatch(r, db, orderID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -1546,6 +1578,7 @@ func UpdateOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 		_ = models.InsertOrderEvent(r.Context(), db, orderID, "item.updated", desc, actorID(r))
 		if oldQty != body.Quantity {
 			markChangedAfterMarg(r, db, orderID)
+			splitByBatch(r, db, orderID)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1599,6 +1632,7 @@ func UpdateOrderItemBatchHandler(db *pgxpool.Pool) http.HandlerFunc {
 		// the batch is the product code Marg receives
 		if orderID, err := uuid.Parse(mux.Vars(r)["id"]); err == nil {
 			markChangedAfterMarg(r, db, orderID)
+			splitByBatch(r, db, orderID)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1844,6 +1878,16 @@ func PushToMargHandler(db *pgxpool.Pool) http.HandlerFunc {
 				return
 			}
 			replaced = no
+			if order, err = models.GetOrderByID(r.Context(), db, orderID); err != nil {
+				http.Error(w, "order not found", http.StatusNotFound)
+				return
+			}
+		}
+
+		// Stock may have moved since the order was confirmed (and orders
+		// confirmed before splitting existed were never split): split again
+		// now, so no line goes to Marg asking a batch for more than it has.
+		if splitByBatch(r, db, orderID) {
 			if order, err = models.GetOrderByID(r.Context(), db, orderID); err != nil {
 				http.Error(w, "order not found", http.StatusNotFound)
 				return

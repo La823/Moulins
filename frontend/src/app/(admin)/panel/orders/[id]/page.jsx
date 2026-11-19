@@ -199,6 +199,11 @@ export default function AdminOrderDetail() {
     loadBatchOptions();
   }, [id]);
 
+  // The server splits a line over more batches when its batch has less
+  // stock than the line asks (on confirming, a quantity or batch change and
+  // sending to Marg), adding lines; re-read the lines and their batch lists.
+  const reloadLines = () => Promise.all([loadOrder(), loadBatchOptions()]).catch(() => {});
+
   const handleSelectBatch = async (item, batchCode) => {
     const previous = item.selected_batch_code ?? null;
     setItems((prev) =>
@@ -209,6 +214,8 @@ export default function AdminOrderDetail() {
         method: "PUT",
         body: JSON.stringify({ batch_code: batchCode }),
       });
+      // a batch with less stock than the line splits it into more lines
+      reloadLines();
     } catch (err) {
       // refused (e.g. the batch just ran out) — put the old choice back
       setItems((prev) =>
@@ -236,7 +243,7 @@ export default function AdminOrderDetail() {
         body: JSON.stringify({ status: newStatus }),
       });
       setOrder((prev) => ({ ...prev, status: newStatus }));
-      loadOrder().catch(() => {});
+      reloadLines(); // confirming splits lines a batch can't fill
       setSuccess("Status updated");
     } catch (err) {
       setError(err.message);
@@ -289,7 +296,7 @@ export default function AdminOrderDetail() {
       setItems((prev) =>
         prev.map((i) => (i.id === itemId ? { ...i, quantity: newQty } : i))
       );
-      loadOrder().catch(() => {});
+      reloadLines();
       setSuccess("Item quantity updated");
     } catch (err) {
       setError(err.message);
@@ -1584,7 +1591,7 @@ export default function AdminOrderDetail() {
           onPushed={(result) => {
             setShowMargModal(false);
             setOrder((prev) => ({ ...prev, marg_order_no: result.marg_order_no, marg_pushed_at: new Date().toISOString(), marg_changed_at: null }));
-            loadOrder().catch(() => {});
+            reloadLines();
             setSuccess(
               result.replaced
                 ? `Sent to Marg again — new Order No. ${result.marg_order_no}. Now delete Order No. ${result.replaced} in Marg.`

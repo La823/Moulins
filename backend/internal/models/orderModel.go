@@ -374,7 +374,7 @@ func GetOrderByID(ctx context.Context, db *pgxpool.Pool, orderID uuid.UUID) (*Or
 		 FROM order_items oi
 		 LEFT JOIN products p ON p.id = oi.product_id
 		 WHERE oi.order_id = $1
-		 ORDER BY oi.created_at, oi.id`,
+		 ORDER BY oi.created_at, oi.product_name, oi.id`, // a batch split's lines share created_at and name, so they sit together
 		orderID,
 	)
 	if err != nil {
