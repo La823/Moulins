@@ -1,4 +1,4 @@
-import Link from "next/link";
+import BrowseGateLink from "@/components/customer/BrowseGateLink";
 import { notFound } from "next/navigation";
 import {
   PUBLIC_DIVISIONS,
@@ -87,7 +87,7 @@ export default async function DivisionPage({ params }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />
         <div className="relative z-10 max-w-7xl w-full mx-auto px-4 sm:px-8 pb-12">
           <nav aria-label="Breadcrumb" className="text-xs text-white/60 mb-3">
-            <Link href="/divisions" className="hover:text-white">Divisions</Link>
+            <BrowseGateLink href="/divisions" className="hover:text-white">Divisions</BrowseGateLink>
             <span className="mx-2">/</span>
             <span>{d.label}</span>
           </nav>
@@ -123,7 +123,7 @@ export default async function DivisionPage({ params }) {
           <ul className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-10">
             {products.map((p) => (
               <li key={p.product_id}>
-                <Link href={productPath(p)} className="group block">
+                <BrowseGateLink href={productPath(p)} className="group block">
                   <div className="h-56 sm:h-72 bg-white flex items-center justify-center mb-3">
                     {p.thumb ? (
                       <img src={p.thumb} alt={p.name} loading="lazy" className="max-h-full max-w-full object-contain" />
@@ -136,7 +136,7 @@ export default async function DivisionPage({ params }) {
                   {(p.form || p.packSize) && (
                     <p className="text-xs text-gray-400 mt-1">{[p.form, p.packSize].filter(Boolean).join(" · ")}</p>
                   )}
-                </Link>
+                </BrowseGateLink>
               </li>
             ))}
           </ul>
@@ -152,9 +152,9 @@ export default async function DivisionPage({ params }) {
                 {keySalts.map((s, i) => (
                   <span key={s.slug}>
                     {i > 0 && ", "}
-                    <Link href={saltPath(s.name)} className="text-gray-700 underline underline-offset-2 hover:text-gray-900">
+                    <BrowseGateLink href={saltPath(s.name)} className="text-gray-700 underline underline-offset-2 hover:text-gray-900">
                       {s.name}
-                    </Link>
+                    </BrowseGateLink>
                   </span>
                 ))}
               </p>
@@ -172,10 +172,10 @@ export default async function DivisionPage({ params }) {
           <h2 className="text-sm uppercase tracking-widest text-gray-400 mb-4">Other divisions</h2>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             {PUBLIC_DIVISIONS.filter((o) => o.slug !== d.slug).map((o) => (
-              <Link key={o.slug} href={`/divisions/${o.slug}`} className="text-sm text-gray-600 hover:text-gray-900">
+              <BrowseGateLink key={o.slug} href={`/divisions/${o.slug}`} className="text-sm text-gray-600 hover:text-gray-900">
                 {o.label}
                 {o.desc && <span className="text-gray-400"> · {o.desc}</span>}
-              </Link>
+              </BrowseGateLink>
             ))}
           </div>
         </div>

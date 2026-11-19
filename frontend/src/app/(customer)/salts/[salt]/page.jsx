@@ -1,4 +1,4 @@
-import Link from "next/link";
+import BrowseGateLink from "@/components/customer/BrowseGateLink";
 import { notFound } from "next/navigation";
 import { SITE_URL, getPublicProducts, jsonLd, productPath } from "@/lib/publicCatalog";
 import { publicSalts, saltImages, saltPath, saltsOf } from "@/lib/salts";
@@ -89,7 +89,7 @@ export default async function SaltPage({ params }) {
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
 
       <nav aria-label="Breadcrumb" className="text-xs text-gray-400 mb-8">
-        <Link href="/salts" className="hover:text-gray-700">Salts</Link>
+        <BrowseGateLink href="/salts" className="hover:text-gray-700">Salts</BrowseGateLink>
         <span className="mx-2">/</span>
         <span className="text-gray-600">{s.name}</span>
       </nav>
@@ -112,7 +112,7 @@ export default async function SaltPage({ params }) {
           <ul className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-10">
             {products.map((p) => (
               <li key={p.product_id}>
-                <Link href={productPath(p)} className="group block">
+                <BrowseGateLink href={productPath(p)} className="group block">
                   <div className="h-56 bg-white flex items-center justify-center mb-3">
                     {p.thumb ? (
                       <img src={p.thumb} alt={p.name} loading="lazy" className="max-h-full max-w-full object-contain" />
@@ -125,16 +125,16 @@ export default async function SaltPage({ params }) {
                   {(p.form || p.packSize) && (
                     <p className="text-xs text-gray-400 mt-1">{[p.form, p.packSize].filter(Boolean).join(" · ")}</p>
                   )}
-                </Link>
+                </BrowseGateLink>
               </li>
             ))}
           </ul>
         </section>
       ))}
 
-      <Link href="/salts" className="inline-block mt-4 text-sm text-gray-600 hover:text-gray-900 underline underline-offset-2">
+      <BrowseGateLink href="/salts" className="inline-block mt-4 text-sm text-gray-600 hover:text-gray-900 underline underline-offset-2">
         All salts
-      </Link>
+      </BrowseGateLink>
     </div>
   );
 }

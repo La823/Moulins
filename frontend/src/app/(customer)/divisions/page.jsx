@@ -1,4 +1,4 @@
-import Link from "next/link";
+import BrowseGateLink from "@/components/customer/BrowseGateLink";
 import { PUBLIC_DIVISIONS, SITE_URL, jsonLd } from "@/lib/publicCatalog";
 import { divisionThumb } from "@/lib/divisions";
 
@@ -31,7 +31,7 @@ export default function DivisionsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {PUBLIC_DIVISIONS.map((d) => (
-          <Link key={d.slug} href={`/divisions/${d.slug}`} className="group block">
+          <BrowseGateLink key={d.slug} href={`/divisions/${d.slug}`} className="group block">
             <div className="aspect-[3/1] overflow-hidden bg-gray-100 mb-3">
               <img
                 src={divisionThumb(d.heroImage)}
@@ -42,7 +42,7 @@ export default function DivisionsPage() {
             </div>
             <h2 className="text-lg text-gray-900">{d.label}</h2>
             {d.desc && <p className="text-sm text-gray-500">{d.desc}</p>}
-          </Link>
+          </BrowseGateLink>
         ))}
       </div>
     </div>

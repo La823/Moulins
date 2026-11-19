@@ -1,4 +1,4 @@
-import Link from "next/link";
+import BrowseGateLink from "@/components/customer/BrowseGateLink";
 import { getPublicProducts } from "@/lib/publicCatalog";
 import { publicSalts, saltPath } from "@/lib/salts";
 
@@ -38,9 +38,9 @@ export default async function SaltsPage() {
           <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-2">
             {list.map((s) => (
               <li key={s.slug}>
-                <Link href={saltPath(s.name)} className="text-sm text-gray-700 hover:text-gray-900 hover:underline underline-offset-2">
+                <BrowseGateLink href={saltPath(s.name)} className="text-sm text-gray-700 hover:text-gray-900 hover:underline underline-offset-2">
                   {s.name}
-                </Link>
+                </BrowseGateLink>
                 <span className="text-xs text-gray-400"> · {s.products.length}</span>
               </li>
             ))}

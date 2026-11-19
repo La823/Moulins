@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import BrowseGateLink from "@/components/customer/BrowseGateLink";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
   SITE_URL,
@@ -127,11 +127,11 @@ export default async function MedicinePage({ params }) {
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structured)} />
 
       <nav aria-label="Breadcrumb" className="text-xs text-gray-400 mb-8">
-        <Link href="/divisions" className="hover:text-gray-700">Divisions</Link>
+        <BrowseGateLink href="/divisions" className="hover:text-gray-700">Divisions</BrowseGateLink>
         {division && (
           <>
             <span className="mx-2">/</span>
-            <Link href={`/divisions/${division.slug}`} className="hover:text-gray-700">{division.label}</Link>
+            <BrowseGateLink href={`/divisions/${division.slug}`} className="hover:text-gray-700">{division.label}</BrowseGateLink>
           </>
         )}
         <span className="mx-2">/</span>
@@ -170,14 +170,14 @@ export default async function MedicinePage({ params }) {
 
         <div>
           {division && (
-            <Link
+            <BrowseGateLink
               href={`/divisions/${division.slug}`}
               className="block text-[11px] font-bold uppercase tracking-widest mb-3"
               style={{ color: "#2E5B41" }}
             >
               {division.label}
               {division.desc && ` · ${division.desc}`}
-            </Link>
+            </BrowseGateLink>
           )}
           <h1 className="text-3xl md:text-4xl font-light text-gray-900 leading-tight mb-6">{p.name}</h1>
 
@@ -198,9 +198,9 @@ export default async function MedicinePage({ params }) {
               {saltLinks.map((s, i) => (
                 <span key={s.slug}>
                   {i > 0 && (i === saltLinks.length - 1 ? " and " : ", ")}
-                  <Link href={saltPath(s.name)} className="text-gray-700 underline underline-offset-2 hover:text-gray-900">
+                  <BrowseGateLink href={saltPath(s.name)} className="text-gray-700 underline underline-offset-2 hover:text-gray-900">
                     {s.name}
-                  </Link>
+                  </BrowseGateLink>
                 </span>
               ))}
             </p>
@@ -220,7 +220,7 @@ export default async function MedicinePage({ params }) {
           <ul className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-8">
             {related.map((o) => (
               <li key={o.product_id}>
-                <Link href={productPath(o)} className="group block">
+                <BrowseGateLink href={productPath(o)} className="group block">
                   <div className="h-48 bg-white flex items-center justify-center mb-2">
                     {o.thumb ? (
                       <img src={o.thumb} alt={o.name} loading="lazy" className="max-h-full max-w-full object-contain" />
@@ -230,13 +230,13 @@ export default async function MedicinePage({ params }) {
                   </div>
                   <h3 className="text-sm text-gray-900 line-clamp-2 group-hover:underline underline-offset-2">{o.name}</h3>
                   {o.composition && <p className="text-xs text-gray-500 mt-1 line-clamp-1">{o.composition}</p>}
-                </Link>
+                </BrowseGateLink>
               </li>
             ))}
           </ul>
-          <Link href={`/divisions/${division.slug}`} className="inline-block mt-8 text-sm text-gray-600 hover:text-gray-900 underline underline-offset-2">
+          <BrowseGateLink href={`/divisions/${division.slug}`} className="inline-block mt-8 text-sm text-gray-600 hover:text-gray-900 underline underline-offset-2">
             All {division.label} products
-          </Link>
+          </BrowseGateLink>
         </section>
       )}
     </div>

@@ -65,7 +65,9 @@ export function saltNames(composition) {
         .replace(/\s\d.*$/, "") // strength onwards
         .replace(/[\s:;.–-]+$/, "")
         .replace(/\s+/g, " ")
-        .trim(),
+        .trim()
+        // "RABEPRAZOLE SODIUM" → "Rabeprazole Sodium"; short codes (HCl, D3) stay
+        .replace(/\b[A-Z]{4,}\b/g, (w) => w[0] + w.slice(1).toLowerCase()),
     )
     .filter((s) => /^[a-z]/i.test(s) && !/^(mg|mcg|ml|gm|w\/[vw])\b/i.test(s) && !FORM_ONLY.test(s));
   return [...new Set(salts)].join(" + ");
