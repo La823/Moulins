@@ -76,7 +76,6 @@ export default async function MedicinePage({ params }) {
 
   const facts = [
     ["Composition", p.composition],
-    ["Strength", p.strength],
     ["Dosage form", p.form],
     ["Pack size", p.packSize],
     ["Pack type", p.packForm],
@@ -108,7 +107,7 @@ export default async function MedicinePage({ params }) {
     brand: { "@type": "Brand", name: p.brand && p.brand !== p.name ? p.brand : "Moulins Pharmaceuticals" },
     ...(division && { category: division.desc ? `${division.label} (${division.desc})` : division.label }),
     additionalProperty: facts
-      .filter(([label, value]) => label !== "Brand" && !(label === "Strength" && value === p.composition))
+      .filter(([label]) => label !== "Brand")
       .map(([label, value]) => ({ "@type": "PropertyValue", name: label, value })),
   };
   const structured = {
