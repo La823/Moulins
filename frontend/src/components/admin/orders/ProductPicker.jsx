@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 
 // The product browser staff add products with — on the new-order page and
 // on an existing order. Built for the keyboard, since orders are taken over
@@ -87,7 +88,10 @@ export function usePastRatesDrawer() {
 // lines: what is already on the order, [{product_id, quantity, rate, batch: {code}}]
 // onCommit({product, step, qty, rate, batch}): a line entered (rate "" when left empty)
 // onRemove(productId): Delete on a product that is on the order
-export default function ProductPicker({ customer, lines, onCommit, onRemove, searchRef: outerSearchRef, drawerOpen, onToggleDrawer, hint, autoFocus }) {
+// focusLine: an order line the page wants the history drawer to show (one
+// clicked in the cart), {product_id, product_name, batch}; onBrowse tells the
+// page the highlight moved, so the drawer goes back to following it.
+export default function ProductPicker({ customer, lines, onCommit, onRemove, searchRef: outerSearchRef, drawerOpen, onToggleDrawer, hint, autoFocus, focusLine, onBrowse }) {
   const [catalogue, setCatalogue] = useState(null); // {products, batches}
   const [catalogueError, setCatalogueError] = useState("");
   const [catalogueLoad, setCatalogueLoad] = useState(0); // bumped by Refresh
@@ -110,6 +114,11 @@ export default function ProductPicker({ customer, lines, onCommit, onRemove, sea
   const browserRef = useRef(null);
   const itemRefs = useRef([]);
   const lastRates = customer && rates.for === customer.id ? rates.rates : null;
+  // moving the highlight (or the search) hands the history drawer back to it
+  const onBrowseRef = useRef(onBrowse);
+  useEffect(() => {
+    onBrowseRef.current = onBrowse;
+  });
 
   useEffect(() => {
     let off = false;
@@ -141,15 +150,30 @@ export default function ProductPicker({ customer, lines, onCommit, onRemove, sea
     if (autoFocus) searchRef.current?.focus();
   }, [autoFocus, searchRef]);
 
-  // Search: every word typed must appear in the name (or the Marg code).
+  useEffect(() => {
+    onBrowseRef.current?.();
+  }, [active, productQuery, entry]);
+
+  // Search, as on the products page: every word typed must appear in the
+  // name, Marg code, composition (salts) or description. Products whose
+  // name matches every word come first, then composition, then the rest;
+  // each keeps the catalogue order within its group. matchedOn says why a
+  // product is listed when it isn't its name, for the line under it.
   const filtered = useMemo(() => {
     const all = catalogue?.products || [];
     const words = productQuery.toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return all;
-    return all.filter((p) => {
-      const hay = `${p.name} ${p.marg_code || ""}`.toLowerCase();
-      return words.every((w) => hay.includes(w));
-    });
+    const groups = [[], [], []];
+    for (const p of all) {
+      const name = `${p.name} ${p.marg_code || ""}`.toLowerCase();
+      const salt = (p.key_ingredients || "").toLowerCase();
+      const desc = (p.description || "").toLowerCase();
+      if (!words.every((w) => name.includes(w) || salt.includes(w) || desc.includes(w))) continue;
+      if (words.every((w) => name.includes(w))) groups[0].push(p);
+      else if (words.every((w) => name.includes(w) || salt.includes(w))) groups[1].push({ ...p, matchedOn: "salt" });
+      else groups[2].push({ ...p, matchedOn: "desc" });
+    }
+    return groups.flat();
   }, [catalogue, productQuery]);
   const perPage = view === "grid" ? GRID_PER_PAGE : LIST_PER_PAGE;
   const productTotal = filtered.length;
@@ -310,10 +334,10 @@ export default function ProductPicker({ customer, lines, onCommit, onRemove, sea
             <button
               type="button"
               onClick={onToggleDrawer}
-              title="What the highlighted product was billed at before (\ on the products)"
+              title="Sale history of the highlighted product (\ on the products)"
               className={`px-2.5 py-1 text-xs border rounded-lg ${drawerOpen ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
             >
-              Past rates
+              Sale history
             </button>
           )}
           <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden">
@@ -347,7 +371,7 @@ export default function ProductPicker({ customer, lines, onCommit, onRemove, sea
             focusBrowser();
           }
         }}
-        placeholder="Search product name… (↓ or Enter to go to the products, / to come back)"
+        placeholder="Search name, salt or description… (↓ or Enter to go to the products, / to come back)"
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
       />
       <p className="mt-1.5 text-[11px] text-gray-400">
@@ -409,7 +433,21 @@ export default function ProductPicker({ customer, lines, onCommit, onRemove, sea
         </div>
       )}
 
-      {drawerOpen && <RatesDrawer product={entry?.product || productResults[active] || null} customer={customer} onClose={onToggleDrawer} />}
+      {drawerOpen &&
+        (customer ? (
+          <HistoryDrawer
+            product={
+              focusLine
+                ? { id: focusLine.product_id, name: focusLine.product_name }
+                : entry?.product || productResults[active] || null
+            }
+            lineBatch={focusLine?.batch?.curbatch || ""}
+            customer={customer}
+            onClose={onToggleDrawer}
+          />
+        ) : (
+          <RatesDrawer product={entry?.product || productResults[active] || null} customer={customer} onClose={onToggleDrawer} />
+        ))}
 
       {entry && (
         <EntryBox
@@ -430,12 +468,23 @@ export default function ProductPicker({ customer, lines, onCommit, onRemove, sea
 function ProductList({ view, products, active, items, lastRates, itemsRef, onHover, onOpen, dimmed }) {
   const cart = Object.fromEntries(items.map((i) => [i.product_id, i]));
   const last = (p) => lastRates?.[p.id]?.rate;
+  // on one of this customer's Marg sale bills before: a light green row/card
+  const billed = (p) => !!lastRates?.[p.id]?.billed;
+  const legend = products.some(billed) && (
+    <p className="flex items-center gap-1.5 text-[11px] text-gray-500 mb-1.5">
+      <span className="h-2.5 w-2.5 rounded-sm bg-emerald-200" />
+      Billed to this customer before
+    </p>
+  );
 
   if (view === "grid") {
     return (
+      <>
+      {legend}
       <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 ${dimmed ? "opacity-60" : ""}`}>
         {products.map((p, i) => {
           const inCart = cart[p.id];
+          const wasBilled = billed(p);
           return (
             <button
               key={p.id}
@@ -444,9 +493,10 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
               ref={(el) => (itemsRef.current[i] = el)}
               onMouseEnter={() => onHover(i)}
               onClick={() => onOpen(i)}
-              className={`relative flex flex-col gap-2 p-2 text-left border rounded-lg transition ${
-                i === active ? "ring-2 ring-blue-500 border-blue-500" : inCart ? "border-gray-900 bg-gray-50" : "border-gray-200 hover:border-gray-400"
-              }`}
+              title={wasBilled ? "Billed to this customer before" : undefined}
+              className={`relative flex flex-col gap-2 p-2 text-left border rounded-lg transition ${wasBilled ? "bg-emerald-50" : ""} ${
+                i === active ? "ring-2 ring-blue-500 border-blue-500" : inCart ? "border-gray-900" : wasBilled ? "border-emerald-200 hover:border-emerald-400" : "border-gray-200 hover:border-gray-400"
+              } ${inCart && !wasBilled ? "bg-gray-50" : ""}`}
             >
               {inCart && (
                 <span className="absolute top-1 right-1 z-10 bg-gray-900 text-white text-[10px] font-semibold rounded-full min-w-5 h-5 px-1 flex items-center justify-center">
@@ -460,6 +510,11 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
                 <div className="w-full h-20 bg-gray-50 rounded flex items-center justify-center text-[10px] text-gray-300">No image</div>
               )}
               <span className="text-xs text-gray-700 leading-tight line-clamp-2">{p.name}</span>
+              {p.matchedOn && (
+                <span className="text-[10px] text-gray-400 leading-tight line-clamp-2">
+                  {p.matchedOn === "salt" ? p.key_ingredients : p.description}
+                </span>
+              )}
               <span className="text-[10px] text-gray-400">
                 MOQ {stepFor(p)}
                 {last(p) != null ? ` · last ₹${last(p)}` : ""}
@@ -468,11 +523,14 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
           );
         })}
       </div>
+      </>
     );
   }
 
   const pics = view === "list-img";
   return (
+    <>
+    {legend}
     <div className={`border border-gray-200 rounded-lg divide-y divide-gray-100 ${dimmed ? "opacity-60" : ""}`}>
       <div className="hidden sm:grid grid-cols-[1fr_70px_90px_80px] gap-2 px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50">
         <span>Product</span>
@@ -482,6 +540,7 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
       </div>
       {products.map((p, i) => {
         const inCart = cart[p.id];
+        const wasBilled = billed(p);
         return (
           <button
             key={p.id}
@@ -490,8 +549,15 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
             ref={(el) => (itemsRef.current[i] = el)}
             onMouseEnter={() => onHover(i)}
             onClick={() => onOpen(i)}
+            title={wasBilled ? "Billed to this customer before" : undefined}
             className={`w-full grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_70px_90px_80px] gap-2 items-center px-3 ${pics ? "py-1.5" : "py-1"} text-left text-sm ${
-              i === active ? "bg-blue-50 outline outline-2 -outline-offset-2 outline-blue-500" : inCart ? "bg-gray-50" : "hover:bg-gray-50"
+              i === active
+                ? `${wasBilled ? "bg-emerald-100" : "bg-blue-50"} outline outline-2 -outline-offset-2 outline-blue-500`
+                : wasBilled
+                  ? "bg-emerald-50 hover:bg-emerald-100"
+                  : inCart
+                    ? "bg-gray-50"
+                    : "hover:bg-gray-50"
             }`}
           >
             <span className="flex items-center gap-3 min-w-0">
@@ -502,7 +568,14 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
                 ) : (
                   <span className="w-10 h-10 bg-gray-50 rounded flex-shrink-0" />
                 ))}
-              <span className={`truncate ${p.is_active ? "text-gray-800" : "text-gray-400"}`}>{p.name}</span>
+              <span className="min-w-0 flex flex-col">
+                <span className={`truncate ${p.is_active ? "text-gray-800" : "text-gray-400"}`}>{p.name}</span>
+                {p.matchedOn && (
+                  <span className="truncate text-[11px] text-gray-400">
+                    {p.matchedOn === "salt" ? p.key_ingredients : `Description: ${p.description}`}
+                  </span>
+                )}
+              </span>
               {!p.is_active && <span className="text-[10px] text-gray-400 border border-gray-200 rounded px-1">inactive</span>}
             </span>
             <span className="hidden sm:block text-right text-xs text-gray-500 tabular-nums">{stepFor(p)}</span>
@@ -512,6 +585,7 @@ function ProductList({ view, products, active, items, lastRates, itemsRef, onHov
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -745,6 +819,59 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
 }
 
 // ---- the past rates drawer ---------------------------------------------------------
+
+// With a customer picked: the order page's sale history panel ("History with
+// this party": every sale of the product to them, by bill or by batch, with
+// margins, the last bills to anyone, and the batch purchases) for the
+// product the arrows are on, or the order line clicked. Loads a moment
+// after the highlight stops, one product at a time; answers are kept.
+function HistoryDrawer({ product, lineBatch, customer, onClose }) {
+  const [pid, setPid] = useState(product?.id || null);
+  useEffect(() => {
+    const t = setTimeout(() => setPid(product?.id || null), 200);
+    return () => clearTimeout(t);
+  }, [product?.id]);
+  const [cache, setCache] = useState({}); // "customer/product/batch" -> rate-history response
+  const key = pid ? `${customer.id}/${pid}/${lineBatch}` : null;
+  useEffect(() => {
+    if (!key || cache[key]) return;
+    let off = false;
+    const qs = new URLSearchParams({ products: pid });
+    if (lineBatch) qs.set("batches", `${pid}:${lineBatch}`);
+    apiFetch(`/admin/partners/${customer.id}/rate-history?${qs}`)
+      .then((d) => !off && setCache((c) => ({ ...c, [key]: d })))
+      .catch(() => !off && setCache((c) => ({ ...c, [key]: { unavailable: true, products: {} } })));
+    return () => {
+      off = true;
+    };
+  }, [key, pid, lineBatch, customer.id, cache]);
+  // until the highlighted product's answer is in, the panel says it's loading
+  const data = key && pid === product?.id ? cache[key] || null : null;
+
+  return (
+    <aside className="fixed right-0 top-0 z-[60] h-full w-full max-w-[380px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-2 flex items-center justify-between gap-2">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Sale history</div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none px-1" title="Close (\)">
+          ✕
+        </button>
+      </div>
+      <div className="p-4">
+        {product ? (
+          <ProductHistoryPanel
+            key={product.id}
+            productName={product.name}
+            history={data?.products?.[product.id]}
+            data={data}
+            lineBatch={lineBatch}
+          />
+        ) : (
+          <p className="text-xs text-gray-400">Highlight a product to see its history with this customer.</p>
+        )}
+      </div>
+    </aside>
+  );
+}
 
 const num = (v) => Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const day = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—");

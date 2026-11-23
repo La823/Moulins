@@ -277,12 +277,32 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
   );
 
   const hasParty = points.length > 0;
+  // a batch's selling to all parties this year: {avg_rate, qty, bills, parties}
+  const batchSale = (b) => history?.batch_sales?.[b || ""];
+  const lineSale = lineBatch ? batchSale(lineBatch) : null;
   const isOpen = (k, dflt) => boxes[`${productId}:${k}`] ?? dflt;
   const toggle = (k, dflt) => setBoxes((b) => ({ ...b, [`${productId}:${k}`]: !(b[`${productId}:${k}`] ?? dflt) }));
 
   return (
     <div>
       {header}
+      {lineBatch && (
+        <div className="mb-3 flex items-baseline justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 text-[10px]">
+          <span className="text-gray-600">
+            Avg selling price of batch <span className="font-medium text-gray-800">{lineBatch}</span>
+          </span>
+          {lineSale ? (
+            <span className="text-right">
+              <span className="text-xs font-semibold text-emerald-800">{money(lineSale.avg_rate)}</span>
+              <span className="block text-gray-400">
+                {qty(lineSale.qty)} units · {lineSale.parties} part{lineSale.parties === 1 ? "y" : "ies"}
+              </span>
+            </span>
+          ) : (
+            <span className="text-gray-400">not sold yet</span>
+          )}
+        </div>
+      )}
       {!data.party_code && (
         <p className="text-[10px] text-amber-700 mb-2">
           This partner isn&apos;t linked to a Marg party, so only earlier app orders can show here.
@@ -389,6 +409,11 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                     {g.expiry && <span className="text-gray-500">Exp {String(g.expiry).slice(5, 7)}/{String(g.expiry).slice(2, 4)}</span>}
                     <span className="text-gray-700">MRP {money(g.mrp)}</span>
                     <span className="text-gray-700">Purchase {money(g.purchaseRate)}</span>
+                    {batchSale(g.batch) && (
+                      <span className="text-emerald-700" title="Average selling rate of this batch to all parties this year">
+                        Avg sale {money(batchSale(g.batch).avg_rate)}
+                      </span>
+                    )}
                     <span className="text-gray-400 ml-auto">{qty(units)} units</span>
                   </div>
                   <table className="w-full text-[10px]">
@@ -483,6 +508,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                       <th className="px-1.5 py-1 text-left font-medium">Batch</th>
                       <th className="px-1.5 py-1 text-right font-medium">Purchase rate</th>
                       <th className="px-1.5 py-1 text-right font-medium">MRP</th>
+                      <th className="px-1.5 py-1 text-right font-medium" title="Average selling rate of the batch to all parties this year">Avg sale</th>
                       <th className="px-1.5 py-1 text-right font-medium">Qty in</th>
                       <th className="px-1.5 py-1 text-left font-medium">Purchase no.</th>
                       <th className="px-1.5 py-1 text-left font-medium">Supplier</th>
@@ -490,7 +516,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {purchases.map((pu, i) => (
-                      <PurchaseRow key={`pu-${pu.ref}-${i}`} p={pu} onOpen={setOpenBill} onLine={!!lineBatch && pu.batch === lineBatch} />
+                      <PurchaseRow key={`pu-${pu.ref}-${i}`} p={pu} sale={batchSale(pu.batch)} onOpen={setOpenBill} onLine={!!lineBatch && pu.batch === lineBatch} />
                     ))}
                   </tbody>
                 </table>
@@ -498,7 +524,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
             )}
           </section>
           <p className="text-[10px] text-gray-400 mt-2">
-            Rates before GST. Margin is over the batch&apos;s purchase rate. Bills are from Marg (this financial year);
+            Rates before GST. Margin is over the batch&apos;s purchase rate. Avg sale is the batch&apos;s average selling rate to all parties, by quantity. Bills are from Marg (this financial year);
             click a bill to see all of it.
           </p>
       {openBill && <BillModal point={openBill} onClose={() => setOpenBill(null)} />}
@@ -610,7 +636,7 @@ function BillModal({ point, onClose }) {
 // purchase bill this financial year, or the supplier invoice of a batch
 // bought before it ("earlier", no bill to open).
 // onLine marks the batch picked on the order line.
-function PurchaseRow({ p, onOpen, onLine }) {
+function PurchaseRow({ p, sale, onOpen, onLine }) {
   return (
     <tr
       onClick={() => p.voucher && onOpen(p)}
@@ -623,6 +649,12 @@ function PurchaseRow({ p, onOpen, onLine }) {
       </td>
       <td className="px-1.5 py-1 text-right font-medium text-amber-800 whitespace-nowrap">{money(p.rate)}</td>
       <td className="px-1.5 py-1 text-right text-gray-600 whitespace-nowrap">{money(p.mrp)}</td>
+      <td
+        className="px-1.5 py-1 text-right text-emerald-700 whitespace-nowrap"
+        title={sale ? `${qty(sale.qty)} units on ${sale.bills} bill${sale.bills === 1 ? "" : "s"} to ${sale.parties} part${sale.parties === 1 ? "y" : "ies"}` : "Not sold yet"}
+      >
+        {sale ? money(sale.avg_rate) : "—"}
+      </td>
       <td className="px-1.5 py-1 text-right text-green-700 whitespace-nowrap">
         {p.kind === "earlier" ? "—" : <>+{qty(p.qty)}{p.free > 0 && <> +{qty(p.free)}</>}</>}
       </td>

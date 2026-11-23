@@ -15,16 +15,19 @@ import (
 
 // QuickProduct is one product as the order page needs it.
 type QuickProduct struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	MargCode *string  `json:"marg_code,omitempty"`
-	Moq      int      `json:"moq"`
-	Price    float64  `json:"price"` // selling price
-	MRP      *float64 `json:"mrp,omitempty"`
-	ThumbKey *string  `json:"-"`
-	ThumbURL string   `json:"thumb_url,omitempty"`
-	Active   bool     `json:"is_active"`
-	Stock    float64  `json:"stock"` // across its live Marg batches
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// searched along with the name, as on the products page
+	KeyIngredients string   `json:"key_ingredients,omitempty"`
+	Description    string   `json:"description,omitempty"`
+	MargCode       *string  `json:"marg_code,omitempty"`
+	Moq            int      `json:"moq"`
+	Price          float64  `json:"price"` // selling price
+	MRP            *float64 `json:"mrp,omitempty"`
+	ThumbKey       *string  `json:"-"`
+	ThumbURL       string   `json:"thumb_url,omitempty"`
+	Active         bool     `json:"is_active"`
+	Stock          float64  `json:"stock"` // across its live Marg batches
 }
 
 // QuickBatch is one live Marg batch of a product.
@@ -49,7 +52,7 @@ type QuickCatalogue struct {
 func GetQuickCatalogue(ctx context.Context, db *pgxpool.Pool) (QuickCatalogue, error) {
 	out := QuickCatalogue{Products: []QuickProduct{}, Batches: map[string][]QuickBatch{}, BuiltAt: time.Now()}
 	rows, err := db.Query(ctx, `
-		SELECT id::text, name, NULLIF(marg_code, ''), COALESCE(moq, 0), COALESCE(price, 0)::float8, mrp::float8, thumb_key, is_active
+		SELECT id::text, name, COALESCE(key_ingredients, ''), COALESCE(description, ''), NULLIF(marg_code, ''), COALESCE(moq, 0), COALESCE(price, 0)::float8, mrp::float8, thumb_key, is_active
 		FROM products
 		ORDER BY is_active DESC, name`)
 	if err != nil {
@@ -57,7 +60,7 @@ func GetQuickCatalogue(ctx context.Context, db *pgxpool.Pool) (QuickCatalogue, e
 	}
 	for rows.Next() {
 		var p QuickProduct
-		if err := rows.Scan(&p.ID, &p.Name, &p.MargCode, &p.Moq, &p.Price, &p.MRP, &p.ThumbKey, &p.Active); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.KeyIngredients, &p.Description, &p.MargCode, &p.Moq, &p.Price, &p.MRP, &p.ThumbKey, &p.Active); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -102,6 +105,9 @@ type LastRate struct {
 	Rate   float64   `json:"rate"`
 	Date   time.Time `json:"date"`
 	Source string    `json:"source"` // bill | order
+	// Billed: the product is on at least one of the partner's Marg sale
+	// bills, whatever Source says (a newer app order can be the last rate)
+	Billed bool `json:"billed"`
 }
 
 // GetLastRates returns, for every product the partner has been charged
@@ -129,7 +135,7 @@ func GetLastRates(ctx context.Context, db *pgxpool.Pool, partnerID string) (map[
 			WHERE o.user_id = $1::uuid AND oi.rate IS NOT NULL AND oi.rate > 0 AND o.status <> 'cancelled'
 			ORDER BY oi.product_id, o.created_at DESC
 		)
-		SELECT DISTINCT ON (pid) pid, rate, d, src FROM (
+		SELECT DISTINCT ON (pid) pid, rate, d, src, EXISTS (SELECT 1 FROM bill bb WHERE bb.pid = x.pid) FROM (
 			SELECT pid, rate, d, 'bill' AS src FROM bill
 			UNION ALL
 			SELECT pid, rate, d, 'order' FROM ord
@@ -142,7 +148,7 @@ func GetLastRates(ctx context.Context, db *pgxpool.Pool, partnerID string) (map[
 	for rows.Next() {
 		var pid string
 		var r LastRate
-		if err := rows.Scan(&pid, &r.Rate, &r.Date, &r.Source); err != nil {
+		if err := rows.Scan(&pid, &r.Rate, &r.Date, &r.Source, &r.Billed); err != nil {
 			return nil, err
 		}
 		out[pid] = r

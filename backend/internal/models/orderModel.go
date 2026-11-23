@@ -38,9 +38,14 @@ type Order struct {
 	ItemsTotal *float64 `json:"items_total,omitempty"`
 	OrderTotal *float64 `json:"order_total,omitempty"`
 	// Joined fields for admin view
-	UserName           string  `json:"user_name,omitempty"`
-	UserPhone          string  `json:"user_phone,omitempty"`
-	ItemCount          int     `json:"item_count,omitempty"`
+	UserName  string `json:"user_name,omitempty"`
+	UserPhone string `json:"user_phone,omitempty"`
+	ItemCount int    `json:"item_count,omitempty"`
+	// who placed it (admin order list): "self" the customer, "team" one of
+	// their team members, "staff" Moulins staff on their behalf; PlacedByName
+	// names the staff member or team member
+	PlacedBy           string  `json:"placed_by,omitempty"`
+	PlacedByName       string  `json:"placed_by_name,omitempty"`
 	TransportName      *string `json:"transport_name,omitempty"`
 	TransportGstNumber *string `json:"transport_gst_number,omitempty"`
 	// Marg ERP push tracking. MargInsertOrderID is Marg's own internal
@@ -307,12 +312,25 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 		SELECT o.id, o.user_id, o.status, o.notes, o.transport_mode, o.created_at, o.updated_at,
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone,
-			COUNT(oi.id) AS item_count
+			COUNT(oi.id) AS item_count,
+			CASE WHEN ce.actor_id IS NOT NULL AND ce.actor_id <> o.user_id THEN 'staff'
+			     WHEN u.role = 'team_member' THEN 'team'
+			     ELSE 'self' END AS placed_by,
+			CASE WHEN ce.actor_id IS NOT NULL AND ce.actor_id <> o.user_id THEN COALESCE(a.username, '')
+			     WHEN u.role = 'team_member' THEN COALESCE(u.username, '')
+			     ELSE '' END AS placed_by_name
 		FROM orders o
 		LEFT JOIN users u ON u.id = o.user_id
 		LEFT JOIN order_items oi ON oi.order_id = o.id
+		-- who placed it: the actor on the order's "created" history entry
+		LEFT JOIN LATERAL (
+			SELECT e.actor_id FROM order_events e
+			WHERE e.order_id = o.id AND e.event_type = 'order.created'
+			ORDER BY e.created_at LIMIT 1
+		) ce ON TRUE
+		LEFT JOIN users a ON a.id = ce.actor_id
 		WHERE 1=1%s
-		GROUP BY o.id, u.username, u.phone_number
+		GROUP BY o.id, u.username, u.phone_number, u.role, ce.actor_id, a.username
 		ORDER BY o.created_at %s
 		LIMIT $%d OFFSET $%d
 	`, where, sortDir, argIdx, argIdx+1)
@@ -328,7 +346,7 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 	for rows.Next() {
 		var o Order
 		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.CreatedAt, &o.UpdatedAt,
-			&o.UserName, &o.UserPhone, &o.ItemCount); err != nil {
+			&o.UserName, &o.UserPhone, &o.ItemCount, &o.PlacedBy, &o.PlacedByName); err != nil {
 			return nil, 0, err
 		}
 		orders = append(orders, o)

@@ -23,13 +23,14 @@ import (
 // already clear; the next request (or the next rebuild) fills it again.
 
 const (
-	quickCatalogueKey   = "products:quick-catalogue"
+	quickCatalogueKey   = "products:quick-catalogue:v2" // v2: with key_ingredients, description
 	quickCatalogueTTL   = 10 * time.Minute
 	quickCatalogueEvery = 3 * time.Minute
 	lastRatesTTL        = 10 * time.Minute
 )
 
-func lastRatesKey(partner string) string { return "lastrates:" + partner }
+// v2: entries carry "billed"
+func lastRatesKey(partner string) string { return "lastrates:v2:" + partner }
 
 var startWarmer sync.Once
 

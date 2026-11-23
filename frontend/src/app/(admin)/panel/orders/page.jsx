@@ -17,6 +17,26 @@ const STATUS_STYLES = {
   refunded: "bg-orange-50 text-orange-700 border-orange-200",
 };
 
+// who placed the order (placed_by from the API): an order the partner placed
+// themselves stays white; staff on the partner's behalf, or one of the
+// partner's team members, get a tinted row, a coloured left edge and a tag
+const PLACED_BY = {
+  staff: {
+    label: "Placed by staff",
+    row: "bg-sky-50/70 hover:bg-sky-100/70",
+    edge: "border-sky-400",
+    tag: "bg-sky-100 text-sky-800",
+    dot: "bg-sky-400",
+  },
+  team: {
+    label: "Placed by team member",
+    row: "bg-violet-50/70 hover:bg-violet-100/70",
+    edge: "border-violet-400",
+    tag: "bg-violet-100 text-violet-800",
+    dot: "bg-violet-400",
+  },
+};
+
 const STATUSES = [
   "pending",
   "confirmed",
@@ -285,6 +305,20 @@ function AdminOrdersPageInner() {
           )}
         </div>
       ) : (
+        <>
+        {/* key for the row colours */}
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm border border-gray-300 bg-white" />
+            Placed by the partner
+          </span>
+          {Object.entries(PLACED_BY).map(([key, v]) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span className={`h-2.5 w-2.5 rounded-sm ${v.dot}`} />
+              {v.label}
+            </span>
+          ))}
+        </div>
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -307,13 +341,15 @@ function AdminOrdersPageInner() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orders.map((order) => (
+              {orders.map((order) => {
+                const by = PLACED_BY[order.placed_by];
+                return (
                 <tr
                   key={order.id}
-                  className="hover:bg-gray-50 cursor-pointer"
+                  className={`cursor-pointer ${by ? by.row : "hover:bg-gray-50"}`}
                   onClick={() => router.push(`/panel/orders/${order.id}`)}
                 >
-                  <td className="px-5 py-3 font-mono text-xs text-gray-500">
+                  <td className={`px-5 py-3 font-mono text-xs text-gray-500 ${by ? `border-l-4 ${by.edge}` : "border-l-4 border-transparent"}`}>
                     {order.id.slice(0, 8)}
                   </td>
                   <td className="px-5 py-3">
@@ -321,6 +357,12 @@ function AdminOrdersPageInner() {
                       {order.user_name || "No name"}
                     </p>
                     <p className="text-xs text-gray-400">{order.user_phone}</p>
+                    {by && (
+                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${by.tag}`}>
+                        {by.label}
+                        {order.placed_by_name ? ` · ${order.placed_by_name}` : ""}
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-gray-600">
                     {order.item_count}
@@ -360,7 +402,8 @@ function AdminOrdersPageInner() {
                     </select>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
 
@@ -390,6 +433,7 @@ function AdminOrdersPageInner() {
             </div>
           )}
         </div>
+        </>
       )}
     </>
   );

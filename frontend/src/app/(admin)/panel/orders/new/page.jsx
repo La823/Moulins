@@ -51,6 +51,13 @@ export default function NewOrderForStaffPage() {
 
   // The past rates drawer (open or not; the picker draws it)
   const [salesOpen, toggleSales] = usePastRatesDrawer();
+  // an order line clicked in the cart: the sale history drawer shows it
+  // until the product list is browsed again
+  const [focusLine, setFocusLine] = useState(null);
+  const showLineHistory = (line) => {
+    setFocusLine(line);
+    if (!salesOpen) toggleSales();
+  };
 
   // Drafts
   const [draftId, setDraftId] = useState(null);
@@ -420,7 +427,18 @@ export default function NewOrderForStaffPage() {
                 {items.map((i) => {
                   const r = parseRate(i.rate);
                   return (
-                    <div key={i.product_id} className="border border-gray-200 rounded-lg px-2.5 py-2">
+                    <div
+                      key={i.product_id}
+                      onClick={(e) => {
+                        // clicks in the boxes and buttons keep their own job
+                        if (e.target.closest("input, button, a")) return;
+                        showLineHistory(i);
+                      }}
+                      title={selectedCustomer ? "Click to see its sale history with this customer" : undefined}
+                      className={`border rounded-lg px-2.5 py-2 ${selectedCustomer ? "cursor-pointer" : ""} ${
+                        salesOpen && focusLine?.product_id === i.product_id ? "border-blue-400 ring-1 ring-blue-200" : "border-gray-200"
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-xs text-gray-800 leading-tight line-clamp-2">{i.product_name}</span>
                         <button onClick={() => removeItem(i.product_id)} className="text-gray-400 hover:text-red-600 text-xs flex-shrink-0 leading-none mt-0.5">
@@ -484,6 +502,8 @@ export default function NewOrderForStaffPage() {
             searchRef={searchRef}
             drawerOpen={salesOpen}
             onToggleDrawer={toggleSales}
+            focusLine={focusLine}
+            onBrowse={() => setFocusLine(null)}
             hint="Ctrl+Enter places the order"
           />
         </div>

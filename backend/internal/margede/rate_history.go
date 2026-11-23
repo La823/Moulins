@@ -60,6 +60,9 @@ type ProductRateHistory struct {
 	PurchasesLatest bool `json:"purchases_latest,omitempty"`
 	// The batches picked on the order's lines, as Marg's stock knows them.
 	LineBatches []LineBatch `json:"line_batches,omitempty"`
+	// BatchSales: how each batch of the product sold to everyone (all
+	// parties) on this year's sale bills, by batch name (addBatchSales).
+	BatchSales map[string]BatchSale `json:"batch_sales,omitempty"`
 }
 
 // LineBatch is a batch picked on an order line: its purchase rate and the
@@ -245,7 +248,64 @@ func GetRateHistory(ctx context.Context, db *pgxpool.Pool, partnerID uuid.UUID, 
 	if err := addLatestPurchases(ctx, db, out, 5); err != nil {
 		return out, err
 	}
+	if err := addBatchSales(ctx, db, out); err != nil {
+		return out, err
+	}
 	return out, nil
+}
+
+// BatchSale is one batch's selling to all parties: the average rate weighted
+// by quantity (free units left out), the units and how many bills and
+// parties it went to.
+type BatchSale struct {
+	AvgRate float64 `json:"avg_rate"`
+	Qty     float64 `json:"qty"`
+	Bills   int     `json:"bills"`
+	Parties int     `json:"parties"`
+}
+
+// addBatchSales fills BatchSales for every product: sale bills only (not
+// challans, cancelled or deleted), lines with a rate and a quantity.
+func addBatchSales(ctx context.Context, db *pgxpool.Pool, out RateHistory) error {
+	ids := make([]string, 0, len(out.Products))
+	for id := range out.Products {
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := db.Query(ctx, `
+		SELECT p.id::text, COALESCE(i.batch, ''),
+		       (SUM(i.rate * i.qty) / SUM(i.qty))::float8, SUM(i.qty)::float8,
+		       COUNT(DISTINCT b.voucher), COUNT(DISTINCT b.party_code)
+		FROM products p
+		JOIN marg_ede_bill_items i ON i.product_pid::text = p.marg_code AND NOT i.is_deleted
+		JOIN marg_ede_bills b ON b.voucher = i.voucher
+		WHERE p.id::text = ANY($1::text[])
+		  AND b.bill_type = 'S' AND b.bill_mode IS DISTINCT FROM 'challan'
+		  AND NOT b.is_deleted AND NOT b.is_cancelled
+		  AND i.rate > 0 AND i.qty > 0
+		GROUP BY 1, 2`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid, batch string
+		var bs BatchSale
+		if err := rows.Scan(&pid, &batch, &bs.AvgRate, &bs.Qty, &bs.Bills, &bs.Parties); err != nil {
+			return err
+		}
+		h := out.Products[pid]
+		if h == nil {
+			continue
+		}
+		if h.BatchSales == nil {
+			h.BatchSales = map[string]BatchSale{}
+		}
+		h.BatchSales[batch] = bs
+	}
+	return rows.Err()
 }
 
 // addLatestPurchases gives each product with no purchase of its sold

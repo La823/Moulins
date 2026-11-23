@@ -91,13 +91,14 @@ export function BillRow({ b, open, onToggle, linkParty = true, withGST = true })
         <td className="px-4 py-3 text-right text-gray-500">{b.lines_count}</td>
         <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{fmtMoney(withGST ? b.total : b.total_ex_gst)}</td>
         <td className="px-4 py-3">
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex items-center gap-1 flex-wrap">
             {b.is_cancelled && <Badge className="bg-red-50 text-red-600">Cancelled</Badge>}
             {!b.lines_complete && !b.is_cancelled && (
               <Badge className="bg-amber-50 text-amber-700" title={`Lines add up to ${fmtMoney(b.lines_total)}`}>
                 Lines ≠ total
               </Badge>
             )}
+            <BillPDFButton voucher={b.voucher} billNo={b.bill_no} />
           </div>
         </td>
       </tr>
@@ -109,6 +110,56 @@ export function BillRow({ b, open, onToggle, linkParty = true, withGST = true })
         </tr>
       )}
     </>
+  );
+}
+
+// Opens a printable PDF of the bill in a new tab. apiFetch parses JSON, so
+// this is a plain fetch with the same token; the tab opens before the fetch
+// so the browser still counts it as the click (and doesn't block it).
+export function BillPDFButton({ voucher, billNo }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const open = async (e) => {
+    e.stopPropagation();
+    if (busy) return;
+    const tab = window.open("", "_blank");
+    setBusy(true);
+    setFailed(false);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const res = await fetch(`${apiUrl}/admin/marg-bills/${voucher}/pdf`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) throw new Error((await res.text()) || "Could not make the PDF");
+      const url = URL.createObjectURL(await res.blob());
+      if (tab) tab.location.href = url;
+      else window.open(url, "_blank");
+    } catch {
+      tab?.close();
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={open}
+      disabled={busy}
+      title={failed ? "Could not make the PDF. Click to try again." : `Print bill ${billNo} as PDF`}
+      className={`ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium whitespace-nowrap transition-colors disabled:opacity-60 ${
+        failed
+          ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
+      }`}
+    >
+      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2M7 14h10v7H7z" />
+      </svg>
+      {busy ? "Making..." : failed ? "Retry" : "PDF"}
+    </button>
   );
 }
 

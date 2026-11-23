@@ -356,6 +356,7 @@ export default function AdminOrderDetail() {
     if (next === current) return [];
     return [{ item_id: item.id, rate: next }];
   });
+  const pendingRateIds = new Set(pendingRateChanges.map((c) => c.item_id));
 
   // Staff remark per line and freight for the order. Like rates, both stay
   // local until Save and go out in the same single request.
@@ -909,15 +910,28 @@ export default function AdminOrderDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {items.map((item) => (
+                {items.map((item) => {
+                  // the rate's state: yellow = typed but not saved yet (differs
+                  // from what's saved), green = saved and the box shows the
+                  // saved rate; an unpriced, untouched line stays plain. The
+                  // selected line keeps its blue left edge either way.
+                  const rateUnsaved = pendingRateIds.has(item.id);
+                  const rateSaved = !rateUnsaved && item.rate != null && !(item.id in rateDrafts && parseRate(rateDrafts[item.id]) === undefined);
+                  const rowColour = rateUnsaved
+                    ? "bg-amber-50 hover:bg-amber-100/70"
+                    : rateSaved
+                      ? "bg-green-50 hover:bg-green-100/70"
+                      : selectedItem?.id === item.id
+                        ? "bg-blue-50"
+                        : "hover:bg-gray-50";
+                  return (
                   <tr
                     key={item.id}
                     data-order-line={item.id}
                     onClick={() => setSelectedLine(item.id)}
                     aria-selected={selectedItem?.id === item.id}
-                    className={`cursor-pointer transition-colors ${
-                      selectedItem?.id === item.id ? "bg-blue-50" : "hover:bg-gray-50"
-                    }`}
+                    title={rateUnsaved ? "Rate changed, not saved yet: press Enter or Save" : rateSaved ? "Rate saved" : undefined}
+                    className={`cursor-pointer transition-colors ${rowColour}`}
                   >
                     <td
                       className={`py-2 pl-2 pr-2 min-w-[11rem] text-gray-900 border-l-4 ${
@@ -1138,7 +1152,8 @@ export default function AdminOrderDetail() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 {(() => {
