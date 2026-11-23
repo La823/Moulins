@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -330,8 +331,13 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// reason / latitude / longitude come from the app (from 2.0.2+33);
+		// the website and older apps send only the status, so they stay optional
 		var req struct {
-			Status string `json:"status"`
+			Status    string   `json:"status"`
+			Reason    *string  `json:"reason"`
+			Latitude  *float64 `json:"latitude"`
+			Longitude *float64 `json:"longitude"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -341,8 +347,19 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "status must be upcoming, completed or cancelled", http.StatusBadRequest)
 			return
 		}
+		if req.Reason != nil {
+			if t := strings.TrimSpace(*req.Reason); t == "" {
+				req.Reason = nil
+			} else {
+				req.Reason = &t
+			}
+		}
+		if (req.Latitude == nil) != (req.Longitude == nil) {
+			http.Error(w, "latitude and longitude go together", http.StatusBadRequest)
+			return
+		}
 
-		if err := models.UpdateMeetingStatus(r.Context(), db, id, req.Status, rawUserID(r)); err != nil {
+		if err := models.UpdateMeetingStatus(r.Context(), db, id, req.Status, rawUserID(r), req.Reason, req.Latitude, req.Longitude); err != nil {
 			log.Printf("update meeting status error: %v", err)
 			http.Error(w, "could not update meeting status", http.StatusInternalServerError)
 			return

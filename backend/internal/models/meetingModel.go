@@ -39,6 +39,13 @@ type Meeting struct {
 	StatusChangedAt     *time.Time `json:"status_changed_at,omitempty"`
 	HasVisitLog         bool       `json:"has_visit_log"`
 
+	// Recorded when it was marked done / cancelled: the reason given, where
+	// the person was, and how far that was from the doctor's saved clinic.
+	StatusReason              *string  `json:"status_reason,omitempty"`
+	StatusLatitude            *float64 `json:"status_latitude,omitempty"`
+	StatusLongitude           *float64 `json:"status_longitude,omitempty"`
+	StatusDistanceFromClinicM *float64 `json:"status_distance_from_clinic_m,omitempty"`
+
 	// NotifyUserID is who a reminder goes to: the assignee, or the account
 	// owner when there is no active assignee. Internal only.
 	NotifyUserID uuid.UUID `json:"-"`
@@ -95,7 +102,8 @@ const meetingSelect = `
 	       m.assigned_to, au.name, (au.deleted_at IS NOT NULL),
 	       m.created_by, cu.name, uu.name, su.name, m.status_changed_at,
 	       EXISTS (SELECT 1 FROM meeting_visit_logs v WHERE v.meeting_id = m.id),
-	       COALESCE(CASE WHEN au.deleted_at IS NULL THEN m.assigned_to END, m.user_id)
+	       COALESCE(CASE WHEN au.deleted_at IS NULL THEN m.assigned_to END, m.user_id),
+	       m.status_reason, m.status_latitude, m.status_longitude, d.latitude, d.longitude
 	FROM meetings m
 	LEFT JOIN doctors d ON d.id = m.doctor_id
 	LEFT JOIN LATERAL (SELECT COALESCE(NULLIF(username, ''), phone_number) AS name FROM users WHERE id = m.user_id) ou ON TRUE
@@ -108,12 +116,18 @@ func scanMeeting(row pgx.Row) (*Meeting, error) {
 	var m Meeting
 	var userName, doctorName, assignedToName, createdByName, updatedByName, statusByName *string
 	var assigneeRemoved *bool
+	var clinicLat, clinicLng *float64
 	if err := row.Scan(&m.ID, &m.UserID, &userName, &m.DoctorID, &doctorName, &m.Title, &m.ScheduledAt, &m.Notes, &m.Mom, &m.Status,
 		&m.Reminder1DaySent, &m.Reminder1HourSent, &m.CreatedAt, &m.UpdatedAt,
 		&m.AssignedTo, &assignedToName, &assigneeRemoved,
 		&m.CreatedBy, &createdByName, &updatedByName, &statusByName, &m.StatusChangedAt,
-		&m.HasVisitLog, &m.NotifyUserID); err != nil {
+		&m.HasVisitLog, &m.NotifyUserID,
+		&m.StatusReason, &m.StatusLatitude, &m.StatusLongitude, &clinicLat, &clinicLng); err != nil {
 		return nil, err
+	}
+	if m.StatusLatitude != nil && m.StatusLongitude != nil && clinicLat != nil && clinicLng != nil {
+		dist := haversineMeters(*m.StatusLatitude, *m.StatusLongitude, *clinicLat, *clinicLng)
+		m.StatusDistanceFromClinicM = &dist
 	}
 	m.UserName = strOrEmpty(userName)
 	m.DoctorName = strOrEmpty(doctorName)
@@ -272,10 +286,15 @@ func UpdateMeetingMom(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID
 	return err
 }
 
-func UpdateMeetingStatus(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID, status string, actor uuid.UUID) error {
+// UpdateMeetingStatus records who changed the status and when, plus the
+// reason and their location when the app sends them (nil from the website
+// and older apps — they then clear any earlier reason / location).
+func UpdateMeetingStatus(ctx context.Context, db *pgxpool.Pool, meetingID uuid.UUID, status string, actor uuid.UUID, reason *string, lat, lng *float64) error {
 	_, err := db.Exec(ctx,
-		`UPDATE meetings SET status = $1, status_changed_by = $3, status_changed_at = now(), updated_at = now() WHERE id = $2`,
-		status, meetingID, actor,
+		`UPDATE meetings SET status = $1, status_changed_by = $3, status_changed_at = now(),
+		   status_reason = $4, status_latitude = $5, status_longitude = $6, updated_at = now()
+		 WHERE id = $2`,
+		status, meetingID, actor, reason, lat, lng,
 	)
 	return err
 }
