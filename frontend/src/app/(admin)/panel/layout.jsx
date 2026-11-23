@@ -186,6 +186,7 @@ const NAV_ITEMS = [
   { label: "Orders", href: "/panel/orders", permission: "orders_view", icon: ICONS.orders },
   { label: "Unfinished Orders", href: "/panel/orders/drafts", permission: "orders_edit", icon: ICONS.orders },
   { label: "Packing", href: "/panel/packing", permission: "packing_edit", icon: ICONS.orders },
+  { label: "Quotations", href: "/panel/quotations", permission: ["quotations_view", "quotations_edit"], icon: ICONS.orders },
   { label: "Payments", href: "/panel/payments", permission: "payments_view", icon: ICONS.payments },
   { label: "Marg Bills", href: "/panel/marg-bills", permission: "marg_bills_view", icon: ICONS.orders },
   { label: "All Bills", href: "/panel/all-bills", permission: "marg_bills_view", icon: ICONS.orders },
@@ -333,7 +334,9 @@ export default function AdminLayout({ children }) {
   const canSee = (item) => {
     if (item.adminOnly) return isAdmin;
     if (item.employeeOnly) return !isAdmin;
-    if (item.permission) return isAdmin || userPermissions.includes(item.permission);
+    // permission: one key, or a list of which any one will do
+    if (item.permission)
+      return isAdmin || [].concat(item.permission).some((p) => userPermissions.includes(p));
     return true;
   };
 

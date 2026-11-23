@@ -50,6 +50,7 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/productspec"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseordermaster"
+	quotationHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/quotations"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseorders"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/requests"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/specialproducts"
@@ -869,6 +870,16 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	packingStaff.HandleFunc("/packing/orders/{id}/items/{itemId}/override", packingHandlers.OverrideHandler(db)).Methods("POST")
 	packingStaff.HandleFunc("/packing/orders/{id}/finish", packingHandlers.FinishHandler(db)).Methods("POST")
 	packingStaff.HandleFunc("/packing/orders/{id}/reopen", packingHandlers.ReopenHandler(db)).Methods("POST")
+
+	// staff routes: quotations register (quotations_view / quotations_edit,
+	// checked inside the handlers)
+	quotationStaff := protected.PathPrefix("/admin").Subrouter()
+	quotationStaff.Use(middleware.StaffOnly)
+	quotationStaff.HandleFunc("/quotations", quotationHandlers.ListHandler(db)).Methods("GET")
+	quotationStaff.HandleFunc("/quotations", quotationHandlers.CreateHandler(db)).Methods("POST")
+	quotationStaff.HandleFunc("/quotations/options", quotationHandlers.OptionsHandler(db)).Methods("GET")
+	quotationStaff.HandleFunc("/quotations/{id}", quotationHandlers.UpdateHandler(db)).Methods("PUT")
+	quotationStaff.HandleFunc("/quotations/{id}", quotationHandlers.DeleteHandler(db)).Methods("DELETE")
 
 	// staff routes — dispatch team, part 2 (migration 190): the packing
 	// rotation and freight bills. Freight routes check freight_bills_edit /
