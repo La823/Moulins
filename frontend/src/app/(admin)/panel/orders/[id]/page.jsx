@@ -358,6 +358,24 @@ export default function AdminOrderDetail() {
   });
   const pendingRateIds = new Set(pendingRateChanges.map((c) => c.item_id));
 
+  // A rate may never be lower than the purchase rate of the line's batch
+  // (the one picked, else the default one); the server refuses it too.
+  const purchaseOf = (item) => {
+    const info = batchInfoByItem[item.id];
+    const code = item.selected_batch_code || info?.defaultCode || "";
+    const b = (info?.batches || []).find((x) => x.code === code);
+    return b?.prate > 0 ? { prate: Number(b.prate), batch: b.curbatch || code } : null;
+  };
+  const belowPurchase = (item, rate) => {
+    const p = purchaseOf(item);
+    return p && rate != null && rate !== undefined && rate < p.prate - 0.005 ? p : null;
+  };
+  const tooLow = pendingRateChanges.flatMap((c) => {
+    const item = items.find((i) => i.id === c.item_id);
+    const p = item && belowPurchase(item, c.rate);
+    return p ? [`${item.product_name}: ₹${c.rate} is below the purchase rate ₹${p.prate} (batch ${p.batch})`] : [];
+  });
+
   // Staff remark per line and freight for the order. Like rates, both stay
   // local until Save and go out in the same single request.
   const [remarkDrafts, setRemarkDrafts] = useState({}); // { [itemId]: string }
@@ -390,6 +408,10 @@ export default function AdminOrderDetail() {
 
   const handleSaveRates = async () => {
     if (pendingCount === 0) return;
+    if (tooLow.length > 0) {
+      setError(`A rate can't be lower than the purchase rate. ${tooLow.join("; ")}.`);
+      return;
+    }
     setSavingRates(true);
     try {
       // One request for the whole order: the database is in Sydney and each
@@ -481,17 +503,19 @@ export default function AdminOrderDetail() {
         }
         setSuccess(`${product.name} added to order`);
       } else {
+        const batchChanged = batch?.code && batch.code !== existing.selected_batch_code;
         const jobs = [];
         if (qty !== existing.quantity) {
           jobs.push(apiFetch(`/admin/orders/${id}/items/${existing.id}`, { method: "PUT", body: JSON.stringify({ quantity: qty }) }));
         }
+        if (!jobs.length && !batchChanged && (existing.rate ?? null) === r) return;
+        // the batch first: the rate is checked against its batch's purchase rate
+        if (batchChanged) {
+          await apiFetch(`/admin/orders/${id}/items/${existing.id}/batch`, { method: "PUT", body: JSON.stringify({ batch_code: batch.code }) });
+        }
         if ((existing.rate ?? null) !== r) {
           jobs.push(apiFetch(`/admin/orders/${id}/rates`, { method: "PUT", body: JSON.stringify({ rates: [{ item_id: existing.id, rate: r }] }) }));
         }
-        if (batch?.code && batch.code !== existing.selected_batch_code) {
-          jobs.push(apiFetch(`/admin/orders/${id}/items/${existing.id}/batch`, { method: "PUT", body: JSON.stringify({ batch_code: batch.code }) }));
-        }
-        if (!jobs.length) return;
         await Promise.all(jobs);
         setItems((prev) =>
           prev.map((i) => (i.id === existing.id ? { ...i, quantity: qty, rate: r, selected_batch_code: batch?.code || i.selected_batch_code } : i)),
@@ -916,8 +940,11 @@ export default function AdminOrderDetail() {
                   // saved rate; an unpriced, untouched line stays plain. The
                   // selected line keeps its blue left edge either way.
                   const rateUnsaved = pendingRateIds.has(item.id);
+                  const lowFor = rateUnsaved ? belowPurchase(item, effectiveRate(item)) : null;
                   const rateSaved = !rateUnsaved && item.rate != null && !(item.id in rateDrafts && parseRate(rateDrafts[item.id]) === undefined);
-                  const rowColour = rateUnsaved
+                  const rowColour = lowFor
+                    ? "bg-red-50 hover:bg-red-100/70"
+                    : rateUnsaved
                     ? "bg-amber-50 hover:bg-amber-100/70"
                     : rateSaved
                       ? "bg-green-50 hover:bg-green-100/70"
@@ -930,7 +957,15 @@ export default function AdminOrderDetail() {
                     data-order-line={item.id}
                     onClick={() => setSelectedLine(item.id)}
                     aria-selected={selectedItem?.id === item.id}
-                    title={rateUnsaved ? "Rate changed, not saved yet: press Enter or Save" : rateSaved ? "Rate saved" : undefined}
+                    title={
+                      lowFor
+                        ? `Below the purchase rate ₹${lowFor.prate} of batch ${lowFor.batch}: can't be saved`
+                        : rateUnsaved
+                          ? "Rate changed, not saved yet: press Enter or Save"
+                          : rateSaved
+                            ? "Rate saved"
+                            : undefined
+                    }
                     className={`cursor-pointer transition-colors ${rowColour}`}
                   >
                     <td
@@ -1036,9 +1071,11 @@ export default function AdminOrderDetail() {
                           if (e.key === "Enter") handleSaveRates();
                         }}
                         className={`w-20 px-1.5 py-1 text-right border rounded text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:bg-gray-50 disabled:text-gray-400 ${
-                          item.id in rateDrafts
-                            ? "border-amber-300 bg-amber-50"
-                            : "border-gray-200"
+                          item.id in rateDrafts && belowPurchase(item, effectiveRate(item))
+                            ? "border-red-400 bg-red-50 text-red-700"
+                            : item.id in rateDrafts
+                              ? "border-amber-300 bg-amber-50"
+                              : "border-gray-200"
                         }`}
                       />
                       {/* Reverts this one line to its last saved rate. Takes

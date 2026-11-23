@@ -647,8 +647,16 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
     rateRef.current?.focus();
     rateRef.current?.select();
   };
-  const done = () =>
+  // a rate below the chosen batch's purchase rate is never accepted
+  const belowPurchase = chosen?.prate > 0 && parseRate(shownRate) != null && parseRate(shownRate) < chosen.prate - 0.005;
+  const done = () => {
+    if (belowPurchase) {
+      setField("rate");
+      setTimeout(() => rateRef.current?.focus(), 0);
+      return;
+    }
     onDone(snapNearest(qty, step), parseRate(shownRate) == null ? "" : String(parseRate(shownRate)), chosen && chosen.stock > 0 ? chosen : null);
+  };
   const toBatch = () => {
     // nothing to choose from (not in Marg, or none in stock): add straight away
     if (batches && !batches.some((b) => b.stock > 0)) return done();
@@ -798,14 +806,15 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
           </p>
         )}
         {batches && batches.length > 0 && !batches.some((b) => b.stock > 0) && <p className="text-xs text-amber-700 mt-1">No batch in stock.</p>}
-        {chosen?.prate > 0 && parseRate(shownRate) != null && parseRate(shownRate) < chosen.prate && (
+        {belowPurchase && (
           <p className="text-xs text-red-600 mt-1">
-            The rate ₹{parseRate(shownRate)} is below this batch&apos;s purchase rate ₹{chosen.prate}.
+            The rate ₹{parseRate(shownRate)} is below this batch&apos;s purchase rate ₹{chosen.prate}. A rate can&apos;t be lower than the
+            purchase rate: raise it to add the line.
           </p>
         )}
 
         <div className="flex items-center gap-2 mt-4">
-          <button onClick={done} className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">
+          <button onClick={done} disabled={belowPurchase} className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed">
             {entry.inCart ? "Update" : "Add to order"}
           </button>
           <button onClick={onCancel} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">

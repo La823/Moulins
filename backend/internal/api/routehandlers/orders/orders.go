@@ -660,6 +660,28 @@ func CreateOrderForCustomerHandler(db *pgxpool.Pool, rdb ...*cache.Client) http.
 			}
 		}
 
+		// never below the purchase rate of the line's batch
+		{
+			var lines []models.RateCheckLine
+			for _, item := range req.Items {
+				batch := ""
+				if item.BatchCode != nil {
+					batch = *item.BatchCode
+				}
+				lines = append(lines, models.RateCheckLine{ProductID: item.ProductID, ProductName: item.ProductName, BatchCode: batch, Rate: item.Rate})
+			}
+			msg, err := models.RatesBelowPurchase(r.Context(), db, lines)
+			if err != nil {
+				log.Printf("create order for customer: purchase rate check: %v", err)
+				http.Error(w, "could not check the purchase rates", http.StatusInternalServerError)
+				return
+			}
+			if msg != "" {
+				http.Error(w, msg, http.StatusBadRequest)
+				return
+			}
+		}
+
 		orderID, err := models.CreateOrderForCustomer(r.Context(), db, req.CustomerID, staffID, req.CreateOrderRequest)
 		if err != nil {
 			log.Printf("create order for customer error: %v", err)
@@ -1511,6 +1533,24 @@ func AddOrderItemHandler(db *pgxpool.Pool) http.HandlerFunc {
 			http.Error(w, "quantity must be at least 1", http.StatusBadRequest)
 			return
 		}
+		if body.Rate != nil {
+			batch := ""
+			if body.BatchCode != nil {
+				batch = *body.BatchCode
+			}
+			msg, err := models.RatesBelowPurchase(r.Context(), db, []models.RateCheckLine{{
+				ProductID: body.ProductID, ProductName: body.ProductName, BatchCode: batch, Rate: body.Rate,
+			}})
+			if err != nil {
+				log.Printf("add order item: purchase rate check: %v", err)
+				http.Error(w, "could not check the purchase rate", http.StatusInternalServerError)
+				return
+			}
+			if msg != "" {
+				http.Error(w, msg, http.StatusBadRequest)
+				return
+			}
+		}
 
 		itemID, err := models.AddOrderItem(r.Context(), db, orderID, body.ProductID, body.ProductName, body.Quantity)
 		if err != nil {
@@ -1677,6 +1717,19 @@ func UpdateOrderItemRatesHandler(db *pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "rate cannot be negative", http.StatusBadRequest)
 				return
 			}
+		}
+		// never below the purchase rate of the line's batch
+		if lines, err := models.OrderLinesForRateCheck(r.Context(), db, body.Rates); err != nil {
+			log.Printf("save order pricing: purchase rate check: %v", err)
+			http.Error(w, "could not check the purchase rates", http.StatusInternalServerError)
+			return
+		} else if msg, err := models.RatesBelowPurchase(r.Context(), db, lines); err != nil {
+			log.Printf("save order pricing: purchase rate check: %v", err)
+			http.Error(w, "could not check the purchase rates", http.StatusInternalServerError)
+			return
+		} else if msg != "" {
+			http.Error(w, msg, http.StatusBadRequest)
+			return
 		}
 
 		setFreight := len(body.Freight) > 0
