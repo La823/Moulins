@@ -190,7 +190,9 @@ function Stat({ label, value, sub }) {
 // Two folding boxes: sales to this party (open), and the product's last 5
 // bills to any party with their average (open instead when this party never
 // bought it). The purchases of the batches always show below.
-export function ProductHistoryPanel({ productName, history, data, position, count, lineBatch }) {
+// noParty: no customer to show sales to (a new customer or a third party on a
+// quotation): only the product's last bills to anyone and its purchases.
+export function ProductHistoryPanel({ productName, history, data, position, count, lineBatch, noParty }) {
   const [openBill, setOpenBill] = useState(null); // the bill point shown in full
   const [view, setView] = useState("list"); // list: every sale, newest first | batch: grouped by batch
   const productId = history?.product_id;
@@ -210,7 +212,7 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
   const header = (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">History with this party</div>
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{noParty ? "Sale history" : "History with this party"}</div>
         {count > 1 && (
           <div className="text-[10px] text-gray-400 whitespace-nowrap">
             {position + 1} of {count} · <kbd className="px-1 border border-gray-200 rounded">↑</kbd>{" "}
@@ -303,11 +305,12 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
           )}
         </div>
       )}
-      {!data.party_code && (
+      {!noParty && !data.party_code && (
         <p className="text-[10px] text-amber-700 mb-2">
           This partner isn&apos;t linked to a Marg party, so only earlier app orders can show here.
         </p>
       )}
+      {!noParty && (
       <FoldBox
         title="Sales to this party"
         tone="blue"
@@ -481,12 +484,13 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
         </>
       )}
       </FoldBox>
+      )}
 
       <FoldBox
         title={`Last 5 bills of ${productName || "this product"}`}
         tone="gray"
-        open={isOpen("any", !hasParty)}
-        onToggle={() => toggle("any", !hasParty)}
+        open={isOpen("any", noParty || !hasParty)}
+        onToggle={() => toggle("any", noParty || !hasParty)}
       >
         <RecentBills rows={recent[productId]} />
       </FoldBox>

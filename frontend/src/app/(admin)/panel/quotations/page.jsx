@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 
 // Quotations: a register of prices quoted, one product per entry — who it
 // was for (an existing customer, a new customer or a third party), the
@@ -297,6 +298,26 @@ function QuotationForm({ quotation, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // The order page's sale history panel for the chosen product: with an
+  // existing customer, their history with it; for a new customer or a third
+  // party, the product's own (its last bills to anyone, purchases, batch
+  // average selling price), asked for with no partner (the nil id).
+  const NO_PARTNER = "00000000-0000-0000-0000-000000000000";
+  const partnerId = kind === "existing" ? customer?.id || null : NO_PARTNER;
+  const historyKey = product?.id && partnerId ? `${partnerId}/${product.id}` : null;
+  const [histories, setHistories] = useState({}); // key -> rate-history response
+  useEffect(() => {
+    if (!historyKey || histories[historyKey]) return;
+    let off = false;
+    apiFetch(`/admin/partners/${partnerId}/rate-history?products=${product.id}`)
+      .then((d) => !off && setHistories((h) => ({ ...h, [historyKey]: d })))
+      .catch(() => !off && setHistories((h) => ({ ...h, [historyKey]: { unavailable: true, products: {} } })));
+    return () => {
+      off = true;
+    };
+  }, [historyKey, histories, partnerId, product?.id]);
+  const historyData = historyKey ? histories[historyKey] || null : null;
+
   useEffect(() => {
     apiFetch("/admin/quotations/options?staff=1")
       .then((s) => setStaff(s || []))
@@ -342,7 +363,8 @@ function QuotationForm({ quotation, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form onSubmit={save} className="w-full max-w-lg bg-white rounded-xl shadow-2xl p-5 my-8 space-y-4">
+      <div className={`w-full ${product ? "max-w-5xl" : "max-w-lg"} my-8 flex flex-col lg:flex-row gap-4 items-start`}>
+      <form onSubmit={save} className="w-full lg:max-w-lg bg-white rounded-xl shadow-2xl p-5 space-y-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">{quotation ? "Edit quotation" : "New quotation"}</h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none px-1" aria-label="Close">
@@ -423,6 +445,22 @@ function QuotationForm({ quotation, onClose, onSaved }) {
           </button>
         </div>
       </form>
+      {product && (
+        <aside className="w-full lg:flex-1 min-w-0 bg-white rounded-xl shadow-2xl p-4 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
+          {kind === "existing" && !customer ? (
+            <p className="text-xs text-gray-400">Pick the customer to see their history with {product.name}.</p>
+          ) : (
+            <ProductHistoryPanel
+              key={historyKey}
+              productName={product.name}
+              history={historyData?.products?.[product.id]}
+              data={historyData}
+              noParty={kind !== "existing"}
+            />
+          )}
+        </aside>
+      )}
+      </div>
     </div>
   );
 }
