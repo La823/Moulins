@@ -312,6 +312,16 @@ func UpdateMomHandler(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+var istZone = time.FixedZone("IST", 5*3600+1800)
+
+// meetingDayAhead: the meeting's day (India time) is after now's day.
+func meetingDayAhead(scheduled, now time.Time) bool {
+	s, n := scheduled.In(istZone), now.In(istZone)
+	sd := time.Date(s.Year(), s.Month(), s.Day(), 0, 0, 0, 0, istZone)
+	nd := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, istZone)
+	return sd.After(nd)
+}
+
 // PUT /meetings/{id}/status
 func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -353,6 +363,12 @@ func UpdateStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 			} else {
 				req.Reason = &t
 			}
+		}
+		// a meeting can only be marked done on its own day or after, never
+		// ahead of time (India calendar); cancelling is allowed any time
+		if req.Status == "completed" && meetingDayAhead(meeting.ScheduledAt, time.Now()) {
+			http.Error(w, "this meeting can only be marked done on its day", http.StatusBadRequest)
+			return
 		}
 		if (req.Latitude == nil) != (req.Longitude == nil) {
 			http.Error(w, "latitude and longitude go together", http.StatusBadRequest)
