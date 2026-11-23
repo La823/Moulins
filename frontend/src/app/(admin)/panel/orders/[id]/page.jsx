@@ -1315,7 +1315,7 @@ export default function AdminOrderDetail() {
               if (e.key === "Escape" && !entryBoxOpen() && e.target.tagName === "INPUT") setAddingOpen(false);
             }}
           >
-            <div className={`w-full max-w-6xl bg-white rounded-xl shadow-2xl p-5 my-4 ${pastRatesOpen ? "lg:mr-[380px]" : ""}`}>
+            <div className={`w-full max-w-6xl bg-white rounded-xl shadow-2xl p-5 my-4 ${pastRatesOpen ? "lg:mr-[460px]" : ""}`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-base font-semibold text-gray-900">Add products to this order</h3>
                 <button onClick={() => setAddingOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2" title="Close (Esc in the search box)">

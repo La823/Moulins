@@ -67,6 +67,8 @@ func BillPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		if bill.BillType == "CH" || (bill.BillMode != nil && *bill.BillMode == "challan") {
 			d.Title = "Challan"
+		} else if bill.BillType == "S" {
+			d.Title = "" // a sale prints no heading; other kinds keep theirs (Credit Note, Purchase, ...)
 		}
 		if bill.BillType == "P" || bill.BillType == "B" {
 			d.PartyLabel = "Supplier"
@@ -108,10 +110,8 @@ func BillPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 		for _, f := range [][2]string{
 			{"Reason", str(bill.Reason)},
-			{"App orders", str(bill.OrderRefs)},
 			{"From challan", strings.Join(bill.FromChallans, ", ")},
 			{"Order date", date(bill.OrderDate)},
-			{"Salesman", str(bill.Salesman)},
 			{"Area", str(bill.Area)},
 		} {
 			if f[1] != "" {

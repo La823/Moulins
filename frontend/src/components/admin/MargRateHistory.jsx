@@ -305,6 +305,24 @@ export function ProductHistoryPanel({ productName, history, data, position, coun
           )}
         </div>
       )}
+      {/* no line batch (browsing a product): every batch's average selling rate */}
+      {!lineBatch && Object.keys(history?.batch_sales || {}).length > 0 && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 text-[10px]">
+          <div className="text-gray-600 mb-1">Avg selling price by batch (all parties)</div>
+          {Object.entries(history.batch_sales)
+            .sort((a, b) => b[1].qty - a[1].qty)
+            .slice(0, 5)
+            .map(([b, v]) => (
+              <div key={b || "none"} className="flex items-baseline justify-between gap-2 py-0.5">
+                <span className="font-medium text-gray-800">{b || "—"}</span>
+                <span className="text-right">
+                  <span className="text-xs font-semibold text-emerald-800">{money(v.avg_rate)}</span>
+                  <span className="text-gray-400"> · {qty(v.qty)} units · {v.parties} part{v.parties === 1 ? "y" : "ies"}</span>
+                </span>
+              </div>
+            ))}
+        </div>
+      )}
       {!noParty && !data.party_code && (
         <p className="text-[10px] text-amber-700 mb-2">
           This partner isn&apos;t linked to a Marg party, so only earlier app orders can show here.

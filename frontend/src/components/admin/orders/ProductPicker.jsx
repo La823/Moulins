@@ -614,6 +614,18 @@ const expiresSoon = (raw) => {
 // skips the batch step.
 function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
   const { product, step } = entry;
+  // each batch's average selling rate to all parties this year, by batch name
+  // (the same figure as the sale history panel; asked for with no partner)
+  const [batchSales, setBatchSales] = useState(null);
+  useEffect(() => {
+    let off = false;
+    apiFetch(`/admin/partners/00000000-0000-0000-0000-000000000000/rate-history?products=${product.id}`)
+      .then((d) => !off && setBatchSales(d?.products?.[product.id]?.batch_sales || {}))
+      .catch(() => !off && setBatchSales({}));
+    return () => {
+      off = true;
+    };
+  }, [product.id]);
   const [qty, setQty] = useState(entry.qty);
   const [rate, setRate] = useState(entry.rate);
   const [rateTouched, setRateTouched] = useState(false);
@@ -762,11 +774,12 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
             <p className="px-3 py-2 text-xs text-gray-400">No Marg batches for this product — it will go on the order without one.</p>
           ) : (
             <>
-              <div className="grid grid-cols-[1fr_72px_64px_72px_72px] gap-2 px-3 py-1 text-[11px] text-gray-400 bg-gray-50 sticky top-0">
+              <div className="grid grid-cols-[1fr_64px_56px_64px_72px_64px] gap-2 px-3 py-1 text-[11px] text-gray-400 bg-gray-50 sticky top-0">
                 <span>Batch</span>
                 <span>Expiry</span>
                 <span className="text-right">Stock</span>
                 <span className="text-right">P. rate</span>
+                <span className="text-right" title="Average selling rate of the batch to all parties this year">Avg sale</span>
                 <span className="text-right">MRP</span>
               </div>
               {batches.map((b) => {
@@ -782,7 +795,7 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
                       setBatchPick(batches.indexOf(b));
                       batchRef.current?.focus();
                     }}
-                    className={`w-full grid grid-cols-[1fr_72px_64px_72px_72px] gap-2 px-3 py-1.5 text-left text-xs tabular-nums ${
+                    className={`w-full grid grid-cols-[1fr_64px_56px_64px_72px_64px] gap-2 px-3 py-1.5 text-left text-xs tabular-nums ${
                       on ? "bg-blue-50 text-gray-900 font-medium" : out ? "text-gray-300" : "text-gray-700 hover:bg-gray-50"
                     }`}
                   >
@@ -793,6 +806,12 @@ function EntryBox({ entry, last, ratesLoading, batches, onDone, onCancel }) {
                     <span className={!out && expiresSoon(b.exp) ? "text-amber-700" : ""}>{fmtExpiry(b.exp) || "—"}</span>
                     <span className="text-right">{out ? "out" : fmtStock(b.stock)}</span>
                     <span className="text-right">{b.prate ? `₹${b.prate}` : "—"}</span>
+                    <span
+                      className={`text-right ${on ? "" : "text-emerald-700"}`}
+                      title={batchSales?.[b.curbatch] ? `${fmtStock(batchSales[b.curbatch].qty)} units to ${batchSales[b.curbatch].parties} part${batchSales[b.curbatch].parties === 1 ? "y" : "ies"}` : undefined}
+                    >
+                      {batchSales === null ? "…" : batchSales[b.curbatch] ? `₹${Number(batchSales[b.curbatch].avg_rate).toFixed(2)}` : "—"}
+                    </span>
                     <span className="text-right">{b.mrp ? `₹${b.mrp}` : "—"}</span>
                   </button>
                 );
@@ -858,7 +877,7 @@ function HistoryDrawer({ product, lineBatch, customer, onClose }) {
   const data = key && pid === product?.id ? cache[key] || null : null;
 
   return (
-    <aside className="fixed right-0 top-0 z-[60] h-full w-full max-w-[380px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
+    <aside className="fixed right-0 top-0 z-[60] h-full w-full max-w-[460px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-2 flex items-center justify-between gap-2">
         <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Sale history</div>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none px-1" title="Close (\)">
@@ -916,7 +935,7 @@ function RatesDrawer({ product, customer, onClose }) {
   const recent = data?.recent || [];
 
   return (
-    <aside className="fixed right-0 top-0 z-[60] h-full w-full max-w-[380px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
+    <aside className="fixed right-0 top-0 z-[60] h-full w-full max-w-[460px] bg-white border-l border-gray-200 shadow-xl overflow-y-auto">
       <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Past rates</div>

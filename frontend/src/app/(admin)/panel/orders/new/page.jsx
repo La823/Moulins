@@ -327,7 +327,7 @@ export default function NewOrderForStaffPage() {
   const unpriced = items.filter((i) => parseRate(i.rate) == null).length;
 
   return (
-    <div className={`p-6 ${salesOpen ? "lg:pr-[396px]" : ""}`}>
+    <div className={`p-6 ${salesOpen ? "lg:pr-[476px]" : ""}`}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Create Order on Behalf of a Customer</h2>

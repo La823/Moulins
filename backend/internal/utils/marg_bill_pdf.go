@@ -19,7 +19,7 @@ type MargBillPDFData struct {
 	CompanyDLNo    string
 	CompanyContact string
 
-	Title       string // the bill type: "Sale", "Sales Return", "Challan", ...
+	Title       string // the bill type: "Sales Return", "Challan", ... ("" prints no heading)
 	BillNo      string
 	BillDate    string // YYYY-MM-DD
 	IsCancelled bool
@@ -165,6 +165,10 @@ func RupeesInWordsInt(n int64) string {
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
+// copyNotice sits under the header of every printed bill.
+const copyNotice = "COPY FOR REFERENCE ONLY. This is a computer-generated copy of a bill from our records. " +
+	"It is not a tax invoice and must not be mistaken for, or used as, the original invoice."
+
 // GenerateMargBillPDF prints a Marg bill on A4.
 func GenerateMargBillPDF(d MargBillPDFData) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
@@ -190,7 +194,7 @@ func GenerateMargBillPDF(d MargBillPDFData) ([]byte, error) {
 		pdf.SetY(-10)
 		pdf.SetFont("Arial", "", 7)
 		pdf.SetTextColor(120, 120, 120)
-		note := "Copy of Marg bill " + d.BillNo
+		note := "Copy for reference only, not a tax invoice - bill " + d.BillNo
 		if d.PrintedAt != "" {
 			note += " - printed " + d.PrintedAt
 		}
@@ -227,8 +231,10 @@ func GenerateMargBillPDF(d MargBillPDFData) ([]byte, error) {
 	yCompany := pdf.GetY()
 
 	pdf.SetXY(left+120, y0)
-	pdf.SetFont("Arial", "B", 13)
-	pdf.CellFormat(70, 7, t(strings.ToUpper(d.Title)), "", 2, "R", false, 0, "")
+	if d.Title != "" {
+		pdf.SetFont("Arial", "B", 13)
+		pdf.CellFormat(70, 7, t(strings.ToUpper(d.Title)), "", 2, "R", false, 0, "")
+	}
 	pdf.SetFont("Arial", "", 9)
 	pdf.CellFormat(70, 5, t("Bill No.: "+d.BillNo), "", 2, "R", false, 0, "")
 	pdf.CellFormat(70, 5, t("Date: "+formatDate(d.BillDate)), "", 2, "R", false, 0, "")
@@ -241,6 +247,16 @@ func GenerateMargBillPDF(d MargBillPDFData) ([]byte, error) {
 	pdf.SetY(math.Max(yCompany, pdf.GetY()) + 2)
 	pdf.SetDrawColor(180, 180, 180)
 	pdf.Line(left, pdf.GetY(), left+pageW, pdf.GetY())
+	pdf.Ln(2)
+
+	// the legal notice: this is a copy for reference, not the invoice
+	pdf.SetFillColor(255, 246, 230)
+	pdf.SetDrawColor(230, 180, 110)
+	pdf.SetTextColor(140, 80, 0)
+	pdf.SetFont("Arial", "B", 8)
+	pdf.MultiCell(pageW, 4.5, t(copyNotice), "1", "C", true)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetDrawColor(180, 180, 180)
 	pdf.Ln(3)
 
 	// ── party (left) and facts (right) ──────────────────────────────────
