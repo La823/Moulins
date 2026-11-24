@@ -18,6 +18,13 @@ type StockFilter struct {
 	Company string // IB, IC, ID
 	View    string // "" all | in_stock | negative | expired | expiring | differs
 	Page    int
+
+	// Optional, added for the team app (older callers send neither):
+	// ExpiryMonths keeps products with stock in a batch expiring within that
+	// many months (not yet expired); PIDs, when non-nil, keeps only those
+	// products (the "low stock" view passes the Demand list's needs-order ones).
+	ExpiryMonths int
+	PIDs         []int64
 }
 
 // StockViews are the list's quick filters, applied to a product's batches.
@@ -115,6 +122,13 @@ func (f StockFilter) where(withView bool) (string, []any) {
 	}
 	if v, ok := stockViews[f.View]; ok && withView {
 		conds = append(conds, v)
+	}
+	if f.ExpiryMonths > 0 {
+		add(`EXISTS (SELECT 1 FROM v_marg_ede_stock e WHERE e.product_pid = a.product_pid AND e.stock > 0
+			AND e.expiry >= CURRENT_DATE AND e.expiry < CURRENT_DATE + make_interval(months => ?::int))`, f.ExpiryMonths)
+	}
+	if f.PIDs != nil {
+		add("a.product_pid = ANY(?::bigint[])", f.PIDs)
 	}
 	return " WHERE " + strings.Join(conds, " AND "), args
 }

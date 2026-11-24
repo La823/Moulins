@@ -37,6 +37,26 @@ const PLACED_BY = {
   },
 };
 
+const money = (v) =>
+  `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// whether every line of the order has a rate yet
+function RatesMarker({ priced, total }) {
+  if (!total) return null;
+  const missing = total - priced;
+  const [label, style, title] =
+    missing <= 0
+      ? ["All rates in", "bg-green-50 text-green-700", "Every line has a rate"]
+      : priced === 0
+        ? ["No rates yet", "bg-gray-100 text-gray-500", "No line has a rate yet"]
+        : [`${missing} rate${missing === 1 ? "" : "s"} missing`, "bg-amber-50 text-amber-700", `${priced} of ${total} lines have a rate`];
+  return (
+    <span title={title} className={`mt-1 inline-block text-[10.5px] px-2 py-0.5 rounded-full font-medium ${style}`}>
+      {label}
+    </span>
+  );
+}
+
 const STATUSES = [
   "pending",
   "confirmed",
@@ -332,6 +352,9 @@ function AdminOrdersPageInner() {
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Items
                 </th>
+                <th className="text-right px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total
+                </th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date
                 </th>
@@ -366,6 +389,12 @@ function AdminOrdersPageInner() {
                   </td>
                   <td className="px-5 py-3 text-gray-600">
                     {order.item_count}
+                  </td>
+                  <td className="px-5 py-3 text-right whitespace-nowrap">
+                    <p className={`font-medium tabular-nums ${order.order_total != null ? "text-gray-900" : "text-gray-300"}`}>
+                      {order.order_total != null ? money(order.order_total) : "—"}
+                    </p>
+                    <RatesMarker priced={order.priced_count ?? 0} total={order.item_count || 0} />
                   </td>
                   <td className="px-5 py-3 text-gray-500 text-xs">
                     {new Date(order.created_at).toLocaleDateString("en-IN", {

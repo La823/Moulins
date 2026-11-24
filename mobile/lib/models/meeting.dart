@@ -16,6 +16,12 @@ class Meeting {
   final String? statusChangedByName;
   final bool assignedToRemoved;
   final bool hasVisitLog;
+  // Recorded when it was marked done / cancelled
+  final DateTime? statusChangedAt;
+  final String? statusReason;
+  final double? statusLatitude;
+  final double? statusLongitude;
+  final double? statusDistanceFromClinicM;
 
   Meeting({
     required this.id,
@@ -33,6 +39,11 @@ class Meeting {
     this.statusChangedByName,
     this.assignedToRemoved = false,
     this.hasVisitLog = false,
+    this.statusChangedAt,
+    this.statusReason,
+    this.statusLatitude,
+    this.statusLongitude,
+    this.statusDistanceFromClinicM,
   });
 
   /// Still "upcoming" but its day has passed — nobody closed it.
@@ -40,6 +51,13 @@ class Meeting {
     if (status != 'upcoming') return false;
     final now = DateTime.now();
     return scheduledAt.toLocal().isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  /// Its day hasn't come yet — it can't be marked done until then.
+  bool get isFutureDay {
+    final now = DateTime.now();
+    final s = scheduledAt.toLocal();
+    return DateTime(s.year, s.month, s.day).isAfter(DateTime(now.year, now.month, now.day));
   }
 
   // What to actually show as the meeting's "who/what" — the doctor's name
@@ -56,7 +74,9 @@ class Meeting {
         doctorId: json['doctor_id'],
         doctorName: json['doctor_name'] ?? '',
         title: json['title'],
-        scheduledAt: DateTime.tryParse(json['scheduled_at'] ?? '') ?? DateTime.now(),
+        // the server sends UTC; screens read .hour/.day straight off this, so
+        // it must be the phone's local time (a 3:05 PM meeting showed 9:35 AM)
+        scheduledAt: DateTime.tryParse(json['scheduled_at'] ?? '')?.toLocal() ?? DateTime.now(),
         notes: json['notes'],
         mom: json['mom'],
         status: json['status'] ?? 'upcoming',
@@ -67,5 +87,10 @@ class Meeting {
         statusChangedByName: json['status_changed_by_name'],
         assignedToRemoved: json['assigned_to_removed'] == true,
         hasVisitLog: json['has_visit_log'] == true,
+        statusChangedAt: DateTime.tryParse(json['status_changed_at'] ?? '')?.toLocal(),
+        statusReason: json['status_reason'],
+        statusLatitude: (json['status_latitude'] as num?)?.toDouble(),
+        statusLongitude: (json['status_longitude'] as num?)?.toDouble(),
+        statusDistanceFromClinicM: (json['status_distance_from_clinic_m'] as num?)?.toDouble(),
       );
 }

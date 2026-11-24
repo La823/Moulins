@@ -38,6 +38,27 @@ android {
         versionName = flutter.versionName
     }
 
+    // Two apps from one codebase (Dart reads which via `appFlavor`):
+    //   client — "Moulins", the client app (partners, doctors, retailers);
+    //            keeps the original application id so installs update as usual
+    //   team   — "MPPL Team", the staff app (admin, employees, dispatch);
+    //            own id, name and icon (src/team/res), installs alongside
+    // Build with --flavor: flutter build appbundle --flavor client|team
+    // iOS has no flavors and builds as the client app.
+    flavorDimensions = ["app"]
+    productFlavors {
+        client {
+            dimension "app"
+            applicationId "com.moulinspharma.app"
+            resValue "string", "app_name", "Moulins"
+        }
+        team {
+            dimension "app"
+            applicationId "com.moulinspharma.team"
+            resValue "string", "app_name", "MPPL Team"
+        }
+    }
+
     signingConfigs {
         release {
             if (keystorePropertiesFile.exists()) {

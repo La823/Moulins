@@ -6,6 +6,7 @@ import '../../services/chat_service.dart';
 import 'chat_thread_screen.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
   // Set when opened via a "/chat?conversation=<id>" notification deep
@@ -109,6 +110,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Messages', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

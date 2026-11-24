@@ -14,7 +14,28 @@ class MargBalance {
   }
 }
 
+// The dashboard's "Expected payment" figure, worked out by the server
+// (GET /profile/expected-payment). amount null: nothing to show yet.
+class ExpectedPayment {
+  final double? amount;
+  final DateTime? dueDate;
+  final String? note;
+
+  ExpectedPayment({this.amount, this.dueDate, this.note});
+
+  factory ExpectedPayment.fromJson(Map<String, dynamic> json) => ExpectedPayment(
+        amount: (json['amount'] as num?)?.toDouble(),
+        dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'].toString()) : null,
+        note: (json['note'] as String?)?.trim().isEmpty == true ? null : json['note'] as String?,
+      );
+}
+
 class LedgerService {
+  Future<ExpectedPayment> getExpectedPayment() async {
+    final res = await _dio.get('/profile/expected-payment');
+    return ExpectedPayment.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
   final _dio = createDio();
 
   Future<String?> getLedgerUrl() async {

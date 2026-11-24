@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/admin_deletion_request_service.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -95,7 +96,7 @@ class _AdminDeletionRequestsScreenState extends State<AdminDeletionRequestsScree
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

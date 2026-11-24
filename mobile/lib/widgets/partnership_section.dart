@@ -18,22 +18,22 @@ const _partnerLogos = [
   ),
   _PartnerLogo(
     name: 'Lonza',
-    asset: 'assets/partnership/Lonza.png',
+    asset: 'assets/partnership/Lonza.webp',
     tagline: 'Patented UC-II® Collagen for clinically proven joint health and mobility.',
   ),
   _PartnerLogo(
     name: 'Sami-Sabinsa',
-    asset: 'assets/partnership/Sami.png',
+    asset: 'assets/partnership/Sami.webp',
     tagline: 'Clinically Researched Boswellin® for musculoskeletal care and inflammation support.',
   ),
   _PartnerLogo(
     name: 'Fuji Chemical',
-    asset: 'assets/partnership/Fuji.png',
+    asset: 'assets/partnership/Fuji.webp',
     tagline: 'Premium Astaxanthin Innovation for vision, retinal and antioxidant health.',
   ),
   _PartnerLogo(
     name: 'Virchow Biotech',
-    asset: 'assets/partnership/Virchow.png',
+    asset: 'assets/partnership/Virchow.webp',
     tagline: 'Regenerative Biotechnology Solutions for advanced wound healing and specialized care.',
   ),
 ];

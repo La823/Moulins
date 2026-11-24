@@ -12,12 +12,12 @@ import '../../services/meeting_service.dart';
 import '../../services/presentation_service.dart';
 import '../../services/product_service.dart';
 import '../../utils/responsive.dart';
-import '../../utils/validators.dart';
-import '../../widgets/location_picker_screen.dart';
 import '../../widgets/presentation_download_button.dart';
 import '../../services/presentation_downloads.dart';
 import '../../services/offline_sync.dart';
 import '../presentations/present.dart';
+import 'doctor_form_sheet.dart';
+import '../../widgets/shell_leading.dart';
 
 /// Pops with `true` when the doctor was deleted, so the list can drop them.
 class DoctorDetailScreen extends ConsumerStatefulWidget {
@@ -205,213 +205,10 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
     );
   }
 
-  void _showEditSheet() {
-    final nameCtrl = TextEditingController(text: _doctor.name);
-    final phoneCtrl = TextEditingController(text: _doctor.phone ?? '');
-    final emailCtrl = TextEditingController(text: _doctor.email ?? '');
-    final specialityCtrl = TextEditingController(text: _doctor.speciality ?? '');
-    final clinicCtrl = TextEditingController(text: _doctor.clinicName ?? '');
-    DateTime? dob = _doctor.dob;
-    DateTime? anniversary = _doctor.anniversary;
-    PickedLocation? location = _doctor.latitude != null && _doctor.longitude != null
-        ? PickedLocation(lat: _doctor.latitude!, lng: _doctor.longitude!, address: _doctor.clinicAddress)
-        : null;
-    bool submitting = false;
-    String? submitError;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetCtx) => StatefulBuilder(
-        builder: (sheetCtx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Edit Doctor', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                _editField(nameCtrl, 'Doctor Name *'),
-                const SizedBox(height: 12),
-                _editField(phoneCtrl, 'Phone', type: TextInputType.phone),
-                const SizedBox(height: 12),
-                _editField(emailCtrl, 'Email', type: TextInputType.emailAddress),
-                const SizedBox(height: 12),
-                _editField(specialityCtrl, 'Speciality'),
-                const SizedBox(height: 12),
-                _editField(clinicCtrl, 'Clinic Name'),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await Navigator.push<PickedLocation>(
-                      sheetCtx,
-                      MaterialPageRoute(builder: (_) => LocationPickerScreen(initial: location)),
-                    );
-                    if (picked != null) setSheetState(() => location = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Clinic Location',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    child: Text(
-                      location == null
-                          ? 'Set location on map...'
-                          : (location!.address ?? '${location!.lat.toStringAsFixed(5)}, ${location!.lng.toStringAsFixed(5)}'),
-                      style: TextStyle(fontSize: 14, color: location == null ? Colors.grey.shade400 : Colors.black87),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetCtx,
-                      initialDate: dob ?? DateTime(1985, 1, 1),
-                      firstDate: DateTime(1930),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) setSheetState(() => dob = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Date of Birth',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    child: Text(
-                      dob == null ? 'Select date' : '${dob!.day}/${dob!.month}/${dob!.year}',
-                      style: TextStyle(fontSize: 14, color: dob == null ? Colors.grey.shade400 : Colors.black87),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: sheetCtx,
-                      initialDate: anniversary ?? DateTime(2010, 1, 1),
-                      firstDate: DateTime(1930),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) setSheetState(() => anniversary = picked);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Anniversary',
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                    child: Text(
-                      anniversary == null ? 'Select date' : '${anniversary!.day}/${anniversary!.month}/${anniversary!.year}',
-                      style: TextStyle(fontSize: 14, color: anniversary == null ? Colors.grey.shade400 : Colors.black87),
-                    ),
-                  ),
-                ),
-                if (submitError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(submitError!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
-                ],
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: submitting
-                        ? null
-                        : () async {
-                            if (nameCtrl.text.trim().isEmpty) return;
-                            String? phone;
-                            if (phoneCtrl.text.trim().isNotEmpty) {
-                              phone = Validators.normalizePhone(phoneCtrl.text);
-                              if (phone == null) {
-                                setSheetState(() => submitError = Validators.phoneError(phoneCtrl.text));
-                                return;
-                              }
-                            }
-                            setSheetState(() { submitting = true; submitError = null; });
-                            try {
-                              await _service.updateDoctor(
-                                _doctor.id,
-                                name: nameCtrl.text.trim(),
-                                phone: phone,
-                                email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                                speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
-                                clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
-                                clinicAddress: location?.address,
-                                latitude: location?.lat,
-                                longitude: location?.lng,
-                                dob: dob,
-                                anniversary: anniversary,
-                              );
-                              if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                              setState(() {
-                                _doctor = Doctor(
-                                  id: _doctor.id,
-                                  name: nameCtrl.text.trim(),
-                                  phone: phone,
-                                  email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                                  speciality: specialityCtrl.text.trim().isEmpty ? null : specialityCtrl.text.trim(),
-                                  clinicName: clinicCtrl.text.trim().isEmpty ? null : clinicCtrl.text.trim(),
-                                  clinicAddress: location?.address,
-                                  latitude: location?.lat,
-                                  longitude: location?.lng,
-                                  dob: dob,
-                                  anniversary: anniversary,
-                                  lastMeetingAt: _doctor.lastMeetingAt,
-                                  lastMeetingNotes: _doctor.lastMeetingNotes,
-                                  ownerName: _doctor.ownerName,
-                                  ownerPhone: _doctor.ownerPhone,
-                                  productCount: _doctor.productCount,
-                                );
-                              });
-                            } catch (e) {
-                              setSheetState(() { submitting = false; submitError = 'Could not save changes. Please try again.'; });
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00A6A4),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                    child: submitting
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Save Changes'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  Future<void> _showEditSheet() async {
+    final saved = await showDoctorFormSheet(context, existing: _doctor);
+    if (saved != null && mounted) setState(() => _doctor = saved);
   }
-
-  Widget _editField(TextEditingController ctrl, String label, {TextInputType type = TextInputType.text}) =>
-      TextField(
-        controller: ctrl,
-        keyboardType: type,
-        decoration: InputDecoration(
-          labelText: label,
-          filled: true,
-          fillColor: Colors.grey.shade50,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF00A6A4))),
-        ),
-      );
 
   // Only the partner may delete a doctor (the server refuses team members).
   // The doctor is marked deleted, not erased: past meetings and visit
@@ -466,43 +263,318 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
     );
   }
 
+  // which boxes on this page are open; the arrow on each box flips it
+  final Map<String, bool> _open = {
+    'info': true,
+    'last': true,
+    'meetings': false,
+    'presentations': true,
+    'products': true,
+  };
+
+  Widget _section({
+    required String id,
+    required String title,
+    int? count,
+    Widget? action,
+    required Widget child,
+  }) {
+    final open = _open[id] ?? true;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          onTap: () => setState(() => _open[id] = !open),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+            child: Row(children: [
+              Expanded(
+                child: Text(count != null && count > 0 ? '$title ($count)' : title,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              ),
+              if (action != null) action,
+              AnimatedRotation(
+                turns: open ? 0.5 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(Icons.keyboard_arrow_down, color: Colors.grey.shade600),
+                ),
+              ),
+            ]),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: open
+              ? Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 12), child: child)
+              : const SizedBox(width: double.infinity),
+        ),
+      ]),
+    );
+  }
+
+  Widget _smallAction(String label, VoidCallback? onTap) => TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          minimumSize: const Size(0, 32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 12.5, color: teal, fontWeight: FontWeight.w600)),
+      );
+
+  Widget _muted(String text) => Text(text, style: TextStyle(fontSize: 13, color: Colors.grey.shade400));
+
+  Widget _infoLine(IconData icon, String text) => Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 16, color: Colors.grey.shade500),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13, color: Color(0xFF333333)))),
+        ]),
+      );
+
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  String _dayMonth(DateTime d) => '${d.day} ${_months[d.month - 1]}';
+  String _fullDate(DateTime d) => '${d.day} ${_months[d.month - 1]} ${d.year}';
+
+  Widget _infoBody(Doctor d) {
+    final lines = <Widget>[
+      if (d.phone?.isNotEmpty == true) _infoLine(Icons.phone_outlined, d.phone!),
+      if (d.email?.isNotEmpty == true) _infoLine(Icons.mail_outline, d.email!),
+      if (d.clinicName?.isNotEmpty == true) _infoLine(Icons.local_hospital_outlined, d.clinicName!),
+      if (d.clinicAddress?.isNotEmpty == true) _infoLine(Icons.location_on_outlined, d.clinicAddress!),
+      if (d.dob != null) _infoLine(Icons.cake_outlined, 'Birthday ${_dayMonth(d.dob!)}'),
+      if (d.anniversary != null) _infoLine(Icons.celebration_outlined, 'Anniversary ${_dayMonth(d.anniversary!)}'),
+    ];
+    return lines.isEmpty
+        ? Padding(padding: const EdgeInsets.only(top: 4), child: _muted('No details yet. Tap the pencil to add them.'))
+        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines);
+  }
+
+  Widget _lastMeetingBody() {
+    if (_editingMeeting) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        GestureDetector(
+          onTap: _pickDraftDate,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+            child: Row(children: [
+              Icon(Icons.calendar_today, size: 15, color: Colors.grey.shade600),
+              const SizedBox(width: 8),
+              Text(_draftDate != null ? _fullDate(_draftDate!) : 'Select date', style: const TextStyle(fontSize: 13.5)),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _notesCtrl,
+          maxLines: 3,
+          style: const TextStyle(fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'Notes from the meeting...',
+            isDense: true,
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(children: [
+          _smallAction(_savingMeeting ? 'Saving...' : 'Save', _savingMeeting ? null : _saveMeeting),
+          TextButton(
+            onPressed: () => setState(() => _editingMeeting = false),
+            child: Text('Cancel', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+          ),
+        ]),
+      ]);
+    }
+    if (_lastMeetingAt == null) return _muted('No meeting recorded yet');
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(_fullDate(_lastMeetingAt!), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+      if (_lastMeetingNotes != null && _lastMeetingNotes!.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        Text(_lastMeetingNotes!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+      ],
+    ]);
+  }
+
+  Widget _meetingsBody(Doctor d) {
+    if (_loadingMeetings) return _spinner();
+    if (_meetings.isEmpty) return _muted('No meetings booked yet');
+    return Column(
+      children: _meetings.map((m) {
+        final statusColor = m.status == 'completed'
+            ? Colors.green
+            : m.status == 'cancelled'
+                ? Colors.grey
+                : teal;
+        final t = m.scheduledAt;
+        return InkWell(
+          onTap: () => context.push('/meetings?doctor_id=${d.id}'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${_fullDate(t)} · ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                  if (m.notes != null && m.notes!.isNotEmpty)
+                    Text(m.notes!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                ]),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                child: Text(m.status, style: TextStyle(fontSize: 10.5, color: statusColor, fontWeight: FontWeight.w600)),
+              ),
+            ]),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _presentationsBody() {
+    if (_loadingPresentations) return _spinner();
+    if (_presentations.isEmpty) return _muted('No presentations linked yet');
+    return Column(
+      children: _presentations.map((p) {
+        return InkWell(
+          onTap: () => context.push('/presentations/${p.id}'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text(p.name,
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                    ),
+                    if (p.isDefaultForDoctor) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+                        child: Text('Auto', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ]),
+                  Text('${p.slideCount} slide${p.slideCount != 1 ? 's' : ''}',
+                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
+                ]),
+              ),
+              IconButton(
+                icon: const Icon(Icons.play_circle_outline, color: teal),
+                tooltip: 'Present',
+                onPressed: () => _play(p),
+              ),
+              PresentationDownloadButton(presentationId: p.id, name: p.name),
+            ]),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _productsBody(Doctor d) {
+    if (_loading) return _spinner();
+    if (_assigned.isEmpty) return _muted('No products assigned yet');
+    return Column(
+      children: _assigned.map((p) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: p.imageUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: p.imageUrl!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => _productPlaceholder(),
+                    )
+                  : _productPlaceholder(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: InkWell(
+                onTap: () => context.push('/products/${p.productId}'),
+                child: Text(p.productName,
+                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13.5, color: Color(0xFF1A1A1A))),
+              ),
+            ),
+            _removingId == p.productId
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red)),
+                  )
+                : IconButton(
+                    icon: Icon(Icons.close, color: Colors.grey.shade500, size: 18),
+                    tooltip: 'Remove',
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Remove product?'),
+                          content: Text('Remove "${p.productName}" from Dr. ${d.name}?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+                            TextButton(
+                                onPressed: () => Navigator.pop(dialogContext, true),
+                                child: const Text('Remove', style: TextStyle(color: Colors.red))),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) _removeProduct(p.productId);
+                    },
+                  ),
+          ]),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _spinner() => const Center(
+      child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: teal))));
+
   @override
   Widget build(BuildContext context) {
     final d = _doctor;
+    final subtitle = d.speciality?.isNotEmpty == true ? d.speciality! : null;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: const Color(0xFFF6F8F8),
       appBar: AppBar(
+        leading: const ShellBack(),
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
         title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_outlined, color: Color(0xFF00A6A4), size: 20),
+            icon: const Icon(Icons.edit_outlined, color: teal, size: 20),
             tooltip: 'Edit profile',
             onPressed: _showEditSheet,
           ),
           IconButton(
-            icon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF00A6A4), size: 20),
+            icon: const Icon(Icons.calendar_today_outlined, color: teal, size: 20),
             tooltip: 'Schedule meeting',
             onPressed: () => context.push('/meetings?doctor_id=${d.id}'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, color: Color(0xFF00A6A4)),
-            tooltip: 'Assign product',
-            onPressed: _showAddProductSheet,
-          ),
-          IconButton(
-            icon: _generatingPresentation
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: teal),
-                  )
-                : const Icon(Icons.slideshow_outlined, color: teal, size: 20),
-            tooltip: 'Generate presentation from assigned products',
-            onPressed: _generatingPresentation ? null : _generatePresentation,
           ),
           if (ref.watch(authProvider).user?.role != 'team_member')
             PopupMenuButton<String>(
@@ -523,423 +595,55 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
             ),
         ],
       ),
-      body: ResponsiveCenter(child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Doctor info card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Row(
-              children: [
-                Container(
-                  width: 56, height: 56,
-                  decoration: const BoxDecoration(color: Color(0xFFE8F8F8), shape: BoxShape.circle),
-                  child: const Icon(Icons.person_outlined, color: Color(0xFF00A6A4), size: 28),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(d.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      if (d.clinicName != null) ...[
-                        const SizedBox(height: 2),
-                        Text(d.clinicName!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-                      ],
-                      if (d.phone != null) ...[
-                        const SizedBox(height: 2),
-                        Text(d.phone!, style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                      ],
-                      if (d.dob != null) ...[
-                        const SizedBox(height: 2),
-                        Text('🎂 ${d.dob!.day}/${d.dob!.month}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                      ],
-                      if (d.anniversary != null) ...[
-                        const SizedBox(height: 2),
-                        Text('🎉 ${d.anniversary!.day}/${d.anniversary!.month}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                      ],
-                      if (d.clinicAddress != null) ...[
-                        const SizedBox(height: 2),
-                        Text('📍 ${d.clinicAddress}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Last meeting card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Last Meeting', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    if (!_editingMeeting)
-                      TextButton(
-                        onPressed: _startEditMeeting,
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                        child: Text(_lastMeetingAt != null ? 'Edit' : '+ Add', style: const TextStyle(fontSize: 12.5, color: teal, fontWeight: FontWeight.w600)),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (_editingMeeting) ...[
-                  GestureDetector(
-                    onTap: _pickDraftDate,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_today, size: 15, color: Colors.grey.shade600),
-                          const SizedBox(width: 8),
-                          Text(
-                            _draftDate != null
-                                ? '${_draftDate!.day}/${_draftDate!.month}/${_draftDate!.year}'
-                                : 'Select date',
-                            style: const TextStyle(fontSize: 13.5),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _notesCtrl,
-                    maxLines: 3,
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Notes from the meeting...',
-                      isDense: true,
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: _savingMeeting ? null : _saveMeeting,
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                        child: Text(_savingMeeting ? 'Saving...' : 'Save', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                      ),
-                      const SizedBox(width: 16),
-                      TextButton(
-                        onPressed: () => setState(() => _editingMeeting = false),
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                        child: Text('Cancel', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                      ),
-                    ],
-                  ),
-                ] else if (_lastMeetingAt != null) ...[
-                  Text(
-                    '${_lastMeetingAt!.day}/${_lastMeetingAt!.month}/${_lastMeetingAt!.year}',
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
-                  ),
-                  if (_lastMeetingNotes != null && _lastMeetingNotes!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(_lastMeetingNotes!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-                  ],
-                ] else
-                  Text('No meeting recorded yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Meetings booked with this doctor
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Meetings with this Doctor${_meetings.isNotEmpty ? ' (${_meetings.length})' : ''}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 10),
-                if (_loadingMeetings)
-                  const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: CircularProgressIndicator(strokeWidth: 2, color: teal)))
-                else if (_meetings.isEmpty)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('No meetings booked yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
-                      const SizedBox(height: 6),
-                      TextButton(
-                        onPressed: () => context.push('/meetings?doctor_id=${d.id}'),
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                        child: const Text('Schedule one', style: TextStyle(fontSize: 13, color: teal, fontWeight: FontWeight.w600)),
-                      ),
-                    ],
-                  )
-                else
-                  Column(
-                    children: _meetings.map((m) {
-                      final statusColor = m.status == 'completed'
-                          ? Colors.green
-                          : m.status == 'cancelled'
-                              ? Colors.grey
-                              : teal;
-                      return InkWell(
-                        onTap: () => context.push('/meetings?doctor_id=${d.id}'),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${m.scheduledAt.day}/${m.scheduledAt.month}/${m.scheduledAt.year} · ${m.scheduledAt.hour.toString().padLeft(2, '0')}:${m.scheduledAt.minute.toString().padLeft(2, '0')}',
-                                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
-                                    ),
-                                    if (m.notes != null && m.notes!.isNotEmpty)
-                                      Text(m.notes!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                                child: Text(m.status, style: TextStyle(fontSize: 10.5, color: statusColor, fontWeight: FontWeight.w600)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Presentations linked to this doctor
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Presentations${_presentations.isNotEmpty ? ' (${_presentations.length})' : ''}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 10),
-                if (_loadingPresentations)
-                  const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: CircularProgressIndicator(strokeWidth: 2, color: teal)))
-                else if (_presentations.isEmpty)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('No presentations linked yet', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
-                      const SizedBox(height: 6),
-                      TextButton(
-                        onPressed: _generatingPresentation ? null : _generatePresentation,
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                        child: Text(
-                          _generatingPresentation ? 'Generating...' : 'Generate one from assigned products',
-                          style: const TextStyle(fontSize: 13, color: teal, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Column(
-                    children: _presentations.map((p) {
-                      return InkWell(
-                        onTap: () => context.push('/presentations/${p.id}'),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              if (p.previewUrls.isNotEmpty) ...[
-                                SizedBox(
-                                  width: 44,
-                                  height: 32,
-                                  child: Stack(
-                                    children: p.previewUrls.take(3).toList().reversed.toList().asMap().entries.map((entry) {
-                                      final reversedIndex = entry.key;
-                                      final url = entry.value;
-                                      final displayIndex = p.previewUrls.take(3).length - 1 - reversedIndex;
-                                      return Positioned(
-                                        left: displayIndex * 12.0,
-                                        child: Container(
-                                          width: 28,
-                                          height: 28,
-                                          padding: const EdgeInsets.all(1),
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(color: Colors.white, width: 1.5),
-                                            color: Colors.grey.shade50,
-                                          ),
-                                          clipBehavior: Clip.antiAlias,
-                                          child: Image.network(url, fit: BoxFit.contain),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                              ],
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(p.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
-                                    ),
-                                    if (p.isDefaultForDoctor) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-                                        child: Text('Auto', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              Text('${p.slideCount} slide${p.slideCount != 1 ? 's' : ''}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
-                              IconButton(
-                                icon: const Icon(Icons.play_circle_outline, color: teal),
-                                tooltip: 'Present',
-                                onPressed: () => _play(p),
-                              ),
-                              PresentationDownloadButton(presentationId: p.id, name: p.name),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: ResponsiveCenter(
+        child: RefreshIndicator(
+          color: teal,
+          onRefresh: () => Future.wait([_loadProducts(), _loadMeetings(), _loadPresentations()]),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
-              Text('Assigned Products (${_assigned.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              TextButton.icon(
-                icon: const Icon(Icons.add, size: 16, color: Color(0xFF00A6A4)),
-                label: const Text('Assign', style: TextStyle(color: Color(0xFF00A6A4), fontSize: 13)),
-                onPressed: _showAddProductSheet,
+              _section(
+                id: 'info',
+                title: subtitle == null ? 'Details' : 'Details · $subtitle',
+                child: _infoBody(d),
+              ),
+              _section(
+                id: 'last',
+                title: 'Last meeting',
+                action: _editingMeeting ? null : _smallAction(_lastMeetingAt != null ? 'Edit' : '+ Add', _startEditMeeting),
+                child: _lastMeetingBody(),
+              ),
+              _section(
+                id: 'meetings',
+                title: 'Meetings',
+                count: _meetings.length,
+                action: _smallAction('+ Schedule', () => context.push('/meetings?doctor_id=${d.id}')),
+                child: _meetingsBody(d),
+              ),
+              _section(
+                id: 'presentations',
+                title: 'Presentations',
+                count: _presentations.length,
+                action: _smallAction(
+                    _generatingPresentation ? 'Generating...' : '+ Generate', _generatingPresentation ? null : _generatePresentation),
+                child: _presentationsBody(),
+              ),
+              _section(
+                id: 'products',
+                title: 'Assigned products',
+                count: _assigned.length,
+                action: _smallAction('+ Assign', _showAddProductSheet),
+                child: _productsBody(d),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-
-          if (_loading)
-            const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
-          else if (_assigned.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: Column(
-                children: [
-                  Icon(Icons.medication_outlined, size: 48, color: Colors.grey.shade300),
-                  const SizedBox(height: 12),
-                  const Text('No products assigned yet', style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _showAddProductSheet,
-                    child: const Text('Assign a product', style: TextStyle(color: Color(0xFF00A6A4))),
-                  ),
-                ],
-              ),
-            )
-          else
-            Container(
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: Column(
-                children: _assigned.asMap().entries.map((entry) {
-                  final p = entry.value;
-                  return Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: entry.key < _assigned.length - 1
-                          ? Border(bottom: BorderSide(color: Colors.grey.shade100))
-                          : null,
-                    ),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: p.imageUrl != null
-                              ? CachedNetworkImage(
-                                  imageUrl: p.imageUrl!,
-                                  width: 48, height: 48,
-                                  fit: BoxFit.cover,
-                                  errorWidget: (_, __, ___) => _productPlaceholder(),
-                                )
-                              : _productPlaceholder(),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => context.push('/products/${p.productId}'),
-                            child: Text(
-                              p.productName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                                color: Color(0xFF00A6A4),
-                                decoration: TextDecoration.underline,
-                                decorationColor: Color(0xFF00A6A4),
-                              ),
-                            ),
-                          ),
-                        ),
-                        _removingId == p.productId
-                            ? const Padding(
-                                padding: EdgeInsets.all(10),
-                                child: SizedBox(
-                                  width: 18, height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
-                                ),
-                              )
-                            : IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
-                                onPressed: () async {
-                                  final confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      title: const Text('Remove product?'),
-                                      content: Text('Remove "${p.productName}" from Dr. ${d.name}?'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-                                        TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
-                                      ],
-                                    ),
-                                  );
-                                  if (confirm == true) _removeProduct(p.productId);
-                                },
-                              ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-        ],
-      )),
+        ),
+      ),
     );
   }
 
   Widget _productPlaceholder() => Container(
-        width: 48, height: 48,
+        width: 40, height: 40,
         color: Colors.grey.shade100,
         child: const Icon(Icons.medication_outlined, color: Colors.grey, size: 22),
       );

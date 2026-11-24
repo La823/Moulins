@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/team_member.dart';
 import '../../models/team_visit_log.dart';
 import '../../services/team_service.dart';
+import '../../widgets/shell_leading.dart';
 
 // The partner's month at a glance, matching the website's Month summary:
 // the whole team with their counts, or — once a person is picked — that
@@ -31,10 +32,14 @@ const _statuses = [
   _Status('late', 'Late', Color(0xFFF59E0B)),
   _Status('half-day', 'Half day', Color(0xFFF97316)),
   _Status('absent', 'Absent', Color(0xFFEF4444)),
+  _Status('holiday', 'Holiday', Color(0xFF6366F1)),
 ];
 const _notMarked = _Status('', 'Not marked', Color(0xFFD1D5DB));
 
 _Status _statusOf(String? key) => _statuses.firstWhere((s) => s.key == key, orElse: () => _notMarked);
+
+// Absent or on holiday: didn't come in, so no check-in time to show.
+bool _notIn(String status) => status == 'absent' || status == 'holiday';
 
 String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 bool _isSunday(String iso) => DateTime.parse(iso).weekday == DateTime.sunday;
@@ -89,6 +94,8 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
   List<TeamVisitLog> _visits = [];
   // the picked person's own updates — these carry the time they were sent
   List<DailyLog> _memberLogs = [];
+  // the day shown in the Daily report (one person's view)
+  String _reportDate = _iso(DateTime.now());
 
   @override
   void initState() {
@@ -125,8 +132,32 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
   }
 
   void _changeMonth(int delta) {
-    setState(() => _month = DateTime(_month.year, _month.month + delta));
+    setState(() {
+      _month = DateTime(_month.year, _month.month + delta);
+      // the report shows today in this month, else the month's last day
+      final now = DateTime.now();
+      final last = DateTime(_month.year, _month.month + 1, 0);
+      _reportDate = _iso(last.isAfter(now) ? now : last);
+    });
     _load();
+  }
+
+  /// Marks (or changes) a person's attendance for a day, then refreshes only
+  /// their attendance so the page stays where it is.
+  Future<void> _mark(TeamMember member, String date, String status, String checkIn, AttendanceRecord? existing) async {
+    try {
+      await _service.markAttendance(
+        employeeId: member.id,
+        date: date,
+        checkInTime: checkIn,
+        status: status,
+        description: existing?.description,
+      );
+      final recs = await _service.getMemberAttendanceByMonth(member.id, _month.year, _month.month);
+      if (mounted) setState(() => _attendance = {..._attendance, member.id: recs});
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save attendance')));
+    }
   }
 
   void _select(String? id) {
@@ -140,7 +171,7 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F8),
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Month summary', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
@@ -280,10 +311,10 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
     final today = _iso(DateTime.now());
     final days = _days;
     final elapsed = days.where((d) => d.compareTo(today) <= 0).toList();
-    final workingDays = elapsed.where((d) => !_isSunday(d)).toList();
-
     final records = _attendance[member.id] ?? [];
     final recordByDate = {for (final r in records) r.date: r};
+    // a day marked Holiday isn't a working day, so it doesn't lower the rate
+    final workingDays = elapsed.where((d) => !_isSunday(d) && recordByDate[d]?.status != 'holiday').toList();
     final visits = _visits.where((v) => v.teamMemberId == member.id).toList();
     final logs = _memberLogs;
 
@@ -300,7 +331,7 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
 
     // attendance
     int count(String k) => records.where((r) => r.status == k).length;
-    final cameIn = records.where((r) => r.status != 'absent').toList();
+    final cameIn = records.where((r) => !_notIn(r.status)).toList();
     final unmarked = workingDays.where((d) => recordByDate[d] == null).toList();
     final arrivals = cameIn.map((r) {
       final p = r.checkInTime.split(':');
@@ -367,6 +398,10 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
           ],
         ),
         const SizedBox(height: 12),
+
+        // daily report: one day's updates and visits, marked right here
+        _dailyReport(member, elapsed, recordByDate, entriesByDate),
+        const SizedBox(height: 10),
 
         // headline numbers
         GridView.count(
@@ -473,7 +508,13 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
               ),
               for (final d in elapsed.reversed)
                 if (!(_isSunday(d) && recordByDate[d] == null && entriesByDate[d] == null))
-                  _DayRow(date: d, record: recordByDate[d], entries: entriesByDate[d] ?? []),
+                  _DayRow(
+                    key: ValueKey('$d-${recordByDate[d]?.status}-${recordByDate[d]?.checkInTime}'),
+                    date: d,
+                    record: recordByDate[d],
+                    entries: entriesByDate[d] ?? [],
+                    onMark: (status, checkIn) => _mark(member, d, status, checkIn, recordByDate[d]),
+                  ),
             ],
           ),
         ),
@@ -482,7 +523,62 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
     );
   }
 
+  Widget _dailyReport(TeamMember member, List<String> elapsed, Map<String, AttendanceRecord> recordByDate, Map<String, List<_Entry>> entriesByDate) {
+    if (elapsed.isEmpty) return const SizedBox.shrink(); // a future month
+    final date = elapsed.contains(_reportDate) ? _reportDate : elapsed.last;
+    final i = elapsed.indexOf(date);
+    final record = recordByDate[date];
+    final entries = entriesByDate[date] ?? [];
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('DAILY REPORT', style: TextStyle(fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w600, color: Colors.grey.shade500)),
+              const Spacer(),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_left),
+                onPressed: i > 0 ? () => setState(() => _reportDate = elapsed[i - 1]) : null,
+              ),
+              Text(_friendly(date), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.chevron_right),
+                onPressed: i < elapsed.length - 1 ? () => setState(() => _reportDate = elapsed[i + 1]) : null,
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              _StatusChip(status: record?.status),
+              if (record != null && !_notIn(record.status)) ...[
+                const SizedBox(width: 8),
+                Text('In at ${_clock(record.checkInTime)}', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (entries.isEmpty)
+            Text(_isSunday(date) ? 'Sunday — no updates or visits.' : 'No updates or visits this day.', style: TextStyle(fontSize: 13, color: Colors.grey.shade500))
+          else
+            for (final e in entries) _EntryTile(entry: e),
+          const SizedBox(height: 8),
+          _MarkBar(
+            key: ValueKey('report-$date-${record?.status}-${record?.checkInTime}'),
+            record: record,
+            entries: entries,
+            date: date,
+            onMark: (status, checkIn) => _mark(member, date, status, checkIn, record),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openDay(String date, AttendanceRecord? record, List<_Entry> entries) {
+    final member = _selected;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -502,7 +598,7 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
                 _StatusChip(status: record?.status),
               ],
             ),
-            if (record != null && record.status != 'absent')
+            if (record != null && !_notIn(record.status))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text('Came in at ${_clock(record.checkInTime)}', style: TextStyle(color: Colors.grey.shade700)),
@@ -517,9 +613,119 @@ class _TeamMonthSummaryScreenState extends State<TeamMonthSummaryScreen> {
               Text('No updates or visits this day.', style: TextStyle(color: Colors.grey.shade500))
             else
               for (final e in entries) _EntryTile(entry: e),
+            if (member != null) ...[
+              const SizedBox(height: 12),
+              _MarkBar(
+                record: record,
+                entries: entries,
+                date: date,
+                onMark: (status, checkIn) async {
+                  Navigator.pop(context);
+                  await _mark(member, date, status, checkIn, record);
+                },
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Present / Late / Half day / Absent / Holiday for one day, with the check-in time
+/// (from the record, else the first update or visit, else 9:30) — tap the
+/// time to change it before marking.
+class _MarkBar extends StatefulWidget {
+  final AttendanceRecord? record;
+  final List<_Entry> entries;
+  final String date;
+  final Future<void> Function(String status, String checkIn) onMark;
+  const _MarkBar({super.key, this.record, required this.entries, required this.date, required this.onMark});
+
+  @override
+  State<_MarkBar> createState() => _MarkBarState();
+}
+
+class _MarkBarState extends State<_MarkBar> {
+  late TimeOfDay _time;
+  String? _saving; // the status being saved
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.record;
+    final p = r?.checkInTime.split(':');
+    final first = widget.entries.isEmpty ? null : widget.entries.first.at;
+    _time = (p != null && p.length >= 2)
+        ? TimeOfDay(hour: int.tryParse(p[0]) ?? 9, minute: int.tryParse(p[1]) ?? 30)
+        : first != null
+            ? TimeOfDay(hour: first.hour, minute: first.minute)
+            : const TimeOfDay(hour: 9, minute: 30);
+  }
+
+  String get _hhmm => '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _tap(String status) async {
+    setState(() => _saving = status);
+    try {
+      await widget.onMark(status, _hhmm);
+    } finally {
+      if (mounted) setState(() => _saving = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.record?.status;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(current == null ? 'Mark attendance' : 'Change attendance', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            InkWell(
+              onTap: () async {
+                final t = await showTimePicker(context: context, initialTime: _time);
+                if (t != null) setState(() => _time = t);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.schedule, size: 15, color: Colors.grey.shade600),
+                  const SizedBox(width: 4),
+                  Text('In at ${_clock(_hhmm)}', style: const TextStyle(fontSize: 12.5, color: _teal, fontWeight: FontWeight.w500)),
+                ]),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            for (final s in _statuses)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: s == _statuses.last ? 0 : 6),
+                  child: OutlinedButton(
+                    onPressed: _saving != null ? null : () => _tap(s.key),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      minimumSize: const Size(0, 36),
+                      backgroundColor: current == s.key ? s.color : null,
+                      foregroundColor: current == s.key ? Colors.white : s.color,
+                      side: BorderSide(color: s.color),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: _saving == s.key
+                        ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: s.color))
+                        : FittedBox(child: Text(s.label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -748,7 +954,8 @@ class _DayRow extends StatefulWidget {
   final String date;
   final AttendanceRecord? record;
   final List<_Entry> entries;
-  const _DayRow({required this.date, this.record, required this.entries});
+  final Future<void> Function(String status, String checkIn) onMark;
+  const _DayRow({super.key, required this.date, this.record, required this.entries, required this.onMark});
 
   @override
   State<_DayRow> createState() => _DayRowState();
@@ -772,7 +979,8 @@ class _DayRowState extends State<_DayRow> {
       children: [
         Divider(height: 1, color: Colors.grey.shade100),
         InkWell(
-          onTap: widget.entries.isEmpty ? null : () => setState(() => _open = !_open),
+          // opens on every day, so attendance can be marked even with no logs
+          onTap: () => setState(() => _open = !_open),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             child: Row(
@@ -791,7 +999,7 @@ class _DayRowState extends State<_DayRow> {
                       const SizedBox(height: 3),
                       Text(
                         [
-                          if (r != null && r.status != 'absent') 'In at ${_clock(r.checkInTime)}',
+                          if (r != null && !_notIn(r.status)) 'In at ${_clock(r.checkInTime)}',
                           summary,
                           if (first != null) 'first at ${_timeOf(first)}',
                         ].join(' · '),
@@ -802,15 +1010,22 @@ class _DayRowState extends State<_DayRow> {
                     ],
                   ),
                 ),
-                if (widget.entries.isNotEmpty) Icon(_open ? Icons.expand_less : Icons.expand_more, color: Colors.grey.shade400),
+                Icon(_open ? Icons.expand_less : Icons.expand_more, color: Colors.grey.shade400),
               ],
             ),
           ),
         ),
         if (_open)
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-            child: Column(children: [for (final e in widget.entries) _EntryTile(entry: e)]),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final e in widget.entries) _EntryTile(entry: e),
+                const SizedBox(height: 6),
+                _MarkBar(record: r, entries: widget.entries, date: widget.date, onMark: widget.onMark),
+              ],
+            ),
           ),
       ],
     );

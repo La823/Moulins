@@ -12,7 +12,7 @@ import {
   Stat, BarList, Sparkline, MonthDelta, SplitBar, SPLIT_COLORS, shortMoney, fmtCount, Empty, Trend,
 } from "./common";
 import {
-  PartyRanking, ProductRanking, SalesTrend, PurchasesTrend, ProductsTrend, BestMonths, Slipping, Cities, RisingFalling, NotSelling,
+  PartyRanking, ProductRanking, SalesTrend, PurchasesTrend, FreightTrend, ProductsTrend, BestMonths, Slipping, Cities, RisingFalling, NotSelling,
   useMonthly, useCities, useMovers, useNotSelling,
 } from "./reports";
 import { YearsLink } from "./years";
@@ -136,6 +136,30 @@ function NetSales() {
   );
 }
 
+// ---- freight ----------------------------------------------------------------
+
+// Freight on sale invoices month by month, opened from the home page's
+// Freight box.
+export function FreightPage() {
+  return <Frame><Freight /></Frame>;
+}
+
+function Freight() {
+  const s = useAnalysisSettings();
+  useBreadcrumbTitle("Freight");
+  return (
+    <>
+      <AnalysisHeader
+        title="Freight"
+        note="Freight charged to customers on sale invoices, month by month, before GST whatever the GST setting. Shows the whole financial year."
+        s={s}
+        period={false}
+      />
+      <FreightTrend />
+    </>
+  );
+}
+
 // ---- home -------------------------------------------------------------------
 
 export function AnalysisHome() {
@@ -162,12 +186,15 @@ function Home() {
         note={`This financial year's Marg bills. Pick a block for its board of reports. ${gstNote(s.withGST)}`}
         s={s}
       />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 mb-5">
         <Block title="Day to day" href={`${BASE}/daily`} open="Open the day →" loading={false}>
           <DayBlock />
         </Block>
         <Block title="Net sales" href={link("net-sales")} loading={!months}>
           <NetSalesBlock months={months} />
+        </Block>
+        <Block title="Freight" href={link("freight")} open="Month by month →" loading={!months}>
+          <FreightBlock months={months} />
         </Block>
         <Block title="Customers" href={link("customers")} loading={!cust}>
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -199,9 +226,14 @@ function Home() {
         {!months ? <Loader /> : (
           <MonthlyChart
             monthly={months}
-            series={[{ key: "sales", label: "Sales", color: SPLIT_COLORS[0] }, { key: "purchases", label: "Purchases", color: SPLIT_COLORS[1] }]}
-            title="Sales vs purchases, month by month"
-            note={s.withGST ? "incl. GST · whole year" : "without GST · whole year"}
+            series={[
+              { key: "sales", label: "Sales", color: SPLIT_COLORS[0] },
+              { key: "purchases", label: "Purchases", color: SPLIT_COLORS[1] },
+              // Net profit (after credit notes) is always before GST.
+              { key: "net_profit", label: "Profit", color: SPLIT_COLORS[2] },
+            ]}
+            title="Sales, purchases and profit, month by month"
+            note={`${s.withGST ? "sales and purchases incl. GST" : "without GST"} · profit before GST, net of credit notes · whole year`}
           />
         )}
       </div>
@@ -212,7 +244,7 @@ function Home() {
 // This year's sales less credit notes, with the month-by-month line.
 function NetSalesBlock({ months }) {
   const net = (months || []).map((m) => ({ ...m, net: m.sales - m.returns }));
-  const t = net.reduce((a, m) => ({ net: a.net + m.net, ret: a.ret + m.returns, p: a.p + m.net_profit, goods: a.goods + m.sale_goods - m.return_goods }), { net: 0, ret: 0, p: 0, goods: 0 });
+  const t = net.reduce((a, m) => ({ net: a.net + m.net, ret: a.ret + m.returns, p: a.p + m.net_profit, goods: a.goods + m.sale_goods - m.return_goods + m.freight - m.freight_back }), { net: 0, ret: 0, p: 0, goods: 0 });
   return (
     <>
       <div className="grid grid-cols-2 gap-3 mb-3">
@@ -225,12 +257,31 @@ function NetSalesBlock({ months }) {
   );
 }
 
-function Block({ title, href, loading, children }) {
+// Freight charged on sale invoices this year (always before GST), with the
+// month-by-month line.
+function FreightBlock({ months }) {
+  const t = (months || []).reduce(
+    (a, m) => ({ fr: a.fr + m.freight - m.freight_back, fb: a.fb + m.freight_bills, bills: a.bills + m.bills }),
+    { fr: 0, fb: 0, bills: 0 },
+  );
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <Stat label="Freight this year" value={shortMoney(t.fr)} sub="before GST, all profit" />
+        <Stat label="Bills with freight" value={fmtCount(t.fb)} sub={t.bills ? `${Math.round((100 * t.fb) / t.bills)}% of sale bills` : null} />
+      </div>
+      <Sparkline months={months} field="freight" />
+      <MonthDelta months={months} field="freight" />
+    </>
+  );
+}
+
+function Block({ title, href, open = "Open board →", loading, children }) {
   return (
     <Link href={href} className="group bg-white rounded-xl border border-gray-200 p-5 hover:border-gray-400 hover:shadow-sm transition flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-        <span className="text-xs text-gray-400 group-hover:text-gray-900">Open board →</span>
+        <span className="text-xs text-gray-400 group-hover:text-gray-900">{open}</span>
       </div>
       {loading ? <CardLoading /> : children}
     </Link>

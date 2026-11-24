@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/broadcast_list.dart';
 import '../../services/broadcast_list_service.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -83,7 +84,7 @@ class _AdminBroadcastListsScreenState extends State<AdminBroadcastListsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
@@ -197,7 +198,7 @@ class _BroadcastListEditorScreenState extends State<_BroadcastListEditorScreen> 
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

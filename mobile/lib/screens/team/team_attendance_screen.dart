@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
 import 'team_month_summary_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -127,6 +128,7 @@ class _TeamAttendanceScreenState extends State<TeamAttendanceScreen> {
                   DropdownMenuItem(value: 'late', child: Text('Late')),
                   DropdownMenuItem(value: 'half-day', child: Text('Half Day')),
                   DropdownMenuItem(value: 'absent', child: Text('Absent')),
+                  DropdownMenuItem(value: 'holiday', child: Text('Holiday')),
                 ],
                 onChanged: (v) => setSheetState(() => status = v ?? 'present'),
               ),
@@ -196,7 +198,7 @@ class _TeamAttendanceScreenState extends State<TeamAttendanceScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Team Attendance', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),

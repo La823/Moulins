@@ -94,6 +94,7 @@ export function useRememberedLink() {
 // says it and links to them (Analysis › Customers › All customers).
 const SUB_PAGES = {
   "/panel/marg-analysis/net-sales": "Net sales",
+  "/panel/marg-analysis/freight": "Freight",
   "/panel/marg-analysis/customers": "Customers",
   "/panel/marg-analysis/suppliers": "Suppliers & purchases",
   "/panel/marg-analysis/products": "Products",

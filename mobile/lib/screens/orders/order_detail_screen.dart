@@ -9,6 +9,7 @@ import '../../services/order_service.dart';
 import '../../providers/auth_provider.dart';
 import 'package:intl/intl.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/shell_leading.dart';
 
 class OrderDetailScreen extends ConsumerStatefulWidget {
   final String orderId;
@@ -139,9 +140,10 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     }
   }
 
-  static const _statusOptions = ['pending', 'confirmed', 'transferred', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];
+  static const _statusOptions = ['pending', 'confirmed', 'transferred', 'packing', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
-  String _statusLabel(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+  String _statusLabel(String s) =>
+      s == 'packing' ? 'Sent to packing' : (s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}');
 
   Future<void> _pickStatus(String current) async {
     final chosen = await showModalBottomSheet<String>(
@@ -293,7 +295,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: teal)));
-    if (_order == null) return Scaffold(appBar: AppBar(), body: const Center(child: Text('Order not found')));
+    if (_order == null) return Scaffold(appBar: AppBar(leading: const ShellBack(), ), body: const Center(child: Text('Order not found')));
 
     final o = _order!;
     final user = ref.watch(authProvider).user;
@@ -310,7 +312,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

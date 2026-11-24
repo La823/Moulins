@@ -1,5 +1,6 @@
 import '../config/api.dart';
 import '../models/notification_item.dart';
+import 'app_update.dart';
 
 class NotificationService {
   final _dio = createDio();
@@ -20,9 +21,14 @@ class NotificationService {
   // platform config files, not yet set up). Kept ready so wiring it in later
   // is a one-line call from wherever the token is obtained.
   Future<void> registerDeviceToken(String token, {String platform = 'android'}) async {
+    // which app and build this phone runs, for the website's App Versions
+    // page (and to reach phones on old builds)
+    final build = await AppBuildInfo.build();
     await _dio.post('/device-tokens', data: {
       'token': token,
-      'platform': platform,
+      'platform': AppBuildInfo.platform,
+      'app': AppBuildInfo.app,
+      if (build > 0) 'app_build': build,
     });
   }
 }

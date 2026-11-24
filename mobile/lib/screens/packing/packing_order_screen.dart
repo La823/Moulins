@@ -7,9 +7,20 @@ import '../../providers/auth_provider.dart';
 import '../../services/packing_service.dart';
 import '../../services/retailer_service.dart';
 import '../../widgets/fullscreen_image_gallery.dart';
+import '../admin/admin_orders_screen.dart' show staffOrderStatusColor, staffStatusLabel;
+import '../../widgets/inventory_code_tag.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
+// distinct colours per detail, so they stand apart at a glance
+const _pageBg = Color(0xFFEEF1F5);
+const _cardEdge = Color(0xFFCBD5E1);
+const _muted = Color(0xFF475569);
+const _delivery = Color(0xFF1D4ED8);
+const _note = Color(0xFF92400E);
+const _batch = Color(0xFF3730A3);
+const _packedGreen = Color(0xFF047857);
 
 /// Packing one order: for each product, a photo of its batch (read by AI
 /// on the server and checked against the order), then a tick; with every
@@ -212,7 +223,7 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
   Future<void> _reopen() async {
     final reason = await _askReason('Reopen for packing?', required: false);
     if (reason == null) return;
-    await _run(() => _service.reopen(widget.orderId, reason), 'Reopened. The order is Confirmed again.');
+    await _run(() => _service.reopen(widget.orderId, reason), 'Reopened. The order is back in Sent to packing.');
   }
 
   Future<void> _run(Future<void> Function() fn, String done) async {
@@ -238,8 +249,8 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
     final isAdmin = ref.watch(authProvider).user?.role == 'admin';
     final o = _order;
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      backgroundColor: _pageBg,
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(o?.customer.isNotEmpty == true ? o!.customer : 'Packing',
@@ -273,7 +284,7 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
     final done = o.items.isEmpty ? 0.0 : o.ticked / o.items.length;
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardEdge)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -281,34 +292,39 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
             Expanded(
               child: Text(
                 [if (o.city.isNotEmpty) o.city, if (o.createdAt != null) 'Ordered ${fmt.format(o.createdAt!)}'].join(' · '),
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: _muted),
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: (o.status == 'packed' ? Colors.teal : Colors.blue).withValues(alpha: 0.1),
+                color: (o.status == 'packed' ? Colors.teal : (o.status == 'packing' ? Colors.amber : Colors.blue)).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(o.status == 'packed' ? 'Packed' : (o.status == 'confirmed' ? 'Confirmed' : o.status),
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: o.status == 'packed' ? Colors.teal.shade700 : Colors.blue.shade700)),
+              child: Text(staffStatusLabel(o.status),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: staffOrderStatusColor(o.status))),
             ),
           ]),
           if (o.transportMode.isNotEmpty || o.transportName.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Delivery: ${[o.transportMode, o.transportName].where((s) => s.isNotEmpty).join(' · ')}',
-                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _delivery)),
           ],
           if (o.notes.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Note: ${o.notes}', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(6)),
+              child: Text('Note: ${o.notes}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _note)),
+            ),
           ],
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(value: done, minHeight: 6, color: _teal, backgroundColor: Colors.grey.shade200),
+                child: LinearProgressIndicator(value: done, minHeight: 6, color: _teal, backgroundColor: _cardEdge),
               ),
             ),
             const SizedBox(width: 10),
@@ -317,7 +333,7 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
           if (o.status == 'packed' && o.packedAt != null) ...[
             const SizedBox(height: 6),
             Text('Packed by ${o.packedBy.isEmpty ? '—' : o.packedBy} on ${fmt.format(o.packedAt!)}',
-                style: TextStyle(fontSize: 12.5, color: Colors.teal.shade700)),
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _packedGreen)),
           ],
         ],
       ),
@@ -325,14 +341,15 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
   }
 
   Widget _itemCard(PackingOrder o, PackingItem it, bool isAdmin) {
-    final editable = o.status == 'confirmed';
+    // packed only while the order is Sent to packing
+    final editable = o.status == 'packing';
     final busy = _busyItem == it.id;
     final (Color c, String label) = switch (it.result) {
       'match' => (Colors.green.shade700, 'Batch matches'),
       'unchecked' => (Colors.grey.shade700, 'Batch recorded'),
       'mismatch' => (Colors.red.shade700, "Batch doesn't match"),
       'unreadable' => (Colors.orange.shade800, "Couldn't read"),
-      _ => (Colors.grey.shade500, 'Photo needed'),
+      _ => (_muted, 'Photo needed'),
     };
     final needsHelp = it.result == 'mismatch' || it.result == 'unreadable';
     return Container(
@@ -340,7 +357,7 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
       decoration: BoxDecoration(
         color: it.packed ? const Color(0xFFF0FBF9) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: it.packed ? _teal.withValues(alpha: 0.5) : Colors.grey.shade200),
+        border: Border.all(color: it.packed ? _teal : _cardEdge, width: it.packed ? 1.5 : 1),
       ),
       padding: const EdgeInsets.fromLTRB(6, 8, 12, 10),
       child: Column(
@@ -370,12 +387,13 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(it.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5, color: _ink)),
+                      InventoryCodeTag(it.inventoryCode),
                       const SizedBox(height: 2),
                       Text(
                         it.expectedBatch.isNotEmpty
                             ? 'Batch ${it.expectedBatch}${it.expectedExpiry.isNotEmpty ? '  ·  exp ${it.expectedExpiry}' : ''}'
                             : (it.knownBatches > 0 ? 'Any of its Marg batches' : 'No batch in Marg'),
-                        style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _batch),
                       ),
                     ],
                   ),
@@ -383,7 +401,11 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('× ${it.quantity}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: _ink)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(color: _ink, borderRadius: BorderRadius.circular(8)),
+                  child: Text('× ${it.quantity}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
+                ),
               ),
             ],
           ),
@@ -409,18 +431,18 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(it.overridden ? '$label · allowed' : label,
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: it.overridden ? Colors.orange.shade800 : c)),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: it.overridden ? Colors.orange.shade800 : c)),
                         if (it.readBatch.isNotEmpty)
                           Text('${it.readSource == 'typed' ? 'Typed' : 'On the pack'}: ${it.readBatch}${it.readExpiry.isNotEmpty ? ' · exp ${it.readExpiry}' : ''}',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: _ink)),
                         if (it.resultNote.isNotEmpty && !it.packed)
-                          Text(it.resultNote, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+                          Text(it.resultNote, style: const TextStyle(fontSize: 11.5, color: _muted)),
                         if (it.overridden && it.overrideReason.isNotEmpty)
                           Text('Allowed by ${it.overrideBy}: ${it.overrideReason}',
                               style: TextStyle(fontSize: 11.5, color: Colors.orange.shade800)),
                         if (it.packed)
                           Text('Ticked by ${it.packedBy}${it.packedAt != null ? ' · ${DateFormat('d MMM, h:mm a').format(it.packedAt!)}' : ''}',
-                              style: TextStyle(fontSize: 11.5, color: Colors.teal.shade700)),
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: _packedGreen)),
                         if (it.qtyChanged)
                           Text('The quantity changed after it was ticked; tick it again.',
                               style: TextStyle(fontSize: 11.5, color: Colors.orange.shade800)),
@@ -471,7 +493,7 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
     };
     final fmt = DateFormat('d MMM, h:mm a');
     return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardEdge)),
       child: Column(children: [
         ListTile(
           dense: true,
@@ -499,7 +521,7 @@ class _PackingOrderScreenState extends ConsumerState<PackingOrderScreen> {
 
   Widget? _bottomBar(PackingOrder o, bool isAdmin) {
     Widget? button;
-    if (o.status == 'confirmed') {
+    if (o.status == 'packing') {
       button = FilledButton.icon(
         onPressed: o.canFinish && !_busy ? _finish : null,
         icon: const Icon(Icons.inventory_2),

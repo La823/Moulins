@@ -18,3 +18,6 @@ ios/.symlinks/
 ios/Pods/
 ios/Flutter/Flutter.framework
 ios/Flutter/Flutter.podspec
+
+# built APKs/bundles handed out (MPPL Team, Moulins); not source
+releases/

@@ -2,9 +2,11 @@ import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'config/app_flavor.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/notification_provider.dart';
@@ -46,6 +48,12 @@ import 'screens/admin/admin_dashboard_screen.dart';
 import 'screens/admin/admin_orders_screen.dart';
 import 'screens/packing/packing_list_screen.dart';
 import 'screens/packing/packing_order_screen.dart';
+import 'screens/staff/freight_bills_screen.dart';
+import 'screens/staff/leave_approvals_screen.dart';
+import 'screens/staff/marg_stock_screen.dart';
+import 'screens/staff/marg_bills_screen.dart';
+import 'screens/staff/my_leave_screen.dart';
+import 'screens/staff/missed_punch_screen.dart';
 import 'screens/admin/admin_order_detail_screen.dart';
 import 'screens/divisions/division_landing_screen.dart';
 import 'screens/team/team_screen.dart';
@@ -64,6 +72,7 @@ import 'models/team_member.dart';
 import 'data/divisions.dart';
 import 'models/presentation.dart';
 import 'widgets/fullscreen_image_gallery.dart';
+import 'widgets/update_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -83,7 +92,7 @@ void main() async {
       final notification = message.notification;
       if (notification != null) {
         LocalNotificationsService.show(
-          title: notification.title ?? 'Moulins',
+          title: notification.title ?? appName,
           body: notification.body ?? '',
           imageUrl: notification.android?.imageUrl ?? notification.apple?.imageUrl,
           notificationId: message.data['notification_id'],
@@ -197,18 +206,22 @@ class MoulinsApp extends ConsumerWidget {
                 ),
               ],
             ),
-            // Staff get the staff order screens here too (rates, Marg,
-            // batches…); everyone else their own orders.
+            // In MPPL Team, staff get the staff order screens here (rates,
+            // Marg, batches…); in Moulins (clients only) everyone gets their
+            // own orders. isTeamApp is a build-time constant, so the staff
+            // screens aren't compiled into Moulins at all.
             GoRoute(
               path: '/orders',
-              builder: (_, __) => const _ForStaff(staff: _StaffOrders(), other: OrdersScreen()),
+              builder: (_, __) => isTeamApp ? const _ForStaff(staff: _StaffOrders(), other: OrdersScreen()) : const OrdersScreen(),
               routes: [
                 GoRoute(
                   path: ':id',
-                  builder: (_, state) => _ForStaff(
-                    staff: AdminOrderDetailScreen(orderId: state.pathParameters['id']!),
-                    other: OrderDetailScreen(orderId: state.pathParameters['id']!),
-                  ),
+                  builder: (_, state) => isTeamApp
+                      ? _ForStaff(
+                          staff: AdminOrderDetailScreen(orderId: state.pathParameters['id']!),
+                          other: OrderDetailScreen(orderId: state.pathParameters['id']!),
+                        )
+                      : OrderDetailScreen(orderId: state.pathParameters['id']!),
                 ),
               ],
             ),
@@ -272,6 +285,9 @@ class MoulinsApp extends ConsumerWidget {
             GoRoute(path: '/favorites', builder: (_, __) => const FavoritesScreen()),
             GoRoute(path: '/payments', builder: (_, __) => const PaymentsScreen()),
             GoRoute(path: '/learning', builder: (_, __) => const LearningScreen()),
+            // Staff screens: MPPL Team only (admins, employees, the dispatch
+            // team). Moulins is the clients' app and has none of these.
+            if (isTeamApp) ...[
             GoRoute(path: '/admin', builder: (_, __) => const AdminDashboardScreen()),
             // staff orders, as on the website (orders_view / orders_edit)
             GoRoute(path: '/admin/orders', builder: (_, __) => const AdminOrdersScreen()),
@@ -281,10 +297,31 @@ class MoulinsApp extends ConsumerWidget {
             ),
             // packing orders with a batch photo per product (packing_edit)
             GoRoute(path: '/packing', builder: (_, __) => const PackingListScreen()),
+            // staff tools (side menu "Staff"): Marg stock, own attendance and
+            // leave, leave approvals, freight bills
+            GoRoute(path: '/staff/stock', builder: (_, __) => const MargStockScreen()),
+            // Marg bills: admins, and employees with marg_bills_view
+            GoRoute(path: '/staff/bills', builder: (_, __) => const MargBillsScreen()),
+            GoRoute(
+              path: '/staff/bills/:voucher',
+              builder: (_, st) => MargBillDetailScreen(voucher: int.tryParse(st.pathParameters['voucher'] ?? '') ?? 0),
+            ),
+            GoRoute(path: '/staff/attendance', builder: (_, __) => const MyLeaveScreen()),
+            GoRoute(path: '/staff/leaves', builder: (_, __) => const LeaveApprovalsScreen()),
+            // missed punches: one's own log, and everyone's for leave approvers
+            GoRoute(path: '/staff/missed-punch', builder: (_, __) => const MyMissedPunchesScreen()),
+            GoRoute(
+              path: '/staff/missed-punches',
+              builder: (_, __) => Consumer(
+                builder: (_, ref, __) => MissedPunchApprovalsScreen(canDecide: ref.watch(authProvider).user?.has('leaves_edit') ?? false),
+              ),
+            ),
+            GoRoute(path: '/staff/freight', builder: (_, __) => const FreightBillsScreen()),
             GoRoute(
               path: '/packing/:id',
               builder: (_, state) => PackingOrderScreen(orderId: state.pathParameters['id']!),
             ),
+            ],
             GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
             GoRoute(path: '/offline-data', builder: (_, __) => const OfflineDataScreen()),
             GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
@@ -296,7 +333,14 @@ class MoulinsApp extends ConsumerWidget {
 
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'Moulins',
+      // Flutter's default tells Android whether a route can be popped; on a
+      // tab other than the first, back goes to the first tab, so the app
+      // handles back there too (see _AppShellState.build)
+      onNavigationNotification: (n) {
+        SystemNavigator.setFrameworkHandlesBack(n.canHandlePop || _BackGoesHome.active);
+        return true;
+      },
+      title: appName,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00A6A4)),
@@ -309,6 +353,8 @@ class MoulinsApp extends ConsumerWidget {
         ),
       ),
       routerConfig: router,
+      // update prompts (website: App Versions), over every screen
+      builder: (context, child) => UpdateGate(child: child ?? const SizedBox.shrink()),
     );
   }
 }
@@ -378,6 +424,12 @@ class _NavItem {
 
 const _teal = Color(0xFF00A6A4);
 
+/// True while the app shell shows a page other than the first tab: back
+/// there goes to the first tab, so Android must send back to the app.
+class _BackGoesHome {
+  static bool active = false;
+}
+
 class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserver {
   // the daily "Save everything", when due, each time the app comes back
   @override
@@ -402,6 +454,7 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
 
   @override
   void dispose() {
+    _BackGoesHome.active = false;
     NotificationLinks.pending.removeListener(_openPendingLink);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -452,9 +505,31 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
     final isStaff = user.role == 'admin' || user.role == 'employee';
     final canSeeOrders =
         user.role == 'admin' || user.permissions.contains('orders_view') || user.permissions.contains('orders_edit');
-    final destinations = <_NavItem>[
+    // The dispatch team gets only their tools: packing, Marg stock, their
+    // attendance and leave, freight bills, and their profile (change
+    // password, log out).
+    // They land on Packing rather than the shop's home page.
+    if (isTeamApp && user.isDispatch && (widget.location == '/home' || widget.location == '/')) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/packing');
+      });
+    }
+    final destinations = isTeamApp && user.isDispatch
+        ? <_NavItem>[
+            const _NavItem(route: '/packing', icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Packing'),
+            if (user.has('marg_stock_view'))
+              const _NavItem(route: '/staff/stock', icon: Icons.warehouse_outlined, selectedIcon: Icons.warehouse, label: 'Stock'),
+            const _NavItem(route: '/staff/attendance', icon: Icons.event_available_outlined, selectedIcon: Icons.event_available, label: 'Attendance'),
+            if (user.has('freight_bills_edit'))
+              const _NavItem(route: '/staff/freight', icon: Icons.local_shipping_outlined, selectedIcon: Icons.local_shipping, label: 'Freight'),
+            const _NavItem(route: '/profile', icon: Icons.person_outline, selectedIcon: Icons.person, label: 'Profile'),
+          ]
+        : <_NavItem>[
       const _NavItem(route: '/home', icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
       const _NavItem(route: '/products', icon: Icons.medication_outlined, selectedIcon: Icons.medication, label: 'Products'),
+      // Doctors for partners and team members: it is their daily work.
+      // A partner's Dashboard (balance, bills, orders) sits last, in the
+      // Orders spot; their orders open from the dashboard.
       if (isPartner)
         const _NavItem(route: '/doctors', icon: Icons.people_outlined, selectedIcon: Icons.people, label: 'Doctors'),
       // the dispatch team has no meetings
@@ -462,26 +537,76 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
         const _NavItem(route: '/meetings', icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: 'Meetings'),
       // staff see orders only with an orders permission
       // a team member: Moulins orders only when their partner allows it
-      if (!isDoctor && !isRetailer && (!isStaff || canSeeOrders) && (!user.isTeamMember || user.ordersToMoulins))
+      if (user.role == 'partner')
+        const _NavItem(route: '/dashboard', icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard, label: 'Dashboard')
+      else if (!isDoctor && !isRetailer && (!isStaff || canSeeOrders) && (!user.isTeamMember || user.ordersToMoulins))
         const _NavItem(route: '/orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
+      // a team member has one Orders tab: orders to Moulins with a switch to
+      // their orders to the partner (TeamOrdersSwitch), or only the latter
+      if (user.isTeamMember && user.ordersToPartner && !user.ordersToMoulins)
+        const _NavItem(route: '/retailer-orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Orders'),
       if (isRetailer || isDoctor)
         const _NavItem(route: '/retailer-orders', icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'My Orders'),
-      // a team member's orders to their partner
-      if (user.isTeamMember && user.ordersToPartner)
-        const _NavItem(route: '/retailer-orders', icon: Icons.outbox_outlined, selectedIcon: Icons.outbox, label: 'To Partner'),
       // packers (not admins, who have it under Admin) get their own tab
-      if (user.canPack && user.role != 'admin')
+      if (isTeamApp && user.canPack && user.role != 'admin')
         const _NavItem(route: '/packing', icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2, label: 'Packing'),
-      if (user.role == 'admin' || user.role == 'employee')
+      if (isTeamApp && (user.role == 'admin' || user.role == 'employee'))
         const _NavItem(route: '/admin', icon: Icons.admin_panel_settings_outlined, selectedIcon: Icons.admin_panel_settings, label: 'Admin'),
     ];
 
     var selectedIndex = destinations.indexWhere((d) => widget.location.startsWith(d.route));
+    // a team member's To Partner page sits under their Orders tab
+    if (selectedIndex < 0 && widget.location.startsWith('/retailer-orders')) {
+      selectedIndex = destinations.indexWhere((d) => d.route == '/orders');
+    }
+    // a partner's orders open from their Dashboard tab
+    if (selectedIndex < 0 && widget.location.startsWith('/orders')) {
+      selectedIndex = destinations.indexWhere((d) => d.route == '/dashboard');
+    }
     if (selectedIndex < 0) selectedIndex = 0;
 
+    // Back (button or swipe) on a page with nothing under it, such as a tab
+    // opened from the bottom bar (context.go replaces the page), goes to
+    // the first tab instead of closing the app; back there closes it.
+    // go_router 13 closes the app itself when nothing can pop, so the
+    // listener catches it first. With predictive back (target SDK 36)
+    // Android only sends back to the app when told the app handles it,
+    // otherwise it closes the app without asking: _BackGoesHome makes the
+    // app say so on every page but the first tab (see onNavigationNotification).
+    final home = destinations.first.route;
+    final atHome = widget.location == home;
+    _BackGoesHome.active = !atHome;
+    if (!atHome) {
+      // tell Android now as well, for a page change that moves no route
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_BackGoesHome.active) SystemNavigator.setFrameworkHandlesBack(true);
+      });
+    }
+    return BackButtonListener(
+      onBackButtonPressed: () async {
+        if (!mounted || atHome) return false;
+        final router = GoRouter.of(context);
+        if (router.canPop()) return false; // a pushed page: normal back
+        router.go(home);
+        return true;
+      },
+      child: _scaffold(destinations, selectedIndex),
+    );
+  }
+
+  Widget _scaffold(List<_NavItem> destinations, int selectedIndex) {
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: NavigationBar(
+      // six tabs (a partner's) get slightly smaller labels so each fits
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          labelTextStyle: WidgetStatePropertyAll(TextStyle(
+            fontSize: destinations.length > 5 ? 10.5 : 12,
+            fontWeight: FontWeight.w500,
+            overflow: TextOverflow.ellipsis,
+          )),
+        ),
+        child: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (i) => context.go(destinations[i].route),
         backgroundColor: Colors.white,
@@ -494,6 +619,7 @@ class _AppShellState extends ConsumerState<_AppShell> with WidgetsBindingObserve
               label: d.label,
             ),
         ],
+        ),
       ),
     );
   }

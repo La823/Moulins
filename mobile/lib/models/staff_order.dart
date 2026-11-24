@@ -134,6 +134,7 @@ class StaffOrderItem {
   final String? remarks;
   final String? batchCode;
   final DateTime? margPushedAt;
+  final String? inventoryCode; // warehouse rack code
 
   StaffOrderItem({
     required this.id,
@@ -145,6 +146,7 @@ class StaffOrderItem {
     this.remarks,
     this.batchCode,
     this.margPushedAt,
+    this.inventoryCode,
   });
 
   factory StaffOrderItem.fromJson(Map<String, dynamic> j) => StaffOrderItem(
@@ -157,7 +159,9 @@ class StaffOrderItem {
         remarks: j['remarks'],
         batchCode: j['selected_batch_code'],
         margPushedAt: DateTime.tryParse(j['marg_pushed_at'] ?? ''),
+        inventoryCode: j['inventory_code'],
       );
 }
 
-const staffOrderStatuses = ['pending', 'confirmed', 'transferred', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];
+// flow: pending -> confirmed -> packing (Sent to packing) -> packed -> shipped, or cancelled
+const staffOrderStatuses = ['pending', 'confirmed', 'transferred', 'packing', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];

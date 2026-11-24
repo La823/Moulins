@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -114,7 +115,7 @@ class _TeamMemberSettingsScreenState extends State<TeamMemberSettingsScreen> {
     final name = widget.member.displayName;
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

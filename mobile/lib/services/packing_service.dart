@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../config/api.dart';
 
-/// Packing (backend internal/packing): confirmed orders packed one product
+/// Packing (backend internal/packing): orders sent to packing, packed one product
 /// at a time — a photo of each product's batch, read by AI on the server and
 /// checked against the order, then a tick; with every product ticked the
 /// order becomes Packed. Needs the packing_edit permission (admins always).
@@ -20,6 +20,8 @@ class PackingListRow {
   final bool started;
   final DateTime? packedAt;
   final String packedBy;
+  final String assignedTo; // who the rotation (or staff) gave it to; '' = the whole team
+  final bool mine;
 
   PackingListRow.fromJson(Map<String, dynamic> j)
       : id = j['id'] ?? '',
@@ -31,12 +33,15 @@ class PackingListRow {
         ticked = j['ticked'] ?? 0,
         started = j['started'] == true,
         packedAt = _date(j['packed_at']),
-        packedBy = j['packed_by'] ?? '';
+        packedBy = j['packed_by'] ?? '',
+        assignedTo = j['assigned_to'] ?? '',
+        mine = j['mine'] == true;
 }
 
 class PackingItem {
   final String id;
   final String productName;
+  final String inventoryCode; // warehouse rack code
   final int quantity;
   final bool margLinked;
   final String expectedBatch;
@@ -61,6 +66,7 @@ class PackingItem {
   PackingItem.fromJson(Map<String, dynamic> j)
       : id = j['order_item_id'] ?? '',
         productName = j['product_name'] ?? '',
+        inventoryCode = j['inventory_code'] ?? '',
         quantity = j['quantity'] ?? 0,
         margLinked = j['marg_linked'] == true,
         expectedBatch = j['expected_batch'] ?? '',
@@ -113,6 +119,8 @@ class PackingOrder {
   final String margOrderNo;
   final DateTime? packedAt;
   final String packedBy;
+  final String assignedTo;
+  final String assignedToId;
   final List<PackingItem> items;
   final int ticked;
   final bool canFinish;
@@ -131,6 +139,8 @@ class PackingOrder {
         margOrderNo = j['marg_order_no'] ?? '',
         packedAt = _date(j['packed_at']),
         packedBy = j['packed_by'] ?? '',
+        assignedTo = j['assigned_to'] ?? '',
+        assignedToId = j['assigned_to_id'] ?? '',
         items = (j['items'] as List<dynamic>? ?? []).map((e) => PackingItem.fromJson(e)).toList(),
         ticked = j['ticked'] ?? 0,
         canFinish = j['can_finish'] == true,
@@ -163,6 +173,13 @@ class PackingService {
   Future<List<PackingListRow>> list({bool packed = false}) async {
     final res = await _dio.get('/admin/packing/orders', queryParameters: {'view': packed ? 'packed' : 'to_pack'});
     return (res.data['orders'] as List<dynamic>? ?? []).map((e) => PackingListRow.fromJson(e)).toList();
+  }
+
+  /// An order's packing for staff who see orders (orders_view): the photos,
+  /// what was read, ticks, the log and who it's assigned to.
+  Future<PackingOrder> forOrder(String id) async {
+    final res = await _dio.get('/admin/orders/$id/packing');
+    return PackingOrder.fromJson(res.data);
   }
 
   Future<PackingOrder> get(String id) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/cart_provider.dart';
+import 'cart_qty_field.dart';
 import 'product_thumbnail.dart';
 
 /// Side cart, opened from [CartButton]. Shows what is in the cart and lets
@@ -103,7 +104,10 @@ class CartDrawer extends ConsumerWidget {
                                 Row(
                                   children: [
                                     _MiniStepper(
+                                      key: ValueKey(item.product.id),
                                       quantity: item.quantity,
+                                      moq: item.product.moq,
+                                      onCommit: (next) => cart.updateQty(item.product.id, next),
                                       onDecrement: () =>
                                           cart.updateQty(item.product.id, item.quantity - step),
                                       onIncrement: () =>
@@ -185,11 +189,16 @@ class CartDrawer extends ConsumerWidget {
 /// height.
 class _MiniStepper extends StatelessWidget {
   final int quantity;
+  final int moq;
+  final ValueChanged<int> onCommit; // a typed quantity
   final VoidCallback onDecrement;
   final VoidCallback onIncrement;
 
   const _MiniStepper({
+    super.key,
     required this.quantity,
+    required this.moq,
+    required this.onCommit,
     required this.onDecrement,
     required this.onIncrement,
   });
@@ -205,15 +214,7 @@ class _MiniStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _btn(Icons.remove, onDecrement),
-          SizedBox(
-            width: 30,
-            child: Text(
-              '$quantity',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
-            ),
-          ),
+          CartQtyField(quantity: quantity, moq: moq, onCommit: onCommit, width: 44, fontSize: 13),
           _btn(Icons.add, onIncrement),
         ],
       ),

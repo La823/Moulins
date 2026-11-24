@@ -6,6 +6,7 @@ import '../../models/team_member.dart';
 import '../../services/team_service.dart';
 import '../../widgets/app_drawer.dart';
 import '../../utils/validators.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -226,6 +227,8 @@ class _TeamScreenState extends State<TeamScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Team', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),

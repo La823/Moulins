@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../config/app_flavor.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
@@ -45,6 +46,9 @@ class AuthState {
       );
 }
 
+const _staffUseTeamApp =
+    'Staff accounts now use the MPPL Team app. Please install MPPL Team and sign in there with the same phone number and password.';
+
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _service;
 
@@ -54,9 +58,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(loading: true, error: null);
     try {
       final data = await _service.login(phone, password);
+      final user = User.fromJson(data['user']);
+      // MPPL Team is the staff app and Moulins the clients': a login for
+      // the other app is turned away before anything is saved, so the app
+      // stays signed out.
+      if (isTeamApp && !isStaffRole(user.role)) {
+        state = state.copyWith(loading: false, error: 'MPPL Team is for Moulins staff only. Please sign in on the Moulins app.');
+        return false;
+      }
+      if (!isTeamApp && isStaffRole(user.role)) {
+        state = state.copyWith(loading: false, error: _staffUseTeamApp);
+        return false;
+      }
       final token = data['token'] as String;
       await saveToken(token);
-      final user = User.fromJson(data['user']);
       await saveCachedUser(jsonEncode(user.toJson()));
       // this account's offline data, not another's
       await OfflineSync.useAccount(user.id);
@@ -77,6 +92,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
     try {
       final user = await _service.getMe();
+      // a staff member still signed in on Moulins from before staff moved
+      // to MPPL Team: sign out, with the reason on the login screen
+      if (!isTeamApp && isStaffRole(user.role)) {
+        await clearToken();
+        state = state.copyWith(checked: true, error: _staffUseTeamApp);
+        return;
+      }
       await saveCachedUser(jsonEncode(user.toJson()));
       await OfflineSync.useAccount(user.id);
       state = state.copyWith(user: user, checked: true);
@@ -95,19 +117,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
         return;
       }
       final cached = await getCachedUser();
-      if (cached != null) {
-        final user = User.fromJson(jsonDecode(cached));
-        await OfflineSync.useAccount(user.id);
-        state = state.copyWith(user: user, checked: true);
+      final cachedUser = cached == null ? null : User.fromJson(jsonDecode(cached));
+      if (cachedUser != null && !isTeamApp && isStaffRole(cachedUser.role)) {
+        await clearToken();
+        state = state.copyWith(checked: true, error: _staffUseTeamApp);
+      } else if (cachedUser != null) {
+        await OfflineSync.useAccount(cachedUser.id);
+        state = state.copyWith(user: cachedUser, checked: true);
       } else {
         state = state.copyWith(checked: true);
       }
     } catch (_) {
       final cached = await getCachedUser();
-      if (cached != null) {
-        final user = User.fromJson(jsonDecode(cached));
-        await OfflineSync.useAccount(user.id);
-        state = state.copyWith(user: user, checked: true);
+      final cachedUser = cached == null ? null : User.fromJson(jsonDecode(cached));
+      if (cachedUser != null && !isTeamApp && isStaffRole(cachedUser.role)) {
+        await clearToken();
+        state = state.copyWith(checked: true, error: _staffUseTeamApp);
+      } else if (cachedUser != null) {
+        await OfflineSync.useAccount(cachedUser.id);
+        state = state.copyWith(user: cachedUser, checked: true);
       } else {
         state = state.copyWith(checked: true);
       }

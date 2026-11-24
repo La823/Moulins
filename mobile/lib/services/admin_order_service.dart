@@ -11,6 +11,27 @@ import '../models/staff_order.dart';
 class AdminOrderService {
   final _dio = createDio();
 
+  /// Partners matching a name or phone (the "order for a customer" picker):
+  /// [{id, username, phone_number}].
+  Future<List<Map<String, dynamic>>> searchCustomers(String q) async {
+    final res = await _dio.get('/admin/orders/customers/search', queryParameters: {'q': q});
+    return [for (final u in (res.data as List? ?? [])) Map<String, dynamic>.from(u)];
+  }
+
+  /// Places an order for a partner (orders_edit). items: product_id,
+  /// product_name, quantity and an optional rate. The customer's own cart
+  /// is left alone. Returns the new order's id.
+  Future<String> createForCustomer(String customerId, List<Map<String, dynamic>> items,
+      {String? transportMode, String? transportId}) async {
+    final res = await _dio.post('/admin/orders', data: {
+      'customer_id': customerId,
+      'items': items,
+      if (transportMode != null) 'transport_mode': transportMode,
+      if (transportId != null) 'transport_id': transportId,
+    });
+    return '${res.data['order_id']}';
+  }
+
   Future<List<StaffOrder>> list({String status = '', String search = '', int page = 1}) async {
     final res = await _dio.get('/admin/orders', queryParameters: {
       'page': page,

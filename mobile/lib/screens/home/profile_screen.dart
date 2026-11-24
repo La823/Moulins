@@ -1,3 +1,4 @@
+import '../../widgets/app_version_text.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,9 @@ import '../../widgets/app_drawer.dart';
 import '../../widgets/scraped_details.dart';
 import '../../widgets/doc_verify_dialogs.dart';
 import 'account_deletion_screen.dart';
+import 'change_password_screen.dart';
+import '../../config/app_flavor.dart';
+import '../../widgets/shell_leading.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
 
@@ -76,6 +80,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Profile', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
@@ -229,25 +235,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _menuItem(Icons.shopping_bag_outlined, 'My Orders', () => context.go('/orders')),
                   _divider(),
                 ],
-                if ((user?.canPack ?? false) && user?.role != 'admin') ...[
+                if (isTeamApp && (user?.canPack ?? false) && user?.role != 'admin') ...[
                   _menuItem(Icons.inventory_2_outlined, 'Packing', () => context.go('/packing')),
                   _divider(),
                 ],
+                // the dispatch team's own tools; everything else below is not for them
+                if (isTeamApp && (user?.isDispatch ?? false)) ...[
+                  if (user!.has('marg_stock_view')) ...[
+                    _menuItem(Icons.warehouse_outlined, 'Marg Stock', () => context.push('/staff/stock')),
+                    _divider(),
+                  ],
+                  _menuItem(Icons.event_available_outlined, 'My Attendance & Leave', () => context.push('/staff/attendance')),
+                  _divider(),
+                  if (user.has('freight_bills_edit')) ...[
+                    _menuItem(Icons.local_shipping_outlined, 'Freight Bills', () => context.push('/staff/freight')),
+                    _divider(),
+                  ],
+                ],
+                _menuItem(Icons.lock_outline, 'Change password',
+                    () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
+                _divider(),
                 if (user?.role == 'partner') ...[
                   _menuItem(Icons.receipt_long_outlined, 'My Bills', () => context.push('/my-bills')),
                   _divider(),
                   _menuItem(Icons.person_outlined, 'My Doctors', () => context.go('/doctors')),
                   _divider(),
                 ],
-                if (user?.role != 'doctor' && user?.role != 'retailer') ...[
+                if (user?.role != 'doctor' && user?.role != 'retailer' && !(user?.isDispatch ?? false)) ...[
                   _menuItem(Icons.calendar_today_outlined, 'My Meetings', () => context.go('/meetings')),
                   _divider(),
                   _menuItem(Icons.assignment_outlined, 'My Requests', () => context.go('/requests')),
                   _divider(),
                 ],
-                _menuItem(Icons.download_for_offline_outlined, 'Offline data', () => context.push('/offline-data')),
-                _divider(),
-                if (user?.role != 'retailer') ...[
+                if (!(user?.isDispatch ?? false)) ...[
+                  _menuItem(Icons.download_for_offline_outlined, 'Offline data', () => context.push('/offline-data')),
+                  _divider(),
+                ],
+                if (user?.role != 'retailer' && !(user?.isDispatch ?? false)) ...[
                   _menuItem(Icons.chat_bubble_outline, 'Messages', () => context.go('/chat')),
                   _divider(),
                   _menuItem(Icons.ondemand_video_outlined, 'Learning', () => context.go('/learning')),
@@ -278,8 +302,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           const SizedBox(height: 32),
           Center(child: Text('Moulins Pharmaceuticals', style: TextStyle(color: Colors.grey.shade400, fontSize: 12))),
-          const SizedBox(height: 8),
-          Center(child: Text('v1.0.0', style: TextStyle(color: Colors.grey.shade400, fontSize: 11))),
+          const SizedBox(height: 4),
+          // the installed version, read from the app (was a fixed "v1.0.0")
+          const Center(child: AppVersionText()),
           const SizedBox(height: 24),
         ],
       )),

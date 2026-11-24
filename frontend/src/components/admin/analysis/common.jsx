@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
@@ -316,6 +316,36 @@ export function SearchBox({ value, onSearch, placeholder }) {
       />
       <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800">Search</button>
     </form>
+  );
+}
+
+// Rows a long list adds each time it grows.
+export const PAGE = 50;
+
+// The foot of a list that grows instead of paging: loads the next rows by
+// itself once scrolled into view (inside the list's own scroll box), or on
+// the button. Shows how many of how many are on screen.
+export function LoadMore({ shown, total, loading, onMore }) {
+  const ref = useRef(null);
+  const more = shown < total;
+  useEffect(() => {
+    if (!more || loading || !ref.current) return;
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && onMore(), { rootMargin: "200px" });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [more, loading, onMore, shown]);
+  return (
+    <div ref={ref} className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 text-xs text-gray-500">
+      <span>Showing {shown.toLocaleString("en-IN")} of {total.toLocaleString("en-IN")}</span>
+      {more ? (
+        <button onClick={onMore} disabled={loading}
+          className="px-3 py-1.5 font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50">
+          {loading ? "Loading…" : `Load ${Math.min(PAGE, total - shown)} more`}
+        </button>
+      ) : (
+        <span className="text-gray-400">That&apos;s all</span>
+      )}
+    </div>
   );
 }
 

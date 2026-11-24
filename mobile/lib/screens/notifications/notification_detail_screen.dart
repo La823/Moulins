@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../services/notification_links.dart';
 import '../../models/notification_item.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -24,7 +25,7 @@ class NotificationDetailScreen extends StatelessWidget {
         onTap: () => Navigator.of(ctx).pop(),
         child: Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: AppBar(leading: const ShellBack(), 
             backgroundColor: Colors.black,
             iconTheme: const IconThemeData(color: Colors.white),
             elevation: 0,
@@ -50,7 +51,7 @@ class NotificationDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Notification', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),

@@ -279,7 +279,8 @@ func ListDaybookParties(ctx context.Context, db *pgxpool.Pool, kind, search stri
 		LEFT JOIN marg_ede_ledger l ON l.marg_id = e.ledger_marg_id
 		`+where+fmt.Sprintf(`
 		GROUP BY e.party_code
-		ORDER BY 4 DESC, 2
+		ORDER BY GREATEST(COALESCE(SUM(e.debit) FILTER (WHERE v.kind = 'sale'), 0),
+		                  COALESCE(SUM(e.credit) FILTER (WHERE v.kind = 'purchase'), 0)) DESC, 2
 		LIMIT %d OFFSET %d`, BillsPageSize, (page-1)*BillsPageSize), args...)
 	if err != nil {
 		return out, err

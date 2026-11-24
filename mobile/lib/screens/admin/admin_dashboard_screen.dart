@@ -17,6 +17,7 @@ import 'admin_notifications_screen.dart';
 import 'admin_broadcast_lists_screen.dart';
 import 'admin_deletion_requests_screen.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -73,6 +74,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Admin', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),

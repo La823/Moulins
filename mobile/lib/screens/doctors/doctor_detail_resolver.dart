@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/doctor_service.dart';
 import 'doctor_detail_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -47,7 +48,7 @@ class _DoctorDetailResolverState extends State<DoctorDetailResolver> {
   Widget build(BuildContext context) {
     if (_notFound) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Doctor')),
+        appBar: AppBar(leading: const ShellBack(), title: const Text('Doctor')),
         body: Center(child: Text('Doctor not found', style: TextStyle(color: Colors.grey.shade500))),
       );
     }

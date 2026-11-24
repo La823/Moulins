@@ -11,6 +11,7 @@ import '../../widgets/product_list_row.dart';
 import '../../widgets/product_view_toggle.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/shell_leading.dart';
 
 final _productService = ProductService();
 
@@ -107,7 +108,7 @@ class _DivisionLandingScreenState extends ConsumerState<DivisionLandingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],

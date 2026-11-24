@@ -3,6 +3,7 @@ import '../../providers/auth_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/chat_service.dart';
 import 'chat_thread_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -51,7 +52,7 @@ class _ChatThreadResolverState extends ConsumerState<ChatThreadResolver> {
   Widget build(BuildContext context) {
     if (_notFound) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Chat')),
+        appBar: AppBar(leading: const ShellBack(), title: const Text('Chat')),
         body: Center(child: Text('Conversation not found', style: TextStyle(color: Colors.grey.shade500))),
       );
     }

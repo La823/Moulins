@@ -7,6 +7,7 @@ import '../../models/payment.dart';
 import '../../services/payment_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -105,6 +106,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Payments', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

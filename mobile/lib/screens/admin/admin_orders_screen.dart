@@ -4,11 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../models/staff_order.dart';
 import '../../services/admin_order_service.dart';
+import '../../widgets/shell_leading.dart';
 
 Color staffOrderStatusColor(String s) => switch (s) {
       'pending' => Colors.orange.shade700,
       'confirmed' => Colors.blue.shade700,
       'transferred' => Colors.indigo.shade600,
+      'packing' => Colors.amber.shade800,
       'packed' => Colors.teal.shade700,
       'shipped' => Colors.purple.shade600,
       'delivered' => Colors.green.shade700,
@@ -16,7 +18,8 @@ Color staffOrderStatusColor(String s) => switch (s) {
       _ => Colors.grey.shade600,
     };
 
-String staffStatusLabel(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+String staffStatusLabel(String s) =>
+    s == 'packing' ? 'Sent to packing' : (s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}');
 
 /// Staff: every order, as on the website's Orders page (orders_view).
 class AdminOrdersScreen extends StatefulWidget {
@@ -64,7 +67,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
     final money = NumberFormat.decimalPattern('en_IN');
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

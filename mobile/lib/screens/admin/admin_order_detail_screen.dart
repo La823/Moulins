@@ -18,8 +18,11 @@ import '../../services/admin_order_service.dart';
 import '../../services/product_service.dart';
 import '../../services/retailer_service.dart';
 import '../../services/transport_service.dart';
+import '../../widgets/order_packing_panel.dart';
 import '../../widgets/product_history_panel.dart';
 import 'admin_orders_screen.dart';
+import '../../widgets/inventory_code_tag.dart';
+import '../../widgets/shell_leading.dart';
 
 /// Staff: one order, as on the website's order page: the party, each line's
 /// quantity, batch, rate and amount, freight and total, its status, photos,
@@ -475,7 +478,7 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
     final fmt = DateFormat('d MMM yyyy, h:mm a');
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
@@ -578,6 +581,7 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(it.productName,
                                     style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+                                InventoryCodeTag(it.inventoryCode),
                                 Text(
                                   [
                                     'Qty ${it.quantity}',
@@ -747,6 +751,8 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
                   ],
                 ])),
+                // Packing: batch photos, ticks, who it's assigned to
+                OrderPackingPanel(orderId: o.id, status: o.status, canEdit: canEdit),
                 // Marg
                 _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Marg', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -759,7 +765,8 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
                     Text('Not sent to Marg yet.', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
                   if (canEdit && !o.fullySentToMarg) ...[
                     const SizedBox(height: 10),
-                    if (o.status != 'confirmed')
+                    // the server takes confirmed, sent-to-packing and packed orders
+                    if (!const {'confirmed', 'packing', 'packed'}.contains(o.status))
                       Text('Confirm the order to send it to Marg.',
                           style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600))
                     else

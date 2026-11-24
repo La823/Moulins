@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/team_member.dart';
 import '../../services/team_service.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -53,7 +54,7 @@ class _MyAttendanceScreenState extends State<MyAttendanceScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Attendance', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
@@ -99,6 +100,7 @@ class _MyAttendanceScreenState extends State<MyAttendanceScreen> {
                           'present' => const Color(0xFFE6F7EE),
                           'late' => const Color(0xFFFFF6E0),
                           'half-day' => const Color(0xFFFFEEDD),
+                          'holiday' => const Color(0xFFE8E9FD),
                           _ => const Color(0xFFFDE7E7),
                         };
                       }

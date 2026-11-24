@@ -4,7 +4,9 @@ import '../../providers/auth_provider.dart';
 import '../../models/retailer.dart';
 import '../../services/retailer_service.dart';
 import '../../utils/validators.dart';
+import 'retailer_detail_screen.dart';
 import 'retailer_documents_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 /// Partner: their retailers. A retailer logs in with their phone number,
 /// which is also their first password; they see the partner's products
@@ -55,7 +57,7 @@ class _RetailersScreenState extends State<RetailersScreen> {
   }
 
   // Add (existing null) or edit a retailer. The phone can't be changed: it is their login.
-  Future<void> _showForm({Retailer? existing}) async {
+  Future<bool> _showForm({Retailer? existing}) async {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final phoneCtrl = TextEditingController(text: existing?.phone ?? '');
     final shopCtrl = TextEditingController(text: existing?.shopName ?? '');
@@ -188,6 +190,7 @@ class _RetailersScreenState extends State<RetailersScreen> {
       _snack(existing == null ? 'The retailer has been added.' : "The retailer's details have been updated.");
       _load();
     }
+    return saved == true;
   }
 
   Future<bool> _confirm(String title, String body, String action, {bool danger = false}) async {
@@ -240,12 +243,20 @@ class _RetailersScreenState extends State<RetailersScreen> {
         ]),
       ),
     );
-    if (!mounted) return;
+    if (!mounted || choice == null) return;
+    await _act(r, choice);
+  }
+
+  // Edit / documents / reset password / remove, from the menu or the
+  // retailer's page. True when the retailer changed or was removed.
+  Future<bool> _act(Retailer r, String choice) async {
+    if (!mounted) return false;
     try {
-      if (choice == 'edit') await _showForm(existing: r);
+      if (choice == 'edit') return await _showForm(existing: r);
       if (choice == 'docs') {
         await Navigator.push(context, MaterialPageRoute(builder: (_) => RetailerDocumentsScreen(retailer: r)));
         _load();
+        return true;
       }
       if (choice == 'reset' &&
           await _confirm('Reset password?',
@@ -262,10 +273,18 @@ class _RetailersScreenState extends State<RetailersScreen> {
         await _service.removeRetailer(r.id);
         _snack('The retailer has been removed.');
         _load();
+        return true;
       }
     } catch (e) {
       _snack(RetailerService.messageOf(e), error: true);
     }
+    return false;
+  }
+
+  Future<void> _open(Retailer r) async {
+    await Navigator.push(
+        context, MaterialPageRoute(builder: (_) => RetailerDetailScreen(retailer: r, onAction: _act)));
+    if (mounted) _load();
   }
 
   @override
@@ -278,7 +297,7 @@ class _RetailersScreenState extends State<RetailersScreen> {
     final canAdd = user?.canAddRetailers ?? false;
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
@@ -330,7 +349,9 @@ class _RetailersScreenState extends State<RetailersScreen> {
                         decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
-                          onTap: isPartner ? () => _menu(r) : null,
+                          // the retailer's page: details and their orders; long press for the quick menu
+                          onTap: isPartner ? () => _open(r) : null,
+                          onLongPress: isPartner ? () => _menu(r) : null,
                           leading: CircleAvatar(
                             backgroundColor: _teal.withAlpha(25),
                             child: const Icon(Icons.storefront_outlined, color: _teal),

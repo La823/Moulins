@@ -10,6 +10,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/shell_leading.dart';
 
 final _specialProductService = SpecialProductService();
 
@@ -49,7 +50,7 @@ class _SpecialProductsScreenState extends ConsumerState<SpecialProductsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('13 Alpha Unit', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

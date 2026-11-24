@@ -51,3 +51,46 @@ func respondTrend(w http.ResponseWriter, r *http.Request, db *pgxpool.Pool, code
 	}
 	writeJSON(w, out)
 }
+
+// GET /admin/partners/{id}/products — every product the partner bought this
+// year (sale invoices), with qty, value, rates, profit and returns.
+func PartnerProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(mux.Vars(r)["id"])
+		if err != nil {
+			http.Error(w, "invalid partner id", http.StatusBadRequest)
+			return
+		}
+		code, err := margede.PartyCodeOfUser(r.Context(), db, id)
+		if errors.Is(err, margede.ErrNotLinked) {
+			http.Error(w, "This partner isn't linked to a Marg party", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("partner %s products: %v", id, err)
+			http.Error(w, "could not load the products", http.StatusInternalServerError)
+			return
+		}
+		out, err := margede.PartyProducts(r.Context(), db, code)
+		if err != nil {
+			log.Printf("party %s products: %v", code, err)
+			http.Error(w, "could not load the products", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"party_code": code, "rows": out})
+	}
+}
+
+// GET /admin/marg-ledger/{code}/products — the same list for a Marg account.
+func PartyProductsHandler(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		code := mux.Vars(r)["code"]
+		out, err := margede.PartyProducts(r.Context(), db, code)
+		if err != nil {
+			log.Printf("party %s products: %v", code, err)
+			http.Error(w, "could not load the products", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"party_code": code, "rows": out})
+	}
+}

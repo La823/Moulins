@@ -17,6 +17,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
 import '../../data/divisions.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/shell_leading.dart';
 
 const _filterRed = Color(0xFFAC2528);
 
@@ -199,14 +200,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     _load(reset: true);
   }
 
-  // Clicking a "did you mean" salt suggestion filters to products that
-  // actually contain that salt (key_ingredients), not a loose name match.
+  // Tapping a "did you mean" word searches names and salts together: the
+  // words come from both, so a salt-only search found nothing for a word
+  // that is a product name (tapping "APPSTORM" showed no products).
   void _applySaltSuggestion(String suggestion) {
     _searchCtrl.text = suggestion;
     _suggestDebounce?.cancel();
     setState(() {
       _search = suggestion;
-      _saltOnly = true;
+      _saltOnly = false;
       _showDropdown = false;
     });
     _searchFocus.unfocus();
@@ -239,6 +241,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       drawer: const AppDrawer(),
       endDrawer: canOrder ? const CartDrawer() : null,
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Products',

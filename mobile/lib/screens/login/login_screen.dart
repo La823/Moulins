@@ -2,11 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/api.dart';
+import '../../config/app_flavor.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/phone_input.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/play_once_video.dart';
 
 const _teal = Color(0xFF00A6A4);
+
+// the warning toast when the phone number isn't 10 digits
+void _phoneWarning(BuildContext context) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(const SnackBar(
+      content: Text('Please enter a real 10-digit mobile number.'),
+      backgroundColor: Color(0xFFD84315),
+      behavior: SnackBarBehavior.floating,
+    ));
+}
 
 void _showForgotPasswordSheet(BuildContext context) {
   showModalBottomSheet(
@@ -38,7 +51,13 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
   }
 
   Future<void> _submit() async {
-    if (_phoneCtrl.text.trim().isEmpty) return;
+    if (!isTenDigitPhone(_phoneCtrl.text)) {
+      setState(() {
+        _done = false;
+        _message = 'Please enter a real 10-digit mobile number.';
+      });
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final res = await createDio().post('/auth/forgot-password', data: {
@@ -99,8 +118,17 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
             TextField(
               controller: _phoneCtrl,
               keyboardType: TextInputType.phone,
+              inputFormatters: [IndianPhoneFormatter()],
+              onChanged: (_) {
+                if (_message != null) setState(() => _message = null);
+              },
               decoration: InputDecoration(
                 labelText: 'Phone Number',
+                prefixIcon: const IndiaCodeBox(),
+                prefixIconConstraints: IndiaCodeBox.constraints,
+                hintText: '10-digit mobile number',
+                // the 10-digit warning (a toast would sit behind this sheet)
+                errorText: _message,
                 filled: true,
                 fillColor: Colors.grey.shade50,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
@@ -156,6 +184,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _login() async {
+    // +91 is fixed in the field; the number itself must be 10 digits
+    if (!isTenDigitPhone(_phoneCtrl.text)) {
+      _phoneWarning(context);
+      return;
+    }
     final ok = await ref
         .read(authProvider.notifier)
         .login(_phoneCtrl.text.trim(), _passCtrl.text.trim());
@@ -260,9 +293,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // the staff app says which app it is, so it isn't mistaken for Moulins
+        if (isTeamApp) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: const Color(0xFFB71C1C), borderRadius: BorderRadius.circular(6)),
+            child: const Text('MPPL TEAM',
+                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+          ),
+          const SizedBox(height: 12),
+        ],
         const Text('Sign In', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A))),
         const SizedBox(height: 6),
-        const Text('Sign in to your account with your phone number and password',
+        const Text(
+            isTeamApp
+                ? 'Staff sign in with your phone number and password'
+                : 'Sign in to your account with your phone number and password',
             style: TextStyle(color: Colors.grey, fontSize: 13.5, height: 1.4)),
         const SizedBox(height: 26),
 
@@ -270,7 +316,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         TextField(
           controller: _phoneCtrl,
           keyboardType: TextInputType.phone,
-          decoration: _inputDecoration('Phone Number', Icons.phone_outlined),
+          inputFormatters: [IndianPhoneFormatter()],
+          decoration: _inputDecoration('Phone Number', Icons.phone_outlined)
+              .copyWith(
+                prefixIcon: const IndiaCodeBox(icon: Icons.phone_outlined),
+                prefixIconConstraints: IndiaCodeBox.constraints,
+                hintText: '10-digit mobile number',
+              ),
         ),
         const SizedBox(height: 16),
 

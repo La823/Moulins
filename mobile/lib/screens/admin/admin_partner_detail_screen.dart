@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/admin_user.dart';
 import '../../services/admin_service.dart';
 import '../../utils/validators.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -10,6 +11,7 @@ const _statusColors = {
   'pending': Color(0xFFB45309),
   'confirmed': Color(0xFF1D4ED8),
   'transferred': Color(0xFF4F46E5),
+  'packing': Color(0xFFB45309),
   'packed': Color(0xFF0F766E),
   'shipped': Color(0xFF7C3AED),
   'delivered': Color(0xFF15803D),
@@ -128,7 +130,7 @@ class _AdminPartnerDetailScreenState extends State<AdminPartnerDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

@@ -25,7 +25,7 @@ class MeetingVisitLog {
         id: json['id'] ?? '',
         userId: json['user_id'],
         userName: json['user_name'] ?? '',
-        recordedAt: DateTime.tryParse(json['recorded_at'] ?? '') ?? DateTime.now(),
+        recordedAt: DateTime.tryParse(json['recorded_at'] ?? '')?.toLocal() ?? DateTime.now(),
         latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
         longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
         notes: json['notes'],

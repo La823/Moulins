@@ -28,7 +28,9 @@ import { ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 const GRID_PER_PAGE = 36;
 const LIST_PER_PAGE = 60;
 const VIEW_KEY = "staffOrder.view";
-const SALES_KEY = "staffOrder.sales"; // the past rates drawer left open
+// the sale history drawer: open unless it was closed (v2: open by default
+// for everyone, whatever the old key remembered)
+const SALES_KEY = "staffOrder.sales.v2";
 const VIEWS = [
   ["grid", "Grid"],
   ["list-img", "List with pictures"],
@@ -67,9 +69,9 @@ export const entryBoxOpen = () => typeof document !== "undefined" && !!document.
 export function usePastRatesDrawer() {
   const [open, setOpen] = useState(() => {
     try {
-      return localStorage.getItem(SALES_KEY) === "1";
+      return localStorage.getItem(SALES_KEY) !== "0";
     } catch {
-      return false;
+      return true;
     }
   });
   const toggle = useCallback(

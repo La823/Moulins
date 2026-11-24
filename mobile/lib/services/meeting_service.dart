@@ -62,8 +62,14 @@ class MeetingService {
     });
   }
 
-  Future<void> updateMeetingStatus(String id, String status) async {
-    await _dio.put('/meetings/$id/status', data: {'status': status});
+  /// Marks a meeting done / cancelled, with the reason and where the person
+  /// was (the server keeps who and when).
+  Future<void> updateMeetingStatus(String id, String status, {String? reason, double? latitude, double? longitude}) async {
+    await _dio.put('/meetings/$id/status', data: {
+      'status': status,
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      if (latitude != null && longitude != null) ...{'latitude': latitude, 'longitude': longitude},
+    });
   }
 
   Future<void> updateMeetingMom(String id, String? mom) async {

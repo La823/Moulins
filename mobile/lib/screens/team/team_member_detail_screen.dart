@@ -8,6 +8,7 @@ import '../../services/meeting_service.dart';
 import '../../services/team_service.dart';
 import 'team_member_settings_screen.dart';
 import 'team_month_summary_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -281,6 +282,7 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
                     DropdownMenuItem(value: 'late', child: Text('Late')),
                     DropdownMenuItem(value: 'half-day', child: Text('Half Day')),
                     DropdownMenuItem(value: 'absent', child: Text('Absent')),
+                    DropdownMenuItem(value: 'holiday', child: Text('Holiday')),
                   ],
                   onChanged: (v) => setSheetState(() => status = v ?? 'present'),
                 ),
@@ -341,7 +343,7 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(_member.displayName, style: const TextStyle(color: _ink, fontWeight: FontWeight.w600)),
@@ -451,6 +453,7 @@ class _TeamMemberDetailScreenState extends State<TeamMemberDetailScreen> {
                           'present' => const Color(0xFFE6F7EE),
                           'late' => const Color(0xFFFFF6E0),
                           'half-day' => const Color(0xFFFFEEDD),
+                          'holiday' => const Color(0xFFE8E9FD),
                           _ => const Color(0xFFFDE7E7),
                         };
                       }

@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,93 +9,14 @@ import '../../providers/auth_provider.dart';
 import '../../models/transport.dart';
 import '../../models/transport_mode.dart';
 import '../../services/order_service.dart';
+import '../../services/admin_order_service.dart';
 import '../../services/transport_service.dart';
 import '../../services/retailer_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/shell_leading.dart';
+import '../../widgets/cart_qty_field.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
-
-// Rounds a typed quantity up to the nearest multiple of the product's MOQ
-// (e.g. typing 7 with an MOQ of 5 commits as 10), and never below one MOQ.
-int _roundUpToMoq(int quantity, int moq) {
-  final step = moq > 0 ? moq : 1;
-  final rounded = ((quantity + step - 1) ~/ step) * step;
-  return rounded < step ? step : rounded;
-}
-
-// Free-text quantity field — lets the shopper type any number, then on
-// blur/submit rounds it up to the nearest MOQ multiple and commits.
-class _CartQtyField extends StatefulWidget {
-  final int quantity;
-  final int moq;
-  final ValueChanged<int> onCommit;
-
-  const _CartQtyField({super.key, required this.quantity, required this.moq, required this.onCommit});
-
-  @override
-  State<_CartQtyField> createState() => _CartQtyFieldState();
-}
-
-class _CartQtyFieldState extends State<_CartQtyField> {
-  late final TextEditingController _ctrl;
-  late final FocusNode _focusNode;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: '${widget.quantity}');
-    _focusNode = FocusNode();
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) _commit();
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _CartQtyField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.quantity != widget.quantity && !_focusNode.hasFocus) {
-      _ctrl.text = '${widget.quantity}';
-    }
-  }
-
-  void _commit() {
-    final parsed = int.tryParse(_ctrl.text);
-    if (parsed == null || parsed < 1) {
-      _ctrl.text = '${widget.quantity}';
-      return;
-    }
-    final rounded = _roundUpToMoq(parsed, widget.moq);
-    _ctrl.text = '$rounded';
-    if (rounded != widget.quantity) widget.onCommit(rounded);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 44,
-      child: TextField(
-        controller: _ctrl,
-        focusNode: _focusNode,
-        keyboardType: TextInputType.number,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-        decoration: const InputDecoration(
-          isDense: true,
-          contentPadding: EdgeInsets.symmetric(vertical: 6),
-          border: InputBorder.none,
-        ),
-        onSubmitted: (_) => _focusNode.unfocus(),
-      ),
-    );
-  }
-}
 
 class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
@@ -137,6 +59,107 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       if (mounted) setState(() { _transportOptions = list; _loadingTransports = false; });
     } catch (_) {
       if (mounted) setState(() { _transportOptions = []; _loadingTransports = false; });
+    }
+  }
+
+  // Staff who can place orders (admins, employees with orders_edit) order
+  // for a partner from their cart: pick the customer, a rate per line
+  // (optional), and it goes in as POST /admin/orders like the website's
+  // New order page.
+  bool get _forCustomer {
+    final u = ref.read(authProvider).user;
+    return u != null && (u.role == 'admin' || (u.role == 'employee' && u.permissions.contains('orders_edit')));
+  }
+
+  Map<String, dynamic>? _customer; // {id, username, phone_number}
+  final Map<String, TextEditingController> _rates = {}; // product id -> rate box
+
+  TextEditingController _rateBox(String productId) => _rates.putIfAbsent(productId, TextEditingController.new);
+
+  // blank = no rate; otherwise a number of zero or more (NaN = invalid)
+  double? _rateOf(String productId) {
+    final t = _rates[productId]?.text.trim() ?? '';
+    if (t.isEmpty) return null;
+    final n = double.tryParse(t);
+    return n != null && n >= 0 ? n : double.nan;
+  }
+
+  @override
+  void dispose() {
+    for (final c in _rates.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  String _customerLabel(Map<String, dynamic> c) {
+    final name = '${c['username'] ?? ''}'.trim();
+    return name.isNotEmpty ? name : '${c['phone_number'] ?? 'Unnamed partner'}';
+  }
+
+  Future<void> _pickCustomer() async {
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => const _CustomerPicker(),
+    );
+    if (picked != null && mounted) setState(() => _customer = picked);
+  }
+
+  Future<void> _placeForCustomer() async {
+    final items = ref.read(cartProvider);
+    if (items.isEmpty) return;
+    String? problem;
+    if (_customer == null) {
+      problem = 'Choose the customer this order is for.';
+    } else if (items.any((i) => _rateOf(i.product.id)?.isNaN ?? false)) {
+      problem = 'A rate must be a number of zero or more, or left blank.';
+    }
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(problem), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    setState(() => _placing = true);
+    try {
+      final id = await AdminOrderService().createForCustomer(
+        '${_customer!['id']}',
+        [
+          for (final i in items)
+            {
+              'product_id': i.product.id,
+              'product_name': i.product.name,
+              'quantity': i.quantity,
+              if (_rateOf(i.product.id) != null) 'rate': _rateOf(i.product.id),
+            },
+        ],
+        transportMode: _transportMode,
+        transportId: _transportId,
+      );
+      // the items came from the staff member's own cart: empty it (the
+      // customer's own cart is left as it is)
+      ref.read(cartProvider.notifier).clear();
+      if (mounted) {
+        context.go('/order-placed', extra: {
+          'next': '/admin/orders/$id',
+          'message': 'Order placed for ${_customerLabel(_customer!)}.',
+        });
+      }
+    } catch (e) {
+      var message = 'The order could not be placed. Please try again.';
+      if (e is DioException && e.response?.data is String && '${e.response?.data}'.trim().isNotEmpty) {
+        message = '${e.response?.data}'.trim();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _placing = false);
     }
   }
 
@@ -185,6 +208,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   }
 
   Future<void> _placeOrder() async {
+    if (_forCustomer) return _placeForCustomer();
     if (_isRetailer) return _placeRetailerOrder();
     final items = ref.read(cartProvider);
     if (items.isEmpty) return;
@@ -231,7 +255,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text('Cart (${items.length})', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
@@ -273,6 +297,32 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                   // staff enter a rate on receipt, and MRP is
                                   // not what the partner pays.
                                   Text(item.product.name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  // staff ordering for a customer: the line's rate
+                                  if (_forCustomer) ...[
+                                    const SizedBox(height: 6),
+                                    SizedBox(
+                                      width: 110,
+                                      height: 34,
+                                      child: TextField(
+                                        controller: _rateBox(item.product.id),
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        onChanged: (_) => setState(() {}),
+                                        style: const TextStyle(fontSize: 13),
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          prefixText: '₹ ',
+                                          hintText: 'Rate',
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                            borderSide: BorderSide(
+                                                color: (_rateOf(item.product.id)?.isNaN ?? false) ? Colors.red : Colors.grey.shade300),
+                                          ),
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -283,7 +333,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                   final step = item.product.moq > 0 ? item.product.moq : 1;
                                   cart.updateQty(item.product.id, item.quantity - step);
                                 }),
-                                _CartQtyField(
+                                CartQtyField(
                                   key: ValueKey(item.product.id),
                                   quantity: item.quantity,
                                   moq: item.product.moq,
@@ -320,7 +370,56 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       ),
                       child: Column(
                         children: [
-                          if (_canChoose) ...[
+                          if (_forCustomer) ...[
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('Order for', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+                            ),
+                            const SizedBox(height: 8),
+                            InkWell(
+                              onTap: _pickCustomer,
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                decoration: BoxDecoration(
+                                  color: _customer == null ? Colors.grey.shade50 : const Color(0xFFE6F7F7),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: _customer == null ? Colors.grey.shade300 : const Color(0xFF00A6A4)),
+                                ),
+                                child: Row(children: [
+                                  Icon(Icons.person_search, size: 20, color: _customer == null ? Colors.grey.shade600 : const Color(0xFF00807E)),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _customer == null
+                                        ? Text('Choose the customer', style: TextStyle(fontSize: 14, color: Colors.grey.shade600))
+                                        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                            Text(_customerLabel(_customer!),
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A))),
+                                            if ('${_customer!['phone_number'] ?? ''}'.isNotEmpty)
+                                              Text('${_customer!['phone_number']}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                                          ]),
+                                  ),
+                                  Text(_customer == null ? 'Choose' : 'Change',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF00A6A4))),
+                                ]),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Builder(builder: (_) {
+                              final total = items.fold<double>(0, (s, i) {
+                                final r = _rateOf(i.product.id);
+                                return s + (r == null || r.isNaN ? 0 : r * i.quantity);
+                              });
+                              return Align(
+                                alignment: Alignment.centerRight,
+                                child: Text('Total at these rates: ₹${total.toStringAsFixed(2)}',
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A))),
+                              );
+                            }),
+                            const SizedBox(height: 12),
+                          ],
+                          if (_canChoose && !_forCustomer) ...[
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text('Send this order to', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
@@ -415,7 +514,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           ],
                           ],
                       const SizedBox(height: 16),
-                      if (!_isRetailer) ...[
+                      // a staff order uses the customer's own address
+                      if (!_isRetailer && !_forCustomer) ...[
                         _addressSummary(context),
                         const SizedBox(height: 16),
                       ],
@@ -432,7 +532,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                           ),
                           child: _placing
                               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : const Text('Place Order', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                              : Text(_forCustomer ? 'Place order for customer' : 'Place Order',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                         ),
                       ),
                       ],
@@ -493,4 +594,101 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           child: Icon(icon, size: 16, color: Colors.grey.shade700),
         ),
       );
+}
+
+/// Search partners by name or phone; pops the chosen one
+/// ({id, username, phone_number}).
+class _CustomerPicker extends StatefulWidget {
+  const _CustomerPicker();
+
+  @override
+  State<_CustomerPicker> createState() => _CustomerPickerState();
+}
+
+class _CustomerPickerState extends State<_CustomerPicker> {
+  final _q = TextEditingController();
+  Timer? _debounce;
+  List<Map<String, dynamic>> _results = [];
+  bool _loading = false;
+  String? _error;
+  int _req = 0;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _q.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String v) {
+    _debounce?.cancel();
+    if (v.trim().isEmpty) {
+      setState(() => (_results = [], _loading = false, _error = null));
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 300), () => _search(v.trim()));
+  }
+
+  Future<void> _search(String q) async {
+    final req = ++_req;
+    setState(() => (_loading = true, _error = null));
+    try {
+      final list = await AdminOrderService().searchCustomers(q);
+      if (mounted && req == _req) setState(() => _results = list);
+    } catch (_) {
+      if (mounted && req == _req) setState(() => _error = 'Could not search. Check the connection and try again.');
+    } finally {
+      if (mounted && req == _req) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              controller: _q,
+              autofocus: true,
+              onChanged: _onChanged,
+              decoration: InputDecoration(
+                hintText: 'Partner name or phone',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+          if (_loading) const LinearProgressIndicator(minHeight: 2, color: Color(0xFF00A6A4)),
+          Expanded(
+            child: _error != null
+                ? Center(child: Text(_error!, style: TextStyle(color: Colors.grey.shade700)))
+                : _results.isEmpty
+                    ? Center(
+                        child: Text(_q.text.trim().isEmpty ? 'Type to search partners' : (_loading ? '' : 'No partner found'),
+                            style: TextStyle(color: Colors.grey.shade600)))
+                    : ListView.separated(
+                        itemCount: _results.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final c = _results[i];
+                          final name = '${c['username'] ?? ''}'.trim();
+                          final phone = '${c['phone_number'] ?? ''}';
+                          return ListTile(
+                            title: Text(name.isEmpty ? 'Unnamed partner' : name,
+                                style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: phone.isEmpty ? null : Text(phone),
+                            onTap: () => Navigator.of(context).pop(c),
+                          );
+                        },
+                      ),
+          ),
+        ]),
+      ),
+    );
+  }
 }

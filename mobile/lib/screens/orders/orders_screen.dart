@@ -10,6 +10,8 @@ import '../../widgets/profile_button.dart';
 import 'package:intl/intl.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/team_orders_switch.dart';
+import '../../widgets/shell_leading.dart';
 
 class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key});
@@ -47,12 +49,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(isPartner ? 'My Orders' : 'Orders', style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
         actions: const [ChatButton(), NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
-      body: ResponsiveCenter(child: _loading
+      body: ResponsiveCenter(child: Column(children: [
+        const TeamOrdersSwitch(toPartner: false),
+        Expanded(child: _loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF00A6A4)))
           : _orders == null || _orders!.isEmpty
               ? Center(
@@ -75,7 +81,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     itemBuilder: (ctx, i) => _OrderCard(order: _orders![i]),
                   ),
                 ),
-      ),
+        ),
+      ])),
     );
   }
 }

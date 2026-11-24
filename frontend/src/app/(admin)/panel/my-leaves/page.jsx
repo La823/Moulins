@@ -7,6 +7,7 @@ import {
   shiftMonth, prettyMonth, fmtDays, inputCls, timeOf, Stat, Stepper, EmployeeMonthView,
   LeaveStatusChip, leaveRange, paidSplit,
 } from "@/components/admin/attendanceShared";
+import { MyMissedPunches } from "@/components/admin/MissedPunches";
 
 // Staff self-service: leave balance, apply for leave, and their own
 // fingerprint attendance. Works once an admin has linked the login to the
@@ -178,6 +179,8 @@ export default function MyLeavesPage() {
           )}
         </div>
       </div>
+
+      <MyMissedPunches />
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <h3 className="text-sm font-semibold text-gray-800 mr-auto">My attendance</h3>

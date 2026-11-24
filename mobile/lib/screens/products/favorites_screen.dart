@@ -13,6 +13,7 @@ import '../../services/product_service.dart';
 import '../../widgets/product_card.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 class FavoritesScreen extends ConsumerStatefulWidget {
   const FavoritesScreen({super.key});
@@ -84,6 +85,8 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Favorites', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

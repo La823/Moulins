@@ -6,6 +6,7 @@ import '../../models/retailer.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/retailer_service.dart';
 import 'retailer_orders_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 /// One retailer order. The partner accepts it (with a rate per product),
 /// declines it, marks it dispatched / delivered, and can send it to Moulins
@@ -231,7 +232,7 @@ class _RetailerOrderDetailScreenState extends ConsumerState<RetailerOrderDetailS
     final fmt = DateFormat('d MMM yyyy, h:mm a');
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

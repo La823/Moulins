@@ -12,7 +12,12 @@
           "package_name": "com.moulinspharma.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "970076765844-su56jm4eppdjqr84iqjqbjhbjq2v1fip.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD9j56rs23ZXTuoFDpNv8jxds4a67P72jw"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "970076765844-su56jm4eppdjqr84iqjqbjhbjq2v1fip.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
@@ -31,7 +41,12 @@
           "package_name": "com.moulinspharma.moulins"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "970076765844-su56jm4eppdjqr84iqjqbjhbjq2v1fip.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD9j56rs23ZXTuoFDpNv8jxds4a67P72jw"
@@ -39,7 +54,41 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "970076765844-su56jm4eppdjqr84iqjqbjhbjq2v1fip.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:970076765844:android:8f3d70563c49a4a055fe81",
+        "android_client_info": {
+          "package_name": "com.moulinspharma.team"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "970076765844-su56jm4eppdjqr84iqjqbjhbjq2v1fip.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9j56rs23ZXTuoFDpNv8jxds4a67P72jw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "970076765844-su56jm4eppdjqr84iqjqbjhbjq2v1fip.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

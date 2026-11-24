@@ -3,6 +3,7 @@ import '../../models/product.dart';
 import '../../services/admin_service.dart';
 import '../../utils/responsive.dart';
 import 'admin_product_form_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -76,7 +77,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Products', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),

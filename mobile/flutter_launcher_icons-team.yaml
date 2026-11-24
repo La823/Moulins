@@ -1,0 +1,17 @@
+# MPPL Team (the staff app, `--flavor team`): the Moulins logo in red on white
+# with "TEAM" under it. Generates into android/app/src/team/res only.
+# While this file exists, `dart run flutter_launcher_icons` runs per-flavor
+# files only, so it never touches the Moulins icon in src/main.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icons/team_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icons/team_icon_foreground.png"
+  min_sdk_android: 21
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false

@@ -3,6 +3,7 @@ import '../../models/retailer.dart';
 import '../../services/retailer_service.dart';
 import '../../widgets/doc_verify_dialogs.dart';
 import '../../widgets/scraped_details.dart';
+import '../../widgets/shell_leading.dart';
 
 /// Partner: a retailer's GST number and drug licences. Each can be checked
 /// against the government portal (GST needs its captcha) or saved
@@ -156,7 +157,7 @@ class _RetailerDocumentsScreenState extends State<RetailerDocumentsScreen> {
     final docs = _docs;
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

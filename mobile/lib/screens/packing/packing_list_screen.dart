@@ -3,11 +3,22 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../services/packing_service.dart';
 import '../../services/retailer_service.dart';
+import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
+// distinct colours per detail, so they stand apart at a glance
+const _pageBg = Color(0xFFEEF1F5);
+const _cardEdge = Color(0xFFCBD5E1);
+const _muted = Color(0xFF475569);
+const _assigned = Color(0xFF6D28D9);
+const _packedGreen = Color(0xFF047857);
+const _inProgress = Color(0xFFC2410C);
 
-/// Orders to pack (confirmed, oldest first) and the ones packed lately.
+/// Orders to pack (sent to packing): the ones assigned to the packer by the
+/// rotation first, then the rest of the team's (anyone can help); and the
+/// ones packed lately.
 class PackingListScreen extends StatefulWidget {
   const PackingListScreen({super.key});
 
@@ -40,8 +51,11 @@ class _PackingListScreenState extends State<PackingListScreen> {
   Widget build(BuildContext context) {
     final fmt = DateFormat('d MMM, h:mm a');
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: _pageBg,
+      drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Packing', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
@@ -80,7 +94,18 @@ class _PackingListScreenState extends State<PackingListScreen> {
                 ),
               )
             else
-              for (final r in _rows!)
+              for (final (i, r) in _rows!.indexed) ...[
+                // to pack: a heading where "mine" starts and where the team's start
+                if (!_packed && (i == 0 || _rows![i - 1].mine != r.mine))
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 8, top: i == 0 ? 0 : 8),
+                    child: Text(
+                      r.mine
+                          ? 'Assigned to me (${_rows!.where((x) => x.mine).length})'
+                          : 'Rest of the team (${_rows!.where((x) => !x.mine).length})',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: r.mine ? _teal : _muted),
+                    ),
+                  ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Material(
@@ -95,7 +120,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+                            borderRadius: BorderRadius.circular(12), border: Border.all(color: _cardEdge)),
                         child: Row(
                           children: [
                             Expanded(
@@ -110,11 +135,14 @@ class _PackingListScreenState extends State<PackingListScreen> {
                                       if (r.city.isNotEmpty) r.city,
                                       if (r.createdAt != null) 'Ordered ${fmt.format(r.createdAt!)}',
                                     ].join(' · '),
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: _muted),
                                   ),
                                   if (_packed && r.packedAt != null)
                                     Text('Packed by ${r.packedBy.isEmpty ? '—' : r.packedBy} · ${fmt.format(r.packedAt!)}',
-                                        style: TextStyle(fontSize: 12, color: Colors.teal.shade700)),
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _packedGreen)),
+                                  if (!_packed && !r.mine)
+                                    Text(r.assignedTo.isEmpty ? 'Not assigned' : 'Assigned to ${r.assignedTo}',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _assigned)),
                                 ],
                               ),
                             ),
@@ -122,21 +150,28 @@ class _PackingListScreenState extends State<PackingListScreen> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text('${r.ticked}/${r.items}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: _ink)),
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        color: _packed ? _packedGreen : (r.started ? _inProgress : _ink))),
                                 Text(
                                   _packed ? 'packed' : (r.started ? 'being packed' : 'not started'),
-                                  style: TextStyle(fontSize: 11, color: r.started && !_packed ? _teal : Colors.grey.shade500),
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: _packed ? _packedGreen : (r.started ? _inProgress : _muted)),
                                 ),
                               ],
                             ),
                             const SizedBox(width: 4),
-                            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                            const Icon(Icons.chevron_right, color: _muted),
                           ],
                         ),
                       ),
                     ),
                   ),
                 ),
+              ],
           ],
         ),
       ),

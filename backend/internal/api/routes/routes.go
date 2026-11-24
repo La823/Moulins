@@ -47,6 +47,7 @@ import (
 	appVersionHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/appversion"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/payments"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/presentations"
+	productragHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/productrag"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/products"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/productspec"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/purchaseordermaster"
@@ -60,10 +61,9 @@ import (
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transportmodes"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/transports"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/units"
-	"github.com/lavanyaarora/server/internal/api/routehandlers/visitors"
 	userauth "github.com/lavanyaarora/server/internal/api/routehandlers/userAuth"
-	productragHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/productrag"
 	vectorsearchHandlers "github.com/lavanyaarora/server/internal/api/routehandlers/vectorsearch"
+	"github.com/lavanyaarora/server/internal/api/routehandlers/visitors"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/warehouse"
 	"github.com/lavanyaarora/server/internal/api/routehandlers/warehousezones"
 	"github.com/lavanyaarora/server/internal/cache"
@@ -100,8 +100,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 
 	// public auth routes
 	router.HandleFunc("/auth/login", auth.LoginHandler(db)).Methods("POST")
-	router.HandleFunc("/auth/forgot-password", auth.ForgotPasswordHandler(db)).Methods("POST")
 	router.HandleFunc("/auth/google", auth.GoogleSignInHandler(db)).Methods("POST") // visitors sign up
+	router.HandleFunc("/auth/forgot-password", auth.ForgotPasswordHandler(db)).Methods("POST")
 	router.HandleFunc("/auth/reset-password", auth.ResetPasswordHandler(db)).Methods("POST")
 	// a customer's order PDF, from the link in the WhatsApp message (token only)
 	router.HandleFunc("/order-pdf/{token}", orders.PublicOrderPDFHandler(db)).Methods("GET")
@@ -127,20 +127,20 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	// protected routes (require valid JWT)
 	protected := router.PathPrefix("").Subrouter()
 	protected.Use(middleware.Auth)
-
-	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
-	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
-	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
 	// visitors reach only /auth/me and their partnership request — see
 	// middleware/visitor.go before adding a route they should have
 	protected.Use(middleware.VisitorLimits)
 	// retailers likewise reach only the routes in middleware/retailer.go
 	protected.Use(middleware.RetailerLimits)
-	protected.HandleFunc("/profile/address/billing-from-gst", userauth.SetBillingAddressFromGSTHandler(db, rdb)).Methods("POST")
-	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
+
+	protected.HandleFunc("/auth/me", auth.MeHandler(db, rdb)).Methods("GET")
 	protected.HandleFunc("/visitor/partnership-request", visitors.MyRequestHandler(db)).Methods("GET")
 	protected.HandleFunc("/visitor/partnership-request", visitors.CreateRequestHandler(db)).Methods("POST")
 	protected.HandleFunc("/visitor/events", visitors.EventsHandler(db)).Methods("POST")
+	protected.HandleFunc("/profile/transport-mode", userauth.UpdateMyTransportModeHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/address", userauth.UpdateMyAddressHandler(db, rdb)).Methods("PUT")
+	protected.HandleFunc("/profile/address/billing-from-gst", userauth.SetBillingAddressFromGSTHandler(db, rdb)).Methods("POST")
+	protected.HandleFunc("/profile/email", userauth.UpdateMyEmailHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/password", userauth.UpdateMyPasswordHandler(db, rdb)).Methods("PUT")
 	protected.HandleFunc("/profile/balance", userauth.GetMyBalanceHandler(db)).Methods("GET")
 	protected.HandleFunc("/profile/expected-payment", userauth.GetMyExpectedPaymentHandler(db)).Methods("GET")
@@ -458,6 +458,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	margAccountsStaff.HandleFunc("/marg-daybook", margedeHandlers.ListDaybookHandler(db)).Methods("GET")
 	margAccountsStaff.HandleFunc("/marg-daybook/parties", margedeHandlers.ListDaybookPartiesHandler(db)).Methods("GET")
 	margAccountsStaff.HandleFunc("/marg-daybook/parties/{code}", margedeHandlers.GetDaybookPartyHandler(db)).Methods("GET")
+	margAccountsStaff.HandleFunc("/marg-ledger/{code}/products", margedeHandlers.PartyProductsHandler(db)).Methods("GET")
 
 	margStockStaff := protected.PathPrefix("/admin").Subrouter()
 	margStockStaff.Use(middleware.StaffOnly)
@@ -502,6 +503,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnerBillsStaff.Use(middleware.RequirePermission(db, "partner_bills_view", rdb))
 	partnerBillsStaff.HandleFunc("/partners/{id}/marg-bills", margedeHandlers.PartnerBillsHandler(db)).Methods("GET")
 	partnerBillsStaff.HandleFunc("/partners/{id}/product-trend", margedeHandlers.PartnerProductTrendHandler(db)).Methods("GET")
+	partnerBillsStaff.HandleFunc("/partners/{id}/products", margedeHandlers.PartnerProductsHandler(db)).Methods("GET")
 
 	// staff routes — warehouse layout editor (ported from the standalone
 	// editor's Python persistence layer; see backend/warehouse_layout_editor)
@@ -585,6 +587,7 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	leavesViewStaff.Use(middleware.StaffOnly)
 	leavesViewStaff.Use(middleware.RequirePermission(db, "leaves_view", rdb))
 	leavesViewStaff.HandleFunc("/leaves", etimeHandlers.ListLeavesHandler(db)).Methods("GET")
+	leavesViewStaff.HandleFunc("/missed-punches", etimeHandlers.ListMissedPunchesHandler(db)).Methods("GET")
 	leavesViewStaff.HandleFunc("/employees/{code}/balance", etimeHandlers.BalanceHandler(db)).Methods("GET")
 
 	leavesEditStaff := protected.PathPrefix("/admin/etime").Subrouter()
@@ -594,6 +597,8 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	leavesEditStaff.HandleFunc("/leaves/{id}/approve", etimeHandlers.ApproveLeaveHandler(db)).Methods("POST")
 	leavesEditStaff.HandleFunc("/leaves/{id}/reject", etimeHandlers.RejectLeaveHandler(db)).Methods("POST")
 	leavesEditStaff.HandleFunc("/leaves/{id}/cancel", etimeHandlers.AdminCancelLeaveHandler(db)).Methods("POST")
+	leavesEditStaff.HandleFunc("/missed-punches/{id}/approve", etimeHandlers.DecideMissedPunchHandler(db, true)).Methods("POST")
+	leavesEditStaff.HandleFunc("/missed-punches/{id}/reject", etimeHandlers.DecideMissedPunchHandler(db, false)).Methods("POST")
 
 	// Staff self-service: their own leave and scanner attendance, for any
 	// staff login linked to a scanner employee.
@@ -603,6 +608,9 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	etimeMe.HandleFunc("/month", etimeHandlers.MyMonthHandler(db)).Methods("GET")
 	etimeMe.HandleFunc("/leaves", etimeHandlers.ApplyLeaveHandler(db)).Methods("POST")
 	etimeMe.HandleFunc("/leaves/{id}/cancel", etimeHandlers.CancelMyLeaveHandler(db)).Methods("POST")
+	etimeMe.HandleFunc("/missed-punches", etimeHandlers.MyMissedPunchesHandler(db)).Methods("GET")
+	etimeMe.HandleFunc("/missed-punches", etimeHandlers.LogMissedPunchHandler(db)).Methods("POST")
+	etimeMe.HandleFunc("/missed-punches/{id}/cancel", etimeHandlers.CancelMyMissedPunchHandler(db)).Methods("POST")
 
 	// staff routes — settings
 	settingsViewStaff := protected.PathPrefix("/admin").Subrouter()
@@ -710,14 +718,6 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	productSpecEditStaff.HandleFunc("/product-specs/options/{id}", productspec.UpdateFieldOptionHandler(db)).Methods("PATCH")
 	productSpecEditStaff.HandleFunc("/product-specs/upload-url", productspec.UploadURLHandler()).Methods("POST")
 
-	// staff routes — onboarding review (folded into partners view/edit,
-	// since it's reviewing partner documents)
-	onboardingViewStaff := protected.PathPrefix("/admin").Subrouter()
-	onboardingViewStaff.Use(middleware.StaffOnly)
-	onboardingViewStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
-	onboardingViewStaff.HandleFunc("/onboarding", onboardingHandler.GetPendingPartners).Methods("GET")
-	onboardingViewStaff.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
-
 	// staff routes — partnership requests from visitors (partners view/edit)
 	partnershipViewStaff := protected.PathPrefix("/admin").Subrouter()
 	partnershipViewStaff.Use(middleware.StaffOnly)
@@ -730,6 +730,14 @@ func RegisterRoutes(router *mux.Router, db *pgxpool.Pool, rdb *cache.Client, cha
 	partnershipEditStaff.Use(middleware.StaffOnly)
 	partnershipEditStaff.Use(middleware.RequirePermission(db, "partners_edit", rdb))
 	partnershipEditStaff.HandleFunc("/partnership-requests/{id}", visitors.AdminUpdateHandler(db)).Methods("PATCH")
+
+	// staff routes — onboarding review (folded into partners view/edit,
+	// since it's reviewing partner documents)
+	onboardingViewStaff := protected.PathPrefix("/admin").Subrouter()
+	onboardingViewStaff.Use(middleware.StaffOnly)
+	onboardingViewStaff.Use(middleware.RequirePermission(db, "partners_view", rdb))
+	onboardingViewStaff.HandleFunc("/onboarding", onboardingHandler.GetPendingPartners).Methods("GET")
+	onboardingViewStaff.HandleFunc("/onboarding/partner/{userID}", onboardingHandler.GetPartnerOnboarding).Methods("GET")
 
 	onboardingEditStaff := protected.PathPrefix("/admin").Subrouter()
 	onboardingEditStaff.Use(middleware.StaffOnly)

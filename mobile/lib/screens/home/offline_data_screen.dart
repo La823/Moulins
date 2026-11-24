@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/offline_background.dart';
 import '../../services/offline_files.dart';
 import '../../services/offline_sync.dart';
+import '../../widgets/shell_leading.dart';
 
 /// Profile > Offline data: how the app keeps things for use without
 /// internet (Smart sync or Manual), Wi-Fi only or mobile data too, saving
@@ -119,7 +120,7 @@ class _OfflineDataScreenState extends State<OfflineDataScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

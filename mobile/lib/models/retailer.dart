@@ -125,6 +125,7 @@ class RetailerOrder {
   final int orderNo;
   final String retailerName;
   final String retailerPhone;
+  final String retailerId; // the buyer's user id (= Retailer.id for a retailer)
   final String? shopName; // a retailer's shop, or a doctor's clinic
   final String buyerKind; // retailer | doctor | team_member
   final String partnerName;
@@ -143,6 +144,7 @@ class RetailerOrder {
     required this.orderNo,
     required this.retailerName,
     required this.retailerPhone,
+    this.retailerId = '',
     this.shopName,
     this.buyerKind = 'retailer',
     required this.partnerName,
@@ -172,6 +174,7 @@ class RetailerOrder {
         orderNo: (j['order_no'] as num?)?.toInt() ?? 0,
         retailerName: j['retailer_name'] ?? '',
         retailerPhone: j['retailer_phone'] ?? '',
+        retailerId: j['retailer_id'] ?? '',
         shopName: j['shop_name'],
         buyerKind: j['buyer_kind'] ?? 'retailer',
         partnerName: j['partner_name'] ?? '',

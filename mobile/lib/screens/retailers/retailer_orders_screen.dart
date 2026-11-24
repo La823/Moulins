@@ -8,6 +8,8 @@ import '../../services/retailer_service.dart';
 import '../../widgets/app_drawer.dart';
 import '../../widgets/notification_bell_button.dart';
 import '../../widgets/profile_button.dart';
+import '../../widgets/team_orders_switch.dart';
+import '../../widgets/shell_leading.dart';
 
 Color retailerOrderStatusColor(String status) => switch (status) {
       'pending' => Colors.orange.shade700,
@@ -76,14 +78,23 @@ class _RetailerOrdersScreenState extends ConsumerState<RetailerOrdersScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,
-        title: Text(isRetailer ? 'My Orders' : 'Customer Orders', style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(
+            ref.watch(authProvider).user?.isTeamMember ?? false
+                ? 'Orders'
+                : isRetailer
+                    ? 'My Orders'
+                    : 'Customer Orders',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
         actions: const [NotificationBellButton(), ProfileButton(), SizedBox(width: 4)],
       ),
       body: Column(
         children: [
+          const TeamOrdersSwitch(toPartner: true),
           SizedBox(
             height: 52,
             child: ListView(

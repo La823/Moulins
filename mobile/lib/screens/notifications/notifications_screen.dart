@@ -8,6 +8,7 @@ import '../../widgets/app_drawer.dart';
 import '../../services/notification_links.dart';
 import 'package:go_router/go_router.dart';
 import 'notification_detail_screen.dart';
+import '../../widgets/shell_leading.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -47,6 +48,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Notifications', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

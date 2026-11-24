@@ -8,6 +8,7 @@ import Loader from "@/components/Loader";
 import { KIND_LABELS } from "@/lib/margLedger";
 import { BillRow, SortHeader, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
+import MargPartnerProducts from "@/components/admin/MargPartnerProducts";
 import { useBreadcrumbTitle, BackLink as TrailBackLink } from "@/components/admin/Breadcrumbs";
 
 // One Marg party (any ledger account): its details, totals per bill type,
@@ -146,7 +147,12 @@ export default function MargPartyPage() {
         </div>
       )}
 
-      {party.top_products.length > 0 && (
+      {party.totals.some((t) => t.code === "S") ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">All products bought this year</h3>
+          <MargPartnerProducts url={`/admin/marg-ledger/${encodeURIComponent(code)}/products`} />
+        </div>
+      ) : party.top_products.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 mb-5 overflow-x-auto">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-4 pb-2">Top products on these bills</h3>
           <table className="w-full text-sm">

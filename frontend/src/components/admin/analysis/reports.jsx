@@ -10,7 +10,7 @@ import { useCompanyMonthly, withCompanies, splitSeries } from "./companySplit";
 import { WindowNote, fmtMonth } from "@/components/admin/MargPeriod";
 import { PRODUCT_COMPANIES } from "@/components/admin/MargDemand";
 import {
-  money0, fmtCount, useUrlState, useSort, apiSettings, SearchBox, Pager, PartyCell, Trend, Empty, Tile, useFetch,
+  money0, fmtCount, useUrlState, useSort, apiSettings, SearchBox, LoadMore, PAGE, PartyCell, Trend, Empty, Tile, useFetch,
 } from "./common";
 
 // The full reports behind the Analysis board cards (backend
@@ -68,7 +68,8 @@ export function PartyRanking({ mode, prefix, s }) {
 
   useEffect(() => {
     setLoading(true);
-    const p = apiSettings(s, { mode, sort: sort.key, dir: sort.dir, page: String(page) });
+    // `page` is how many pages of rows are showing: they come as one list.
+    const p = apiSettings(s, { mode, sort: sort.key, dir: sort.dir, page: "1", limit: String(page * PAGE) });
     if (search) p.set("search", search);
     if (company && mode === "sales") p.set("company", company);
     if (mode === "sales") p.set("recent_days", String(days));
@@ -78,7 +79,7 @@ export function PartyRanking({ mode, prefix, s }) {
   const onSort = (k) => { setPage(1); sortBy(k); };
   const noun = mode === "sales" ? "Sales" : "Purchases";
   const lean = mode === "sales";
-  const offset = data ? (data.page - 1) * data.page_size : 0;
+  const offset = 0;
 
   const companyLabel = PRODUCT_COMPANIES.find((c) => c.code === company)?.label;
 
@@ -167,8 +168,8 @@ export function PartyRanking({ mode, prefix, s }) {
                 ))}
               </tbody>
             </table>
+            <LoadMore shown={data.rows.length} total={data.total} loading={loading} onMore={() => setPage(page + 1)} />
           </div>
-          <Pager page={page} total={data.total} pageSize={data.page_size} onPage={setPage} />
         </>
       )}
     </>
@@ -237,14 +238,14 @@ export function ProductRanking({ s }) {
 
   useEffect(() => {
     setLoading(true);
-    const p = apiSettings(s, { sort: sort.key, dir: sort.dir, page: String(page) });
+    const p = apiSettings(s, { sort: sort.key, dir: sort.dir, page: "1", limit: String(page * PAGE) });
     if (search) p.set("search", search);
     if (company) p.set("company", company);
     apiFetch(`/admin/marg-analysis/products?${p}`).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
   }, [sort.key, sort.dir, search, company, page, s.period, s.includeCurrent, s.withGST]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSort = (k) => { setPage(1); sortBy(k); };
-  const offset = data ? (data.page - 1) * data.page_size : 0;
+  const offset = 0;
 
   return (
     <>
@@ -336,8 +337,8 @@ export function ProductRanking({ s }) {
                 ))}
               </tbody>
             </table>
+            <LoadMore shown={data.rows.length} total={data.total} loading={loading} onMore={() => setPage(page + 1)} />
           </div>
-          <Pager page={page} total={data.total} pageSize={data.page_size} onPage={setPage} />
         </>
       )}
     </>
@@ -372,20 +373,22 @@ export function SalesTrend({ s, netDefault = false }) {
 
   // Net of credit notes: each month's credit notes come off its sales, and
   // the profit on the goods they return comes off its profit. Profit is
-  // always before GST (backend MonthlyOverview).
+  // always before GST (backend MonthlyOverview). Freight counts as profit
+  // whole, so margin is over goods plus freight.
   const months = raw.map((m) => {
-    const goods = netOfCredit ? m.sale_goods - m.return_goods : m.sale_goods;
+    const freight = netOfCredit ? m.freight - m.freight_back : m.freight;
+    const goods = (netOfCredit ? m.sale_goods - m.return_goods : m.sale_goods) + freight;
     const profit = netOfCredit ? m.net_profit : m.profit;
-    return { ...m, sales: netOfCredit ? m.sales - m.returns : m.sales, goods, p: profit, margin: goods ? (100 * profit) / goods : 0 };
+    return { ...m, sales: netOfCredit ? m.sales - m.returns : m.sales, goods, fr: freight, p: profit, margin: goods ? (100 * profit) / goods : 0 };
   });
   const best = months.reduce((a, m) => (m.sales > a.sales ? m : a), months[0]);
   const t = months.reduce(
     (a, m) => ({
       sales: a.sales + m.sales, returns: a.returns + m.returns, bills: a.bills + m.bills, fresh: a.fresh + m.new_customers,
-      p: a.p + m.p, goods: a.goods + m.goods, missBills: a.missBills + m.missing_bills, missAmt: a.missAmt + m.missing_amount,
+      p: a.p + m.p, goods: a.goods + m.goods, fr: a.fr + m.fr, missBills: a.missBills + m.missing_bills, missAmt: a.missAmt + m.missing_amount,
       uncosted: a.uncosted + m.uncosted_lines,
     }),
-    { sales: 0, returns: 0, bills: 0, fresh: 0, p: 0, goods: 0, missBills: 0, missAmt: 0, uncosted: 0 },
+    { sales: 0, returns: 0, bills: 0, fresh: 0, p: 0, goods: 0, fr: 0, missBills: 0, missAmt: 0, uncosted: 0 },
   );
   const pct = (v) => `${v.toFixed(1)}%`;
 
@@ -402,7 +405,7 @@ export function SalesTrend({ s, netDefault = false }) {
       </label>
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-3 mb-5">
         <Tile label={netOfCredit ? "Net sales this year" : "Sales this year"} value={money0(t.sales)} sub={`credit notes ${money0(t.returns)}`} />
-        <Tile label={netOfCredit ? "Net profit this year" : "Profit this year"} value={money0(t.p)} sub={`${pct(t.goods ? (100 * t.p) / t.goods : 0)} of goods sold, before GST`} />
+        <Tile label={netOfCredit ? "Net profit this year" : "Profit this year"} value={money0(t.p)} sub={`${pct(t.goods ? (100 * t.p) / t.goods : 0)} margin · incl. freight ${money0(t.fr)}`} />
         <Tile label="Profit per month" value={money0(t.p / months.length)} sub={`over ${months.length} months`} />
         <Tile label="Average sales per month" value={money0(t.sales / months.length)} sub={`over ${months.length} months`} />
         <Tile label="Highest sales month" value={money0(best.sales)} sub={fmtMonth(best.month, true)} />
@@ -424,6 +427,7 @@ export function SalesTrend({ s, netDefault = false }) {
               <th className="px-4 py-3 text-right">{netOfCredit ? "Net sales" : "Sales"}</th>
               <th className="px-4 py-3 text-right">{netOfCredit ? "Net profit" : "Profit"}</th>
               <th className="px-4 py-3 text-right">Margin</th>
+              <th className="px-4 py-3 text-right">Freight in profit</th>
               <th className="px-4 py-3 text-right">Sale bills</th>
               <th className="px-4 py-3 text-right">Avg bill</th>
               <th className="px-4 py-3 text-right">Customers billed</th>
@@ -445,6 +449,7 @@ export function SalesTrend({ s, netDefault = false }) {
                   )}
                 </td>
                 <td className="px-4 py-3 text-right text-gray-700">{pct(m.margin)}</td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{money0(m.fr)}</td>
                 <td className="px-4 py-3 text-right text-gray-600">{m.bills}</td>
                 <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{money0(m.avg_bill)}</td>
                 <td className="px-4 py-3 text-right text-gray-600">{m.active_customers}</td>
@@ -457,9 +462,10 @@ export function SalesTrend({ s, netDefault = false }) {
       </div>
       <div className="text-xs text-gray-400 mt-2 flex flex-col gap-1">
         <p>
-          Profit = goods sold before GST less their cost: qty + free at the purchase rate Marg holds for the batch sold. It is gross profit
-          (no freight, overheads or discounts given after the purchase bill), always before GST, whatever the GST setting.
-          {netOfCredit && " Net profit also takes off the profit on goods returned by credit notes."}
+          Profit = goods sold before GST less their cost (qty + free at the purchase rate Marg holds for the batch sold), plus the freight
+          charged on sale bills, counted as costing us nothing. Margin is over goods plus freight. It is gross profit (no courier bills,
+          overheads or discounts given after the purchase bill; cylinder and promotional charges left out), always before GST, whatever the GST setting.
+          {netOfCredit && " Net profit also takes off the profit on goods returned and the freight given back by credit notes."}
         </p>
         {t.missBills > 0 && (
           <p className="text-amber-700">
@@ -519,6 +525,75 @@ export function PurchasesTrend({ s }) {
           </tbody>
         </table>
       </div>
+    </>
+  );
+}
+
+// Freight charged on sale invoices month by month, always before GST: it
+// counts whole in profit (backend MonthlyOverview), and credit notes give
+// some back.
+export function FreightTrend() {
+  const months = useMonthly({ withGST: false });
+  if (!months) return <Loader />;
+  if (!months.length) return <Empty text="No bills yet" />;
+  const rows = months.map((m) => ({ ...m, net: m.freight - m.freight_back }));
+  const best = rows.reduce((a, m) => (m.freight > a.freight ? m : a), rows[0]);
+  const t = rows.reduce(
+    (a, m) => ({
+      fr: a.fr + m.freight, back: a.back + m.freight_back, gst: a.gst + m.freight_gst,
+      fb: a.fb + m.freight_bills, only: a.only + m.freight_only, bills: a.bills + m.bills,
+    }),
+    { fr: 0, back: 0, gst: 0, fb: 0, only: 0, bills: 0 },
+  );
+  const pct = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : "—");
+  return (
+    <>
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
+        <Tile label="Freight charged this year" value={money0(t.fr)} sub={`+ GST ${money0(t.gst)}`} />
+        <Tile label="Net of credit notes" value={money0(t.fr - t.back)} sub={`given back ${money0(t.back)}`} />
+        <Tile label="Average per month" value={money0(t.fr / rows.length)} sub={`over ${rows.length} months`} />
+        <Tile label="Bills with freight" value={`${fmtCount(t.fb)} of ${fmtCount(t.bills)}`} sub={`${pct(t.fb, t.bills)} · avg ${money0(t.fb ? t.fr / t.fb : 0)} a bill`} />
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
+        <MonthlyChart monthly={rows.map((m) => ({ ...m, bills: m.freight_bills }))} series={[{ key: "freight", label: "Freight", color: "#2a78d6" }]} note="before GST" />
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[75vh]">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs text-gray-500 uppercase tracking-wide">
+            <tr>
+              <th className="px-4 py-3">Month</th>
+              <th className="px-4 py-3 text-right">Freight charged</th>
+              <th className="px-4 py-3 text-right">Bills with freight</th>
+              <th className="px-4 py-3 text-right">Avg per bill</th>
+              <th className="px-4 py-3 text-right">Freight-only bills</th>
+              <th className="px-4 py-3 text-right">Given back</th>
+              <th className="px-4 py-3 text-right">Net freight</th>
+              <th className="px-4 py-3 text-right">GST on freight</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((m) => (
+              <tr key={m.month}>
+                <td className="px-4 py-3 text-gray-900 whitespace-nowrap">{fmtMonth(m.month, true)}<MonthBadges m={m} best={best.month} /></td>
+                <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{money0(m.freight)}</td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
+                  {m.freight_bills} of {m.bills} <span className="text-gray-400">({pct(m.freight_bills, m.bills)})</span>
+                </td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{money0(m.freight_bills ? m.freight / m.freight_bills : 0)}</td>
+                <td className="px-4 py-3 text-right text-gray-600">{m.freight_only || "—"}</td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{m.freight_back ? money0(m.freight_back) : "—"}</td>
+                <td className="px-4 py-3 text-right text-gray-900 whitespace-nowrap">{money0(m.net)}</td>
+                <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">{money0(m.freight_gst)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400 mt-2">
+        Freight = the freight lines on sale invoices, before GST. It counts in profit whole, as costing us nothing; the courier bills we pay
+        aren&apos;t in Marg&apos;s bill data, so they aren&apos;t taken off. Freight-only bills are sale invoices with nothing but freight or other
+        charges on them. Given back = freight lines on credit notes.
+      </p>
     </>
   );
 }

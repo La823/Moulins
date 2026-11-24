@@ -41,6 +41,8 @@ type Order struct {
 	UserName  string `json:"user_name,omitempty"`
 	UserPhone string `json:"user_phone,omitempty"`
 	ItemCount int    `json:"item_count,omitempty"`
+	// PricedCount: how many of the lines have a rate (admin order list)
+	PricedCount *int `json:"priced_count,omitempty"`
 	// who placed it (admin order list): "self" the customer, "team" one of
 	// their team members, "staff" Moulins staff on their behalf; PlacedByName
 	// names the staff member or team member
@@ -313,6 +315,9 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 			COALESCE(u.username, '') AS user_name,
 			COALESCE(u.phone_number, '') AS user_phone,
 			COUNT(oi.id) AS item_count,
+			COUNT(oi.rate) AS priced_count,
+			SUM(oi.line_total)::float8 AS items_total,
+			o.freight::float8,
 			CASE WHEN ce.actor_id IS NOT NULL AND ce.actor_id <> o.user_id THEN 'staff'
 			     WHEN u.role = 'team_member' THEN 'team'
 			     ELSE 'self' END AS placed_by,
@@ -330,7 +335,7 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 		) ce ON TRUE
 		LEFT JOIN users a ON a.id = ce.actor_id
 		WHERE 1=1%s
-		GROUP BY o.id, u.username, u.phone_number, u.role, ce.actor_id, a.username
+		GROUP BY o.id, u.username, u.phone_number, u.role, ce.actor_id, a.username, o.freight
 		ORDER BY o.created_at %s
 		LIMIT $%d OFFSET $%d
 	`, where, sortDir, argIdx, argIdx+1)
@@ -345,9 +350,22 @@ func GetAllOrders(ctx context.Context, db *pgxpool.Pool, limit, offset int, filt
 	orders := []Order{}
 	for rows.Next() {
 		var o Order
+		var priced int
 		if err := rows.Scan(&o.ID, &o.UserID, &o.Status, &o.Notes, &o.TransportMode, &o.CreatedAt, &o.UpdatedAt,
-			&o.UserName, &o.UserPhone, &o.ItemCount, &o.PlacedBy, &o.PlacedByName); err != nil {
+			&o.UserName, &o.UserPhone, &o.ItemCount, &priced, &o.ItemsTotal, &o.Freight, &o.PlacedBy, &o.PlacedByName); err != nil {
 			return nil, 0, err
+		}
+		o.PricedCount = &priced
+		// what the order page shows as the order total: priced lines + freight
+		if o.ItemsTotal != nil || o.Freight != nil {
+			t := 0.0
+			if o.ItemsTotal != nil {
+				t += *o.ItemsTotal
+			}
+			if o.Freight != nil {
+				t += *o.Freight
+			}
+			o.OrderTotal = &t
 		}
 		orders = append(orders, o)
 	}

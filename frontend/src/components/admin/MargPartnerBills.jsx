@@ -6,16 +6,18 @@ import { apiFetch } from "@/lib/api";
 import MargProductTrend, { PartnerProductGraph } from "@/components/admin/MargProductTrend";
 import { BillRow, BillDetail, SortHeader, fmtMoney, fmtDate, fmtQty, TYPE_STYLES } from "@/components/admin/MargBills";
 import MonthlyChart from "@/components/admin/MargMonthlyChart";
+import MargPartnerProducts from "@/components/admin/MargPartnerProducts";
 
 // The partner page's "Bills & reports" tab: this year's totals, a monthly
-// line chart, top products, a timeline (bills, app orders, joined) and the
-// full bills list.
+// line chart, top products, a timeline (bills, app orders, joined), every
+// product they bought, and the full bills list.
 // Linked through the partner's Marg RID; needs partner_bills_view (the section
 // stays hidden without it).
 
 const ORDER_STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700",
   confirmed: "bg-blue-50 text-blue-700",
+  packing: "bg-amber-50 text-amber-700",
   transferred: "bg-indigo-50 text-indigo-700",
   packed: "bg-teal-50 text-teal-700",
   shipped: "bg-purple-50 text-purple-700",
@@ -88,11 +90,12 @@ export default function MargPartnerBills({ partnerId, partnerName }) {
             <div className="lg:col-span-2">
               <MonthlyChart monthly={data.monthly} />
             </div>
-            <TopProducts products={data.top_products} />
+            <TopProducts products={data.top_products} onAll={() => setTab("products")} />
           </div>
           <div className="flex gap-1 border-b border-gray-200 mt-6 mb-4">
             {[
               ["timeline", "Timeline"],
+              ["products", "All products"],
               ["trend", "Product trend"],
               ["graph", "Product graph"],
               ["bills", "All bills"],
@@ -108,6 +111,8 @@ export default function MargPartnerBills({ partnerId, partnerName }) {
           </div>
           {tab === "timeline" ? (
             <Timeline events={data.timeline} />
+          ) : tab === "products" ? (
+            <MargPartnerProducts url={`/admin/partners/${partnerId}/products`} />
           ) : tab === "trend" ? (
             <MargProductTrend url={`/admin/partners/${partnerId}/product-trend`} />
           ) : tab === "graph" ? (
@@ -121,7 +126,7 @@ export default function MargPartnerBills({ partnerId, partnerName }) {
   );
 }
 
-function TopProducts({ products }) {
+function TopProducts({ products, onAll }) {
   if (!products?.length) return null;
   return (
     <div>
@@ -136,7 +141,14 @@ function TopProducts({ products }) {
           </li>
         ))}
       </ol>
-      <p className="text-[11px] text-gray-400 mt-1">Amounts before GST.</p>
+      <div className="flex items-center justify-between mt-1">
+        <p className="text-[11px] text-gray-400">Amounts before GST.</p>
+        {onAll && (
+          <button onClick={onAll} className="text-xs text-gray-600 hover:text-gray-900 underline">
+            See all products →
+          </button>
+        )}
+      </div>
     </div>
   );
 }

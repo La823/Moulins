@@ -230,6 +230,8 @@ function Parties() {
           onSubmit={(e) => {
             e.preventDefault();
             setPage(1);
+            // A name search looks through every account, not just the kind picked.
+            if (searchInput.trim()) setKind("");
             setSearch(searchInput.trim());
           }}
           className="flex gap-2"

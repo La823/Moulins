@@ -89,6 +89,12 @@ class User {
   /// packing permission.
   bool get canPack => role == 'admin' || permissions.contains('packing_edit');
 
+  /// Has one exact permission (admins have every one).
+  bool has(String permission) => role == 'admin' || permissions.contains(permission);
+
+  /// Admin or employee (the dispatch team are employees).
+  bool get isStaff => role == 'admin' || role == 'employee';
+
   TeamSettings get _team => teamSettings ?? const TeamSettings();
 
   /// May send orders to a partner: retailers and doctors always; a team

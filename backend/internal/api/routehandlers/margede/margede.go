@@ -74,9 +74,30 @@ func ListStockHandler(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		page, _ := strconv.Atoi(q.Get("page"))
-		list, err := margede.ListStock(r.Context(), db, margede.StockFilter{
+		f := margede.StockFilter{
 			Search: q.Get("search"), Company: q.Get("company"), View: q.Get("view"), Page: page,
-		})
+		}
+		// expiry_months=1|3|6|9: stock expiring within that many months
+		if m, err := strconv.Atoi(q.Get("expiry_months")); err == nil && m > 0 && m <= 24 {
+			f.ExpiryMonths = m
+		}
+		// view=low: what the Demand & reorder list says needs ordering (under
+		// DemandCoverDays of stock at the 3-month average), so both agree
+		if f.View == "low" {
+			d, err := margede.Demand(r.Context(), db, margede.DemandOptions{ShelfDays: margede.DefaultShelfDays})
+			if err != nil {
+				log.Printf("marg stock low: %v", err)
+				http.Error(w, "could not list stock", http.StatusInternalServerError)
+				return
+			}
+			f.View, f.PIDs = "", []int64{}
+			for _, row := range d.Rows {
+				if row.NeedsOrder {
+					f.PIDs = append(f.PIDs, row.ProductPID)
+				}
+			}
+		}
+		list, err := margede.ListStock(r.Context(), db, f)
 		if err != nil {
 			log.Printf("marg stock list: %v", err)
 			http.Error(w, "could not list stock", http.StatusInternalServerError)

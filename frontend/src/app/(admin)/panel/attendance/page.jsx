@@ -10,6 +10,7 @@ import {
   StateChip, Stepper, inputCls, cellCode, fmtDays, downloadCsv,
   LEAVE_STATUS, LeaveStatusChip, leaveRange, paidSplit,
 } from "@/components/admin/attendanceShared";
+import { MissedPunchApprovals } from "@/components/admin/MissedPunches";
 
 // Office staff attendance from the fingerprint scanner, pulled from
 // eTimeOffice — read-only, with eTimeOffice's own per-shift late / early-out /
@@ -1227,14 +1228,17 @@ export default function AttendancePage() {
       ) : current === "month" ? (
         <MonthView thisMonth={thisMonth} refreshKey={refreshKey} onOpenEmployee={openEmployee} />
       ) : current === "leaves" ? (
-        <LeavesView
-          employees={employees}
-          today={today}
-          thisMonth={thisMonth}
-          canDecide={canDecideLeaves}
-          onChanged={() => { loadMeta(); setRefreshKey((k) => k + 1); }}
-          onOpenEmployee={openEmployee}
-        />
+        <>
+          <LeavesView
+            employees={employees}
+            today={today}
+            thisMonth={thisMonth}
+            canDecide={canDecideLeaves}
+            onChanged={() => { loadMeta(); setRefreshKey((k) => k + 1); }}
+            onOpenEmployee={openEmployee}
+          />
+          <MissedPunchApprovals canDecide={canDecideLeaves} />
+        </>
       ) : current === "teams" ? (
         <TeamAttendanceView thisMonth={thisMonth} />
       ) : current === "punches" ? (

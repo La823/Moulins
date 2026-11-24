@@ -18,6 +18,7 @@ import '../../utils/responsive.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/quantity_stepper.dart';
 import '../../data/divisions.dart';
+import '../../widgets/shell_leading.dart';
 
 // Falls back to the filtered products list for any category that isn't one
 // of the 12 dedicated divisions.
@@ -120,7 +121,7 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
     }
     if (_product == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(leading: const ShellBack(), ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),

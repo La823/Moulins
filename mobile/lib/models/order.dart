@@ -115,6 +115,7 @@ class Order {
       case 'pending': return 'Pending';
       case 'confirmed': return 'Confirmed';
       case 'processing': return 'Processing';
+      case 'packing': return 'Packing';
       case 'packed': return 'Packed';
       case 'shipped': return 'Shipped';
       case 'delivered': return 'Delivered';

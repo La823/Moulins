@@ -16,6 +16,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 const _ink = Color(0xFF1A1A1A);
@@ -41,6 +42,11 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
   bool _savingMom = false;
   String _upcomingFilter = 'all';
   List<TeamMember> _teamMembers = [];
+  // What the list under the calendar shows: 'today', 'upcoming', 'previous'
+  // (days gone by — done, cancelled or left open), or 'date' (the day tapped
+  // on the calendar). Scheduling happens in the sheet; viewing in the list.
+  String _view = 'upcoming';
+  DateTime? _pickedDate;
 
   static const _upcomingFilters = [
     ('all', 'All'),
@@ -101,17 +107,14 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
     }
   }
 
-  Future<void> _updateStatus(Meeting m, String status) async {
-    try {
-      await _meetingService.updateMeetingStatus(m.id, status);
-      _load();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not update meeting')),
-        );
-      }
-    }
+  // Marking done / cancelling asks for the reason and records the location.
+  void _updateStatus(Meeting m, String status) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _StatusSheet(meeting: m, status: status, onDone: _load),
+    );
   }
 
   void _startEditMom(Meeting m) {
@@ -138,6 +141,8 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
     }
   }
 
+  // The scheduling sheet. A day's meetings are shown in the list on the
+  // screen itself, so the sheet only holds the form.
   void _showDaySheet(DateTime date, {String? preselectedDoctorId}) {
     showModalBottomSheet(
       context: context,
@@ -145,7 +150,7 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _DaySheet(
         date: date,
-        meetings: _meetings.where((m) => _dateKey(m.scheduledAt) == _dateKey(date)).toList(),
+        meetings: const [],
         preselectedDoctorId: preselectedDoctorId,
         isPartner: ref.read(authProvider).user?.role == 'partner',
         currentUserId: ref.read(authProvider).user?.id,
@@ -154,7 +159,25 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
     );
   }
 
+  void _pickDate(DateTime date) => setState(() { _view = 'date'; _pickedDate = date; });
+
+  // The person the meeting is for logs the visit — it records where they are.
+  bool _canLogVisit(Meeting m) {
+    final me = ref.read(authProvider).user?.id;
+    return m.status == 'upcoming' && !m.isFutureDay && (m.assignedTo == null || m.assignedTo == me);
+  }
+
+  void _showLogVisitSheet(Meeting m) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _LogVisitSheet(meeting: m, onDone: _load),
+    );
+  }
+
   Widget _buildMeetingCard(Meeting m) {
+    final isUpcoming = m.status == 'upcoming';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -185,21 +208,49 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
             onReassigned: _load,
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              TextButton(
-                onPressed: () => _updateStatus(m, 'completed'),
-                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                child: const Text('Mark done', style: TextStyle(fontSize: 12.5, color: Colors.green, fontWeight: FontWeight.w600)),
+          if (isUpcoming) ...[
+            if (_canLogVisit(m)) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showLogVisitSheet(m),
+                  icon: const Icon(Icons.location_on_outlined, size: 18),
+                  label: const Text('Log visit & mark done'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _teal,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
               ),
-              const SizedBox(width: 16),
-              TextButton(
-                onPressed: () => _updateStatus(m, 'cancelled'),
-                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                child: const Text('Cancel', style: TextStyle(fontSize: 12.5, color: Colors.red, fontWeight: FontWeight.w600)),
-              ),
+              const SizedBox(height: 6),
             ],
-          ),
+            Row(
+              children: [
+                // only on the meeting's day or after (the server checks too)
+                if (m.isFutureDay)
+                  Text('Can be marked done on ${_formatDate(m.scheduledAt)}', style: TextStyle(fontSize: 12, color: Colors.grey.shade500))
+                else
+                  TextButton(
+                    onPressed: () => _updateStatus(m, 'completed'),
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                    child: const Text('Mark done', style: TextStyle(fontSize: 12.5, color: Colors.green, fontWeight: FontWeight.w600)),
+                  ),
+                const SizedBox(width: 16),
+                TextButton(
+                  onPressed: () => _updateStatus(m, 'cancelled'),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 12.5, color: Colors.red, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ] else
+            Text(
+              m.status == 'completed' ? 'Completed' : 'Cancelled',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: m.status == 'completed' ? Colors.green : Colors.red),
+            ),
           const SizedBox(height: 10),
           Container(height: 1, color: Colors.grey.shade100),
           const SizedBox(height: 10),
@@ -254,13 +305,38 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final allUpcoming = _meetings.where((m) => m.status == 'upcoming').toList()
-      ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
-    final upcoming = _applyUpcomingFilter(allUpcoming);
-
-    final meetingDateKeys = _meetings.map((m) => _dateKey(m.scheduledAt)).toSet();
     final today = DateTime.now();
     final todayKey = _dateKey(today);
+    final startOfToday = DateTime(today.year, today.month, today.day);
+    int byTime(Meeting a, Meeting b) => a.scheduledAt.compareTo(b.scheduledAt);
+
+    final todays = _meetings.where((m) => _dateKey(m.scheduledAt) == todayKey).toList()..sort(byTime);
+    // still to happen: open meetings from today on (open ones from past days
+    // are under Previous, tagged "overdue")
+    final allUpcoming = _meetings.where((m) => m.status == 'upcoming' && !m.scheduledAt.isBefore(startOfToday)).toList()
+      ..sort(byTime);
+    final upcoming = _applyUpcomingFilter(allUpcoming);
+    final previous = _meetings.where((m) => m.scheduledAt.isBefore(startOfToday)).toList()
+      ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt)); // newest first
+    final pickedKey = _pickedDate == null ? null : _dateKey(_pickedDate!);
+    final onPicked = pickedKey == null ? <Meeting>[] : (_meetings.where((m) => _dateKey(m.scheduledAt) == pickedKey).toList()..sort(byTime));
+
+    final shown = switch (_view) {
+      'today' => todays,
+      'previous' => previous,
+      'date' => onPicked,
+      _ => upcoming,
+    };
+    final emptyText = switch (_view) {
+      'today' => 'No meetings today',
+      'previous' => 'No previous meetings',
+      'date' => 'No meetings on this day',
+      _ => _upcomingFilter == 'all' ? 'No upcoming meetings' : 'No meetings in this range',
+    };
+    // the day new meetings from this list get scheduled on
+    final scheduleDate = _view == 'date' && _pickedDate != null && !_pickedDate!.isBefore(startOfToday) ? _pickedDate! : today;
+
+    final meetingDateKeys = _meetings.map((m) => _dateKey(m.scheduledAt)).toSet();
 
     final firstOfMonth = DateTime(_monthCursor.year, _monthCursor.month, 1);
     final daysInMonth = DateTime(_monthCursor.year, _monthCursor.month + 1, 0).day;
@@ -270,13 +346,15 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Meetings', style: TextStyle(color: _ink, fontWeight: FontWeight.w600)),
         actions: [
           IconButton(
             icon: const Icon(Icons.add, color: _teal),
-            onPressed: () => _showDaySheet(DateTime.now()),
+            onPressed: () => _showDaySheet(scheduleDate),
           ),
           const ChatButton(),
           const NotificationBellButton(),
@@ -340,12 +418,14 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                             final key = _dateKey(date);
                             final hasMeeting = meetingDateKeys.contains(key);
                             final isToday = key == todayKey;
+                            final isPicked = _view == 'date' && key == pickedKey;
                             return GestureDetector(
-                              onTap: () => _showDaySheet(date),
+                              onTap: () => _pickDate(date),
                               child: Container(
                                 margin: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
                                   color: isToday ? _teal.withValues(alpha: 0.12) : null,
+                                  border: isPicked ? Border.all(color: _teal, width: 1.5) : null,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Column(
@@ -376,32 +456,72 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Upcoming list
-                  Text('Upcoming (${upcoming.length})', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _ink)),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 34,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        for (final (value, label) in _upcomingFilters)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(label, style: TextStyle(fontSize: 12, color: _upcomingFilter == value ? Colors.white : Colors.grey.shade700)),
-                              selected: _upcomingFilter == value,
-                              onSelected: (_) => setState(() => _upcomingFilter = value),
-                              selectedColor: _teal,
-                              backgroundColor: Colors.grey.shade100,
-                              showCheckmark: false,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide.none),
+                  // Which meetings the list shows
+                  Row(
+                    children: [
+                      for (final (value, label, count) in [
+                        ('today', 'Today', todays.length),
+                        ('upcoming', 'Upcoming', allUpcoming.length),
+                        ('previous', 'Previous', previous.length),
+                      ])
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(right: value == 'previous' ? 0 : 8),
+                            child: _ViewButton(
+                              label: '$label ($count)',
+                              selected: _view == value,
+                              onTap: () => setState(() => _view = value),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 14),
-                  if (upcoming.isEmpty)
+                  if (_view == 'date' && _pickedDate != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${_monthName(_pickedDate!.month)} ${_pickedDate!.day}, ${_pickedDate!.year} (${onPicked.length})',
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _ink),
+                            ),
+                          ),
+                          if (!_pickedDate!.isBefore(startOfToday))
+                            TextButton.icon(
+                              onPressed: () => _showDaySheet(_pickedDate!),
+                              icon: const Icon(Icons.add, size: 16, color: _teal),
+                              label: const Text('Schedule', style: TextStyle(color: _teal, fontSize: 13)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  if (_view == 'upcoming') ...[
+                    SizedBox(
+                      height: 34,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          for (final (value, label) in _upcomingFilters)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(label, style: TextStyle(fontSize: 12, color: _upcomingFilter == value ? Colors.white : Colors.grey.shade700)),
+                                selected: _upcomingFilter == value,
+                                onSelected: (_) => setState(() => _upcomingFilter = value),
+                                selectedColor: _teal,
+                                backgroundColor: Colors.grey.shade100,
+                                showCheckmark: false,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide.none),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (shown.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       child: Center(
@@ -409,21 +529,20 @@ class _MeetingsScreenState extends ConsumerState<MeetingsScreen> {
                           children: [
                             Icon(Icons.calendar_today_outlined, size: 48, color: Colors.grey.shade300),
                             const SizedBox(height: 12),
-                            Text(
-                              _upcomingFilter == 'all' ? 'No upcoming meetings' : 'No meetings in this range',
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: () => _showDaySheet(DateTime.now()),
-                              child: const Text('Schedule Meeting', style: TextStyle(color: _teal)),
-                            ),
+                            Text(emptyText, style: const TextStyle(color: Colors.grey)),
+                            if (_view != 'previous' && !(_view == 'date' && _pickedDate!.isBefore(startOfToday))) ...[
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () => _showDaySheet(scheduleDate),
+                                child: const Text('Schedule Meeting', style: TextStyle(color: _teal)),
+                              ),
+                            ],
                           ],
                         ),
                       ),
                     )
                   else
-                    for (final m in upcoming) ...[
+                    for (final m in shown) ...[
                       _buildMeetingCard(m),
                       const SizedBox(height: 10),
                     ],
@@ -448,6 +567,11 @@ String _formatDateTime(DateTime dt) {
   return '${months[dt.month - 1]} ${dt.day}, $hour:$minute $ampm';
 }
 
+String _formatDate(DateTime dt) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${months[dt.month - 1]} ${dt.day}';
+}
+
 String _formatTime(DateTime dt) {
   final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
   final ampm = dt.hour >= 12 ? 'PM' : 'AM';
@@ -455,8 +579,274 @@ String _formatTime(DateTime dt) {
   return '$hour:$minute $ampm';
 }
 
-// Bottom sheet shown when a calendar day is tapped: lists that day's
-// meetings and lets you schedule another one for that exact date.
+class _ViewButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ViewButton({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? _teal : Colors.grey.shade100,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.grey.shade700),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The phone's current position; throws a message to show when location is
+/// off or not allowed.
+Future<Position> _currentPosition() async {
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+  if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+    throw 'Location permission is needed for this';
+  }
+  if (!await Geolocator.isLocationServiceEnabled()) throw 'Please turn on location';
+  return Geolocator.getCurrentPosition();
+}
+
+/// Mark done / Cancel: asks the reason (required to cancel, an optional
+/// remark when done) and saves it with the person's location. Who and when
+/// are recorded by the server.
+class _StatusSheet extends StatefulWidget {
+  final Meeting meeting;
+  final String status; // 'completed' or 'cancelled'
+  final VoidCallback onDone;
+  const _StatusSheet({required this.meeting, required this.status, required this.onDone});
+
+  @override
+  State<_StatusSheet> createState() => _StatusSheetState();
+}
+
+class _StatusSheetState extends State<_StatusSheet> {
+  final _reasonCtrl = TextEditingController();
+  bool _saving = false;
+  String? _error;
+
+  bool get _cancelling => widget.status == 'cancelled';
+
+  @override
+  void dispose() {
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final reason = _reasonCtrl.text.trim();
+    if (_cancelling && reason.isEmpty) {
+      setState(() => _error = 'Please write why the meeting is cancelled');
+      return;
+    }
+    setState(() { _saving = true; _error = null; });
+    try {
+      final pos = await _currentPosition();
+      await MeetingService().updateMeetingStatus(
+        widget.meeting.id,
+        widget.status,
+        reason: reason.isEmpty ? null : reason,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      widget.onDone();
+      messenger.showSnackBar(SnackBar(content: Text(_cancelling ? 'Meeting cancelled' : 'Meeting marked done')));
+    } catch (e) {
+      if (mounted) setState(() => _error = e is String ? e : 'Could not update the meeting. Check your connection and try again.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.meeting;
+    final color = _cancelling ? Colors.red : Colors.green;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_cancelling ? 'Cancel meeting' : 'Mark meeting done', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('${m.displayTitle} · ${_formatDateTime(m.scheduledAt)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reasonCtrl,
+            maxLines: 3,
+            autofocus: _cancelling,
+            decoration: InputDecoration(
+              labelText: _cancelling ? 'Reason for cancelling' : 'Remarks (optional)',
+              hintText: _cancelling ? 'e.g. doctor not available, rescheduled...' : 'e.g. met the doctor, discussed new products...',
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Your name, the time and your current location are saved with this.', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500)),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _saving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(_cancelling ? 'Cancel meeting' : 'Mark done'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Straight from the meeting list: records where the person is (the visit
+/// log, checked against the clinic) and marks the meeting done, in one go.
+class _LogVisitSheet extends StatefulWidget {
+  final Meeting meeting;
+  final VoidCallback onDone;
+  const _LogVisitSheet({required this.meeting, required this.onDone});
+
+  @override
+  State<_LogVisitSheet> createState() => _LogVisitSheetState();
+}
+
+class _LogVisitSheetState extends State<_LogVisitSheet> {
+  final _notesCtrl = TextEditingController();
+  final _service = MeetingService();
+  bool _saving = false;
+  bool _visitSaved = false; // so a retry after a failed status update doesn't log twice
+  Position? _pos;
+  String? _error;
+
+  @override
+  void dispose() {
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _error = null; });
+    try {
+      _pos ??= await _currentPosition();
+      final pos = _pos!;
+      if (!_visitSaved) {
+        await _service.createVisitLog(
+          widget.meeting.id,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        );
+        _visitSaved = true;
+      }
+      await _service.updateMeetingStatus(
+        widget.meeting.id,
+        'completed',
+        reason: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context);
+      widget.onDone();
+      messenger.showSnackBar(const SnackBar(content: Text('Visit logged and meeting marked done')));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = _visitSaved
+            ? 'Visit logged, but the meeting could not be marked done. Try again.'
+            : e is String ? e : 'Could not log the visit. Check your connection and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.meeting;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Log visit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('${m.displayTitle} · ${_formatDateTime(m.scheduledAt)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _notesCtrl,
+            maxLines: 3,
+            enabled: !_visitSaved,
+            decoration: InputDecoration(
+              hintText: 'Notes about the visit (optional)...',
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Your current location is saved with the visit.', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500)),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _teal,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _saving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(_visitSaved ? 'Mark done' : 'Capture location & mark done'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Bottom sheet for scheduling a meeting on a date. (It can also list that
+// day's meetings, but the screen now shows those in its own list.)
 class _DaySheet extends StatefulWidget {
   final DateTime date;
   final List<Meeting> meetings;
@@ -1053,7 +1443,26 @@ class _MeetingPeopleState extends State<MeetingPeople> {
             Text('Assigned to $assigneeName${m.assignedToRemoved ? ' (removed from team)' : ''}',
                 style: const TextStyle(fontSize: 11.5, color: Colors.purple)),
           if (m.status != 'upcoming' && m.statusChangedByName != null && m.statusChangedByName!.isNotEmpty)
-            Text('${m.status == 'completed' ? 'Marked done' : 'Cancelled'} by ${m.statusChangedByName}', style: small),
+            Text(
+              '${m.status == 'completed' ? 'Marked done' : 'Cancelled'} by ${m.statusChangedByName}'
+              '${m.statusChangedAt != null ? ' · ${_formatDateTime(m.statusChangedAt!)}' : ''}',
+              style: small,
+            ),
+          if (m.status != 'upcoming' && m.statusReason != null && m.statusReason!.isNotEmpty)
+            Text('${m.status == 'cancelled' ? 'Reason' : 'Remarks'}: ${m.statusReason}', style: small),
+          if (m.status != 'upcoming' && m.statusLatitude != null && m.statusLongitude != null)
+            GestureDetector(
+              onTap: () => launchUrl(
+                Uri.parse('https://maps.google.com/?q=${m.statusLatitude},${m.statusLongitude}'),
+                mode: LaunchMode.externalApplication,
+              ),
+              child: Text(
+                m.statusDistanceFromClinicM == null
+                    ? 'View location'
+                    : 'View location · ${m.statusDistanceFromClinicM! < 1000 ? '${m.statusDistanceFromClinicM!.round()} m' : '${(m.statusDistanceFromClinicM! / 1000).toStringAsFixed(1)} km'} from clinic',
+                style: const TextStyle(fontSize: 11.5, color: Colors.blue),
+              ),
+            ),
         ],
       ),
     );

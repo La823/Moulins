@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../config/app_flavor.dart';
 import '../data/divisions.dart';
 import '../providers/auth_provider.dart';
+import 'app_version_text.dart';
 
 /// White, with the website's red (Tailwind red-600) for the text and icons.
 const _teal = Color(0xFF00A6A4); // the app's teal, as everywhere else
 const _tealSoft = Color(0xFFE6F6F6); // a light teal, behind the open divisions list
+// the menu's text: Inter, regular weight, for a lighter, crisper list
+const _font = 'Inter';
+const _itemStyle = TextStyle(fontFamily: _font, color: _teal, fontSize: 15, fontWeight: FontWeight.w400, letterSpacing: -0.1);
 const _white = Colors.white;
 
 /// Shared hamburger-menu drawer: the user's own sections, learning, and the
@@ -24,7 +29,7 @@ class AppDrawer extends ConsumerWidget {
 
     Widget item(IconData icon, String label, String route) => ListTile(
           leading: Icon(icon, color: _teal),
-          title: Text(label, style: const TextStyle(color: _teal, fontWeight: FontWeight.w500)),
+          title: Text(label, style: _itemStyle),
           visualDensity: VisualDensity.compact,
           onTap: () {
             Navigator.of(context).pop();
@@ -41,12 +46,13 @@ class AppDrawer extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Moulins', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: _teal)),
+                const Text(appName,
+                    style: TextStyle(fontFamily: _font, fontSize: 26, fontWeight: FontWeight.w600, color: _teal, letterSpacing: -0.4)),
                 if (user != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     (user.username != null && user.username!.isNotEmpty) ? user.username! : user.phoneNumber,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    style: TextStyle(fontFamily: _font, fontSize: 13, color: Colors.grey.shade600),
                   ),
                 ],
               ]),
@@ -54,6 +60,8 @@ class AppDrawer extends ConsumerWidget {
             Divider(height: 1, color: Colors.grey.shade200),
             const SizedBox(height: 6),
 
+            // the dispatch team: only their own tools (below, under Staff)
+            if (!(user?.isDispatch ?? false)) ...[
             if (role == 'partner' || role == 'team_member') item(Icons.dashboard_outlined, 'Dashboard', '/dashboard'),
             // Special-type customers get a tile into their own private catalog.
             if (user?.isSpecial ?? false) item(Icons.star_outline, '13 Alpha Unit', '/special'),
@@ -79,11 +87,33 @@ class AppDrawer extends ConsumerWidget {
               item(Icons.event_available_outlined, 'My Attendance', '/my-attendance'),
               item(Icons.edit_note_outlined, 'My Daily Log', '/my-daily-log'),
             ],
-            if (role != 'retailer') item(Icons.play_circle_outline, 'Learning', '/learning'),
+            ],
+            // staff (admins, employees, the dispatch team)
+            if (isTeamApp && (user?.isStaff ?? false)) ...[
+              const SizedBox(height: 6),
+              Divider(height: 1, color: Colors.grey.shade200),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                child: Text('STAFF', style: TextStyle(fontFamily: _font, fontSize: 11, letterSpacing: 1.1, color: Colors.grey.shade500)),
+              ),
+              if (user!.canPack) item(Icons.inventory_2_outlined, 'Packing', '/packing'),
+              if (user.has('marg_stock_view')) item(Icons.warehouse_outlined, 'Marg Stock', '/staff/stock'),
+              if (user.has('marg_bills_view')) item(Icons.receipt_long_outlined, 'Marg Bills', '/staff/bills'),
+              if (user.has('freight_bills_edit') || user.has('freight_bills_view'))
+                item(Icons.local_shipping_outlined, 'Freight Bills', '/staff/freight'),
+              item(Icons.event_available_outlined, 'My Attendance & Leave', '/staff/attendance'),
+              item(Icons.more_time, 'Missed Punch', '/staff/missed-punch'),
+              if (user.has('leaves_view')) item(Icons.fact_check_outlined, 'Leave Requests', '/staff/leaves'),
+              if (user.has('leaves_view')) item(Icons.rule_outlined, 'Missed Punches', '/staff/missed-punches'),
+            ],
+            if (role != 'retailer' && !(user?.isDispatch ?? false)) item(Icons.play_circle_outline, 'Learning', '/learning'),
 
             const SizedBox(height: 6),
             Divider(height: 1, color: Colors.grey.shade200),
-            const _DivisionsSection(),
+            if (!(user?.isDispatch ?? false)) const _DivisionsSection(),
+            const SizedBox(height: 20),
+            // which version is installed
+            const Center(child: AppVersionText()),
             const SizedBox(height: 16),
           ],
         ),
@@ -108,7 +138,7 @@ class _DivisionsSectionState extends State<_DivisionsSection> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ListTile(
         leading: const Icon(Icons.category_outlined, color: _teal),
-        title: const Text('Divisions', style: TextStyle(color: _teal, fontWeight: FontWeight.w500)),
+        title: const Text('Divisions', style: _itemStyle),
         visualDensity: VisualDensity.compact,
         onTap: () => setState(() => _open = !_open),
         trailing: Container(
@@ -147,7 +177,8 @@ class _DivisionsSectionState extends State<_DivisionsSection> {
                             Icon(Icons.chevron_right, size: 16, color: _teal.withValues(alpha: 0.7)),
                             const SizedBox(width: 6),
                             Expanded(
-                              child: Text(d.heroLabel, style: const TextStyle(color: _teal, fontSize: 13.5)),
+                              child: Text(d.heroLabel,
+                                  style: const TextStyle(fontFamily: _font, color: _teal, fontSize: 13.5, fontWeight: FontWeight.w400)),
                             ),
                           ]),
                         ),

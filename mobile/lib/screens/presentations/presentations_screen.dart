@@ -14,6 +14,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 class PresentationsScreen extends StatefulWidget {
   const PresentationsScreen({super.key});
@@ -222,6 +223,8 @@ class _PresentationsScreenState extends State<PresentationsScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('My Presentations', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

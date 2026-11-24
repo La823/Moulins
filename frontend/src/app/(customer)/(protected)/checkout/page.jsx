@@ -14,11 +14,20 @@ const modeLabel = (name) => `By ${name.charAt(0).toUpperCase()}${name.slice(1)}`
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, itemCount, clearCartLocal } = useCart();
+  const { items, itemCount, clearCart, clearCartLocal } = useCart();
   const { user } = useAuth();
   // A retailer or a doctor orders from their partner, not Moulins: no
   // transport or address, and the order goes to /retailer-orders.
   const isRetailer = user?.role === "retailer" || user?.role === "doctor";
+  // Staff who can place orders (admins, employees with Orders (Edit)) order
+  // for a partner from their cart: pick the customer, set a rate per line,
+  // and it goes in as POST /admin/orders, like the panel's New order page.
+  const forCustomer =
+    user?.role === "admin" || (user?.role === "employee" && (user?.permissions || []).includes("orders_edit"));
+  const [customerQuery, setCustomerQuery] = useState("");
+  const [customerResults, setCustomerResults] = useState([]);
+  const [customer, setCustomer] = useState(null); // {id, username, phone_number}
+  const [rates, setRates] = useState({}); // product id -> typed rate
   const [notes, setNotes] = useState("");
   const [transportModes, setTransportModes] = useState([]);
   const [transportMode, setTransportMode] = useState("courier");
@@ -47,12 +56,77 @@ export default function CheckoutPage() {
       .catch(() => setTransportOptions([]));
   }, [transportMode]);
 
+  // partner search for the customer picker
+  useEffect(() => {
+    if (!forCustomer || customer) return;
+    const q = customerQuery.trim();
+    if (!q) return; // the box's onChange clears the results
+    let off = false;
+    const t = setTimeout(() => {
+      apiFetch(`/admin/orders/customers/search?q=${encodeURIComponent(q)}`)
+        .then((d) => !off && setCustomerResults(Array.isArray(d) ? d : []))
+        .catch(() => !off && setCustomerResults([]));
+    }, 300);
+    return () => {
+      off = true;
+      clearTimeout(t);
+    };
+  }, [forCustomer, customer, customerQuery]);
+
+  // a typed rate: blank = none, otherwise a number of zero or more (NaN = invalid)
+  const parseRate = (v) => {
+    const t = String(v ?? "").trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isFinite(n) && n >= 0 ? n : NaN;
+  };
+  const ratesTotal = items.reduce((s, i) => s + (parseRate(rates[i.product.id]) || 0) * i.quantity, 0);
+
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
     setError("");
+    if (forCustomer) {
+      if (!customer) {
+        setError("Choose the customer this order is for.");
+        return;
+      }
+      if (items.some((i) => Number.isNaN(parseRate(rates[i.product.id])))) {
+        setError("A rate must be a number of zero or more, or left blank.");
+        return;
+      }
+    }
     setSubmitting(true);
 
     try {
+      if (forCustomer) {
+        const res = await apiFetch("/admin/orders", {
+          method: "POST",
+          body: JSON.stringify({
+            customer_id: customer.id,
+            items: items.map((i) => {
+              const rate = parseRate(rates[i.product.id]);
+              return {
+                product_id: i.product.id,
+                product_name: i.product.name,
+                quantity: i.quantity,
+                ...(rate != null ? { rate } : {}),
+              };
+            }),
+            notes: notes.trim() || undefined,
+            transport_mode: transportMode,
+            transport_id: transportId || undefined,
+          }),
+        });
+        // the items came from the staff member's own cart: empty it (the
+        // customer's own cart is left as it is)
+        clearCart();
+        playSound("order");
+        setPlaced({
+          href: `/panel/orders/${res.order_id}`,
+          message: `Order placed for ${customer.username || customer.phone_number}.`,
+        });
+        return;
+      }
       if (isRetailer) {
         const res = await apiFetch("/retailer-orders", {
           method: "POST",
@@ -109,10 +183,68 @@ export default function CheckoutPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-8 py-10">
-      <h1 className="text-2xl font-light text-gray-900 mb-2">Checkout</h1>
+      <h1 className="text-2xl font-light text-gray-900 mb-2">{forCustomer ? "Order for a customer" : "Checkout"}</h1>
       <p className="text-sm text-gray-400 mb-10">
         {itemCount} item{itemCount !== 1 ? "s" : ""} in your order
       </p>
+
+      {/* Staff: who the order is for */}
+      {forCustomer && (
+        <div className="mb-8">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Customer</label>
+          {customer ? (
+            <div className="flex items-center justify-between px-4 py-3 border border-gray-900 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">{customer.username || "Unnamed partner"}</p>
+                {customer.phone_number && <p className="text-xs text-gray-500">{customer.phone_number}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomer(null);
+                  setCustomerQuery("");
+                }}
+                className="text-xs text-red-600 hover:underline"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                value={customerQuery}
+                onChange={(e) => {
+                  setCustomerQuery(e.target.value);
+                  if (!e.target.value.trim()) setCustomerResults([]);
+                }}
+                placeholder="Type the partner name or phone"
+                className="w-full px-4 py-2.5 text-sm text-gray-900 border border-gray-300 rounded-lg focus:border-gray-500 outline-none"
+              />
+              {customerResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full max-h-64 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                  {customerResults.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setCustomer(c);
+                        setCustomerResults([]);
+                      }}
+                      className="block w-full text-left px-4 py-2.5 hover:bg-gray-50"
+                    >
+                      <span className="text-sm text-gray-900">{c.username || "Unnamed partner"}</span>
+                      {c.phone_number && <span className="ml-2 text-xs text-gray-500">{c.phone_number}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {customerQuery.trim() && customerResults.length === 0 && (
+                <p className="mt-1 text-xs text-gray-400">No partner found yet. Keep typing.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Order items */}
       <div className="divide-y divide-gray-100 mb-8">
@@ -143,13 +275,34 @@ export default function CheckoutPage() {
                 </p>
               )}
             </div>
-            <div className="text-sm text-gray-500 flex-shrink-0">
+            <div className="text-sm text-gray-500 flex-shrink-0 text-right">
               Qty: {quantity}
+              {forCustomer && (
+                <div className="mt-1.5 flex items-center gap-1 justify-end">
+                  <span className="text-xs text-gray-400">Rate ₹</span>
+                  <input
+                    inputMode="decimal"
+                    value={rates[product.id] ?? ""}
+                    onChange={(e) => setRates((r) => ({ ...r, [product.id]: e.target.value }))}
+                    placeholder="—"
+                    className={`w-20 px-2 py-1 text-sm text-right text-gray-900 border rounded-md outline-none focus:border-gray-500 ${
+                      Number.isNaN(parseRate(rates[product.id])) ? "border-red-400" : "border-gray-300"
+                    }`}
+                  />
+                </div>
+              )}
             </div>
           </div>
           );
         })}
       </div>
+
+      {forCustomer && (
+        <p className="mb-8 text-sm text-gray-600 text-right">
+          Total at these rates: <span className="font-semibold text-gray-900">₹{ratesTotal.toFixed(2)}</span>
+          <span className="block text-xs text-gray-400">Lines left blank can be priced later on the order page.</span>
+        </p>
+      )}
 
       {isRetailer && (
         <p className="mb-8 text-sm text-gray-600">
@@ -201,7 +354,9 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* Billing / Shipping Address — read-only here, edited from Profile */}
+      {/* Billing / Shipping Address — read-only here, edited from Profile
+          (not on a staff order: that uses the customer's own address) */}
+      {!forCustomer && (
       <div className="mb-8">
         <div className="flex items-center justify-between mb-2">
           <label className="block text-sm font-medium text-gray-700">
@@ -236,6 +391,7 @@ export default function CheckoutPage() {
           </p>
         )}
       </div>
+      )}
       </>)}
 
       {/* Notes */}
@@ -270,7 +426,7 @@ export default function CheckoutPage() {
           disabled={submitting}
           className="px-8 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "Placing order..." : "Place Order"}
+          {submitting ? "Placing order..." : forCustomer ? "Place order for customer" : "Place Order"}
         </button>
       </div>
     </div>

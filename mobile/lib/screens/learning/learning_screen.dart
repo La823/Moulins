@@ -12,6 +12,7 @@ import '../../widgets/chat_button.dart';
 import '../../widgets/profile_button.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/app_drawer.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -117,6 +118,8 @@ class _LearningScreenState extends ConsumerState<LearningScreen> {
       backgroundColor: Colors.white,
       drawer: const AppDrawer(),
       appBar: AppBar(
+        leadingWidth: ShellLeading.widthFor(context),
+        leading: const ShellLeading(),
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text('Learning', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),

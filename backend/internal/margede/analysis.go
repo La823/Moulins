@@ -131,6 +131,9 @@ type RankFilter struct {
 	// Company (products only): IB Moulins, ID third party, IC others.
 	Company string
 	ExGST   bool // amounts without GST (see billAmount)
+	// Limit: rows per page instead of BillsPageSize (up to 2000), so a list
+	// that loads more as it scrolls can ask for everything shown so far.
+	Limit int
 	// RecentDays: the "billed in the last N days" column counts bills from
 	// today back over this many days (today included), whatever the period.
 	RecentDays int
@@ -154,6 +157,13 @@ var rankSorts = map[string]string{
 	"trend": "(last3 - prev3)", "products": "COALESCE(pp.products, 0)", "balance": "lb.balance", "recent": "COALESCE(rb.amt, 0)",
 }
 
+func (f RankFilter) pageSize() int {
+	if f.Limit > 0 && f.Limit <= 2000 {
+		return f.Limit
+	}
+	return BillsPageSize
+}
+
 func sortDir(d string) string {
 	if strings.EqualFold(d, "asc") {
 		return "ASC"
@@ -167,7 +177,8 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 	if f.Page < 1 {
 		f.Page = 1
 	}
-	out := PartyRankList{Rows: []PartyRankRow{}, Page: f.Page, PageSize: BillsPageSize}
+	pageSize := f.pageSize()
+	out := PartyRankList{Rows: []PartyRankRow{}, Page: f.Page, PageSize: pageSize}
 
 	amountCond, returnCond := saleCond, `b.bill_type = 'R'`
 	if f.Mode == "purchases" {
@@ -303,7 +314,7 @@ func RankParties(ctx context.Context, db *pgxpool.Pool, f RankFilter) (PartyRank
 			WHERE TRIM(mp.code) = r.party_code ORDER BY mp.is_deleted, mp.synced_at DESC LIMIT 1
 		) lb ON TRUE %s
 		ORDER BY %s %s NULLS LAST, r.total DESC
-		LIMIT %d OFFSET %d`, where, order, dir, BillsPageSize, (f.Page-1)*BillsPageSize), args...)
+		LIMIT %d OFFSET %d`, where, order, dir, pageSize, (f.Page-1)*pageSize), args...)
 	if err != nil {
 		return out, err
 	}
@@ -370,7 +381,8 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 	if f.Page < 1 {
 		f.Page = 1
 	}
-	out := ProductRankList{Rows: []ProductRankRow{}, Page: f.Page, PageSize: BillsPageSize, CompanyCounts: map[string]int{}, CompanyAmounts: map[string]float64{}}
+	pageSize := f.pageSize()
+	out := ProductRankList{Rows: []ProductRankRow{}, Page: f.Page, PageSize: pageSize, CompanyCounts: map[string]int{}, CompanyAmounts: map[string]float64{}}
 	order, ok := productSorts[f.Sort]
 	if !ok {
 		order = "avg_monthly"
@@ -477,7 +489,7 @@ func RankProducts(ctx context.Context, db *pgxpool.Pool, f RankFilter) (ProductR
 		) tl ON TRUE
 		%s
 		ORDER BY %s %s NULLS LAST, r.amount DESC
-		LIMIT %d OFFSET %d`, where, order, dir, BillsPageSize, (f.Page-1)*BillsPageSize), args...)
+		LIMIT %d OFFSET %d`, where, order, dir, pageSize, (f.Page-1)*pageSize), args...)
 	if err != nil {
 		return out, err
 	}
@@ -517,14 +529,22 @@ type OverviewMonth struct {
 	// come back off; a credit note with no lines (a rate difference) comes
 	// off whole. Bills Marg sent with lines missing can't be costed: their
 	// count and the missing amount are given so the page can say so.
+	// Freight charged on sale invoices counts as profit whole (we treat it
+	// as costing us nothing); freight a credit note gives back comes off.
+	// Other charges (cylinder, promotional, ...) stay out of profit.
 	SaleGoods     float64 `json:"sale_goods"`
 	SaleCost      float64 `json:"sale_cost"`
 	UncostedLines int     `json:"uncosted_lines"` // sale lines whose batch has no purchase rate
 	ReturnGoods   float64 `json:"return_goods"`
 	ReturnCost    float64 `json:"return_cost"`
 	OtherCredit   float64 `json:"other_credit"` // credit notes without lines
-	Profit        float64 `json:"profit"`       // sale_goods - sale_cost
-	NetProfit     float64 `json:"net_profit"`   // profit less what credit notes give back
+	Freight       float64 `json:"freight"`        // freight lines on sale invoices, before GST
+	FreightBack   float64 `json:"freight_back"`   // freight lines on credit notes, before GST
+	FreightGST    float64 `json:"freight_gst"`    // GST on the sale invoices' freight lines
+	FreightBills  int     `json:"freight_bills"`  // sale invoices with a freight line
+	FreightOnly   int     `json:"freight_only"`   // of those, bills with nothing but charges on them
+	Profit        float64 `json:"profit"`         // sale_goods - sale_cost + freight
+	NetProfit     float64 `json:"net_profit"`     // profit less what credit notes give back
 	MissingBills  int     `json:"missing_bills"`
 	MissingAmount float64 `json:"missing_amount"` // bill totals less the lines we have, incl. GST
 }
@@ -572,6 +592,25 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 			WHERE (`+saleCond+` OR b.bill_type = 'R') AND NOT b.is_deleted AND NOT b.is_cancelled
 			  AND NOT i.is_deleted AND i.line_kind = 'item'
 			GROUP BY 1
+		),
+		fr AS (
+			SELECT to_char(b.bill_date, 'YYYY-MM') AS month,
+			       SUM(f.amount) FILTER (WHERE `+saleCond+`) AS sale_freight,
+			       SUM(f.gst) FILTER (WHERE `+saleCond+`) AS sale_freight_gst,
+			       COUNT(*) FILTER (WHERE `+saleCond+`) AS freight_bills,
+			       COUNT(*) FILTER (WHERE `+saleCond+` AND b.lines_complete AND NOT f.has_goods) AS freight_only,
+			       SUM(f.amount) FILTER (WHERE b.bill_type = 'R') AS ret_freight
+			FROM marg_ede_bills b
+			JOIN LATERAL (
+				SELECT SUM(i.amount) FILTER (WHERE p.name ILIKE 'FREIGHT%') AS amount,
+				       SUM(i.gst_amount) FILTER (WHERE p.name ILIKE 'FREIGHT%') AS gst,
+				       bool_or(i.line_kind = 'item') AS has_goods
+				FROM marg_ede_bill_items i
+				LEFT JOIN marg_ede_products p ON p.product_pid = i.product_pid AND i.line_kind = 'charge'
+				WHERE i.voucher = b.voucher AND NOT i.is_deleted
+			) f ON f.amount IS NOT NULL
+			WHERE (`+saleCond+` OR b.bill_type = 'R') AND NOT b.is_deleted AND NOT b.is_cancelled
+			GROUP BY 1
 		)
 		SELECT months.month,
 		       COALESCE(SUM(b.goods) FILTER (WHERE `+saleCond+`), 0)::float8,
@@ -587,10 +626,13 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 		       COALESCE(MAX(pl.sale_goods), 0)::float8, COALESCE(MAX(pl.sale_cost), 0)::float8, COALESCE(MAX(pl.uncosted), 0)::int,
 		       COALESCE(MAX(pl.ret_goods), 0)::float8, COALESCE(MAX(pl.ret_cost), 0)::float8,
 		       COALESCE(SUM(b.total) FILTER (WHERE b.bill_type = 'R' AND b.lines_count = 0), 0)::float8,
+		       COALESCE(MAX(fr.sale_freight), 0)::float8, COALESCE(MAX(fr.ret_freight), 0)::float8,
+		       COALESCE(MAX(fr.sale_freight_gst), 0)::float8, COALESCE(MAX(fr.freight_bills), 0)::int, COALESCE(MAX(fr.freight_only), 0)::int,
 		       COUNT(*) FILTER (WHERE `+saleCond+` AND NOT b.lines_complete)::int,
 		       COALESCE(SUM(b.total - b.lines_total) FILTER (WHERE `+saleCond+` AND NOT b.lines_complete), 0)::float8
 		FROM months
 		LEFT JOIN pl ON pl.month = months.month
+		LEFT JOIN fr ON fr.month = months.month
 		LEFT JOIN live b ON to_char(b.bill_date, 'YYYY-MM') = months.month
 		GROUP BY months.month ORDER BY months.month`)
 	if err != nil {
@@ -603,11 +645,11 @@ func MonthlyOverview(ctx context.Context, db *pgxpool.Pool, exGST bool) ([]Overv
 		if err := rows.Scan(&m.Month, &m.Sales, &m.Returns, &m.Purchases, &m.Bills, &m.ActiveCustomers, &m.NewCustomers,
 			&m.PurchaseBills, &m.Suppliers, &m.Units, &m.GoodsSold,
 			&m.SaleGoods, &m.SaleCost, &m.UncostedLines, &m.ReturnGoods, &m.ReturnCost, &m.OtherCredit,
-			&m.MissingBills, &m.MissingAmount); err != nil {
+			&m.Freight, &m.FreightBack, &m.FreightGST, &m.FreightBills, &m.FreightOnly, &m.MissingBills, &m.MissingAmount); err != nil {
 			return nil, err
 		}
-		m.Profit = m.SaleGoods - m.SaleCost
-		m.NetProfit = m.Profit - (m.ReturnGoods - m.ReturnCost) - m.OtherCredit
+		m.Profit = m.SaleGoods - m.SaleCost + m.Freight
+		m.NetProfit = m.Profit - (m.ReturnGoods - m.ReturnCost) - m.FreightBack - m.OtherCredit
 		if m.Bills > 0 {
 			m.AvgBill = m.Sales / float64(m.Bills)
 		}

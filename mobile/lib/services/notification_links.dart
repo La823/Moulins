@@ -42,6 +42,11 @@ class NotificationLinks {
       case 'panel':
         if (id(1) == 'orders' && id(2) != null) return '/admin/orders/${id(2)}';
         if (id(1) == 'orders') return '/admin/orders';
+        // an order sent to packing: its packing screen (dispatch team)
+        if (id(1) == 'packing') {
+          final order = uri.queryParameters['order'];
+          return order != null && order.isNotEmpty ? '/packing/$order' : '/packing';
+        }
         if (id(1) == 'partnership-requests') return '/admin';
         return null;
       case 'chat':

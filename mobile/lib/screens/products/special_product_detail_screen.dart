@@ -10,6 +10,7 @@ import '../../providers/cart_provider.dart';
 import '../../services/special_product_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/quantity_stepper.dart';
+import '../../widgets/shell_leading.dart';
 
 /// Detail view for a single special product. Mirrors [ProductDetailScreen]
 /// but talks to the special-products endpoint and drops all the Moulins-
@@ -85,7 +86,7 @@ class _SpecialProductDetailScreenState extends ConsumerState<SpecialProductDetai
     }
     if (_product == null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(leading: const ShellBack(), ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),

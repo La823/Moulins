@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/admin_user.dart';
 import '../../services/admin_service.dart';
 import '../../utils/validators.dart';
+import '../../widgets/shell_leading.dart';
 
 const _teal = Color(0xFF00A6A4);
 
@@ -129,7 +130,7 @@ class _AdminEmployeeDetailScreenState extends State<AdminEmployeeDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black,

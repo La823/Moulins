@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_service.dart';
 import '../../utils/responsive.dart';
+import '../../widgets/shell_leading.dart';
 
 class ChatThreadScreen extends ConsumerStatefulWidget {
   final String id; // other user's id for direct, conversation id for thread
@@ -159,7 +160,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
+      appBar: AppBar(leading: const ShellBack(), 
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(widget.title, style: const TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w600)),
