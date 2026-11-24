@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:flutter/painting.dart' show Color;
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../config/api.dart';
 
 /// Staff tools in the app (mostly MPPL Team): Marg stock, the staff member's
@@ -224,6 +227,8 @@ class Packer {
   final bool onLeave;
   final bool inTurn;
   final int open;
+  final String? firstIn; // HH:MM of today's first punch
+  final bool halfDayLeave;
   Packer.fromJson(Map<String, dynamic> j)
       : id = j['id'] ?? '',
         name = j['name'] ?? '',
@@ -232,8 +237,32 @@ class Packer {
         present = j['present'] == true,
         onLeave = j['on_leave'] == true,
         inTurn = j['in_turn'] == true,
-        open = (j['open'] as num?)?.toInt() ?? 0;
+        open = (j['open'] as num?)?.toInt() ?? 0,
+        firstIn = j['first_in'],
+        halfDayLeave = j['half_day_leave'] == true;
   String get note => skip ? 'out of rotation' : (onLeave ? 'on leave' : (!present ? 'absent' : ''));
+
+  /// Today's attendance in words, as on the website.
+  String get dayText {
+    if (onLeave) return 'On leave today';
+    if (!linked) return 'Not on the attendance machine';
+    final half = halfDayLeave ? ' · half-day leave' : '';
+    final t = firstIn;
+    if (t != null) {
+      final parts = t.split(':');
+      final h = int.tryParse(parts[0]) ?? 0;
+      return 'Present · in at ${h % 12 == 0 ? 12 : h % 12}:${parts.length > 1 ? parts[1] : '00'} ${h < 12 ? 'AM' : 'PM'}$half';
+    }
+    return 'Not punched in yet$half';
+  }
+
+  Color get dayColor => onLeave
+      ? const Color(0xFFDC2626)
+      : !linked
+          ? const Color(0xFF6B7280)
+          : firstIn != null
+              ? const Color(0xFF15803D)
+              : const Color(0xFFB45309);
 }
 
 // ------------------------------------------------------------ Marg bills
@@ -362,6 +391,15 @@ class StaffService {
       'page': page,
     });
     return MargBillPage.fromJson(Map<String, dynamic>.from(res.data));
+  }
+
+  /// A printable PDF of a Marg bill (the same as the website's PDF button),
+  /// downloaded with the login token; open it with OpenFilex.
+  Future<File> margBillPdf(int voucher) async {
+    final token = await getToken();
+    final info = await DefaultCacheManager().downloadFile('$baseUrl/admin/marg-bills/$voucher/pdf',
+        key: 'marg-bill-pdf-$voucher', authHeaders: {'Authorization': 'Bearer $token'}, force: true);
+    return info.file;
   }
 
   Future<MargBillDetail> margBill(int voucher) async =>

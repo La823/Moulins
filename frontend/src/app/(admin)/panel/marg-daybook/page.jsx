@@ -8,20 +8,53 @@ import { KIND_LABELS } from "@/lib/margLedger";
 import { fmtMoney, fmtDate } from "@/components/admin/MargBills";
 import { VOUCHER_KINDS, VoucherRow, Pager } from "@/components/admin/MargDaybook";
 
-// Marg's Day Book for FY 2025-26, loaded once from the Excel export
-// (data-files/exports/daybook-2025-26). Separate from Marg Bills, which is
-// this year's live sync — nothing here is merged with it.
+// Marg's Day Book, a financial year at a time, loaded from its Excel export
+// (data-files/exports/daybook-<fy>). Separate from Marg Bills (the live
+// sync) — nothing here is merged with it. Vouchers are shown for the year
+// picked; the party ledgers run across all loaded years (opening balances
+// were zero when the company started).
+
+const fyRange = (fy) => {
+  const y = Number(fy.slice(0, 4));
+  return { from: `${y}-04-01`, to: `${y + 1}-03-31`, label: `1 Apr ${y} – 31 Mar ${y + 1}` };
+};
 
 export default function MargDaybookPage() {
   const [tab, setTab] = useState("vouchers");
+  const [fys, setFYs] = useState([]);
+  const [fy, setFY] = useState("");
+  useEffect(() => {
+    apiFetch("/admin/marg-daybook?page=1")
+      .then((d) => {
+        const list = d?.fys || [];
+        setFYs(list);
+        setFY((cur) => cur || list[list.length - 1] || "");
+      })
+      .catch(() => {});
+  }, []);
   return (
     <>
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">Day Book 2025-26</h2>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Every voucher from Marg&apos;s Day Book, 1 Apr 2025 – 31 Mar 2026, loaded from the Excel export. Kept separate
-          from Marg Bills (this year&apos;s live data). Opening balances are zero.
-        </p>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Day Book {fy}</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Every voucher from Marg&apos;s Day Book{fy ? `, ${fyRange(fy).label}` : ""}, loaded from the Excel export. Kept
+            separate from Marg Bills (the live data). Opening balances are zero.
+          </p>
+        </div>
+        {fys.length > 1 && (
+          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+            {[...fys].reverse().map((y) => (
+              <button
+                key={y}
+                onClick={() => setFY(y)}
+                className={`px-3 py-1.5 ${fy === y ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              >
+                {y}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {[
@@ -39,12 +72,12 @@ export default function MargDaybookPage() {
           </button>
         ))}
       </div>
-      {tab === "vouchers" ? <Vouchers /> : <Parties />}
+      {tab === "vouchers" ? fy && <Vouchers key={fy} fy={fy} /> : <Parties />}
     </>
   );
 }
 
-function Vouchers() {
+function Vouchers({ fy }) {
   const [list, setList] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -61,14 +94,15 @@ function Vouchers() {
     setError("");
     const params = new URLSearchParams({ page: String(page) });
     if (kind) params.set("kind", kind);
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
+    // the year picked, narrowed by the date boxes when they are set
+    params.set("from", from || fyRange(fy).from);
+    params.set("to", to || fyRange(fy).to);
     if (search) params.set("search", search);
     apiFetch(`/admin/marg-daybook?${params}`)
       .then(setList)
       .catch((e) => setError(e.message || "Could not load the day book"))
       .finally(() => setLoading(false));
-  }, [kind, from, to, search, page]);
+  }, [kind, from, to, search, page, fy]);
 
   const reset = (setter) => (value) => {
     setPage(1);

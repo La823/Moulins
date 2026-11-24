@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import '../../services/staff_service.dart';
 import '../../widgets/shell_leading.dart';
 
@@ -258,6 +259,7 @@ class _MargBillsScreenState extends State<MargBillsScreen> {
                 ]),
               ),
               const SizedBox(width: 8),
+              _BillPdfButton(voucher: b.voucher),
               Text(_money.format(b.total),
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: b.cancelled ? _muted : _ink)),
               const Icon(Icons.chevron_right, color: _muted),
@@ -303,7 +305,10 @@ class _MargBillDetailScreenState extends State<MargBillDetailScreen> {
     final d = _bill;
     return Scaffold(
       backgroundColor: _pageBg,
-      appBar: AppBar(title: Text(d == null ? 'Bill' : d.bill.billNo)),
+      appBar: AppBar(
+        title: Text(d == null ? 'Bill' : d.bill.billNo),
+        actions: [_BillPdfButton(voucher: widget.voucher, label: true), const SizedBox(width: 6)],
+      ),
       body: d == null
           ? Center(
               child: _error == null
@@ -406,5 +411,48 @@ class _MargBillDetailScreenState extends State<MargBillDetailScreen> {
       if (gst > 0) row('GST', _money.format(gst)),
       row('Bill total', _money.format(d.bill.total), bold: true),
     ]));
+  }
+}
+
+/// Opens a printable PDF of the bill (company, party, lines, GST, total; a
+/// copy for reference, not a tax invoice) in the phone's PDF viewer.
+class _BillPdfButton extends StatefulWidget {
+  final int voucher;
+  final bool label;
+  const _BillPdfButton({required this.voucher, this.label = false});
+
+  @override
+  State<_BillPdfButton> createState() => _BillPdfButtonState();
+}
+
+class _BillPdfButtonState extends State<_BillPdfButton> {
+  bool _busy = false;
+
+  Future<void> _open() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final file = await StaffService().margBillPdf(widget.voucher);
+      final res = await OpenFilex.open(file.path, type: 'application/pdf');
+      if (res.type != ResultType.done) {
+        messenger.showSnackBar(SnackBar(content: Text(res.message.isNotEmpty ? res.message : 'The PDF could not be opened.')));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(staffError(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = _busy
+        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _teal))
+        : const Icon(Icons.picture_as_pdf_outlined, size: 20, color: _teal);
+    if (widget.label) {
+      return TextButton.icon(onPressed: _busy ? null : _open, icon: icon, label: const Text('PDF', style: TextStyle(color: _teal)));
+    }
+    return IconButton(onPressed: _busy ? null : _open, icon: icon, tooltip: 'Bill PDF', visualDensity: VisualDensity.compact);
   }
 }

@@ -15,6 +15,7 @@ import '../../models/transport.dart';
 import '../../models/transport_mode.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/admin_order_service.dart';
+import '../../widgets/packer_picker_sheet.dart';
 import '../../services/product_service.dart';
 import '../../services/retailer_service.dart';
 import '../../services/transport_service.dart';
@@ -154,6 +155,13 @@ class _AdminOrderDetailScreenState extends ConsumerState<AdminOrderDetailScreen>
       ),
     );
     if (next == null || next == o.status || !mounted) return;
+    // sending to packing: choose who packs it (with today's attendance)
+    if (next == 'packing') {
+      final packer = await pickPacker(context);
+      if (packer == null || !mounted) return;
+      await _run(() => _service.setStatus(o.id, next, packer: packer), 'Sent to packing.');
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

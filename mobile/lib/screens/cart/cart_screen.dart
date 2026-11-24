@@ -15,6 +15,7 @@ import '../../services/retailer_service.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/shell_leading.dart';
 import '../../widgets/cart_qty_field.dart';
+import '../../widgets/product_history_panel.dart';
 
 String _modeLabel(String name) => 'By ${name[0].toUpperCase()}${name.substring(1)}';
 
@@ -300,6 +301,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                   // staff ordering for a customer: the line's rate
                                   if (_forCustomer) ...[
                                     const SizedBox(height: 6),
+                                    Row(mainAxisSize: MainAxisSize.min, children: [
                                     SizedBox(
                                       width: 110,
                                       height: 34,
@@ -322,6 +324,27 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                         ),
                                       ),
                                     ),
+                                    // what this customer paid before, like on a staff order line
+                                    TextButton.icon(
+                                      onPressed: () {
+                                        if (_customer == null) {
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                              content: Text('Pick the customer first (Order for, below) to see their history.')));
+                                          return;
+                                        }
+                                        showProductHistory(context,
+                                            partnerId: '${_customer!['id']}',
+                                            productId: item.product.id,
+                                            productName: item.product.name);
+                                      },
+                                      style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                                          minimumSize: const Size(0, 34),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                                      icon: const Icon(Icons.history, size: 18, color: Color(0xFF00A6A4)),
+                                      label: const Text('History', style: TextStyle(fontSize: 12.5, color: Color(0xFF00A6A4))),
+                                    ),
+                                    ]),
                                   ],
                                 ],
                               ),

@@ -164,4 +164,6 @@ class StaffOrderItem {
 }
 
 // flow: pending -> confirmed -> packing (Sent to packing) -> packed -> shipped, or cancelled
-const staffOrderStatuses = ['pending', 'confirmed', 'transferred', 'packing', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];
+// statuses staff can choose ("transferred" is no longer offered; orders
+// already in it keep showing it)
+const staffOrderStatuses = ['pending', 'confirmed', 'packing', 'packed', 'shipped', 'delivered', 'cancelled', 'refunded'];

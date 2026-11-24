@@ -197,7 +197,8 @@ func NotifyNewPartnerOrder(db *pgxpool.Pool, orderID, partnerID uuid.UUID) {
 // nobody is in turn the whole dispatch team (employees with packing_edit)
 // is told instead. Async and best-effort like notifyStaffNewOrder; the
 // employee who sent it isn't told about their own action.
-func notifyPackers(db *pgxpool.Pool, orderID uuid.UUID, actor *uuid.UUID) {
+// chosen: staff picked the packer when sending it (logged as such, not as the rotation's turn).
+func notifyPackers(db *pgxpool.Pool, orderID uuid.UUID, actor *uuid.UUID, chosen bool) {
 	go func() {
 		ctx := context.Background()
 		title := "Order sent to packing"
@@ -216,7 +217,11 @@ func notifyPackers(db *pgxpool.Pool, orderID uuid.UUID, actor *uuid.UUID) {
 					name = u.PhoneNumber
 				}
 			}
-			_ = models.InsertOrderEvent(ctx, db, orderID, "packing.assigned", "Packing assigned to "+name+" (rotation)", nil)
+			how, by := " (rotation)", (*uuid.UUID)(nil)
+			if chosen {
+				how, by = "", actor
+			}
+			_ = models.InsertOrderEvent(ctx, db, orderID, "packing.assigned", "Packing assigned to "+name+how, by)
 		} else if packers, err = models.GetPackerUserIDs(ctx, db); err != nil {
 			log.Printf("packing notification: failed to list packers: %v", err)
 			return
@@ -1399,6 +1404,9 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		var body struct {
 			Status string `json:"status"`
+			// sending to packing: the dispatch member chosen to pack it
+			// (a user id); empty leaves it to the rotation
+			PackingAssignee string `json:"packing_assignee"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -1406,9 +1414,10 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		// flow: pending -> confirmed -> packing (sent to packing) -> packed
-		// -> shipped -> delivered, or cancelled
+		// -> shipped -> delivered, or cancelled. "transferred" is no longer
+		// offered (orders already in it keep it until changed).
 		valid := map[string]bool{
-			"pending": true, "confirmed": true, "transferred": true, "packing": true, "packed": true,
+			"pending": true, "confirmed": true, "packing": true, "packed": true,
 			"shipped": true, "delivered": true, "cancelled": true,
 			"refunded": true,
 		}
@@ -1419,6 +1428,28 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 
 		var oldStatus string
 		_ = db.QueryRow(r.Context(), `SELECT status FROM orders WHERE id = $1`, id).Scan(&oldStatus)
+
+		// a packer chosen by hand is set before the status, so the rotation
+		// (which keeps an existing assignee) leaves them be
+		chosen := false
+		if body.Status == "packing" && oldStatus != "packing" && body.PackingAssignee != "" {
+			to, err := uuid.Parse(body.PackingAssignee)
+			if err != nil {
+				http.Error(w, "invalid packing_assignee", http.StatusBadRequest)
+				return
+			}
+			if err := dispatch.Assign(r.Context(), db, id, to); err != nil {
+				if errors.Is(err, dispatch.ErrNotPacker) {
+					http.Error(w, "That login does not pack orders.", http.StatusBadRequest)
+					return
+				}
+				log.Printf("send to packing: assign: %v", err)
+				http.Error(w, "could not assign the packer", http.StatusInternalServerError)
+				return
+			}
+			chosen = true
+		}
+
 		if err := models.UpdateOrderStatus(r.Context(), db, id, body.Status); err != nil {
 			log.Printf("update order status error: %v", err)
 			http.Error(w, "could not update status", http.StatusInternalServerError)
@@ -1432,7 +1463,7 @@ func UpdateOrderStatusHandler(db *pgxpool.Pool) http.HandlerFunc {
 		_ = models.InsertOrderEvent(r.Context(), db, id, "status."+body.Status, desc, actorID(r))
 		notifyOrderStatusEmail(db, id, body.Status)
 		if body.Status == "packing" && oldStatus != "packing" {
-			notifyPackers(db, id, actorID(r))
+			notifyPackers(db, id, actorID(r), chosen)
 		}
 		// confirmed: the lines now get their batches, before packing and Marg
 		if body.Status != oldStatus {

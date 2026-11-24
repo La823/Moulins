@@ -34,7 +34,9 @@ export function useDaybookFYs(party) {
     const params = new URLSearchParams({ kind: "bills" });
     if (party) params.set("party", party);
     apiFetch(`/admin/marg-daybook?${params}`)
-      .then((d) => setFYs(d.total > 0 ? [...d.fys].reverse() : []))
+      // a year the live sync covers (2026-27 on) is shown from the live data
+      // only, even when its Day Book is loaded too
+      .then((d) => setFYs(d.total > 0 ? [...d.fys].reverse().filter((fy) => Number(fy.slice(0, 4)) < FIRST_LIVE_FY) : []))
       .catch(() => setFYs([]));
   }, [party]);
   return fys;

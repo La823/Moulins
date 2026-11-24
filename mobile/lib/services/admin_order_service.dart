@@ -56,8 +56,10 @@ class AdminOrderService {
     });
   }
 
-  Future<void> setStatus(String id, String status) async =>
-      _dio.put('/admin/orders/$id/status', data: {'status': status});
+  /// packer: when sending to packing, the dispatch member chosen to pack it
+  /// (null or '' leaves it to the rotation).
+  Future<void> setStatus(String id, String status, {String? packer}) async => _dio.put('/admin/orders/$id/status',
+      data: {'status': status, if (packer != null && packer.isNotEmpty) 'packing_assignee': packer});
 
   /// The delivery mode and, optionally, the transporter of that mode.
   Future<void> setTransport(String id, String mode, String? transportId) async =>

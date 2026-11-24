@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { packerDay } from "@/components/admin/orders/PackerPicker";
 
 // An order's packing (backend internal/packing): the dispatch team packs
 // orders sent to packing in the app, photographing each product's batch;
@@ -128,7 +129,7 @@ export default function OrderPacking({ orderId, status, isAdmin, canEdit, onChan
                   {(packers || []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
-                      {p.skip ? " (out of rotation)" : !p.present ? " (absent)" : p.on_leave ? " (on leave)" : ""} · {p.open} open
+                      {" · "}{packerDay(p).text}{p.skip ? " · out of rotation" : ""} · {p.open} open
                     </option>
                   ))}
                 </select>

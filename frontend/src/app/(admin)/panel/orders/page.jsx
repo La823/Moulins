@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import PackerPicker from "@/components/admin/orders/PackerPicker";
 
 const STATUS_STYLES = {
   pending: "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -60,7 +61,6 @@ function RatesMarker({ priced, total }) {
 const STATUSES = [
   "pending",
   "confirmed",
-  "transferred",
   "packing",
   "packed",
   "shipped",
@@ -73,7 +73,6 @@ const STATUS_TABS = [
   { value: "", label: "All" },
   { value: "pending", label: "Pending" },
   { value: "confirmed", label: "Confirmed" },
-  { value: "transferred", label: "Transferred" },
   { value: "packing", label: "Sent to packing" },
   { value: "packed", label: "Packed" },
   { value: "shipped", label: "Shipped" },
@@ -135,13 +134,21 @@ function AdminOrdersPageInner() {
     setPage(1);
   }, [statusFilter, search, sort]);
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  // sending to packing first asks who packs it (PackerPicker)
+  const [packingFor, setPackingFor] = useState(null); // order id waiting for a packer
+  const handleStatusChange = async (orderId, newStatus, packer) => {
+    const current = orders.find((o) => o.id === orderId)?.status;
+    if (newStatus === "packing" && current !== "packing" && packer === undefined) {
+      setPackingFor(orderId);
+      return;
+    }
     setUpdatingStatus(orderId);
     try {
       await apiFetch(`/admin/orders/${orderId}/status`, {
         method: "PUT",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, ...(packer ? { packing_assignee: packer } : {}) }),
       });
+      setPackingFor(null);
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
       );
@@ -423,8 +430,9 @@ function AdminOrdersPageInner() {
                         "bg-gray-100 text-gray-600"
                       }`}
                     >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
+                      {/* an order still "transferred" (no longer offered) keeps showing it */}
+                      {(STATUSES.includes(order.status) ? STATUSES : [order.status, ...STATUSES]).map((s) => (
+                        <option key={s} value={s} disabled={!STATUSES.includes(s)}>
                           {s === "packing" ? "sent to packing" : s}
                         </option>
                       ))}
@@ -463,6 +471,13 @@ function AdminOrdersPageInner() {
           )}
         </div>
         </>
+      )}
+      {packingFor && (
+        <PackerPicker
+          busy={updatingStatus === packingFor}
+          onCancel={() => setPackingFor(null)}
+          onConfirm={(packer) => handleStatusChange(packingFor, "packing", packer)}
+        />
       )}
     </>
   );

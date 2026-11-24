@@ -23,6 +23,10 @@ type Packer struct {
 	OnLeave bool   `json:"on_leave"`
 	InTurn  bool   `json:"in_turn"` // gets orders today: not skipped, present, not on leave
 	Open    int    `json:"open"`    // orders sent to packing and assigned to them
+	// today's attendance in detail, for choosing who packs: first punch
+	// (HH:MM, nil when not punched in yet) and a half day of approved leave
+	FirstIn      *string `json:"first_in"`
+	HalfDayLeave bool    `json:"half_day_leave"`
 }
 
 // packersSQL lists everyone who packs (employees with packing_edit) with
@@ -40,7 +44,13 @@ const packersSQL = `
 	           SELECT 1 FROM etime_leave_requests l, today
 	           WHERE l.emp_code = e.emp_code AND l.status = 'approved' AND NOT l.half_day
 	             AND today.d BETWEEN l.from_date AND l.to_date),
-	       (SELECT COUNT(*) FROM orders o WHERE o.packing_assigned_to = u.id AND o.status = 'packing')::int
+	       (SELECT COUNT(*) FROM orders o WHERE o.packing_assigned_to = u.id AND o.status = 'packing')::int,
+	       (SELECT to_char(MIN(t.punch_time), 'HH24:MI') FROM etime_punches t, today
+	        WHERE t.emp_code = e.emp_code AND t.punch_time >= today.d AND t.punch_time < today.d + 1),
+	       e.emp_code IS NOT NULL AND EXISTS (
+	           SELECT 1 FROM etime_leave_requests l, today
+	           WHERE l.emp_code = e.emp_code AND l.status = 'approved' AND l.half_day
+	             AND today.d BETWEEN l.from_date AND l.to_date)
 	FROM users u
 	LEFT JOIN etime_employees e ON e.user_id = u.id
 	WHERE u.role = 'employee'
@@ -52,7 +62,7 @@ func scanPackers(rows pgx.Rows) ([]Packer, error) {
 	out := []Packer{}
 	for rows.Next() {
 		var p Packer
-		if err := rows.Scan(&p.ID, &p.Name, &p.Phone, &p.Skip, &p.Linked, &p.Present, &p.OnLeave, &p.Open); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Phone, &p.Skip, &p.Linked, &p.Present, &p.OnLeave, &p.Open, &p.FirstIn, &p.HalfDayLeave); err != nil {
 			return nil, err
 		}
 		p.InTurn = !p.Skip && p.Present && !p.OnLeave

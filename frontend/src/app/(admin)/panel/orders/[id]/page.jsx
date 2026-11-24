@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import PackerPicker from "@/components/admin/orders/PackerPicker";
 import { useRateHistory, ProductHistoryPanel } from "@/components/admin/MargRateHistory";
 import { useAuth } from "@/context/AuthContext";
 import MargBatchPickerModal from "@/components/admin/MargBatchPickerModal";
@@ -15,7 +16,6 @@ import ProductPicker, { entryBoxOpen, parseRate, usePastRatesDrawer } from "@/co
 const STATUSES = [
   "pending",
   "confirmed",
-  "transferred",
   "packing",
   "packed",
   "shipped",
@@ -234,19 +234,30 @@ export default function AdminOrderDetail() {
   }, [success]);
 
   // --- Status change ---
-  const handleStatusChange = async (newStatus) => {
+  // sending to packing first asks who packs it (PackerPicker), instead of the confirm
+  const [choosingPacker, setChoosingPacker] = useState(false);
+  const [sendingToPacking, setSendingToPacking] = useState(false);
+  const handleStatusChange = async (newStatus, packer) => {
     if (newStatus === order.status) return;
-    if (!confirm(`Change order status from "${order.status}" to "${newStatus}"? The partner will see this update.`)) return;
+    if (newStatus === "packing" && packer === undefined) {
+      setChoosingPacker(true);
+      return;
+    }
+    if (newStatus !== "packing" && !confirm(`Change order status from "${order.status}" to "${newStatus}"? The partner will see this update.`)) return;
+    if (newStatus === "packing") setSendingToPacking(true);
     try {
       await apiFetch(`/admin/orders/${id}/status`, {
         method: "PUT",
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, ...(packer ? { packing_assignee: packer } : {}) }),
       });
+      setChoosingPacker(false);
       setOrder((prev) => ({ ...prev, status: newStatus }));
       reloadLines(); // confirming splits lines a batch can't fill
-      setSuccess("Status updated");
+      setSuccess(newStatus === "packing" ? "Sent to packing" : "Status updated");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setSendingToPacking(false);
     }
   };
 
@@ -712,8 +723,9 @@ export default function AdminOrderDetail() {
               STATUS_STYLES[order.status] || "bg-gray-100 text-gray-600"
             }`}
           >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
+            {/* an order still "transferred" (no longer offered) keeps showing it */}
+            {(STATUSES.includes(order.status) ? STATUSES : [order.status, ...STATUSES]).map((s) => (
+              <option key={s} value={s} disabled={!STATUSES.includes(s)}>
                 {s === "packing" ? "Sent to packing" : s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
             ))}
@@ -1634,6 +1646,13 @@ export default function AdminOrderDetail() {
         </div>
       </div>
 
+      {choosingPacker && (
+        <PackerPicker
+          busy={sendingToPacking}
+          onCancel={() => setChoosingPacker(false)}
+          onConfirm={(packer) => handleStatusChange("packing", packer)}
+        />
+      )}
       {showMargModal && (
         <MargBatchPickerModal
           orderId={id}

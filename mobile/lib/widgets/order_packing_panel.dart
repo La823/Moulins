@@ -84,7 +84,8 @@ class _OrderPackingPanelState extends State<OrderPackingPanel> {
             ListTile(
               leading: Icon(Icons.person_outline, color: p.inTurn ? _teal : Colors.grey),
               title: Text(p.name),
-              subtitle: Text([if (p.note.isNotEmpty) p.note, '${p.open} to pack'].join(' · ')),
+              subtitle: Text([p.dayText, if (p.skip) 'out of rotation', '${p.open} to pack'].join(' · '),
+                  style: TextStyle(color: p.dayColor)),
               trailing: p.id == _o?.assignedToId ? const Icon(Icons.check, color: _teal) : null,
               onTap: () => Navigator.pop(ctx, p.id),
             ),
