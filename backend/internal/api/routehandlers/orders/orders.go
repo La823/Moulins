@@ -971,6 +971,12 @@ func PublicOrderPDFHandler(db *pgxpool.Pool) http.HandlerFunc {
 // buildOrderPDF renders an order's PDF. customerCopy is the copy a customer
 // is sent (no warehouse codes, no staff remarks); printedBy, when set, is
 // printed in the footer with the time.
+// pdfIST: the order PDF prints Indian time. The server runs in UTC (and its
+// container has no time zone data), so times are converted explicitly — else
+// "printed at" was 5h30m behind and an order placed between midnight and
+// 5:30 AM got the previous day's date.
+var pdfIST = time.FixedZone("IST", 5*3600+1800)
+
 func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, customerCopy bool, printedBy string) ([]byte, error) {
 	user, err := models.GetUserByID(ctx, db, order.UserID)
 	if err != nil {
@@ -1150,11 +1156,11 @@ func buildOrderPDF(ctx context.Context, db *pgxpool.Pool, order *models.Order, c
 
 	printedAt := ""
 	if printedBy != "" {
-		printedAt = time.Now().Format("02.01.2006 15:04")
+		printedAt = time.Now().In(pdfIST).Format("02.01.2006 15:04")
 	}
 	pdfData := utils.OrderPDFData{
 		OrderNumber:   strings.ToUpper(order.ID.String()[:8]),
-		Date:          order.CreatedAt.Format("2006-01-02"),
+		Date:          order.CreatedAt.In(pdfIST).Format("2006-01-02"),
 		Status:        order.Status,
 		CustomerName:  customerName,
 		TransportMode: order.TransportMode,
