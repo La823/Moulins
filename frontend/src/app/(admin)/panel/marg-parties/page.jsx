@@ -394,7 +394,18 @@ function PartyRow({ p, open, onToggle, onCreateClick, onStatusChange, saving }) 
         <td className="px-4 py-3 text-gray-500">{p.gstin || "—"}</td>
         <td className="px-4 py-3 text-right text-gray-700">{fmtMoney(p.balance)}</td>
         <td className="px-4 py-3">
-          {p.is_deleted ? (
+          {p.deleted_in_marg ? (
+            // Marg stopped sending this party (usually recreated under a new
+            // RID); the balance shown is frozen at the last pull.
+            <span
+              title={`Not in Marg's party list any more${
+                p.deleted_in_marg_at ? ` (noticed ${new Date(p.deleted_in_marg_at).toLocaleDateString("en-IN")})` : ""
+              } — balance is from the last pull`}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium whitespace-nowrap"
+            >
+              Deleted in Marg
+            </span>
+          ) : p.is_deleted ? (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600">Inactive</span>
           ) : (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-700">Active</span>

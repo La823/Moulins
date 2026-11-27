@@ -247,7 +247,41 @@ func RunSyncWindow(ctx context.Context, db *pgxpool.Pool, creds Credentials, dat
 		// the caller move the delta cursor forward.
 		return result, "", err
 	}
+	if strings.TrimSpace(datetime) == "" {
+		if err := markPartiesMissingFromMarg(ctx, db, details); err != nil {
+			return result, "", err
+		}
+	}
 	return result, details.DateTime, nil
+}
+
+// markPartiesMissingFromMarg flags every stored party whose rid is not in a
+// full pull's party list as deleted_in_marg. Marg recreates a party under a
+// new rid now and then and the old rid just stops coming (no Is_Deleted),
+// which used to leave it on the page as live with a frozen balance.
+// Only for a full pull Marg itself calls complete, and never when the list
+// is far shorter than what we hold, so a truncated answer can't flag
+// everyone. Parties Marg sends again are cleared by the upsert.
+func markPartiesMissingFromMarg(ctx context.Context, db *pgxpool.Pool, details mst2017Details) error {
+	if details.Datastatus != "Completed" || len(details.Party) == 0 {
+		return nil
+	}
+	var live int
+	if err := db.QueryRow(ctx, `SELECT COUNT(*) FROM margmaster_party WHERE NOT deleted_in_marg`).Scan(&live); err != nil {
+		return err
+	}
+	if len(details.Party)*10 < live*8 {
+		log.Printf("margsync: full pull sent %d parties but %d are stored — not flagging the rest as deleted in Marg", len(details.Party), live)
+		return nil
+	}
+	rids := make([]string, len(details.Party))
+	for i, p := range details.Party {
+		rids[i] = p.Rid
+	}
+	_, err := db.Exec(ctx, `
+		UPDATE margmaster_party SET deleted_in_marg = TRUE, deleted_in_marg_at = NOW()
+		WHERE NOT deleted_in_marg AND NOT (rid = ANY($1::text[]))`, rids)
+	return err
 }
 
 // ApplySync upserts an already-fetched/parsed MST2017 payload — the shared
@@ -848,7 +882,8 @@ func ApplySyncProgress(ctx context.Context, db *pgxpool.Pool, details mst2017Det
 				phone4 = EXCLUDED.phone4, email1 = EXCLUDED.email1, email2 = EXCLUDED.email2,
 				email3 = EXCLUDED.email3, bank = EXCLUDED.bank, branch = EXCLUDED.branch,
 				margcode = EXCLUDED.margcode, gstin = EXCLUDED.gstin, dlno = EXCLUDED.dlno,
-				ledgercode = EXCLUDED.ledgercode, synced_at = NOW()`,
+				ledgercode = EXCLUDED.ledgercode, synced_at = NOW(),
+				deleted_in_marg = FALSE, deleted_in_marg_at = NULL`,
 			rids, pcodes, pnames, areas, addrs, balances, pdcs, pgcodes, openings, pdels,
 			ph1, ph2, ph3, ph4, em1, em2, em3, banks, branches,
 			margcodes, gstins, dlnos, ledgers); err != nil {

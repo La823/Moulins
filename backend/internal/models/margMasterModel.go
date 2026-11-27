@@ -271,6 +271,11 @@ type MargParty struct {
 	// flag the duplicate entries Marg's party list accumulates. The sync
 	// never writes it.
 	Status string `json:"status"`
+	// DeletedInMarg: Marg no longer sends this party (missing from a full
+	// pull, usually because Marg recreated it under a new rid). Its balance
+	// is frozen at the last pull. Set by the sync, migration 197.
+	DeletedInMarg   bool       `json:"deleted_in_marg"`
+	DeletedInMargAt *time.Time `json:"deleted_in_marg_at,omitempty"`
 }
 
 // MargPartyPage is one page of Marg parties plus the total matching count.
@@ -382,7 +387,8 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status, accou
 
 	rows, err = db.Query(ctx, `
 		SELECT mp.id, mp.rid, mp.code, mp.name, mp.area, mp.address, mp.balance, mp.gcode, mp.is_deleted,
-		       mp.phone1, mp.email1, mp.gstin, mp.ledgercode, mp.synced_at, u.id, mp.status
+		       mp.phone1, mp.email1, mp.gstin, mp.ledgercode, mp.synced_at, u.id, mp.status,
+		       mp.deleted_in_marg, mp.deleted_in_marg_at
 		FROM margmaster_party mp
 		LEFT JOIN users u ON u.rid = mp.rid AND u.role = 'partner'
 		WHERE ($1 = '' OR mp.name ILIKE '%' || $1 || '%' OR mp.code ILIKE '%' || $1 || '%' OR mp.area ILIKE '%' || $1 || '%' OR mp.rid ILIKE '%' || $1 || '%')
@@ -402,7 +408,7 @@ func GetMargParties(ctx context.Context, db *pgxpool.Pool, search, status, accou
 		var p MargParty
 		if err := rows.Scan(&p.ID, &p.Rid, &p.Code, &p.Name, &p.Area, &p.Address, &p.Balance, &p.Gcode,
 			&p.IsDeleted, &p.Phone1, &p.Email1, &p.GSTIN, &p.LedgerCode, &p.SyncedAt, &p.LinkedPartnerID,
-			&p.Status); err != nil {
+			&p.Status, &p.DeletedInMarg, &p.DeletedInMargAt); err != nil {
 			return page, err
 		}
 		parties = append(parties, p)
